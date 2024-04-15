@@ -145,11 +145,33 @@ class ElasticTable:
             responsive=True,
         )
 
-    def table_layout(self):
+    def table_layout(self, initial_state=None):
         """Returns the complete layout for the table view."""
         default_sort_column = next(
             (col for col in self.columns if col.default_sort), None
         )
+
+        # Initialize the state store with default values
+        if not initial_state:
+            initial_state = {
+                "search": "",
+                "size": self.default_page_size,
+                "page": 1,
+                "sort": {
+                    "field": (
+                        default_sort_column.field_name if default_sort_column else None
+                    ),
+                    "order": (
+                        default_sort_column.default_sort
+                        if default_sort_column
+                        else None
+                    ),
+                },
+                "filters": [
+                    [] for _ in [col for col in self.columns if col.filterable]
+                ],
+                "initial_load": True,
+            }
 
         # Prepare filter column components
         filter_columns = [
@@ -160,6 +182,12 @@ class ElasticTable:
                         dbc.Checklist(
                             id=f"{self.dom_prefix}-filter-{col.field_name}",
                             options=[],
+                            value=(
+                                initial_state["filters"][i]
+                                if initial_state.get("filters")
+                                and i < len(initial_state["filters"])
+                                else []
+                            ),
                             className="w-100 elastic-table-filter-checklist",
                         ),
                         dbc.Button(
@@ -172,8 +200,7 @@ class ElasticTable:
                     ]
                 )
             )
-            for col in self.columns
-            if col.filterable
+            for i, col in enumerate([col for col in self.columns if col.filterable])
         ]
 
         # Table title block
@@ -209,6 +236,7 @@ class ElasticTable:
                                     id=f"{self.dom_prefix}-search",
                                     type="text",
                                     placeholder="Search...",
+                                    value=initial_state["search"],
                                     className="mb-3 w-100",
                                 ),
                                 # Main table with spinner
@@ -233,7 +261,9 @@ class ElasticTable:
                                                         {"label": str(i), "value": i}
                                                         for i in [10, 20, 50, 100, 200]
                                                     ],
-                                                    value=self.default_page_size,
+                                                    value=initial_state.get(
+                                                        "size", self.default_page_size
+                                                    ),
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
@@ -248,7 +278,9 @@ class ElasticTable:
                                             dbc.Pagination(
                                                 id=f"{self.dom_prefix}-pagination",
                                                 max_value=1,
-                                                active_page=1,
+                                                active_page=initial_state.get(
+                                                    "page", 1
+                                                ),
                                                 first_last=True,
                                                 previous_next=True,
                                                 fully_expanded=False,
