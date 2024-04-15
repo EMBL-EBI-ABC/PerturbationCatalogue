@@ -50,8 +50,14 @@ class ElasticTable:
         """Returns columns that should be displayed in the table view."""
         return [col for col in self.columns if col.display_table]
 
-    def _fetch_data(self, q, size, page, sort_data, filter_values):
+    def _fetch_data(self, state):
         """Fetches data from the API endpoint with the given parameters."""
+        q = state.get("search", "")
+        size = state.get("size", self.default_page_size)
+        page = state["page"]
+        sort_data = state.get("sort", {})
+        filter_values = state.get("filters", [])
+
         params = {
             "q": q,
             "size": size,
