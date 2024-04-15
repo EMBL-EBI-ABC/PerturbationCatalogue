@@ -347,7 +347,7 @@ def register_callbacks(app):
     depmap_table.register_callbacks(app)
 
     @callback(
-        Output("elastic-table-mavedb-search", "value"),
+        Output("elastic-table-mavedb-search", "value", allow_duplicate=True),
         Input({"type": "gene-link", "index": dash.dependencies.ALL}, "n_clicks"),
         State({"type": "gene-link", "index": dash.dependencies.ALL}, "id"),
         prevent_initial_call=True,
