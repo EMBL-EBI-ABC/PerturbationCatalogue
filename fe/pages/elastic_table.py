@@ -377,8 +377,14 @@ class ElasticTable:
         # Clientside callback for text input debounce.
         app.clientside_callback(
             """
-            function(value, oldValue) {
-                if (value === oldValue) {
+            function(value, state) {
+                // Special case for initial load - check if this is the first callback execution
+                if (!window.initialLoadComplete<id>) {
+                    window.initialLoadComplete<id> = true;
+                    return value;  // Allow the value through on first load
+                }
+
+                if (value === state.search) {
                     return window.dash_clientside.no_update;
                 }
 
