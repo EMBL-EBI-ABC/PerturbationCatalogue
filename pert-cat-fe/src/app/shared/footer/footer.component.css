@@ -1,0 +1,11 @@
+footer {
+  background-color: rgb(250, 249, 253);
+  height:50px;
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+}
+
+span {
+  margin-left: 15px;
+}
