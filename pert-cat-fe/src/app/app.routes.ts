@@ -3,4 +3,5 @@ import {HomeComponent} from "./home/home.component";
 
 export const routes: Routes = [
   { path: 'home', title: 'Perturbation Catalogue | Home',  component: HomeComponent },
+  { path: '', redirectTo: 'home', pathMatch: 'full' },
 ];
