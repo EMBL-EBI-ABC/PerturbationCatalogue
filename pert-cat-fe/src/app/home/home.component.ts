@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import {HeaderComponent} from "../shared/header/header.component";
 import {MatCardModule} from "@angular/material/card";
 import {FooterComponent} from "../shared/footer/footer.component";
-import { BigQueryService } from '../bigquery.service';
+import { ElasticService } from '../elastic.service';
 import { MatTableModule } from '@angular/material/table';
 import { CommonModule } from '@angular/common';
 
@@ -17,14 +17,14 @@ import { CommonModule } from '@angular/common';
 export class HomeComponent implements OnInit {
   data: any[] = [];
 
-  constructor(private bigQueryService: BigQueryService) { }
+  constructor(private elasticService: ElasticService) { }
 
   ngOnInit() {
     this.fetchData();
   }
 
   fetchData() {
-    this.bigQueryService.getData().subscribe({
+    this.elasticService.getData().subscribe({
       next: (response) => {
         this.data = response.rows;
       },
