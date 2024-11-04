@@ -7,4 +7,22 @@
   </h1>
 </div>
 
+<mat-card>
+  <mat-card-title>BigQuery Data</mat-card-title>
+  <mat-card-content>
+    <table>
+      <thead>
+        <tr>
+          <th *ngFor="let col of data[0]?.f; let i = index">{{ col.v }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of data">
+          <td *ngFor="let col of row.f">{{ col.v }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </mat-card-content>
+</mat-card>
+
 <app-footer></app-footer>
