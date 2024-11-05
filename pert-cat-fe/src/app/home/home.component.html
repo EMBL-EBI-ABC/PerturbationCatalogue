@@ -1,10 +1,22 @@
 <app-header></app-header>
 
-
 <div>
   <h1>
     The Open Targets Perturbation Catalogue - Coming Soon!
   </h1>
 </div>
+
+<table *ngIf="data && data.length > 0">
+  <thead>
+    <tr>
+      <th *ngFor="let key of getKeys(data[0])">{{ key }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr *ngFor="let item of data">
+      <td *ngFor="let key of getKeys(item)">{{ item[key] }}</td>
+    </tr>
+  </tbody>
+</table>
 
 <app-footer></app-footer>
