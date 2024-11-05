@@ -1,28 +1,22 @@
 <app-header></app-header>
 
-
 <div>
   <h1>
     The Open Targets Perturbation Catalogue - Coming Soon!
   </h1>
 </div>
 
-<mat-card>
-  <mat-card-title>Elastic Data</mat-card-title>
-  <mat-card-content>
-    <table>
-      <thead>
-        <tr>
-          <th *ngFor="let col of data[0]?.f; let i = index">{{ col.v }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let row of data">
-          <td *ngFor="let col of row.f">{{ col.v }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </mat-card-content>
-</mat-card>
+<table *ngIf="data && data.length > 0">
+  <thead>
+    <tr>
+      <th *ngFor="let key of getKeys(data[0])">{{ key }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr *ngFor="let item of data">
+      <td *ngFor="let key of getKeys(item)">{{ item[key] }}</td>
+    </tr>
+  </tbody>
+</table>
 
 <app-footer></app-footer>

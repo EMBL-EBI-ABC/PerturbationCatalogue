@@ -13,16 +13,17 @@ export class ElasticService {
   constructor(private http: HttpClient) { }
 
   getData(): Observable<any> {
-    const query = {
-      "size": 10,
-      "query": {
-        "match_all": {}
-      }
-    };
 
-    const headers = new HttpHeaders().set('Content-Type', 'application/json');
+    // Not working for now.
+    // const query = '{"size": 10, "query": {"match_all": {}}}'
+    // const headers = new HttpHeaders().set('Content-Type', 'application/json');
+    // const response = this.http.post(this.elasticUrl, query, { headers })
 
-    return this.http.post(this.elasticUrl, query, { headers }).pipe(
+    // Temporary substitution with first 10 entries from GitHub.
+    const response = this.http.get("https://raw.githubusercontent.com/tskir/playground/refs/heads/main/test10.json")
+
+    // Return the fields we need.
+    return response.pipe(
       map((response: any) => response.hits.hits.map((hit: { _source: any; }) => hit._source))
     );
   }
