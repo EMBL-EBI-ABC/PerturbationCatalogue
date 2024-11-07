@@ -1,10 +1,46 @@
 import os
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Query
+from elasticsearch import AsyncElasticsearch
 
-from fastapi import FastAPI
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize AsyncElasticsearch.
+    es_client = AsyncElasticsearch(
+        [os.getenv("ES_URL")],
+        http_auth=(os.getenv("ES_USERNAME"), os.getenv("ES_PASSWORD")),
+        verify_certs=True,
+    )
 
+    # Pass the client to the app's state so it's accessible in routes.
+    app.state.es_client = es_client
+    yield
+    # Clean up by closing the Elasticsearch client.
+    await es_client.close()
 
-@app.get("/")
-async def read_root():
-    return {"message": os.getenv("NOT_SECRET_VARIABLE", "Value not provided")}
+# Initialize FastAPI with lifespan manager.
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/search")
+async def search(
+    q: str = Query(None, description="Search query string")
+):
+    # Access the Elasticsearch client from the app's state.
+    es = app.state.es_client
+    # Build the search query.
+    search_body = {
+        "query": {
+            "match_all": {} if not q else {"multi_match": {"query": q, "fields": ["*"]}}
+        },
+        "size": 10
+    }
+
+    try:
+        # Execute the async search request.
+        response = await es.search(index="your_index_name", body=search_body)
+        # Return the hits.
+        return {"results": response["hits"]["hits"]}
+    except Exception as e:
+        # Handle ElasticSearch errors.
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")

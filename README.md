@@ -5,7 +5,7 @@
 ```bash
 python3 -m venv fastapi-env
 source fastapi-env/bin/activate
-pip install fastapi uvicorn
+pip install fastapi uvicorn elasticsearch[async]
 uvicorn main:app --reload
 ```
 
@@ -49,4 +49,6 @@ The deployment can then be accessed at the URL shown on the build page.
 
 Secret variables required for the service to work:
 
-- NOT_SECRET_VARIABLE
+- ES_URL
+- ES_USERNAME
+- ES_PASSWORD
