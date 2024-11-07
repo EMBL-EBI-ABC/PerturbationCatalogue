@@ -19,13 +19,13 @@ async def lifespan(app: FastAPI):
     # Clean up by closing the Elasticsearch client.
     await es_client.close()
 
+
 # Initialize FastAPI with lifespan manager.
 app = FastAPI(lifespan=lifespan)
 
+
 @app.get("/search")
-async def search(
-    q: str = Query(None, description="Search query string")
-):
+async def search(q: str = Query(None, description="Search query string")):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
     # Build the search query.
@@ -33,12 +33,12 @@ async def search(
         "query": {
             "match_all": {} if not q else {"multi_match": {"query": q, "fields": ["*"]}}
         },
-        "size": 10
+        "size": 10,
     }
 
     try:
         # Execute the async search request.
-        response = await es.search(index="your_index_name", body=search_body)
+        response = await es.search(index="mavedb", body=search_body)
         # Return the hits.
         return {"results": response["hits"]["hits"]}
     except Exception as e:
