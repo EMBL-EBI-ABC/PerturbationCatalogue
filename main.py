@@ -29,12 +29,13 @@ async def search(q: str = Query(None, description="Search query string")):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
     # Build the search query.
-    search_body = {
-        "query": {
-            "match_all": {} if not q else {"multi_match": {"query": q, "fields": ["*"]}}
-        },
-        "size": 10,
-    }
+    if q:
+        search_body = {
+            "query": {"multi_match": {"query": q, "fields": ["*"]}},
+            "size": 10,
+        }
+    else:
+        search_body = {"query": {"match_all": {}}, "size": 10}
 
     try:
         # Execute the async search request.
