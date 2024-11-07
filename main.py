@@ -40,7 +40,7 @@ async def search(q: str = Query(None, description="Search query string")):
         # Execute the async search request.
         response = await es.search(index="mavedb", body=search_body)
         # Return the hits.
-        return {"results": response["hits"]["hits"]}
+        return [r["_source"] for r in response["hits"]["hits"]]
     except Exception as e:
         # Handle ElasticSearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
