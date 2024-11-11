@@ -6,6 +6,9 @@
   </h1>
 </div>
 
+<mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[5, 10, 50]" (page)="onPageChange($event)">
+</mat-paginator>
+
 <table *ngIf="data && data.length > 0">
   <thead>
     <tr>
