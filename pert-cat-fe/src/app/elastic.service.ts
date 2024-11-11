@@ -8,23 +8,18 @@ import { map } from 'rxjs/operators';
   providedIn: 'root',
 })
 export class ElasticService {
-  private readonly elasticUrl = 'https://USERNAME:KEY@SUBDOMAIN.elastic-cloud.com/mavedb/_search?filter_path=hits.hits._source';
+  private readonly fastApiUrl = 'https://pert-cat-be-959149465821.europe-west2.run.app/search';
 
   constructor(private http: HttpClient) { }
 
   getData(): Observable<any> {
 
-    // Not working for now.
-    // const query = '{"size": 10, "query": {"match_all": {}}}'
-    // const headers = new HttpHeaders().set('Content-Type', 'application/json');
-    // const response = this.http.post(this.elasticUrl, query, { headers })
-
     // Temporary substitution with first 10 entries from GitHub.
-    const response = this.http.get("https://raw.githubusercontent.com/tskir/playground/refs/heads/main/test10.json")
+    const response = this.http.get(this.fastApiUrl)
 
     // Return the fields we need.
     return response.pipe(
-      map((response: any) => response.hits.hits.map((hit: { _source: any; }) => hit._source))
+      map((response: any) => response.results)
     );
   }
 }
