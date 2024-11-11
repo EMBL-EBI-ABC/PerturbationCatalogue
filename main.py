@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from elasticsearch import AsyncElasticsearch
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -21,6 +22,15 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI with lifespan manager.
 app = FastAPI(lifespan=lifespan)
+
+# Allow all origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 
 @app.get("/search")
