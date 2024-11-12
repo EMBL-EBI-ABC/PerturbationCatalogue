@@ -15,6 +15,9 @@ th, td {
   border: 1px solid #ddd;
   padding: 8px;
   text-align: left;
+  word-break: break-word; /* Forces line breaks for long words */
+  overflow-wrap: break-word; /* Ensures words break to fit within the container */
+  min-width: 8em;
 }
 
 th {
