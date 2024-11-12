@@ -6,14 +6,25 @@ import { ElasticService } from '../elastic.service';
 import { MatTableModule } from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
-
-
+import { FormsModule } from '@angular/forms';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [HeaderComponent, FooterComponent, MatCardModule, MatTableModule, MatPaginator, MatPaginatorModule, CommonModule,
+  imports: [
+    HeaderComponent,
+    FooterComponent,
+    MatCardModule,
+    MatTableModule,
+    MatPaginator,
+    MatPaginatorModule,
+    CommonModule,
+    FormsModule,
+    MatFormFieldModule,
+    MatInputModule
 ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.css'
@@ -23,6 +34,7 @@ export class HomeComponent implements OnInit {
   totalResults = 0;
   pageSize = 10;
   currentPage = 0;
+  searchQuery: string = '';
 
   constructor(private elasticService: ElasticService) {}
 
@@ -37,7 +49,8 @@ export class HomeComponent implements OnInit {
   fetchData() {
     const start = this.currentPage * this.pageSize;
     const size = this.pageSize;
-    this.elasticService.getData(start, size).subscribe(
+    const query = this.searchQuery;
+    this.elasticService.getData(start, size, query).subscribe(
       (response) => {
         this.data = response.results;
         this.totalResults = response.total;
@@ -51,6 +64,11 @@ export class HomeComponent implements OnInit {
   onPageChange(event: PageEvent) {
     this.pageSize = event.pageSize;
     this.currentPage = event.pageIndex;
+    this.fetchData();
+  }
+
+  onSearchChange(): void {
+    this.currentPage = 0;
     this.fetchData();
   }
 

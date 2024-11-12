@@ -5,6 +5,13 @@
   </mat-paginator>
 </div>
 
+<div class="search-container">
+  <mat-form-field appearance="fill" class="wide-search-field">
+    <mat-label>Search</mat-label>
+    <input matInput [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" placeholder="Search" />
+  </mat-form-field>
+</div>
+
 <div class="table-container">
   <table *ngIf="data && data.length > 0">
     <thead>

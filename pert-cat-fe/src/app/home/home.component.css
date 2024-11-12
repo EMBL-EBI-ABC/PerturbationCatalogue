@@ -58,3 +58,12 @@ table.mat-table {
 tr {
   vertical-align: top;
 }
+
+.search-container {
+  margin-top: 1em;
+  margin-bottom: -1.5em;
+}
+
+.wide-search-field {
+  width: 40em;
+}
