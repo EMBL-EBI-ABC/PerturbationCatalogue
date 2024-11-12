@@ -1,6 +1,5 @@
 div {
   text-align: center;
-  margin-top: 130px;
 }
 
 h1 {
@@ -29,4 +28,30 @@ tr:nth-child(even) {
 
 tr:hover {
   background-color: #f1f1f1;
+}
+
+.paginator-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+:host {
+  display: block;
+  background-color: rgb(250, 249, 253);
+  height: 100%; /* Ensures it covers the full height of its container */
+}
+
+.table-container {
+  width: 100%; /* Ensures the container does not exceed its parent width */
+  padding: 2em; /* Adds space around the table without overflow */
+  box-sizing: border-box; /* Includes padding within the total width */
+}
+
+table.mat-table {
+  width: 100%; /* Keeps table width within the container */
+}
+
+tr {
+  vertical-align: top;
 }
