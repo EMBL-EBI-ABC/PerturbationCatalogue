@@ -6,7 +6,7 @@ def process_json_to_csv(input_filename, output_filename):
     # Load JSON data from file.
     with open(input_filename, "r") as f:
         data = json.load(f)
-    
+
     # Prepare a list to store the rows.
     rows = []
 
@@ -26,7 +26,7 @@ def process_json_to_csv(input_filename, output_filename):
 
     # Convert list of rows to a DataFrame.
     df = pd.DataFrame(rows)
-    
+
     # Save DataFrame to JSONL.
     with open(output_filename, 'w') as f:
         for row in rows:
@@ -38,7 +38,7 @@ def main():
     parser.add_argument("--input-filename", type=str, required=True, help="Input JSON filename")
     parser.add_argument("--output-filename", type=str, required=True, help="Output CSV filename")
     args = parser.parse_args()
-    
+
     # Process JSON and save to CSV.
     process_json_to_csv(args.input_filename, args.output_filename)
 
