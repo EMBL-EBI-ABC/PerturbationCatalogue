@@ -1,4 +1,4 @@
-# Pert_Cat_BE
+# Open Targets Perturbation Catalogue back-end
 
 ## Local set up
 
@@ -16,9 +16,7 @@ docker build -t perturbation-catalogue-be .
 docker run -p 8000:8000 perturbation-catalogue-be
 ```
 
-## Configuring Google Cloud Run deployment
-
-### Set up deployment
+## Google Cloud Run deployment
 
 1. Go to https://console.cloud.google.com/run.
 1. Deploy container → Service → Continuously deploy from a repository (source or function).
@@ -29,7 +27,7 @@ docker run -p 8000:8000 perturbation-catalogue-be
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Pick: CPU is only allocated during request processing.
-1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in these three secret variables:
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
    - ES_URL
    - ES_USERNAME
    - ES_PASSWORD
