@@ -12,43 +12,27 @@ uvicorn main:app --reload
 ## Local Docker build
 
 ```bash
-docker build -t fastapi-hello-world .
-docker run -p 8000:8000 fastapi-hello-world
+docker build -t perturbation-catalogue-be .
+docker run -p 8000:8000 perturbation-catalogue-be
 ```
 
 ## Configuring Google Cloud Run deployment
 
 ### Set up deployment
 
-1. Go to: https://console.cloud.google.com/run
-1. Deploy container
-1. Service
-1. Continuously deploy from a repository (source or function)
-1. Set up cloud build
-1. (If needed) Authenticate to GitHub
-1. Choose this repository
-1. I understand that GitHub content...
-1. Next
-1. Build type: Dockerfile
-1. Save
-1. Choose region
-1. Allow unauthenticated invokations
-1. CPU is only allocated during request processing
-1. Create
+1. Go to https://console.cloud.google.com/run.
+1. Deploy container → Service → Continuously deploy from a repository (source or function).
+1. Set up cloud build.
+1. Choose this repository → Next.
+1. Build type: Dockerfile; Source location: `/be/Dockerfile` → Save.
+1. Service name: `perturbation-catalogue-be`.
+1. Choose region.
+1. Pick: Allow unauthenticated invokations.
+1. Pick: CPU is only allocated during request processing.
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in these three secret variables:
+   - ES_URL
+   - ES_USERNAME
+   - ES_PASSWORD
+1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
-
-### Add or modify secret variables
-
-1. Go to: https://console.cloud.google.com/run
-1. Open the back-end deployment.
-1. Edit & Deploy New Revision.
-1. Variables and Secrets
-1. Add variable(s)
-1. Deploy
-
-Secret variables required for the service to work:
-
-- ES_URL
-- ES_USERNAME
-- ES_PASSWORD
