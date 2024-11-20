@@ -1,0 +1,30 @@
+<app-header></app-header>
+
+<div class="paginator-container">
+  <mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[5, 10, 50]" (page)="onPageChange($event)">
+  </mat-paginator>
+</div>
+
+<div class="search-container">
+  <mat-form-field appearance="fill" class="wide-search-field">
+    <mat-label>Search</mat-label>
+    <input matInput [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" placeholder="Search" />
+  </mat-form-field>
+</div>
+
+<div class="table-container">
+  <table *ngIf="data && data.length > 0">
+    <thead>
+      <tr>
+        <th *ngFor="let key of getKeys(data[0])">{{ key }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let item of data">
+        <td *ngFor="let key of getKeys(item)">{{ item[key] }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<app-footer></app-footer>
