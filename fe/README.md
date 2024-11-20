@@ -9,6 +9,7 @@
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Pick: CPU is only allocated during request processing.
+1. Container(s), volumes, networking, security → Container(s) → Container port: 80
 1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
    - FASTAPI_URL
 1. Click: Create.
