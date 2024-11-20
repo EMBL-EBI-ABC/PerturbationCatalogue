@@ -1,6 +1,5 @@
 # Open Targets Perturbation Catalogue
 
-Front-end deployment is configured via Google Cloud Run: https://console.cloud.google.com/run.
-
-## BigQuery back-end set up
-* Enable BigQuery API in the Google Cloud Console.
+This monorepo contains data processing, back-end, and front-end facilities for the Perturbation Catalogue project. Try it out:
+* **API** → https://perturbation-catalogue-be-959149465821.europe-west2.run.app/search
+* **Website** → https://perturbation-catalogue-fe-959149465821.europe-west2.run.app
