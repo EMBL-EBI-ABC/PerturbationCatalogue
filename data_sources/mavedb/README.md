@@ -11,7 +11,7 @@ The ZIP archive contains:
   - `*.scores.csv` — always present
   - `*.counts.csv` — sometimes present
 
-## Mirroring
+## Mirror
 
 ```bash
 export LAKE_BUCKET=...
@@ -20,7 +20,7 @@ unzip -d mavedb mavedb-data.zip
 gsutil -m cp -r mavedb gs://${LAKE_BUCKET}/
 ```
 
-## Processing
+## Process
 
 ```bash
 export WAREHOUSE_BUCKET=...
@@ -31,7 +31,7 @@ python3 process.py \
 gsutil cp /tmp/metadata.jsonl "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
 ```
 
-## Warehousing
+## Ingest into Elastic
 
 ```bash
 gsutil cp "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" /tmp/metadata.json
@@ -58,25 +58,3 @@ curl -X GET "${ELASTIC_ENDPOINT}/mavedb/_search?filter_path=hits.hits._source" -
   }
 }'
 ```
-
-## Warehousing — obsolete (will be reused for data)
-
-```bash
-export GCLOUD_REGION=...
-# Create the dataset.
-bq mk \
-  --location=${GCLOUD_REGION} \
-  mavedb
-# Load the JSONL file into BigQuery with schema autodetection.
-bq load \
-  --source_format=NEWLINE_DELIMITED_JSON \
-  --autodetect \
-  mavedb.metadata \
-  "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
-# Verify the load.
-bq query --use_legacy_sql=false 'SELECT * FROM mavedb.metadata LIMIT 5'
-```
-
-## Visualisation — obsolete
-
-https://lookerstudio.google.com/
