@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . .
 
 # Install any dependencies
-RUN pip install --no-cache-dir fastapi uvicorn elasticsearch[async]
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8080

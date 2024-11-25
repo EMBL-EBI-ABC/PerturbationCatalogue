@@ -5,7 +5,7 @@
 ```bash
 python3 -m venv fastapi-env
 source fastapi-env/bin/activate
-pip install fastapi uvicorn elasticsearch[async]
+pip install -r requirement.txt
 uvicorn main:app --reload
 ```
 
