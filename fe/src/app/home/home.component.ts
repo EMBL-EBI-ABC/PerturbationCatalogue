@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { HeaderComponent } from "../shared/header/header.component";
 import { MatCardModule } from "@angular/material/card";
 import { FooterComponent } from "../shared/footer/footer.component";
-import { ElasticService } from '../elastic.service';
+import { ElasticService } from '../services/elastic.service';
 import { MatTableModule } from '@angular/material/table';
 import { MatPaginator, MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { CommonModule } from '@angular/common';
