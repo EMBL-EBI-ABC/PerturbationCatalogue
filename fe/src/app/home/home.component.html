@@ -13,18 +13,26 @@
 </div>
 
 <div class="table-container">
-  <table *ngIf="data && data.length > 0">
-    <thead>
-      <tr>
-        <th *ngFor="let key of getKeys(data[0])">{{ key }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let item of data">
-        <td *ngFor="let key of getKeys(item)">{{ item[key] }}</td>
-      </tr>
-    </tbody>
-  </table>
+  @if (data?.length > 0) {
+    <table>
+      <thead>
+        <tr>
+          @for (let key of getKeys(data[0])) {
+            <th>{{ key }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (let item of data) {
+          <tr>
+            @for (let key of getKeys(item)) {
+              <td>{{ item[key] }}</td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
 </div>
 
 <app-footer></app-footer>
