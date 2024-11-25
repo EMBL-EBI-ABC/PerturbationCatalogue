@@ -17,15 +17,15 @@
     <table>
       <thead>
         <tr>
-          @for (let key of getKeys(data[0])) {
+          @for (key of getKeys(data[0]); track key) {
             <th>{{ key }}</th>
           }
         </tr>
       </thead>
       <tbody>
-        @for (let item of data) {
+        @for (item of data; track $index) {
           <tr>
-            @for (let key of getKeys(item)) {
+            @for (key of getKeys(item); track key) {
               <td>{{ item[key] }}</td>
             }
           </tr>
