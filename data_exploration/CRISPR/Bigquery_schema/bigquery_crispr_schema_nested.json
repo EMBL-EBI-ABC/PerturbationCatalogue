@@ -1,0 +1,418 @@
+[
+    {
+        "name": "study",
+        "type": "RECORD",
+        "description": "The study or publication that the perturbation data is associated with",
+        "mode": "NULLABLE",
+        "fields": [
+            {
+                "name": "title",
+                "type": "STRING",
+                "description": "The title of the study/publication",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "system",
+                "type": "STRING",
+                "description": "The name of the system that the study is registered in",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "uri",
+                "type": "STRING",
+                "description": "A Universal Record Identifier (URI) to the study or publication",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "date",
+                "type": "DATE",
+                "description": "The date the study was released or published",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "authors",
+                "type": "RECORD",
+                "description": "The authors of the study",
+                "mode": "REPEATED",
+                "fields": [
+                    {
+                        "name": "first_name",
+                        "type": "STRING",
+                        "description": "The name of the author",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "last_name",
+                        "type": "STRING",
+                        "description": "The last name of the author",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "primary",
+                        "type": "BOOLEAN",
+                        "description": "Whether the author is the primary author",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "name": "experiment",
+        "type": "RECORD",
+        "description": "The experimental details of the CRISPR perturbation",
+        "mode": "NULLABLE",
+        "fields": [
+            {
+                "name": "title",
+                "type": "STRING",
+                "description": "The title of the experiment",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "summary",
+                "type": "STRING",
+                "description": "A summary of the experiment",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "num_perturbed_cells",
+                "type": "INTEGER",
+                "description": "The number of cells perturbed in the experiment: 15000, 50000, etc.",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "num_perturbed_genes",
+                "type": "INTEGER",
+                "description": "The number of genes perturbed in the experiment: 1, 10, 100, etc.",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "num_sgrnas",
+                "type": "INTEGER",
+                "description": "The number of sgRNAs in the CRISPR librar: 123411, 77441",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "coverage",
+                "type": "INTEGER",
+                "description": "The number of cells per sgRNA: 150, 300",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "treatments",
+                "type": "STRING",
+                "description": "A list of treatments applied to the model system",
+                "mode": "REPEATED"
+            },
+            {
+                "name": "timepoints",
+                "type": "STRING",
+                "description": "A list of timepoints at which the CRISPR perturbation was performed",
+                "mode": "REPEATED"
+            },
+            {
+                "name": "replicates",
+                "type": "STRING",
+                "description": "Type of replicates performed: biological, technical, biological+technical, none",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "screen_scope",
+                "type": "STRING",
+                "description": "The scope of the screen: genome-wide, focused, custom, etc.",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "screen_format",
+                "type": "STRING",
+                "description": "The format of the screen: pooled, arrayed",
+                "mode": "NULLABLE"
+            },
+            {
+                "name": "perturbation_details",
+                "type": "RECORD",
+                "description": "Details of the perturbation",
+                "mode": "NULLABLE",
+                "fields": [
+                    {
+                        "name": "endogenous_perturbation",
+                        "type": "RECORD",
+                        "description": "Endogenous perturbation details",
+                        "mode": "NULLABLE",
+                        "fields": [
+                            {
+                                "name": "library_generation_method",
+                                "type": "STRING",
+                                "description": "The enzyme used in the CRISPR perturbation: Cas9, Cas12a, etc.",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "mechanism",
+                                "type": "STRING",
+                                "description": "The mechanism of the perturbation: CRISPR knockout, CRISPR activation, etc.",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "library",
+                                "type": "STRING",
+                                "description": "The name of the CRISPR library used in the experiment: Brunello, GeCKO, etc.",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "enzyme_delivery_method",
+                                "type": "STRING",
+                                "description": "The method used to deliver the enzyme for the CRISPR perturbation: lentivirus, electroporation, etc.",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "library_delivery_method",
+                                "type": "STRING",
+                                "description": "The method used to deliver the enzyme for the CRISPR perturbation: lentivirus, electroporation, etc.",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "enzyme_integration_state",
+                                "type": "STRING",
+                                "description": "The final genomic state of the enzyme: extra-local insertion, random integration, episomal, non-integrated plasmid, RNA",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "library_integration_state",
+                                "type": "STRING",
+                                "description": "The final genomic state of the sgRNA: extra-local insertion, random integration, episomal, non-integrated plasmid, RNA",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "enzyme_expression_control",
+                                "type": "STRING",
+                                "description": "Expression control mechanism of the enzyme: constitutive, inducible, native promoter",
+                                "mode": "NULLABLE"
+                            },
+                            {
+                                "name": "library_expression_control",
+                                "type": "STRING",
+                                "description": "Expression control mechanism of the sgRNA: constitutive, inducible, native promoter",
+                                "mode": "NULLABLE"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "name": "target_details",
+                "type": "RECORD",
+                "description": "Details of all genes targeted/perturbed in the experiment",
+                "mode": "REPEATED",
+                "fields": [
+                    {
+                        "name": "target_name",
+                        "type": "STRING",
+                        "description": "Common gene symbol (e.g., TP53)",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "target_ensembl_id",
+                        "type": "STRING",
+                        "description": "Ensembl gene identifier (e.g., ENSG00000141510)",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "target_refseq_id",
+                        "type": "STRING",
+                        "description": "RefSeq gene identifier (e.g., NG_017013.2)",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "target_uniprot_id",
+                        "type": "STRING",
+                        "description": "UniProt protein identifier (e.g., P04637)",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            },
+            {
+                "name": "model_system_details",
+                "type": "RECORD",
+                "description": "Details of the model system used in the perturbation",
+                "mode": "NULLABLE",
+                "fields": [
+                    {
+                        "name": "model_system",
+                        "type": "STRING",
+                        "description": "The model system used in the CRISPR perturbation experiment: cell line, primary cell, organoid, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_species",
+                        "type": "STRING",
+                        "description": "The species of the model system: Human, Mouse, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_tissue",
+                        "type": "STRING",
+                        "description": "The tissue of the model system: breast, brain, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_cell_type",
+                        "type": "STRING",
+                        "description": "The cell type of the model system: epithelial, neuronal, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_name",
+                        "type": "STRING",
+                        "description": "The name of the model system, such as a cell line",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_sex",
+                        "type": "STRING",
+                        "description": "The sex of the model system: Male, Female, Unknown",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_age",
+                        "type": "STRING",
+                        "description": "The age of the model system: Embryonic, Neonatal, Adult, Aged, Unknown",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "model_system_genetic_background",
+                        "type": "STRING",
+                        "description": "The genetic background of the model system: C57BL6, BALBc, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "cell_passage_number",
+                        "type": "INTEGER",
+                        "description": "The number of passages the cells have undergone: 12, 33, etc.",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            },
+            {
+                "name": "assay_details",
+                "type": "RECORD",
+                "description": "Details of the assay used in the experiment",
+                "mode": "NULLABLE",
+                "fields": [
+                    {
+                        "name": "readout_dimensionality",
+                        "type": "STRING",
+                        "description": "The readout complexity: single-dimensional, higher-dimensional.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "readout_type",
+                        "type": "STRING",
+                        "description": "The readout type: Transcriptomic, Proteomic, Phenotypic, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "readout_technology",
+                        "type": "STRING",
+                        "description": "The technology used for the readout: scRNA-seq, RNA-seq, ATAC-seq, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "method_name",
+                        "type": "STRING",
+                        "description": "The name of the assay used in the experiment: scRNA-seq, CROP-seq, Perturb-seq, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "method_uri",
+                        "type": "STRING",
+                        "description": "A Universal Record Identifier (URI) to the method used in the experiment: https://www.protocols.io/view/cite-seq-5qpvo4rxg4o1/v1",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "sequencing_platform",
+                        "type": "STRING",
+                        "description": "The sequencing platform used in the experiment: Illumina NovaSeq 6000, PacBio RSII, Oxford Nanopore MinION MJ1B, etc", 
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "reference_genome",
+                        "type": "STRING",
+                        "description": "The reference genome used in the experiment: GRCh38, mm10, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "software_counts",
+                        "type": "STRING",
+                        "description": "The software used for counting reads: MAGeCK, Bowtie 2, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "software_analysis",
+                        "type": "STRING",
+                        "description": "The software used for analysis: MAGeCK, DESeq2, etc.",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            },
+            {
+                "name": "associated_datasets",
+                "type": "RECORD",
+                "description": "",
+                "mode": "REPEATED",
+                "fields": [
+                    {
+                        "name": "system",
+                        "type": "STRING",
+                        "description": "The name of the system that the dataset is registered in: GEO, SRA, website, publication, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "accession",
+                        "type": "STRING",
+                        "description": "The accession number of the dataset: GSE139313 etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "uri",
+                        "type": "STRING",
+                        "description": "A Universal Record Identifier (URI) to the dataset: https://www.ebi.ac.uk/ena/browser/view/PRJNA579227",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "description",
+                        "type": "STRING",
+                        "description": "A brief description of the dataset: Raw sequencing data; Processed data; etc.",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            },
+            {
+                "name": "associated_conditions",
+                "type": "RECORD",
+                "description": "",
+                "mode": "REPEATED",
+                "fields": [
+                    {
+                        "name": "ontology_system",
+                        "type": "STRING",
+                        "description": "The name of the ontology system: EFO, MONDO, etc.",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "ontology_id",
+                        "type": "STRING",
+                        "description": "The ontology ID of the disease or biological process: EFO_0000616, MONDO_0004979",
+                        "mode": "NULLABLE"
+                    },
+                    {
+                        "name": "name",
+                        "type": "STRING",
+                        "description": "The name of the disease or biological process: breast cancer, Alzheimer's disease",
+                        "mode": "NULLABLE"
+                    }
+                ]
+            }
+        ]
+    }
+]
