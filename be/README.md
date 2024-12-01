@@ -34,3 +34,11 @@ docker run -p 8000:8000 perturbation-catalogue-be
 1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
+
+Set up path trigger:
+
+1. Go to https://console.cloud.google.com/cloud-build/triggers.
+1. Edit the perturbation-catalogue-be trigger.
+1. Click on “Show included and ignored files filters”.
+1. Set “Included files filters (glob)” to `be/**`.
+1. Clik on “Save”.
