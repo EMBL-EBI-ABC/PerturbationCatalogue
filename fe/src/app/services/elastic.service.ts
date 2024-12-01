@@ -7,7 +7,7 @@ import { map } from 'rxjs/operators';
   providedIn: 'root',
 })
 export class ElasticService {
-  private readonly fastApiUrl = 'https://pert-cat-be-959149465821.europe-west2.run.app/search';
+  private readonly fastApiUrl = 'https://perturbation-catalogue-be-959149465821.europe-west2.run.app/search';
 
   constructor(private http: HttpClient) {}
 
