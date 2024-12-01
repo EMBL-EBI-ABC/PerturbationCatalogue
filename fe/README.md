@@ -16,6 +16,14 @@
 
 The deployment can then be accessed at the URL shown on the build page.
 
+Set up path trigger:
+
+1. Go to https://console.cloud.google.com/cloud-build/triggers.
+1. Edit the perturbation-catalogue-fe trigger.
+1. Click on “Show included and ignored files filters”.
+1. Set “Included files filters (glob)” to `fe/**`.
+1. Clik on “Save”.
+
 # Auto-generated Angular reference
 
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 18.2.5.
