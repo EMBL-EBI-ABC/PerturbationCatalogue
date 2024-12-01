@@ -34,6 +34,9 @@ def process_json_to_csv(input_filename, output_filename):
                         target_gene_category = "Multiple target genes"
                 # Track the counts of different target gene cases.
                 target_gene_cnt[target_gene_category] += 1
+                # Skip all cases except when a single human gene is targeted.
+                if target_gene_category != "Single target gene, human":
+                    continue
                 # Append row data with selected fields.
                 rows.append({
                     "title": score_set.get("title", ""),
