@@ -9,7 +9,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-
+import { marked } from 'marked';
 
 @Component({
   selector: 'app-home',
@@ -25,7 +25,7 @@ import { MatInputModule } from '@angular/material/input';
     FormsModule,
     MatFormFieldModule,
     MatInputModule
-],
+  ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.css'
 })
@@ -52,7 +52,13 @@ export class HomeComponent implements OnInit {
     const query = this.searchQuery;
     this.elasticService.getData(start, size, query).subscribe(
       (response) => {
-        this.data = response.results;
+        this.data = response.results.map((row: Record<string, string>) => {
+          const parsedRow: Record<string, string> = {};
+          for (const key of this.getKeys(row)) {
+            parsedRow[key] = marked.parse(row[key].toString()) as string;
+          }
+          return parsedRow;
+        });
         this.totalResults = response.total;
       },
       (error) => {
@@ -71,5 +77,4 @@ export class HomeComponent implements OnInit {
     this.currentPage = 0;
     this.fetchData();
   }
-
 }
