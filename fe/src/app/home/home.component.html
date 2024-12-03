@@ -14,22 +14,18 @@
 
 <div class="table-container">
   @if (data?.length > 0) {
-    <table>
+    <table mat-table [dataSource]="data" class="mat-elevation-z8">
+      @for (key of getKeys(data[0]); track key) {
+        <ng-container [matColumnDef]="key">
+          <th mat-header-cell *matHeaderCellDef> {{ key }} </th>
+          <td mat-cell *matCellDef="let element"> {{ element[key] }} </td>
+        </ng-container>
+      }
       <thead>
-        <tr>
-          @for (key of getKeys(data[0]); track key) {
-            <th>{{ key }}</th>
-          }
-        </tr>
+        <tr mat-header-row *matHeaderRowDef="getKeys(data[0])"></tr>
       </thead>
       <tbody>
-        @for (item of data; track $index) {
-          <tr>
-            @for (key of getKeys(item); track key) {
-              <td>{{ item[key] }}</td>
-            }
-          </tr>
-        }
+        <tr mat-row *matRowDef="let row; columns: getKeys(data[0])"></tr>
       </tbody>
     </table>
   }
