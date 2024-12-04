@@ -55,7 +55,8 @@ table.mat-table {
   width: 100%; /* Keeps table width within the container */
 }
 
-tr {
+tr * {
+  text-align: left;
   vertical-align: top;
 }
 

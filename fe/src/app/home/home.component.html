@@ -18,7 +18,9 @@
       @for (key of getKeys(data[0]); track key) {
         <ng-container [matColumnDef]="key">
           <th mat-header-cell *matHeaderCellDef> {{ key }} </th>
-          <td mat-cell *matCellDef="let element"> {{ element[key] }} </td>
+          <td mat-cell *matCellDef="let element">
+            <div [innerHTML]="element[key]"></div>
+          </td>
         </ng-container>
       }
       <thead>
