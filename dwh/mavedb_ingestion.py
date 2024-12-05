@@ -64,7 +64,7 @@ p = beam.Pipeline(options=options)
 
 (p
  | "Read data from CSV file" >> beam.io.ReadFromText(data_input,
-                                                      skip_header_lines=0)
+                                                      skip_header_lines=1)
  | "Split rows" >> beam.Map(lambda x: x.split(','))
  | "Format rows" >> beam.Map(record_formatting)
  | "Write to BigQuery" >> beam.io.WriteToBigQuery(
