@@ -52,7 +52,7 @@ bq_dataset_name = opts.bq_dataset_name
 
 def record_formatting(row):
     try:
-        score = row[4]
+        score = float(row[4])
     except ValueError:
         score = None
     return {'accession': row[0], 'hgvs_nt': row[1], 'hgvs_splice': row[2],
