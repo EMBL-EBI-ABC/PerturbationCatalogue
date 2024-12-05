@@ -51,8 +51,12 @@ data_input = f'gs://perturbation-catalogue-lake/mavedb/csv/*.scores.csv'
 bq_dataset_name = opts.bq_dataset_name
 
 def record_formatting(row):
+    try:
+        score = row[4]
+    except ValueError:
+        score = None
     return {'accession': row[0], 'hgvs_nt': row[1], 'hgvs_splice': row[2],
-              'hgvs_pro': row[3], 'score': row[4]}
+              'hgvs_pro': row[3], 'score': score}
 
 
 
