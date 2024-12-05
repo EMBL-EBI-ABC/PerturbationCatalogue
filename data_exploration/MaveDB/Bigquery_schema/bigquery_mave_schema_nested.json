@@ -12,19 +12,13 @@
                 "mode": "NULLABLE"
             },
             {
-                "name": "system",
-                "type": "STRING",
-                "description": "The name of the system that the study is registered in",
-                "mode": "NULLABLE"
-            },
-            {
                 "name": "uri",
                 "type": "STRING",
-                "description": "A Universal Record Identifier (URI) to the study or publication",
+                "description": "A Universal Record Identifier (URI) to the study or publication, e.g DOI or Pubmed ID",
                 "mode": "NULLABLE"
             },
             {
-                "name": "date",
+                "name": "released_date",
                 "type": "DATE",
                 "description": "The date the study was released or published",
                 "mode": "NULLABLE"
@@ -347,13 +341,13 @@
                         "name": "readout_type",
                         "type": "STRING",
                         "description": "The readout type: Transcriptomic, Proteomic, Phenotypic, etc.",
-                        "mode": "NULLABLE"
+                        "mode": "REPEATED"
                     },
                     {
                         "name": "readout_technology",
                         "type": "STRING",
                         "description": "The technology used for the readout: flow-cytometry, survival assay etc.",
-                        "mode": "NULLABLE"
+                        "mode": "REPEATED"
                     },
                     {
                         "name": "method_name",
@@ -406,12 +400,6 @@
                 "mode": "REPEATED",
                 "fields": [
                     {
-                        "name": "system",
-                        "type": "STRING",
-                        "description": "The name of the system that the dataset is registered in: GEO, SRA, website, publication, etc.",
-                        "mode": "NULLABLE"
-                    },
-                    {
                         "name": "accession",
                         "type": "STRING",
                         "description": "The accession number of the dataset: GSE139313 etc.",
@@ -438,15 +426,9 @@
                 "mode": "REPEATED",
                 "fields": [
                     {
-                        "name": "ontology_system",
-                        "type": "STRING",
-                        "description": "The name of the ontology system: EFO, MONDO, etc.",
-                        "mode": "NULLABLE"
-                    },
-                    {
                         "name": "ontology_id",
                         "type": "STRING",
-                        "description": "The ontology ID of the disease or biological process: EFO_0000616, MONDO_0004979",
+                        "description": "The ontology ID of the disease or biological process, formatted as "ONTOLOGY ACRONYM:TERM ID": EFO:0000616, MONDO:0004979",
                         "mode": "NULLABLE"
                     },
                     {
