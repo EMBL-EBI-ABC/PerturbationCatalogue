@@ -58,6 +58,7 @@ def process_json_to_csv(input_filename, output_filename):
                         "shortDescription": score_set.get("shortDescription", ""),
                         # "methodText": score_set.get("methodText", ""),
                         # "abstractText": score_set.get("abstractText", ""),
+                        "sequenceType": target_gene["targetSequence"]["sequenceType"],
                         "geneName": target_gene.get("name", ""),
                         "geneCategory": target_gene.get("category", ""),
                         "publicationUrl": (
