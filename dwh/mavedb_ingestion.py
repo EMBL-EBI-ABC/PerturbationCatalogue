@@ -45,3 +45,30 @@ options.view_as(SetupOptions).save_main_session = True
 options.view_as(GoogleCloudOptions).job_name = '{0}{1}'.format('my-pipeline-',
                                                                time.time_ns())
 options.view_as(StandardOptions).runner = opts.runner
+
+# Static input and output
+data_input = f'gs://perturbation-catalogue-lake/mavedb/csv/*.scores.csv'
+bq_dataset_name = opts.bq_dataset_name
+
+def record_formatting(row):
+    return {'accession': row[0], 'hgvs_nt': row[1], 'hgvs_splice': row[2],
+              'hgvs_pro': row[3], 'score': row[4]}
+
+
+
+p = beam.Pipeline(options=options)
+
+(p
+ | "Read data from CSV file" >> beam.io.ReadFromText(data_input,
+                                                      skip_header_lines=0)
+ | "Split rows" >> beam.Map(lambda x: x.split(','))
+ | "Format rows" >> beam.Map(record_formatting)
+ | "Write to BigQuery" >> beam.io.WriteToBigQuery(
+            table=f'{opts.project}:{bq_dataset_name}.data',
+            schema=mavedb_scores_schema,
+            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+            write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE
+        )
+ )
+
+p.run()
