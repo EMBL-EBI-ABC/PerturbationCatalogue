@@ -36,6 +36,10 @@ app.add_middleware(
 @app.get("/search")
 async def search(
     q: str = Query(None, description="Search query string"),
+    filter: str = Query(
+        None,
+        description="Filter query in the format field1:value1,value2+field2:value3,value4",
+    ),
     start: int = Query(0, description="Starting point of the results"),
     size: int = Query(10, description="Number of results per page"),
 ):
