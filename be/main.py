@@ -62,11 +62,17 @@ async def search(
         query_body = {"multi_match": {"query": q, "fields": ["*"]}}
     else:
         query_body = {"match_all": {}}
-    # Build the search query.
+
+    # Combine query with filters.
     search_body = {
         "from": start,
         "size": size,
-        "query": query_body,
+        "query": {
+            "bool": {
+                "must": query_body,
+                "filter": filters,
+            }
+        },
     }
 
     try:
