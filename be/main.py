@@ -45,7 +45,19 @@ async def search(
 ):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
-    # Build query body based on whether there is full text search.
+
+    # Parse filters from the filter query parameter.
+    filters = []
+    if filter:
+        try:
+            for f in filter.split("+"):
+                field, values = f.split(":")
+                values_list = values.split(",")
+                filters.append({"terms": {f"{field}.keyword": values_list}})
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid filter format")
+
+    # Build the query body based on whether there is full text search.
     if q:
         query_body = {"multi_match": {"query": q, "fields": ["*"]}}
     else:
