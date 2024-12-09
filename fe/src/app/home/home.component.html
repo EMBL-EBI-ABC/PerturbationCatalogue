@@ -1,7 +1,7 @@
 <app-header></app-header>
 
 <div class="paginator-container">
-  <mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[100, 1000, 2000]" (page)="onPageChange($event)">
+  <mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[50, 100, 200, 500]" (page)="onPageChange($event)">
   </mat-paginator>
 </div>
 
