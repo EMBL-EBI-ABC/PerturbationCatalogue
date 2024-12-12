@@ -32,7 +32,7 @@ import { marked } from 'marked';
 export class HomeComponent implements OnInit {
   data: any;
   totalResults = 0;
-  pageSize = 10;
+  pageSize = 100;
   currentPage = 0;
   searchQuery: string = '';
 

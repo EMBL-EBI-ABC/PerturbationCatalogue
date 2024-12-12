@@ -5,7 +5,7 @@
 ```bash
 python3 -m venv fastapi-env
 source fastapi-env/bin/activate
-pip install -r requirement.txt
+pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 

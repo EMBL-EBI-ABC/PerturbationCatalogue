@@ -19,6 +19,7 @@ def process_json_to_csv(input_filename, output_filename):
     for experiment_set in data.get("experimentSets", []):
         for experiment in experiment_set.get("experiments", []):
             for score_set in experiment.get("scoreSets", []):
+
                 # Analyse target genes.
                 target_genes = score_set.get("targetGenes", [])
                 match len(target_genes):
@@ -37,15 +38,39 @@ def process_json_to_csv(input_filename, output_filename):
                 # Skip all cases except when a single human gene is targeted.
                 if target_gene_category != "Single target gene, human":
                     continue
+                target_gene = target_genes[0]
+
+                # Analyse primary publication identifiers.
+                if len(score_set["primaryPublicationIdentifiers"]) > 1:
+                    print("Multiple primary publication identifiers")
+                primary_publication = None
+                primary_publications = score_set.get(
+                    "primaryPublicationIdentifiers", []
+                )
+                if primary_publications:
+                    primary_publication = primary_publications[0]
+
                 # Append row data with selected fields.
                 rows.append(
                     {
-                        "title": score_set.get("title", ""),
-                        "methodText": score_set.get("methodText", ""),
-                        "abstractText": score_set.get("abstractText", ""),
-                        "shortDescription": score_set.get("shortDescription", ""),
                         "urn": score_set.get("urn", ""),
+                        "title": score_set.get("title", ""),
+                        "shortDescription": score_set.get("shortDescription", ""),
+                        # "methodText": score_set.get("methodText", ""),
+                        # "abstractText": score_set.get("abstractText", ""),
+                        "sequenceType": target_gene["targetSequence"]["sequenceType"],
+                        "geneName": target_gene.get("name", ""),
+                        "geneCategory": target_gene.get("category", ""),
+                        "publicationUrl": (
+                            primary_publication["url"] if primary_publication else ""
+                        ),
+                        "publicationYear": (
+                            primary_publication["publicationYear"]
+                            if primary_publication
+                            else ""
+                        ),
                         "numVariants": score_set.get("numVariants", 0),
+                        "keywords": experiment.get("keywords"),
                     }
                 )
 

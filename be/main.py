@@ -36,21 +36,43 @@ app.add_middleware(
 @app.get("/search")
 async def search(
     q: str = Query(None, description="Search query string"),
+    filter: str = Query(
+        None,
+        description="Filter query in the format field1:value1,value2+field2:value3,value4",
+    ),
     start: int = Query(0, description="Starting point of the results"),
     size: int = Query(10, description="Number of results per page"),
 ):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
-    # Build query body based on whether there is full text search.
+
+    # Parse filters from the filter query parameter.
+    filters = []
+    if filter:
+        try:
+            for f in filter.split("+"):
+                field, values = f.split(":")
+                values_list = values.split(",")
+                filters.append({"terms": {f"{field}.keyword": values_list}})
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid filter format")
+
+    # Build the query body based on whether there is full text search.
     if q:
         query_body = {"multi_match": {"query": q, "fields": ["*"]}}
     else:
         query_body = {"match_all": {}}
-    # Build the search query.
+
+    # Combine query with filters.
     search_body = {
         "from": start,
         "size": size,
-        "query": query_body,
+        "query": {
+            "bool": {
+                "must": query_body,
+                "filter": filters,
+            }
+        },
     }
 
     try:
