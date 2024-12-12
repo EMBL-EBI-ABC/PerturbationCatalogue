@@ -1,31 +1,31 @@
-/* Structure */
-.example-container {
-  position: relative;
-}
-
-.example-table-container {
-  position: relative;
-  overflow: auto;
-}
-
-table {
-  width: 100%;
-}
-
-.example-loading-shade {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 56px;
-  right: 0;
-  background: rgba(0, 0, 0, 0.15);
-  z-index: 1;
+.top-container {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-flow: row wrap;
+  align-content: stretch;
 }
 
-.example-rate-limit-reached {
-  max-width: 360px;
-  text-align: center;
+.left-container {
+  display: flex;
+  flex-flow: column wrap;
+  gap: 10px;
+  flex-grow: 4;
+  margin-right: 15px;
+  margin-left: 15px;
+  margin-top: 10px;
+}
+
+.right-container {
+  display: flex;
+  flex-grow: 8;
+  margin-top: 10px;
+}
+
+mat-card-title {
+  margin-top: 10px;
+  margin-left: 10px;
+}
+
+.mat-mdc-form-field {
+  font-size: 14px;
+  width: 100%;
 }

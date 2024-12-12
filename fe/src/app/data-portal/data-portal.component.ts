@@ -7,11 +7,17 @@ import {MatTableModule} from '@angular/material/table';
 import {merge, Observable, of as observableOf} from 'rxjs';
 import {catchError, map, startWith, switchMap} from 'rxjs/operators';
 import {ElasticService} from "../services/elastic.service";
+import {MatCardModule} from "@angular/material/card";
+import {MatListModule} from "@angular/material/list";
+import {MatButtonModule} from "@angular/material/button";
+import {MatFormFieldModule} from "@angular/material/form-field";
+import {MatInputModule} from "@angular/material/input";
 
 @Component({
   selector: 'app-data-portal',
   standalone: true,
-  imports: [MatProgressSpinnerModule, MatTableModule, MatSortModule, MatPaginatorModule],
+  imports: [MatProgressSpinnerModule, MatTableModule, MatSortModule, MatPaginatorModule, MatCardModule, MatListModule,
+    MatFormFieldModule, MatInputModule],
   templateUrl: './data-portal.component.html',
   styleUrl: './data-portal.component.css'
 })
@@ -22,6 +28,7 @@ export class DataPortalComponent implements AfterViewInit {
     'numVariants'];
   elasticService: ElasticService | null | undefined;
   data: MaveDBMetadata[] = [];
+  aggregations: any;
 
   resultsLength = 0;
   isLoadingResults = true;
@@ -53,6 +60,7 @@ export class DataPortalComponent implements AfterViewInit {
           // Flip flag to show that loading has finished.
           this.isLoadingResults = false;
           this.isRateLimitReached = data === null;
+          this.aggregations = data.aggregations;
 
           if (data === null) {
             return [];
