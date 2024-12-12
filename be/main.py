@@ -3,6 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from elasticsearch import AsyncElasticsearch
 from fastapi.middleware.cors import CORSMiddleware
+from collections import defaultdict
+
+from constants import AGGREGATION_FIELDS
 
 
 @asynccontextmanager
@@ -63,17 +66,20 @@ async def search(
     else:
         query_body = {"match_all": {}}
 
+
     # Combine query with filters.
-    search_body = {
-        "from": start,
-        "size": size,
-        "query": {
-            "bool": {
-                "must": query_body,
-                "filter": filters,
-            }
-        },
-    }
+    search_body = {"from": start, "size": size, "query": {
+        "bool": {
+            "must": query_body,
+            "filter": filters,
+        }
+    }, "aggs": defaultdict(dict)}
+
+    # Adding aggregation fields
+    for aggregation_field in AGGREGATION_FIELDS:
+        search_body["aggs"][aggregation_field] = {
+            "terms": {"field": aggregation_field}
+        }
 
     try:
         # Execute the async search request.
@@ -82,7 +88,13 @@ async def search(
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
         # Return the response with pagination info.
-        return {"total": total, "start": start, "size": size, "results": hits}
+        return {
+            "total": total,
+            "start": start,
+            "size": size,
+            "results": hits,
+            "aggregations": response["aggregations"]
+        }
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")

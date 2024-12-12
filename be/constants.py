@@ -1,0 +1,1 @@
+AGGREGATION_FIELDS = ["publicationYear", "sequenceType", "geneCategory"]
