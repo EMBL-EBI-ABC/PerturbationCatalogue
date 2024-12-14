@@ -11,7 +11,7 @@ export class ElasticService {
 
   constructor(private http: HttpClient) {}
 
-  getData(start: number = 0, size: number = 15, query: string = ""): Observable<any> {
+  getData(start: number = 0, size: number = 12, query: string = ""): Observable<any> {
     const params = { start: start.toString(), size: size.toString(), q: query.toString() };
     return this.http.get(this.fastApiUrl, { params }).pipe(
       map((response: any) => ({
