@@ -5,7 +5,8 @@
             <mat-card-content>
                 <mat-selection-list>
                     @for (item of aggregations?.sequenceType?.buckets; track item.key) {
-                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                        <mat-list-option (click)="onFilterClick('sequenceType', item.key)">
+                            {{item.key}}: {{item.doc_count}}</mat-list-option>
                     }
                 </mat-selection-list>
             </mat-card-content>
@@ -15,7 +16,9 @@
             <mat-card-content>
                 <mat-selection-list>
                     @for (item of aggregations?.geneCategory?.buckets; track item.key) {
-                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                        <mat-list-option (click)="onFilterClick('geneCategory', item.key)">
+                            {{item.key}}: {{item.doc_count}}
+                        </mat-list-option>
                     }
                 </mat-selection-list>
             </mat-card-content>
@@ -25,7 +28,8 @@
             <mat-card-content>
                 <mat-selection-list>
                     @for (item of aggregations?.publicationYear?.buckets; track item.key) {
-                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                        <mat-list-option (click)="onFilterClick('publicationYear', item.key)">
+                            {{item.key}}: {{item.doc_count}}</mat-list-option>
                     }
                 </mat-selection-list>
             </mat-card-content>

@@ -33,6 +33,11 @@ import {MatList, MatListModule} from "@angular/material/list";
 export class HomeComponent implements OnInit {
   data: any;
   aggregations: any;
+  filters = {
+    sequenceType: [],
+    geneCategory: [],
+    publicationYear: []
+  }
   totalResults = 0;
   pageSize = 15;
   currentPage = 0;
@@ -55,7 +60,7 @@ export class HomeComponent implements OnInit {
     const start = this.currentPage * this.pageSize;
     const size = this.pageSize;
     const query = this.searchQuery;
-    this.elasticService.getData(start, size, query).subscribe(
+    this.elasticService.getData(start, size, query, this.filters).subscribe(
       (response) => {
         this.data = response.results.map((row: Record<string, string>) => {
           const parsedRow: Record<string, string> = {};
@@ -81,6 +86,19 @@ export class HomeComponent implements OnInit {
 
   onSearchChange(): void {
     this.currentPage = 0;
+    this.fetchData();
+  }
+
+  onFilterClick(filterKey: string, filterValue: string): void {
+    // @ts-ignore
+    const index = this.filters[filterKey].indexOf(filterValue);
+    if (index > -1) {
+      // @ts-ignore
+      this.filters[filterKey].splice(index, 1)
+    } else {
+      // @ts-ignore
+      this.filters[filterKey].push(filterValue);
+    }
     this.fetchData();
   }
 }
