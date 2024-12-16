@@ -68,3 +68,20 @@ tr * {
 .wide-search-field {
   width: 40em;
 }
+
+.left-container {
+  display: flex;
+  flex-grow: 4;
+}
+
+.top-container {
+  display: flex;
+  flex-flow: row wrap;
+  align-content: stretch;
+}
+
+.right-container {
+  display: flex;
+  flex-grow: 8;
+  margin-top: 10px;
+}

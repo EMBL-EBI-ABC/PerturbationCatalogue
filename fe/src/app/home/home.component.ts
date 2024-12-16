@@ -10,13 +10,12 @@ import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { marked } from 'marked';
+import {MatList, MatListModule} from "@angular/material/list";
 
 @Component({
   selector: 'app-home',
   standalone: true,
   imports: [
-    HeaderComponent,
-    FooterComponent,
     MatCardModule,
     MatTableModule,
     MatPaginator,
@@ -24,7 +23,9 @@ import { marked } from 'marked';
     CommonModule,
     FormsModule,
     MatFormFieldModule,
-    MatInputModule
+    MatInputModule,
+    MatCardModule,
+    MatListModule,
   ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.css'
@@ -32,9 +33,12 @@ import { marked } from 'marked';
 export class HomeComponent implements OnInit {
   data: any;
   totalResults = 0;
-  pageSize = 15;
+  pageSize = 10;
   currentPage = 0;
   searchQuery: string = '';
+
+  displayedColumns: string[] = ['urn', 'title', 'sequenceType', 'geneName', 'geneCategory', 'publicationYear',
+    'numVariants'];
 
   constructor(private elasticService: ElasticService) {}
 
@@ -55,7 +59,7 @@ export class HomeComponent implements OnInit {
         this.data = response.results.map((row: Record<string, string>) => {
           const parsedRow: Record<string, string> = {};
           for (const key of this.getKeys(row)) {
-            parsedRow[key] = marked.parse(row[key].toString()) as string;
+            parsedRow[key] = row[key];
           }
           return parsedRow;
         });
