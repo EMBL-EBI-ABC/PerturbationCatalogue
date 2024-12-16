@@ -42,7 +42,7 @@ export class DataPortalComponent implements OnInit {
   currentPage = 0;
   searchQuery: string = '';
 
-  displayedColumns: string[] = ['urn', 'title', 'sequenceType', 'geneName', 'geneCategory', 'publicationYear',
+  displayedColumns: string[] = ['urn', 'sequenceType', 'geneName', 'geneCategory', 'publicationYear',
     'numVariants'];
 
   constructor(private elasticService: ElasticService) {}
