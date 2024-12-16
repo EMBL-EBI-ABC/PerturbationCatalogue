@@ -1,0 +1,18 @@
+<div style="text-align: center">
+  <h3>{{data?.urn}}</h3>
+</div>
+<mat-list role="list">
+  <mat-list-item role="listitem"><b>URN</b>:
+    <a href="https://www.mavedb.org/score-sets/{{data?.urn}}" target="_blank">{{data?.urn}}</a>
+  </mat-list-item>
+  <mat-list-item role="listitem"><b>Title:</b> {{data?.title}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Short Description:</b> {{data?.shortDescription}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Sequence Type:</b> {{data?.sequenceType}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Gene Name:</b> {{data?.geneName}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Gene Category:</b> {{data?.geneCategory}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Number of Variants:</b> {{data?.numVariants}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Publication Year:</b> {{data?.publicationYear}}</mat-list-item>
+  <mat-list-item role="listitem"><b>Publication URL:</b>
+    <a href="{{data?.publicationUrl}}" target="_blank"> {{data?.publicationUrl}}</a>
+  </mat-list-item>
+</mat-list>

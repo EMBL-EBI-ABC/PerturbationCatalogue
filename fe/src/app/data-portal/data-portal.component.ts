@@ -8,6 +8,7 @@ import {MatFormFieldModule} from "@angular/material/form-field";
 import {MatInputModule} from "@angular/material/input";
 import {MatListModule} from "@angular/material/list";
 import {ElasticService} from "../services/elastic.service";
+import {RouterLink} from "@angular/router";
 
 @Component({
   selector: 'app-data-portal',
@@ -23,6 +24,7 @@ import {ElasticService} from "../services/elastic.service";
     MatInputModule,
     MatCardModule,
     MatListModule,
+    RouterLink,
   ],
   templateUrl: './data-portal.component.html',
   styleUrl: './data-portal.component.css'

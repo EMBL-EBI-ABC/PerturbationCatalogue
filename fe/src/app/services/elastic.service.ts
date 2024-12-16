@@ -65,4 +65,10 @@ export class ElasticService {
       }))
     );
   }
+
+  getRecordDetails(urn: string | null): Observable<any> {
+    const url = `${this.fastApiUrl}/${urn}`;
+    return this.http.get(url);
+  }
 }
+
