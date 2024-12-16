@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from elasticsearch import AsyncElasticsearch
@@ -94,6 +95,21 @@ async def search(
             "size": size,
             "results": hits,
             "aggregations": response["aggregations"]
+        }
+    except Exception as e:
+        # Handle Elasticsearch errors.
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+@app.get("/search/{record_id}")
+async def search(record_id: str):
+    es = app.state.es_client
+    try:
+        response = await es.search(index="mavedb",
+                                   q=f"_id:{urllib.parse.quote(record_id)}")
+        hits = [r["_source"] for r in response["hits"]["hits"]]
+        return {
+            "results": hits
         }
     except Exception as e:
         # Handle Elasticsearch errors.
