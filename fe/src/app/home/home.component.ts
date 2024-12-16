@@ -32,8 +32,9 @@ import {MatList, MatListModule} from "@angular/material/list";
 })
 export class HomeComponent implements OnInit {
   data: any;
+  aggregations: any;
   totalResults = 0;
-  pageSize = 10;
+  pageSize = 15;
   currentPage = 0;
   searchQuery: string = '';
 
@@ -64,6 +65,7 @@ export class HomeComponent implements OnInit {
           return parsedRow;
         });
         this.totalResults = response.total;
+        this.aggregations = response.aggregations;
       },
       (error) => {
         console.error('Error fetching data:', error);

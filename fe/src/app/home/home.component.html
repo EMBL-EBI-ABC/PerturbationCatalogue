@@ -1,58 +1,156 @@
-<div class="search-container">
-  <mat-form-field appearance="fill" class="wide-search-field" style="margin-top: 15px">
-    <mat-label>Search</mat-label>
-    <input matInput [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" placeholder="Search" />
-  </mat-form-field>
+<div class="top-container mat-elevation-z8">
+    <div class="left-container">
+        <mat-card appearance="outlined">
+            <mat-card-title>Sequence Type</mat-card-title>
+            <mat-card-content>
+                <mat-selection-list>
+                    @for (item of aggregations?.sequenceType?.buckets; track item.key) {
+                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                    }
+                </mat-selection-list>
+            </mat-card-content>
+        </mat-card>
+        <mat-card appearance="outlined">
+            <mat-card-title>Gene Category</mat-card-title>
+            <mat-card-content>
+                <mat-selection-list>
+                    @for (item of aggregations?.geneCategory?.buckets; track item.key) {
+                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                    }
+                </mat-selection-list>
+            </mat-card-content>
+        </mat-card>
+        <mat-card appearance="outlined">
+            <mat-card-title>Publication Year</mat-card-title>
+            <mat-card-content>
+                <mat-selection-list>
+                    @for (item of aggregations?.publicationYear?.buckets; track item.key) {
+                        <mat-list-option>{{item.key}}: {{item.doc_count}}</mat-list-option>
+                    }
+                </mat-selection-list>
+            </mat-card-content>
+        </mat-card>
+    </div>
+    <div class="right-container">
+
+        <div class="example-table-container">
+            <mat-form-field>
+                <mat-label>Search</mat-label>
+                <input matInput [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" placeholder="Search" />
+            </mat-form-field>
+
+            <table mat-table [dataSource]="data" class="example-table"
+                   matSort matSortActive="created" matSortDisableClear matSortDirection="desc">
+                <!-- Urn Column -->
+                <ng-container matColumnDef="urn">
+                    <th mat-header-cell *matHeaderCellDef>URN</th>
+                    <td mat-cell *matCellDef="let row">{{row.urn}}</td>
+                </ng-container>
+
+                <!-- Title Column -->
+                <ng-container matColumnDef="title">
+                    <th mat-header-cell *matHeaderCellDef>Title</th>
+                    <td mat-cell *matCellDef="let row">{{row.title}}</td>
+                </ng-container>
+
+                <!-- Sequence Type Column -->
+                <ng-container matColumnDef="sequenceType">
+                    <th mat-header-cell *matHeaderCellDef>Sequence Type</th>
+                    <td mat-cell *matCellDef="let row">{{row.sequenceType}}</td>
+                </ng-container>
+
+                <!-- geneName Column -->
+                <ng-container matColumnDef="geneName">
+                    <th mat-header-cell *matHeaderCellDef>Gene Name</th>
+                    <td mat-cell *matCellDef="let row">{{row.geneName}}</td>
+                </ng-container>
+
+                <!-- geneCategory Column -->
+                <ng-container matColumnDef="geneCategory">
+                    <th mat-header-cell *matHeaderCellDef>Gene Category</th>
+                    <td mat-cell *matCellDef="let row">{{row.geneCategory}}</td>
+                </ng-container>
+
+                <!-- publicationYear Column -->
+                <ng-container matColumnDef="publicationYear">
+                    <th mat-header-cell *matHeaderCellDef>Publication Year</th>
+                    <td mat-cell *matCellDef="let row">{{row.publicationYear}}</td>
+                </ng-container>
+
+                <!-- numVariants Column -->
+                <ng-container matColumnDef="numVariants">
+                    <th mat-header-cell *matHeaderCellDef>Number of Variants</th>
+                    <td mat-cell *matCellDef="let row">{{row.numVariants}}</td>
+                </ng-container>
+
+
+                <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+            </table>
+            <mat-paginator [length]="totalResults"
+                           [pageSize]="pageSize"
+                           [pageSizeOptions]="[15, 30, 30, 50]"
+                           (page)="onPageChange($event)"
+                           aria-label="Select page of MaveDB metadata results"></mat-paginator>
+        </div>
+    </div>
 </div>
 
-<div class="table-container">
-  @if (data?.length > 0) {
-    <table mat-table [dataSource]="data" class="mat-elevation-z8">
-        <!-- Urn Column -->
-        <ng-container matColumnDef="urn">
-            <th mat-header-cell *matHeaderCellDef>URN</th>
-            <td mat-cell *matCellDef="let row">{{row.urn}}</td>
-        </ng-container>
+<!--<div class="search-container">-->
+<!--  <mat-form-field appearance="fill" class="wide-search-field" style="margin-top: 15px">-->
+<!--    <mat-label>Search</mat-label>-->
+<!--    <input matInput [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange()" placeholder="Search" />-->
+<!--  </mat-form-field>-->
+<!--</div>-->
 
-        <!-- Title Column -->
-        <ng-container matColumnDef="title">
-            <th mat-header-cell *matHeaderCellDef>Title</th>
-            <td mat-cell *matCellDef="let row">{{row.title}}</td>
-        </ng-container>
+<!--<div class="table-container">-->
+<!--  @if (data?.length > 0) {-->
+<!--    <table mat-table [dataSource]="data" class="mat-elevation-z8">-->
+<!--        &lt;!&ndash; Urn Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="urn">-->
+<!--            <th mat-header-cell *matHeaderCellDef>URN</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.urn}}</td>-->
+<!--        </ng-container>-->
 
-        <!-- Sequence Type Column -->
-        <ng-container matColumnDef="sequenceType">
-            <th mat-header-cell *matHeaderCellDef>Sequence Type</th>
-            <td mat-cell *matCellDef="let row">{{row.sequenceType}}</td>
-        </ng-container>
+<!--        &lt;!&ndash; Title Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="title">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Title</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.title}}</td>-->
+<!--        </ng-container>-->
 
-        <!-- geneName Column -->
-        <ng-container matColumnDef="geneName">
-            <th mat-header-cell *matHeaderCellDef>Gene Name</th>
-            <td mat-cell *matCellDef="let row">{{row.geneName}}</td>
-        </ng-container>
+<!--        &lt;!&ndash; Sequence Type Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="sequenceType">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Sequence Type</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.sequenceType}}</td>-->
+<!--        </ng-container>-->
 
-        <!-- geneCategory Column -->
-        <ng-container matColumnDef="geneCategory">
-            <th mat-header-cell *matHeaderCellDef>Gene Category</th>
-            <td mat-cell *matCellDef="let row">{{row.geneCategory}}</td>
-        </ng-container>
+<!--        &lt;!&ndash; geneName Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="geneName">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Gene Name</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.geneName}}</td>-->
+<!--        </ng-container>-->
 
-        <!-- publicationYear Column -->
-        <ng-container matColumnDef="publicationYear">
-            <th mat-header-cell *matHeaderCellDef>Publication Year</th>
-            <td mat-cell *matCellDef="let row">{{row.publicationYear}}</td>
-        </ng-container>
+<!--        &lt;!&ndash; geneCategory Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="geneCategory">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Gene Category</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.geneCategory}}</td>-->
+<!--        </ng-container>-->
 
-        <!-- numVariants Column -->
-        <ng-container matColumnDef="numVariants">
-            <th mat-header-cell *matHeaderCellDef>Number of Variants</th>
-            <td mat-cell *matCellDef="let row">{{row.numVariants}}</td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-    </table>
-  }
-</div>
-<mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[50, 100, 200, 500]" (page)="onPageChange($event)">
-</mat-paginator>
+<!--        &lt;!&ndash; publicationYear Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="publicationYear">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Publication Year</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.publicationYear}}</td>-->
+<!--        </ng-container>-->
+
+<!--        &lt;!&ndash; numVariants Column &ndash;&gt;-->
+<!--        <ng-container matColumnDef="numVariants">-->
+<!--            <th mat-header-cell *matHeaderCellDef>Number of Variants</th>-->
+<!--            <td mat-cell *matCellDef="let row">{{row.numVariants}}</td>-->
+<!--        </ng-container>-->
+<!--        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>-->
+<!--        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>-->
+<!--    </table>-->
+<!--  }-->
+<!--</div>-->
+<!--<mat-paginator [length]="totalResults" [pageSize]="pageSize" [pageSizeOptions]="[50, 100, 200, 500]" (page)="onPageChange($event)">-->
+<!--</mat-paginator>-->

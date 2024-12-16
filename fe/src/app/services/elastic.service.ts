@@ -16,7 +16,8 @@ export class ElasticService {
     return this.http.get(this.fastApiUrl, { params }).pipe(
       map((response: any) => ({
         results: response.results,
-        total: response.total
+        total: response.total,
+        aggregations: response.aggregations,
       }))
     );
   }

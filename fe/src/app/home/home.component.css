@@ -1,87 +1,37 @@
-div {
-  text-align: center;
-}
-
-h1 {
-  color: #103e5b;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th, td {
-  border: 1px solid #ddd;
-  padding: 8px;
-  text-align: left;
-  word-break: break-word; /* Forces line breaks for long words */
-  overflow-wrap: break-word; /* Ensures words break to fit within the container */
-  min-width: 8em;
-}
-
-th {
-  background-color: #f2f2f2;
-  font-weight: bold;
-}
-
-tr:nth-child(even) {
-  background-color: #f9f9f9;
-}
-
-tr:hover {
-  background-color: #f1f1f1;
-}
-
-.paginator-container {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-
-:host {
-  display: block;
-  background-color: rgb(250, 249, 253);
-  height: 100%; /* Ensures it covers the full height of its container */
-}
-
-.table-container {
-  width: 100%; /* Ensures the container does not exceed its parent width */
-  padding: 2em; /* Adds space around the table without overflow */
-  box-sizing: border-box; /* Includes padding within the total width */
-}
-
-table.mat-table {
-  width: 100%; /* Keeps table width within the container */
-}
-
-tr * {
-  text-align: left;
-  vertical-align: top;
-}
-
-.search-container {
-  margin-top: 1em;
-  margin-bottom: -1.5em;
-}
-
-.wide-search-field {
-  width: 40em;
-}
-
-.left-container {
-  display: flex;
-  flex-grow: 4;
-}
-
 .top-container {
   display: flex;
   flex-flow: row wrap;
   align-content: stretch;
 }
 
+.left-container {
+  display: flex;
+  flex-flow: column wrap;
+  gap: 10px;
+  flex-grow: 4;
+  margin-right: 15px;
+  margin-left: 15px;
+  margin-top: 10px;
+}
+
 .right-container {
   display: flex;
   flex-grow: 8;
   margin-top: 10px;
+}
+
+mat-card-title {
+  margin-top: 10px;
+  margin-left: 10px;
+}
+
+.mat-mdc-form-field {
+  font-size: 14px;
+  width: 100%;
+}
+
+.example-table-container {
+  width: 100%;
+  margin-right: 10px;
+  margin-bottom: 10px;
 }
