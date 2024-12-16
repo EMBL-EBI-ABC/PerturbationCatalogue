@@ -82,6 +82,8 @@ async def search(
             "terms": {"field": aggregation_field}
         }
 
+    search_body['sort'] = [{"publicationYear": {"order": "desc"}}]
+
     try:
         # Execute the async search request.
         response = await es.search(index="mavedb", body=search_body)
