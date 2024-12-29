@@ -46,8 +46,8 @@ async def search(
     ),
     start: int = Query(0, description="Starting point of the results"),
     size: int = Query(10, description="Number of results per page"),
-    sort_field: str = Query('publicationYear', description="Search field"),
-    sort_order: str = Query('desc', description="Search order"),
+    sort_field: str = Query('publicationYear', description="Sort field"),
+    sort_order: str = Query('desc', description="Sort order"),
 ):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
@@ -84,6 +84,7 @@ async def search(
             "terms": {"field": aggregation_field}
         }
 
+    # Adding sort field and sort order
     search_body['sort'] = [{sort_field: {"order": sort_order}}]
 
     try:
