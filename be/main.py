@@ -48,7 +48,7 @@ async def search(
     size: int = Query(10, description="Number of results per page"),
     sort_field: str = Query('publicationYear', description="Sort field"),
     sort_order: str = Query('desc', description="Sort order"),
-):
+) -> dict[str, int | list | dict]:
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
@@ -107,7 +107,7 @@ async def search(
 
 
 @app.get("/search/{record_id}")
-async def search(record_id: str):
+async def search(record_id: str) -> dict[str, list]:
     es = app.state.es_client
     try:
         response = await es.search(index="mavedb",
