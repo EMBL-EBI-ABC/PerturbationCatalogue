@@ -40,21 +40,23 @@ app.add_middleware(
 @app.get("/search")
 async def search(
     q: str = Query(None, description="Search query string"),
-    filter: str = Query(
+    data_filter: str = Query(
         None,
         description="Filter query in the format field1:value1,value2+field2:value3,value4",
     ),
     start: int = Query(0, description="Starting point of the results"),
     size: int = Query(10, description="Number of results per page"),
+    search_field: str = Query('publicationYear', description="Search field"),
+    search_order: str = Query('desc', description="Search order"),
 ):
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
     # Parse filters from the filter query parameter.
     filters = []
-    if filter:
+    if data_filter:
         try:
-            for f in filter.split("+"):
+            for f in data_filter.split("+"):
                 field, values = f.split(":")
                 values_list = values.split(",")
                 filters.append({"terms": {f"{field}": values_list}})
@@ -82,7 +84,7 @@ async def search(
             "terms": {"field": aggregation_field}
         }
 
-    search_body['sort'] = [{"publicationYear": {"order": "desc"}}]
+    search_body['sort'] = [{search_field: {"order": search_order}}]
 
     try:
         # Execute the async search request.
