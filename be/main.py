@@ -57,7 +57,7 @@ async def search(
             for f in filter.split("+"):
                 field, values = f.split(":")
                 values_list = values.split(",")
-                filters.append({"terms": {f"{field}.keyword": values_list}})
+                filters.append({"terms": {f"{field}": values_list}})
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid filter format")
 
