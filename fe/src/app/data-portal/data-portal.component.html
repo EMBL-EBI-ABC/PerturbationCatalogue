@@ -1,1 +1,111 @@
-<p>data-portal works!</p>
+@if (isLoadingResults) {
+  <div class="loading-shade">
+    <mat-spinner></mat-spinner>
+  </div>
+}
+<div class="top-container">
+  <div class="left-container">
+    <mat-card appearance="outlined">
+      <mat-card-title>Sequence Type</mat-card-title>
+      <mat-divider></mat-divider>
+      <mat-card-content>
+        <mat-selection-list>
+          @for (item of aggregations?.sequenceType?.buckets; track item.key) {
+            <mat-list-option (click)="applyFilter('sequenceType', item.key)">
+              {{item.key}}: {{item.doc_count}}
+            </mat-list-option>
+          }
+        </mat-selection-list>
+      </mat-card-content>
+    </mat-card>
+    <mat-card appearance="outlined">
+      <mat-card-title>Gene Category</mat-card-title>
+      <mat-divider></mat-divider>
+      <mat-card-content>
+        <mat-selection-list>
+          @for (item of aggregations?.geneCategory?.buckets; track item.key) {
+            <mat-list-option (click)="applyFilter('geneCategory', item.key)">
+              {{item.key}}: {{item.doc_count}}
+            </mat-list-option>
+          }
+        </mat-selection-list>
+      </mat-card-content>
+    </mat-card>
+    <mat-card appearance="outlined">
+      <mat-card-title>Publication Year</mat-card-title>
+      <mat-divider></mat-divider>
+      <mat-card-content>
+        <mat-selection-list>
+          @for (item of aggregations?.publicationYear?.buckets; track item.key) {
+            <mat-list-option (click)="applyFilter('publicationYear', item.key)">
+              {{item.key}}: {{item.doc_count}}
+            </mat-list-option>
+          }
+        </mat-selection-list>
+      </mat-card-content>
+    </mat-card>
+  </div>
+  <div class="right-container">
+    <mat-form-field>
+      <mat-label>Filter</mat-label>
+      <input matInput (search)="search($event)" placeholder="BRCA1" type="search">
+    </mat-form-field>
+
+    <table mat-table [dataSource]="data"
+           matSort
+           matSortActive="publicationYear"
+           matSortDisableClear
+           matSortDirection="desc">
+
+      <!-- urn Column -->
+      <ng-container matColumnDef="urn">
+        <th mat-header-cell *matHeaderCellDef>URN</th>
+        <td mat-cell *matCellDef="let row">{{row.urn}}</td>
+      </ng-container>
+
+      <!-- sequenceType Column -->
+      <ng-container matColumnDef="sequenceType">
+        <th mat-header-cell *matHeaderCellDef>Sequence Type</th>
+        <td mat-cell *matCellDef="let row">{{row.sequenceType}}</td>
+      </ng-container>
+
+      <!-- geneName Column -->
+      <ng-container matColumnDef="geneName">
+        <th mat-header-cell *matHeaderCellDef>Gene Name</th>
+        <td mat-cell *matCellDef="let row">{{row.geneName}}</td>
+      </ng-container>
+
+      <!-- geneCategory Column -->
+      <ng-container matColumnDef="geneCategory">
+        <th mat-header-cell *matHeaderCellDef>Gene Category</th>
+        <td mat-cell *matCellDef="let row">{{row.geneCategory}}</td>
+      </ng-container>
+
+      <!-- publicationYear Column -->
+      <ng-container matColumnDef="publicationYear">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header disableClear>
+          Publication Year
+        </th>
+        <td mat-cell *matCellDef="let row">{{row.publicationYear}}</td>
+      </ng-container>
+
+      <!-- geneCategory Column -->
+      <ng-container matColumnDef="numVariants">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header disableClear>
+          Number of Variants
+        </th>
+        <td mat-cell *matCellDef="let row">{{row.numVariants}}</td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+    <mat-paginator
+      [length]="resultsLength"
+      [pageSize]="15"
+      showFirstLastButtons="true"
+      [pageSizeOptions]="[15, 30, 50, 100]"
+      aria-label="Select page of MaveDB search results">
+    </mat-paginator>
+  </div>
+</div>
