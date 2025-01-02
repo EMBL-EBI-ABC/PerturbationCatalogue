@@ -1,0 +1,36 @@
+.top-container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #eee;
+}
+
+.example-spacer {
+  flex: 1 1 auto;
+}
+
+.header {
+  background-color: rgb(23, 140, 67);
+  span {
+    color: white;
+  }
+}
+
+.footer {
+  background-color: rgb(74, 78, 80);
+  position: fixed;
+  bottom: 0;
+  span {
+    color: white;
+  }
+}
+
+mat-toolbar a {
+  color: white;
+}
+
+button mat-icon {
+  color: white;
+}
