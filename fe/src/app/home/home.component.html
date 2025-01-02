@@ -1,1 +1,64 @@
-<p>home works!</p>
+<mat-toolbar class="banner">
+  <span [class]="fontClass">Open Targets Perturbation Catalogue</span>
+</mat-toolbar>
+
+<mat-grid-list [cols]="cols" [rowHeight]="rowHeight">
+
+  <mat-grid-tile>
+    <mat-card class="mat-elevation-z7 home-card">
+      <mat-card-header>Data Portal</mat-card-header>
+      <mat-card-content>
+        <p>
+          The Data Portal allows users to sort and filter metadata using a set of
+          predefined filters, and it also has free-text search capabilities
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-raised-button routerLink="/data_portal">Open Data Portal</button>
+      </mat-card-actions>
+    </mat-card>
+  </mat-grid-tile>
+
+  <mat-grid-tile>
+    <mat-card class="mat-elevation-z7 home-card">
+      <mat-card-header>Dashboards</mat-card-header>
+      <mat-card-content>
+        <p>
+          The Dashboards tab provides a visual overview of the existing data.
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-raised-button routerLink="/data_portal">Explore Dashboards</button>
+      </mat-card-actions>
+    </mat-card>
+  </mat-grid-tile>
+
+  <mat-grid-tile>
+    <mat-card class="mat-elevation-z7 home-card">
+      <mat-card-header>Data Analytics</mat-card-header>
+      <mat-card-content>
+        <p>
+          The Data Analytics tab allows users to search the data using the Data Warehouse.
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-raised-button routerLink="/data_portal">Data Analytics</button>
+      </mat-card-actions>
+    </mat-card>
+  </mat-grid-tile>
+
+  <mat-grid-tile>
+    <mat-card class="mat-elevation-z7 home-card">
+      <mat-card-header>About</mat-card-header>
+      <mat-card-content>
+        <p>
+          Here you can find more information about how to get help or propose new features.
+        </p>
+      </mat-card-content>
+      <mat-card-actions>
+        <button mat-raised-button routerLink="/data_portal">Contact us</button>
+      </mat-card-actions>
+    </mat-card>
+  </mat-grid-tile>
+
+</mat-grid-list>
