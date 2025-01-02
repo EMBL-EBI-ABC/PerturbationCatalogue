@@ -1,27 +1,11 @@
-import {Component, OnInit} from '@angular/core';
-import {ActivatedRoute} from "@angular/router";
-import {ElasticService} from "../../services/elastic.service";
-import {MatListModule} from "@angular/material/list";
+import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-details',
-  standalone: true,
-  imports: [MatListModule],
+  imports: [],
   templateUrl: './details.component.html',
-  styleUrl: './details.component.css'
+  styleUrl: './details.component.scss'
 })
-export class DetailsComponent implements OnInit {
-  data: any;
-  constructor(
-    private activatedRoute: ActivatedRoute,
-    private _elasticService: ElasticService
-  ) {}
+export class DetailsComponent {
 
-  ngOnInit() {
-    this._elasticService.getRecordDetails(this.activatedRoute.snapshot.paramMap.get('urn')).subscribe(
-      data => {
-        this.data = data.results[0];
-      }
-    );
-  }
 }
