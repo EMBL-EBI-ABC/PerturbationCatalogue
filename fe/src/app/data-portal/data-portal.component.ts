@@ -1,17 +1,18 @@
-import {HttpClient} from '@angular/common/http';
-import {Component, ViewChild, AfterViewInit, inject} from '@angular/core';
+import {Component, ViewChild, AfterViewInit} from '@angular/core';
 import {MatPaginator, MatPaginatorModule} from '@angular/material/paginator';
 import {MatSort, MatSortModule, SortDirection} from '@angular/material/sort';
-import {merge, Observable, of as observableOf} from 'rxjs';
+import {merge, of as observableOf} from 'rxjs';
 import {catchError, map, startWith, switchMap} from 'rxjs/operators';
 import {MatTableModule} from '@angular/material/table';
 import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
-import {MaveDBData, MaveDBFilters, MaveDBResponse} from "../model/mavedb";
+import {MaveDBData, MaveDBFilters} from "../model/mavedb";
 import {MatFormFieldModule} from "@angular/material/form-field";
 import {MatInputModule} from "@angular/material/input";
 import {MatCardModule} from "@angular/material/card";
 import {MatListModule} from "@angular/material/list";
 import {MatDividerModule} from "@angular/material/divider";
+import {ApiService} from "../services/api.service";
+import {RouterLink} from "@angular/router";
 
 @Component({
   selector: 'app-data-portal',
@@ -24,14 +25,13 @@ import {MatDividerModule} from "@angular/material/divider";
     MatInputModule,
     MatCardModule,
     MatListModule,
-    MatDividerModule
+    MatDividerModule,
+    RouterLink
   ],
   templateUrl: './data-portal.component.html',
   styleUrl: './data-portal.component.scss'
 })
 export class DataPortalComponent implements AfterViewInit {
-
-  private _httpClient = inject(HttpClient);
 
   displayedColumns: string[] = [
     'urn',
@@ -41,7 +41,7 @@ export class DataPortalComponent implements AfterViewInit {
     'publicationYear',
     'numVariants'
   ];
-  exampleDatabase: MaveDBDataService | null | undefined;
+
   data: MaveDBData[] = [];
   aggregations: any;
   searchValue!: string;
@@ -57,9 +57,10 @@ export class DataPortalComponent implements AfterViewInit {
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
 
-  ngAfterViewInit() {
-    this.exampleDatabase = new MaveDBDataService(this._httpClient);
+  constructor(private apiService: ApiService) {
+  }
 
+  ngAfterViewInit() {
     // If the user changes the sort order, reset back to the first page.
     this.sort.sortChange.subscribe(() => (this.paginator.pageIndex = 0));
 
@@ -68,7 +69,7 @@ export class DataPortalComponent implements AfterViewInit {
         startWith({}),
         switchMap(() => {
           this.isLoadingResults = true;
-          return this.exampleDatabase!.getAllMaveDBData(
+          return this.apiService!.getAllMaveDBData(
             this.paginator.pageIndex,
             this.paginator.pageSize,
             this.sort.active,
@@ -85,9 +86,7 @@ export class DataPortalComponent implements AfterViewInit {
             return [];
           }
 
-          // Only refresh the result length if there is new data. In case of rate
-          // limit errors, we do not want to reset the paginator to zero, as that
-          // would prevent users from re-triggering requests.
+          // Only refresh the result length and aggregations if there is new data.
           this.resultsLength = data.total;
           this.aggregations = data.aggregations;
           return data.results;
@@ -114,57 +113,4 @@ export class DataPortalComponent implements AfterViewInit {
     this.paginator.page.emit();
   }
 
-}
-
-/** An example database that the data source uses to retrieve data for the table. */
-export class MaveDBDataService {
-  constructor(private _httpClient: HttpClient) {}
-
-  getAllMaveDBData(
-    start: number,
-    size: number,
-    sortField: string = 'publicationYear',
-    sortOrder: string = 'desc',
-    query: any = null,
-    filters: MaveDBFilters): Observable<MaveDBResponse> {
-    const requestUrl = 'https://perturbation-catalogue-be-959149465821.europe-west2.run.app/search';
-    let params = {
-      start: start*size,
-      size: size,
-      sort_field: sortField,
-      sort_order: sortOrder};
-
-    if (query) {
-      // @ts-ignore
-      params['q'] = query;
-    }
-
-    let include_filters = false;
-    let filter = '';
-    if (filters.publicationYear.length > 0) {
-      include_filters = true;
-      filter = `publicationYear:${filters.publicationYear}`;
-    }
-    if (filters.geneCategory.length > 0) {
-      if (include_filters) {
-        filter = `${filter}+geneCategory:${filters.geneCategory}`;
-      } else {
-        include_filters = true;
-        filter = `geneCategory:${filters.geneCategory}`;
-      }
-    }
-    if (filters.sequenceType.length > 0) {
-      if (include_filters) {
-        filter = `${filter}+sequenceType:${filters.sequenceType}`;
-      } else {
-        include_filters = true;
-        filter = `sequenceType:${filters.sequenceType}`;
-      }
-    }
-    if (include_filters) {
-      // @ts-ignore
-      params['data_filter'] = filter;
-    }
-    return this._httpClient.get<MaveDBResponse>(requestUrl, {params: params});
-  }
 }

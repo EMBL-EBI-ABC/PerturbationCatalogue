@@ -60,7 +60,9 @@
       <!-- urn Column -->
       <ng-container matColumnDef="urn">
         <th mat-header-cell *matHeaderCellDef>URN</th>
-        <td mat-cell *matCellDef="let row">{{row.urn}}</td>
+        <td mat-cell *matCellDef="let row">
+          <a [routerLink]="['/data_portal', row.urn]">{{row.urn}}</a>
+        </td>
       </ng-container>
 
       <!-- sequenceType Column -->

@@ -29,6 +29,9 @@
       margin: 10px;
       color: rgb(0, 112, 73);
     }
+    mat-divider {
+      margin: 0 10px;
+    }
   }
 }
 
@@ -48,4 +51,9 @@ table {
   tr:hover {
     background-color: rgb(227, 232, 225);
   }
+}
+
+a {
+  text-decoration: none;
+  color: rgb(0, 112, 73);
 }
