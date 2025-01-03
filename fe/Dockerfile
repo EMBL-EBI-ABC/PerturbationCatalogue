@@ -14,5 +14,5 @@ COPY . .
 RUN npm run build --prod
 
 FROM nginx:alpine
-COPY --from=build /source/dist/pert-cat-fe /usr/share/nginx/html
+COPY --from=build /source/dist/fe /usr/share/nginx/html
 COPY --from=build /source/default.conf /etc/nginx/conf.d/
