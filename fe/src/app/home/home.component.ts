@@ -21,7 +21,7 @@ import {RouterLink} from "@angular/router";
 export class HomeComponent implements OnInit {
   fontClass: string = "normal_font";
   cols: number = 3;
-  rowHeight: string = "275px";
+  rowHeight: string = "200px";
 
   constructor(private responsive: BreakpointObserver) { }
 
