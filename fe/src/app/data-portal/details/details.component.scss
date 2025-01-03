@@ -1,0 +1,17 @@
+.record-card {
+  margin: 20px 10px;
+  overflow-x: scroll;
+  mat-card-header {
+    mat-card-title {
+      color: rgb(0, 112, 73);
+    }
+  }
+  mat-divider {
+    margin: 10px;
+  }
+}
+
+a {
+  text-decoration: none;
+  color: rgb(0, 112, 73);
+}

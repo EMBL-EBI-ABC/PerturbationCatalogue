@@ -1,18 +1,50 @@
-<div style="text-align: center">
-  <h3>{{data?.urn}}</h3>
-</div>
-<mat-list role="list">
-  <mat-list-item role="listitem"><b>URN</b>:
-    <a href="https://www.mavedb.org/score-sets/{{data?.urn}}" target="_blank">{{data?.urn}}</a>
-  </mat-list-item>
-  <mat-list-item role="listitem"><b>Title:</b> {{data?.title}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Short Description:</b> {{data?.shortDescription}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Sequence Type:</b> {{data?.sequenceType}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Gene Name:</b> {{data?.geneName}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Gene Category:</b> {{data?.geneCategory}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Number of Variants:</b> {{data?.numVariants}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Publication Year:</b> {{data?.publicationYear}}</mat-list-item>
-  <mat-list-item role="listitem"><b>Publication URL:</b>
-    <a href="{{data?.publicationUrl}}" target="_blank"> {{data?.publicationUrl}}</a>
-  </mat-list-item>
-</mat-list>
+<mat-card class="mat-elevation-z7 record-card">
+  <mat-card-header>
+    <mat-card-title>{{maveDBRecord.urn}}</mat-card-title>
+  </mat-card-header>
+
+  <mat-divider></mat-divider>
+
+  <mat-card-content>
+    <p>
+      <b>URN: </b>
+      <a href="https://www.mavedb.org/score-sets/{{maveDBRecord.urn}}/" target="_blank">
+        {{maveDBRecord.urn}}
+      </a>
+    </p>
+    <p>
+      <b>Title: </b>
+      {{maveDBRecord.title}}
+    </p>
+    <p>
+      <b>Short Description: </b>
+      {{maveDBRecord.shortDescription}}
+    </p>
+    <p>
+      <b>Sequence Type: </b>
+      {{maveDBRecord.sequenceType}}
+    </p>
+    <p>
+      <b>Gene Name: </b>
+      {{maveDBRecord.geneName}}
+    </p>
+    <p>
+      <b>Gene Category: </b>
+      {{maveDBRecord.geneCategory}}
+    </p>
+    <p>
+      <b>Publication URL: </b>
+      <a href="{{maveDBRecord.publicationUrl}}" target="_blank">
+        {{maveDBRecord.publicationUrl}}
+      </a>
+    </p>
+    <p>
+      <b>Publication Year: </b>
+      {{maveDBRecord.publicationYear}}
+    </p>
+    <p>
+      <b>Number of Variants: </b>
+      {{maveDBRecord.numVariants}}
+    </p>
+  </mat-card-content>
+</mat-card>

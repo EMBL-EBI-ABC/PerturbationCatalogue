@@ -1,94 +1,106 @@
-import {Component, OnInit} from '@angular/core';
-import {MatCardModule} from "@angular/material/card";
-import {MatTableModule} from "@angular/material/table";
-import {MatPaginator, MatPaginatorModule, PageEvent} from "@angular/material/paginator";
-import {CommonModule} from "@angular/common";
-import {FormsModule} from "@angular/forms";
+import {Component, ViewChild, AfterViewInit} from '@angular/core';
+import {MatPaginator, MatPaginatorModule} from '@angular/material/paginator';
+import {MatSort, MatSortModule, SortDirection} from '@angular/material/sort';
+import {merge, of as observableOf} from 'rxjs';
+import {catchError, map, startWith, switchMap} from 'rxjs/operators';
+import {MatTableModule} from '@angular/material/table';
+import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MaveDBData, MaveDBFilters} from "../model/mavedb";
 import {MatFormFieldModule} from "@angular/material/form-field";
 import {MatInputModule} from "@angular/material/input";
+import {MatCardModule} from "@angular/material/card";
 import {MatListModule} from "@angular/material/list";
-import {ElasticService} from "../services/elastic.service";
+import {MatDividerModule} from "@angular/material/divider";
+import {ApiService} from "../services/api.service";
 import {RouterLink} from "@angular/router";
 
 @Component({
   selector: 'app-data-portal',
-  standalone: true,
   imports: [
-    MatCardModule,
+    MatProgressSpinnerModule,
     MatTableModule,
-    MatPaginator,
+    MatSortModule,
     MatPaginatorModule,
-    CommonModule,
-    FormsModule,
     MatFormFieldModule,
     MatInputModule,
     MatCardModule,
     MatListModule,
-    RouterLink,
+    MatDividerModule,
+    RouterLink
   ],
   templateUrl: './data-portal.component.html',
-  styleUrl: './data-portal.component.css'
+  styleUrl: './data-portal.component.scss'
 })
-export class DataPortalComponent implements OnInit {
-  data: any;
+export class DataPortalComponent implements AfterViewInit {
+
+  displayedColumns: string[] = [
+    'urn',
+    'sequenceType',
+    'geneName',
+    'geneCategory',
+    'publicationYear',
+    'numVariants'
+  ];
+
+  data: MaveDBData[] = [];
   aggregations: any;
-  filters = {
+  searchValue!: string;
+  filters: MaveDBFilters = {
     sequenceType: [],
     geneCategory: [],
     publicationYear: []
-  }
-  totalResults = 0;
-  pageSize = 15;
-  currentPage = 0;
-  searchQuery: string = '';
+  };
 
-  displayedColumns: string[] = ['urn', 'sequenceType', 'geneName', 'geneCategory', 'publicationYear',
-    'numVariants'];
+  resultsLength = 0;
+  isLoadingResults = true;
 
-  constructor(private elasticService: ElasticService) {}
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
+  @ViewChild(MatSort) sort!: MatSort;
 
-  ngOnInit() {
-    this.fetchData();
+  constructor(private apiService: ApiService) {
   }
 
-  getKeys(obj: any): string[] {
-    return Object.keys(obj);
-  }
+  ngAfterViewInit() {
+    // If the user changes the sort order, reset back to the first page.
+    this.sort.sortChange.subscribe(() => (this.paginator.pageIndex = 0));
 
-  fetchData() {
-    const start = this.currentPage * this.pageSize;
-    const size = this.pageSize;
-    const query = this.searchQuery;
-    this.elasticService.getData(start, size, query, this.filters).subscribe(
-      (response) => {
-        this.data = response.results.map((row: Record<string, string>) => {
-          const parsedRow: Record<string, string> = {};
-          for (const key of this.getKeys(row)) {
-            parsedRow[key] = row[key];
+    merge(this.sort.sortChange, this.paginator.page)
+      .pipe(
+        startWith({}),
+        switchMap(() => {
+          this.isLoadingResults = true;
+          return this.apiService!.getAllMaveDBData(
+            this.paginator.pageIndex,
+            this.paginator.pageSize,
+            this.sort.active,
+            this.sort.direction,
+            this.searchValue,
+            this.filters,
+          ).pipe(catchError(() => observableOf(null)));
+        }),
+        map(data => {
+          // Flip flag to show that loading has finished.
+          this.isLoadingResults = false;
+
+          if (data === null) {
+            return [];
           }
-          return parsedRow;
-        });
-        this.totalResults = response.total;
-        this.aggregations = response.aggregations;
-      },
-      (error) => {
-        console.error('Error fetching data:', error);
-      }
-    );
+
+          // Only refresh the result length and aggregations if there is new data.
+          this.resultsLength = data.total;
+          this.aggregations = data.aggregations;
+          return data.results;
+        }),
+      )
+      .subscribe(data => (this.data = data));
   }
 
-  onPageChange(event: PageEvent) {
-    this.pageSize = event.pageSize;
-    this.currentPage = event.pageIndex;
-    this.fetchData();
+  search(event: Event) {
+    this.searchValue = (event.target as HTMLInputElement).value.trim().toLowerCase();
+    this.paginator.page.emit();
   }
 
-  onSearchChange(): void {
-    this.currentPage = 0;
-    this.fetchData();
-  }
-
-  onFilterClick(filterKey: string, filterValue: string): void {
+  applyFilter(filterKey: string, filterValue: string) {
     // @ts-ignore
     const index = this.filters[filterKey].indexOf(filterValue);
     if (index > -1) {
@@ -98,6 +110,7 @@ export class DataPortalComponent implements OnInit {
       // @ts-ignore
       this.filters[filterKey].push(filterValue);
     }
-    this.fetchData();
+    this.paginator.page.emit();
   }
+
 }

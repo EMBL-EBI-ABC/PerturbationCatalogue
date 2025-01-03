@@ -1,27 +1,24 @@
 import {Component, OnInit} from '@angular/core';
+import {MaveDBData} from "../../model/mavedb";
 import {ActivatedRoute} from "@angular/router";
-import {ElasticService} from "../../services/elastic.service";
-import {MatListModule} from "@angular/material/list";
+import {MatCardModule} from "@angular/material/card";
+import {MatDividerModule} from "@angular/material/divider";
 
 @Component({
   selector: 'app-details',
-  standalone: true,
-  imports: [MatListModule],
+  imports: [
+    MatCardModule,
+    MatDividerModule,
+  ],
   templateUrl: './details.component.html',
-  styleUrl: './details.component.css'
+  styleUrl: './details.component.scss'
 })
 export class DetailsComponent implements OnInit {
-  data: any;
-  constructor(
-    private activatedRoute: ActivatedRoute,
-    private _elasticService: ElasticService
-  ) {}
+  maveDBRecord!: MaveDBData;
+
+  constructor(private route: ActivatedRoute) { }
 
   ngOnInit() {
-    this._elasticService.getRecordDetails(this.activatedRoute.snapshot.paramMap.get('urn')).subscribe(
-      data => {
-        this.data = data.results[0];
-      }
-    );
+    this.maveDBRecord = this.route.snapshot.data['record']['results'][0];
   }
 }
