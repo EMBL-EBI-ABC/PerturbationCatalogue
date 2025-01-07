@@ -24,7 +24,6 @@ import {MatListItem, MatNavList} from "@angular/material/list";
 })
 export class AppComponent implements OnInit {
   showSidebar = false;
-  footerClass = "footer_normal"
   constructor(private responsive: BreakpointObserver) {
   }
 
@@ -37,7 +36,6 @@ export class AppComponent implements OnInit {
     ])
     .subscribe(result => {
       this.showSidebar = false;
-      this.footerClass = "footer_normal";
       const breakpoints = result.breakpoints;
       if (
         breakpoints[Breakpoints.TabletPortrait] ||
@@ -46,7 +44,6 @@ export class AppComponent implements OnInit {
         breakpoints[Breakpoints.HandsetLandscape]
       ) {
         this.showSidebar = true;
-        this.footerClass = "footer_small";
       }
     });
   }
