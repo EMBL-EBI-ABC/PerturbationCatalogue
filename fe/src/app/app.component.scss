@@ -18,14 +18,23 @@
   }
 }
 
-.footer {
+.footer_normal {
   background-color: rgb(74, 78, 80);
-  position: fixed;
+  position: absolute;
   bottom: 0;
   width: 100%;
   span {
     color: white;
-    font-size: 0.8em;
+  }
+}
+
+.footer_small {
+  background-color: rgb(74, 78, 80);
+  position: relative;
+  bottom: 0;
+  width: 100%;
+  span {
+    color: white;
   }
 }
 
