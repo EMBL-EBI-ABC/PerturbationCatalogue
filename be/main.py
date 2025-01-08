@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from constants import AGGREGATION_FIELDS
+from models import MaveDBResponse, MaveDBDetailsResponse, SortDirections
 
 
 @asynccontextmanager
@@ -59,8 +60,9 @@ async def search(
         sort_field: Annotated[
             str | None, Query(description="Sort field")] = "publicationYear",
         sort_order: Annotated[
-            str | None, Query(description="Sort order")] = "desc",
-) -> dict[str, int | list | dict]:
+            SortDirections | None, Query(
+                description="Sort order")] = SortDirections.desc,
+) -> MaveDBResponse:
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
@@ -94,7 +96,7 @@ async def search(
         }
 
     # Adding sort field and sort order
-    search_body['sort'] = [{sort_field: {"order": sort_order}}]
+    search_body['sort'] = [{sort_field: {"order": sort_order.value}}]
 
     try:
         # Execute the async search request.
@@ -103,29 +105,22 @@ async def search(
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
         # Return the response with pagination info.
-        return {
-            "total": total,
-            "start": start,
-            "size": size,
-            "results": hits,
-            "aggregations": response["aggregations"]
-        }
+        return MaveDBResponse(total=total, start=start, size=size, results=hits,
+                              aggregations=response["aggregations"])
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
 @app.get("/search/{record_id}")
-async def search(record_id: Annotated[str, Path(description="Record id")]) -> \
-dict[str, list]:
+async def search(record_id: Annotated[
+    str, Path(description="Record id")]) -> MaveDBDetailsResponse:
     es = app.state.es_client
     try:
         response = await es.search(index="mavedb",
                                    q=f"_id:{urllib.parse.quote(record_id)}")
         hits = [r["_source"] for r in response["hits"]["hits"]]
-        return {
-            "results": hits
-        }
+        return MaveDBDetailsResponse(results=hits)
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
