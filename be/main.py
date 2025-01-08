@@ -1,10 +1,12 @@
 import os
 import urllib.parse
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+
+from fastapi import FastAPI, HTTPException, Query, Path
 from elasticsearch import AsyncElasticsearch
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
+from typing import Annotated
 
 from constants import AGGREGATION_FIELDS
 
@@ -39,36 +41,43 @@ app.add_middleware(
 
 @app.get("/search")
 async def search(
-    q: str = Query(None, description="Search query string"),
-    data_filter: str = Query(
-        None,
-        description="Filter query in the format field1:value1,value2+field2:value3,value4",
-    ),
-    start: int = Query(0, description="Starting point of the results"),
-    size: int = Query(10, description="Number of results per page"),
-    sort_field: str = Query('publicationYear', description="Sort field"),
-    sort_order: str = Query('desc', description="Sort order"),
+        q: Annotated[
+            str | None, Query(description="Search query string")] = None,
+        publication_year: Annotated[
+            str | None, Query(description="PublicationYear query string",
+                              alias="publicationYear")] = None,
+        gene_category: Annotated[
+            str | None, Query(description="GeneCategory query string",
+                              alias="geneCategory")] = None,
+        sequence_type: Annotated[
+            str | None, Query(description="SequenceType query string",
+                              alias="sequenceType")] = None,
+        start: Annotated[
+            int, Query(description="Starting point of the results")] = 0,
+        size: Annotated[
+            int, Query(description="Number of results per page")] = 10,
+        sort_field: Annotated[
+            str | None, Query(description="Sort field")] = "publicationYear",
+        sort_order: Annotated[
+            str | None, Query(description="Sort order")] = "desc",
 ) -> dict[str, int | list | dict]:
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
-    # Parse filters from the filter query parameter.
+    # Adding filters from the filters query parameter.
     filters = []
-    if data_filter:
-        try:
-            for f in data_filter.split("+"):
-                field, values = f.split(":")
-                values_list = values.split(",")
-                filters.append({"terms": {f"{field}": values_list}})
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid filter format")
+    if publication_year:
+        filters.append({"terms": {"publicationYear": [publication_year]}})
+    if gene_category:
+        filters.append({"terms": {"geneCategory": [gene_category]}})
+    if sequence_type:
+        filters.append({"terms": {"sequenceType": [sequence_type]}})
 
     # Build the query body based on whether there is full text search.
     if q:
         query_body = {"multi_match": {"query": q, "fields": ["*"]}}
     else:
         query_body = {"match_all": {}}
-
 
     # Combine query with filters.
     search_body = {"from": start, "size": size, "query": {
@@ -107,7 +116,8 @@ async def search(
 
 
 @app.get("/search/{record_id}")
-async def search(record_id: str) -> dict[str, list]:
+async def search(record_id: Annotated[str, Path(description="Record id")]) -> \
+dict[str, list]:
     es = app.state.es_client
     try:
         response = await es.search(index="mavedb",
