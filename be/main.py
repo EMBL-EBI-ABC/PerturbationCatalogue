@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from constants import AGGREGATION_FIELDS
-from models import MaveDBResponse, MaveDBDetailsResponse, SortDirections
+from models import MaveDBResponse, MaveDBDetailsResponse, SearchParams
 
 
 @asynccontextmanager
@@ -41,48 +41,29 @@ app.add_middleware(
 
 
 @app.get("/search")
-async def search(
-        q: Annotated[
-            str | None, Query(description="Search query string")] = None,
-        publication_year: Annotated[
-            str | None, Query(description="PublicationYear query string",
-                              alias="publicationYear")] = None,
-        gene_category: Annotated[
-            str | None, Query(description="GeneCategory query string",
-                              alias="geneCategory")] = None,
-        sequence_type: Annotated[
-            str | None, Query(description="SequenceType query string",
-                              alias="sequenceType")] = None,
-        start: Annotated[
-            int, Query(description="Starting point of the results")] = 0,
-        size: Annotated[
-            int, Query(description="Number of results per page")] = 10,
-        sort_field: Annotated[
-            str | None, Query(description="Sort field")] = "publicationYear",
-        sort_order: Annotated[
-            SortDirections | None, Query(
-                description="Sort order")] = SortDirections.desc,
-) -> MaveDBResponse:
+async def search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
     # Adding filters from the filters query parameter.
     filters = []
-    if publication_year:
-        filters.append({"terms": {"publicationYear": [publication_year]}})
-    if gene_category:
-        filters.append({"terms": {"geneCategory": [gene_category]}})
-    if sequence_type:
-        filters.append({"terms": {"sequenceType": [sequence_type]}})
+    if params.publication_year:
+        filters.append(
+            {"terms": {"publicationYear": [params.publication_year]}})
+    if params.gene_category:
+        filters.append({"terms": {"geneCategory": [params.gene_category]}})
+    if params.sequence_type:
+        filters.append({"terms": {"sequenceType": [params.sequence_type]}})
+    print(params)
 
     # Build the query body based on whether there is full text search.
-    if q:
-        query_body = {"multi_match": {"query": q, "fields": ["*"]}}
+    if params.q:
+        query_body = {"multi_match": {"query": params.q, "fields": ["*"]}}
     else:
         query_body = {"match_all": {}}
 
     # Combine query with filters.
-    search_body = {"from": start, "size": size, "query": {
+    search_body = {"from": params.start, "size": params.size, "query": {
         "bool": {
             "must": query_body,
             "filter": filters,
@@ -96,7 +77,7 @@ async def search(
         }
 
     # Adding sort field and sort order
-    search_body['sort'] = [{sort_field: {"order": sort_order.value}}]
+    search_body['sort'] = [{params.sort_field: {"order": params.sort_order}}]
 
     try:
         # Execute the async search request.
@@ -105,7 +86,8 @@ async def search(
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
         # Return the response with pagination info.
-        return MaveDBResponse(total=total, start=start, size=size, results=hits,
+        return MaveDBResponse(total=total, start=params.start, size=params.size,
+                              results=hits,
                               aggregations=response["aggregations"])
     except Exception as e:
         # Handle Elasticsearch errors.
