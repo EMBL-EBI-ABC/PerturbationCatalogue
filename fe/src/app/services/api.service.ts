@@ -29,32 +29,19 @@ export class ApiService {
       params['q'] = query;
     }
 
-    let include_filters = false;
-    let filter = '';
     if (filters.publicationYear.length > 0) {
-      include_filters = true;
-      filter = `publicationYear:${filters.publicationYear}`;
+      // @ts-ignore
+      params['publicationYear'] = filters.publicationYear;
     }
     if (filters.geneCategory.length > 0) {
-      if (include_filters) {
-        filter = `${filter}+geneCategory:${filters.geneCategory}`;
-      } else {
-        include_filters = true;
-        filter = `geneCategory:${filters.geneCategory}`;
-      }
+      // @ts-ignore
+      params['geneCategory'] = filters.geneCategory;
     }
     if (filters.sequenceType.length > 0) {
-      if (include_filters) {
-        filter = `${filter}+sequenceType:${filters.sequenceType}`;
-      } else {
-        include_filters = true;
-        filter = `sequenceType:${filters.sequenceType}`;
-      }
-    }
-    if (include_filters) {
       // @ts-ignore
-      params['data_filter'] = filter;
+      params['sequenceType'] = filters.sequenceType;
     }
+
     return this._httpClient.get<MaveDBResponse>(requestUrl, {params: params});
   }
 
