@@ -28,7 +28,19 @@ async def lifespan(app: FastAPI):
 
 
 # Initialize FastAPI with lifespan manager.
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="Perturbation Catalogue API",
+    version="0.0.1",
+    contact={
+        "name": "Perturbation Catalogue Helpdesk",
+        "email": "perturbation-catalogue-help@ebi.ac.uk",
+    },
+    license_info={
+        "name": "Apache 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    }
+)
 
 # Allow all origins.
 app.add_middleware(

@@ -13,13 +13,27 @@ class MaveDBData(BaseModel):
     publicationYear: int
     numVariants: int
 
+class AggregationBucket(BaseModel):
+    key: int|str
+    doc_count: int
+
+class Aggregation(BaseModel):
+    doc_count_error_upper_bound: int
+    sum_other_doc_count: int
+    buckets: list[AggregationBucket]
+
+class AggregationResponse(BaseModel):
+    publicationYear: Aggregation
+    sequenceType: Aggregation
+    geneCategory: Aggregation
+
 
 class MaveDBResponse(BaseModel):
     total: int
     start: int
     size: int
     results: list[MaveDBData]
-    aggregations: dict[str, dict]
+    aggregations: AggregationResponse
 
 
 class MaveDBDetailsResponse(BaseModel):
