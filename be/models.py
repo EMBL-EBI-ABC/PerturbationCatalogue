@@ -10,8 +10,9 @@ class MaveDBData(BaseModel):
     geneName: str
     geneCategory: str
     publicationUrl: str
-    publicationYear: int
-    numVariants: int
+    # TODO: undef values are strings, convert it to None
+    publicationYear: int|str
+    numVariants: int|str
 
 class AggregationBucket(BaseModel):
     key: int|str

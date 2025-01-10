@@ -66,7 +66,6 @@ async def search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
         filters.append({"terms": {"geneCategory": [params.gene_category]}})
     if params.sequence_type:
         filters.append({"terms": {"sequenceType": [params.sequence_type]}})
-    print(params)
 
     # Build the query body based on whether there is full text search.
     if params.q:
