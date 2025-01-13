@@ -6,6 +6,8 @@ import {MatIconModule} from "@angular/material/icon";
 import {RouterLink, RouterOutlet} from "@angular/router";
 import {BreakpointObserver, Breakpoints} from "@angular/cdk/layout";
 import {MatListItem, MatNavList} from "@angular/material/list";
+import {NgcCookieConsentService} from "ngx-cookieconsent";
+
 
 @Component({
   selector: 'app-root',
@@ -17,14 +19,17 @@ import {MatListItem, MatNavList} from "@angular/material/list";
     RouterLink,
     RouterOutlet,
     MatListItem,
-    MatNavList,
+    MatNavList
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
 export class AppComponent implements OnInit {
   showSidebar = false;
-  constructor(private responsive: BreakpointObserver) {
+  constructor(
+    private responsive: BreakpointObserver,
+    private cookieService: NgcCookieConsentService
+  ) {
   }
 
   ngOnInit() {
