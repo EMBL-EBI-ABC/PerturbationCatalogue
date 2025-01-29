@@ -23,5 +23,5 @@ Before processing, set the following environment secrets:
 mirror_depmap () { wget -q -O - "$1" | gsutil cp - "gs://${LAKE_BUCKET}/depmap/$2"; }
 mirror_depmap https://ndownloader.figshare.com/files/51064631 CRISPRGeneDependency.csv
 mirror_depmap https://ndownloader.figshare.com/files/51064916 CRISPRInferredCommonEssentials.csv
-mirror_depmap https://ndownloader.figshare.com/files/51065828 Model.csv
+mirror_depmap https://ndownloader.figshare.com/files/51065297 Model.csv
 ```
