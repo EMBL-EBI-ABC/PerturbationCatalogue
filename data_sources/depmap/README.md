@@ -24,4 +24,14 @@ mirror_depmap () { wget -q -O - "$1" | gsutil cp - "gs://${LAKE_BUCKET}/depmap/$
 mirror_depmap https://ndownloader.figshare.com/files/51064631 CRISPRGeneDependency.csv
 mirror_depmap https://ndownloader.figshare.com/files/51064916 CRISPRInferredCommonEssentials.csv
 mirror_depmap https://ndownloader.figshare.com/files/51065297 Model.csv
+
+# Process.
+gsutil cp gs://${LAKE_BUCKET}/depmap/* /tmp
+python3 process.py \
+  --gene-dependency /tmp/CRISPRGeneDependency.csv \
+  --common-essentials /tmp/CRISPRInferredCommonEssentials.csv \
+  --model-metadata /tmp/Model.csv \
+  --output-filename /tmp/gene_dependency.jsonl
+gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/depmap"
+gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl
 ```
