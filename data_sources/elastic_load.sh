@@ -8,7 +8,7 @@ export JSONL_DATA="$3"
 echo "Removing the index..."
 curl -X DELETE "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application/json"
 
-echo "Creating the index..."
+echo -e "\nCreating the index..."
 curl -X PUT "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application/json" -d'{
   "settings": {
     "index": {
@@ -18,7 +18,7 @@ curl -X PUT "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application
   }
 }'
 
-echo "Preparing the data for loading..."
+echo -e "\nPreparing the data for loading..."
 gsutil -q cp "${JSONL_DATA}" /tmp/metadata.jsonl
 awk \
   -v elastic_index=${ELASTIC_INDEX} \
@@ -26,7 +26,7 @@ awk \
   /tmp/metadata.jsonl \
   > /tmp/formatted_metadata.jsonl
 
-echo "Loading data into index..."
+echo -e "Loading data into index..."
 curl -X POST "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}/_bulk" -H "Content-Type: application/x-ndjson" --data-binary @/tmp/formatted_metadata.jsonl
 
-echo "All done."
+echo -e "\nAll done."
