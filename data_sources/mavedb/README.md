@@ -12,9 +12,10 @@ The ZIP archive contains:
   - `*.counts.csv` — sometimes present
 
 Before processing, set the following environment secrets:
-* LAKE_BUCKET
-* WAREHOUSE_BUCKET
-* ELASTIC_ENDPOINT
+
+- LAKE_BUCKET
+- WAREHOUSE_BUCKET
+- ELASTIC_ENDPOINT
 
 ## Ingest metadata
 
@@ -34,20 +35,5 @@ gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/mavedb"
 gsutil -q cp /tmp/metadata.jsonl "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
 
 # Ingest into Elastic.
-## 1. Remove the index.
-curl -X DELETE "${ELASTIC_ENDPOINT}/mavedb" -H "Content-Type: application/json"
-## 2. Create the index.
-curl -X PUT "${ELASTIC_ENDPOINT}/mavedb" -H "Content-Type: application/json" -d'{
-  "settings": {
-    "index": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1
-    }
-  }
-}'
-## 3. Prepare data for loading.
-gsutil -q cp "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" /tmp/metadata.json
-awk '{print "{ \"index\" : { \"_index\" : \"mavedb\", \"_id\" : \"" NR "\" } }"; print}' /tmp/metadata.jsonl > /tmp/formatted_metadata.jsonl
-## 4. Load data into index.
-curl -X POST "${ELASTIC_ENDPOINT}/mavedb/_bulk" -H "Content-Type: application/x-ndjson" --data-binary @/tmp/formatted_metadata.jsonl
+bash ../elastic_load.sh "${ELASTIC_ENDPOINT}" "mavedb" "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
 ```
