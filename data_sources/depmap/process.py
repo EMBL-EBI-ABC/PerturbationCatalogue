@@ -28,10 +28,12 @@ def main():
     gene_df.set_index(gene_df.columns[0], inplace=True)
 
     # Step 3: Remove rows and columns with missing values
-    gene_df.dropna(axis=0, how="any", inplace=True)  # Drop rows with any missing values
+    # Order is important, because we need to drop the small subset of genes which have a lot of missing values.
+    # (Otherwise, we will lose a lot of good screens.)
     gene_df.dropna(
         axis=1, how="any", inplace=True
     )  # Drop columns with any missing values
+    gene_df.dropna(axis=0, how="any", inplace=True)  # Drop rows with any missing values
 
     # Step 4: Remove columns present in common essentials
     with open(args.common_essentials, "r") as f:
