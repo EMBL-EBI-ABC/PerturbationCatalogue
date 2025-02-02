@@ -34,4 +34,7 @@ python3 process.py \
   --output-filename /tmp/gene_dependency.jsonl
 gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/depmap"
 gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl
+
+# Ingest into Elastic.
+bash ../elastic_load.sh "${ELASTIC_ENDPOINT}" "depmap" "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl"
 ```
