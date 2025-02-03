@@ -1,0 +1,97 @@
+\documentclass[handout]{beamer}
+\usepackage{graphicx}
+
+\title{Highlights on DepMap Gene Dependency Data Ingestion}
+\date{2025-02-04}
+\author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
+\institute{Open Targets Perturbation Catalogue WP1/2/3 Technical Meeting}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
+    \hspace{15pt}\usebeamerfont{author in head/foot}Highlights on DepMap Gene Dependency Data Ingestion 
+    \hfill
+    \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber
+    \hspace{15pt}
+  \end{beamercolorbox}%
+}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{DepMap Data Model}
+    \centering
+    \includegraphics[width=0.9\linewidth]{depmap_data_model.png}
+\end{frame}
+
+\begin{frame}{DepMap Data Overview}
+    \begin{itemize}
+        \item 1,178 cancer screens \(\times\) 17,916 genes
+        \item Data consists of CRISPR knock-out screens to identify which gene disruptions slow the growth of specific cancer cell lines.
+        \item Should we use effect size or probability?
+        \begin{itemize}
+            \item Effect size provides granular information on the impact of gene knockout on cancer cell suppression.
+            \item However, DepMap recommends using \textbf{probabilities} as they incorporate \textbf{screen quality}, unlike effect sizes.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Missing Values}
+    \begin{itemize}
+        \item 829 out of 17,916 genes (4.6\%) have substantial missing data (absent in 5-30\% of screens, possibly due to batch effects).
+        \item Removing these genes results in a complete dataset of 1,178 screens \(\times\) 17,087 genes, with no missing values.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Common Essential Genes}
+    \begin{itemize}
+        \item Some genes exhibit broad dependency patterns—knocking them out suppresses nearly all cancer lines (and likely healthy cells too!).
+        \item Various filtering approaches:
+        \begin{itemize}
+            \item Clustering
+            \item Literature on common essential genes
+            \item Two datasets from DepMap
+        \end{itemize}
+        \item Currently using \texttt{CRISPRInferredCommonEssentials.csv}, though this may change.
+        \item This reduces the dataset to 15,633 genes.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Threshold Selection}
+    \begin{itemize}
+        \item Probabilities cannot be normalized or converted into Z-scores—hence, we need a reasonable threshold.
+        \item Optimizing for cancer cell line suppression and number of gene hits, \textbf{95\%} appears suitable.
+        \item This threshold and the essential gene list will be user-configurable.
+    \end{itemize}
+    \begin{columns}
+        \column{0.5\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{percentage_cells_killed.png}
+        \column{0.5\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{number_of_hits.png}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Validation for a Known Subset of Highly Essential Genes}
+    \centering
+    \includegraphics[width=0.9\linewidth]{validation_housekeeping_genes.png}
+\end{frame}
+
+\begin{frame}{Current Status and Next Steps}
+    \begin{itemize}
+        \item Data processed and ingested into Elastic.
+        \item Back-end under development.
+        \item Front-end concept:
+        \begin{itemize}
+            \item Users search for a cancer cell line of interest.
+            \item Highly dependent genes for the selected cell line are displayed.
+            \item Genes with associated MaveDB functional information are highlighted, enabling users to connect phenotype to gene and variant analysis.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\end{document}
