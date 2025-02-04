@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Generic, List, Literal, TypeVar
 
+T = TypeVar("T")
 
 class MaveDBData(BaseModel):
     urn: str
@@ -30,8 +31,6 @@ class AggregationResponse(BaseModel):
 
 # Elastic response classes.
 
-T = TypeVar("T")
-
 class ElasticResponse(BaseModel, Generic[T]):
     total: int
     start: int
@@ -41,6 +40,8 @@ class ElasticResponse(BaseModel, Generic[T]):
 
 class ElasticDetailsResponse(BaseModel, Generic[T]):
     results: List[T]
+
+# Elastic query classes.
 
 class SearchParams(BaseModel):
     model_config = {

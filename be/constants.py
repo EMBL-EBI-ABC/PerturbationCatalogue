@@ -1,1 +1,1 @@
-AGGREGATION_FIELDS = ["publicationYear", "sequenceType", "geneCategory"]
+MAVEDB_AGGREGATION_FIELDS = ["publicationYear", "sequenceType", "geneCategory"]
