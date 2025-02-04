@@ -39,10 +39,8 @@ class ElasticResponse(BaseModel, Generic[T]):
     results: list[T]
     aggregations: AggregationResponse
 
-
-class MaveDBDetailsResponse(BaseModel):
-    results: list[MaveDBData]
-
+class ElasticDetailsResponse(BaseModel, Generic[T]):
+    results: List[T]
 
 class SearchParams(BaseModel):
     model_config = {
