@@ -52,8 +52,8 @@ app.add_middleware(
 )
 
 
-@app.get("/search")
-async def search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
+@app.get("/mavedb/search")
+async def mavedb_search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
     # Access the Elasticsearch client from the app's state.
     es = app.state.es_client
 
@@ -105,8 +105,8 @@ async def search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
-@app.get("/search/{record_id}")
-async def search(record_id: Annotated[
+@app.get("/mavedb/search/{record_id}")
+async def mavedb_details(record_id: Annotated[
     str, Path(description="Record id")]) -> MaveDBDetailsResponse:
     es = app.state.es_client
     try:

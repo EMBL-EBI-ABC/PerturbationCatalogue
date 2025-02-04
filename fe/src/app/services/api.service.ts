@@ -17,7 +17,7 @@ export class ApiService {
     sortOrder: string = 'desc',
     query: any = null,
     filters: MaveDBFilters): Observable<MaveDBResponse> {
-    const requestUrl = 'https://perturbation-catalogue-be-959149465821.europe-west2.run.app/search';
+    const requestUrl = 'https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search';
     let params = {
       start: start*size,
       size: size,
@@ -46,7 +46,7 @@ export class ApiService {
   }
 
   getMaveDBRecord(recordId: string): Observable<MaveDBDetailsResponse> {
-    const requestUrl = `https://perturbation-catalogue-be-959149465821.europe-west2.run.app/search/${recordId}`;
+    const requestUrl = `https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search/${recordId}`;
     return this._httpClient.get<MaveDBDetailsResponse>(requestUrl);
   }
 }
