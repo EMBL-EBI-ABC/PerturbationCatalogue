@@ -46,20 +46,19 @@ class ElasticDetailsResponse(BaseModel, Generic[T]):
 class SearchParams(BaseModel):
     model_config = {
         "populate_by_name": True,
-        "extra": "forbid"
+        "extra": "forbid",
     }
-
+    # Basic query parameters.
     q: str | None = Field(None, description="Search query string")
-    publication_year: str | None = Field(None,
-                                         description="PublicationYear query",
-                                         alias="publicationYear")
-    gene_category: str | None = Field(None,
-                                      description="GeneCategory query",
-                                      alias="geneCategory")
-    sequence_type: str | None = Field(None,
-                                      description="SequenceType query",
-                                      alias="sequenceType")
     start: int = Field(0, description="Starting point of the results")
     size: int = Field(10, gt=0, description="Number of results per page")
+    # No sorting by default, child classes can override this.
+    sort_field: str | None = None
+    sort_order: Literal["desc", "asc"] = "asc"
+
+class MaveDBSearchParams(SearchParams):
     sort_field: str | None = Field("publicationYear", description="Sort field")
     sort_order: Literal["desc", "asc"] = "desc"
+    publication_year: str | None = Field(None, description="PublicationYear query", alias="publicationYear")
+    gene_category: str | None = Field(None, description="GeneCategory query", alias="geneCategory")
+    sequence_type: str | None = Field(None, description="SequenceType query", alias="sequenceType")

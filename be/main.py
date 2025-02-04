@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from constants import MAVEDB_AGGREGATION_FIELDS
-from models import ElasticResponse, ElasticDetailsResponse, SearchParams, MaveDBData
+from models import ElasticResponse, ElasticDetailsResponse, MaveDBSearchParams, MaveDBData
 
 
 @asynccontextmanager
@@ -53,7 +53,7 @@ app.add_middleware(
 
 
 @app.get("/mavedb/search")
-async def mavedb_search(params: Annotated[SearchParams, Query()]) -> ElasticResponse[MaveDBData]:
+async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> ElasticResponse[MaveDBData]:
     # Adding filters from the filters query parameter.
     filters = []
     if params.publication_year:
