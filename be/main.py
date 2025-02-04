@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from constants import AGGREGATION_FIELDS
-from models import MaveDBData, MaveDBDetailsResponse, SearchParams, ElasticResponse
+from models import ElasticResponse, ElasticDetailsResponse, SearchParams, MaveDBData
 
 
 @asynccontextmanager
@@ -104,12 +104,12 @@ async def mavedb_search(params: Annotated[SearchParams, Query()]) -> ElasticResp
 
 @app.get("/mavedb/search/{record_id}")
 async def mavedb_details(record_id: Annotated[
-    str, Path(description="Record id")]) -> MaveDBDetailsResponse:
+    str, Path(description="Record id")]) -> ElasticDetailsResponse[MaveDBData]:
     try:
         response = await app.state.es_client.search(index="mavedb",
                                    q=f"_id:{urllib.parse.quote(record_id)}")
         hits = [r["_source"] for r in response["hits"]["hits"]]
-        return MaveDBDetailsResponse(results=hits)
+        return ElasticDetailsResponse[MaveDBData](results=hits)
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
