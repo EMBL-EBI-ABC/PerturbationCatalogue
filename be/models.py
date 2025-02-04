@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Generic, List, Literal, TypeVar
 
 
 class MaveDBData(BaseModel):
@@ -28,12 +28,15 @@ class AggregationResponse(BaseModel):
     sequenceType: Aggregation
     geneCategory: Aggregation
 
+# Elastic response classes.
 
-class MaveDBResponse(BaseModel):
+T = TypeVar("T")
+
+class ElasticResponse(BaseModel, Generic[T]):
     total: int
     start: int
     size: int
-    results: list[MaveDBData]
+    results: list[T]
     aggregations: AggregationResponse
 
 
