@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 from typing import Annotated
 
-from constants import AGGREGATION_FIELDS
+from constants import MAVEDB_AGGREGATION_FIELDS
 from models import ElasticResponse, ElasticDetailsResponse, SearchParams, MaveDBData
 
 
@@ -79,7 +79,7 @@ async def mavedb_search(params: Annotated[SearchParams, Query()]) -> ElasticResp
     }, "aggs": defaultdict(dict)}
 
     # Adding aggregation fields
-    for aggregation_field in AGGREGATION_FIELDS:
+    for aggregation_field in MAVEDB_AGGREGATION_FIELDS:
         search_body["aggs"][aggregation_field] = {
             "terms": {"field": aggregation_field}
         }
