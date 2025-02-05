@@ -18307,18 +18307,18 @@
                     "title": "Year",
                     "type": "integer"
                 },
-                "authors": {
-                    "items": {
-                        "$ref": "#/$defs/Author"
-                    },
-                    "title": "Authors",
-                    "type": "array"
+                "first_author": {
+                    "$ref": "#/$defs/Author"
+                },
+                "last_author": {
+                    "$ref": "#/$defs/Author"
                 }
             },
             "required": [
                 "title",
                 "year",
-                "authors"
+                "first_author",
+                "last_author"
             ],
             "title": "StudyDetails",
             "type": "object"

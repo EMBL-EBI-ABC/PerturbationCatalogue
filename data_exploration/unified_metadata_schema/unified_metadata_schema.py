@@ -62,7 +62,8 @@ class StudyDetails(BaseModel):
     title: str
     uri: Optional[HttpUrl] = None
     year: int = Field(ge=1000, le=3000)
-    authors: list[Author]
+    first_author: Author
+    last_author: Author
 
 
 class Timepoint(BaseModel):
