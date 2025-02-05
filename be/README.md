@@ -1,4 +1,4 @@
-# Open Targets Perturbation Catalogue back-end
+# Perturbation Catalogue back-end
 
 ## Local set up
 
