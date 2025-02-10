@@ -94,6 +94,18 @@ async def elastic_search(params, filters, index_name, aggregation_fields=None):
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
+async def elastic_details(index_name, record_id):
+    try:
+        response = await app.state.es_client.search(
+            index=index_name,
+            q=f"_id:{urllib.parse.quote(record_id)}"
+        )
+        hits = [r["_source"] for r in response["hits"]["hits"]]
+        return hits
+    except Exception as e:
+        # Handle Elasticsearch errors.
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
 
 # MaveDB.
 
@@ -129,13 +141,8 @@ async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> Elast
 
 
 @app.get("/mavedb/search/{record_id}")
-async def mavedb_details(record_id: Annotated[
-    str, Path(description="Record id")]) -> ElasticDetailsResponse[MaveDBData]:
-    try:
-        response = await app.state.es_client.search(index="mavedb",
-                                   q=f"_id:{urllib.parse.quote(record_id)}")
-        hits = [r["_source"] for r in response["hits"]["hits"]]
-        return ElasticDetailsResponse[MaveDBData](results=hits)
-    except Exception as e:
-        # Handle Elasticsearch errors.
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+async def mavedb_details(
+    record_id: Annotated[str, Path(description="Record ID")]
+    ) -> ElasticDetailsResponse[MaveDBData]:
+    hits = await elastic_details("mavedb", record_id)
+    return ElasticDetailsResponse[MaveDBData](results=hits)
