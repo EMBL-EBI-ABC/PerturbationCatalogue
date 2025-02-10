@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from constants import MAVEDB_AGGREGATION_FIELDS
-from models import ElasticResponse, ElasticDetailsResponse, MaveDBSearchParams, MaveDBData
+from models import ElasticResponse, ElasticDetailsResponse, MaveDBData, MaveDBSearchParams, MaveDBAggregationResponse
 
 
 @asynccontextmanager
@@ -53,7 +53,7 @@ app.add_middleware(
 
 
 @app.get("/mavedb/search")
-async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> ElasticResponse[MaveDBData]:
+async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
     # Adding filters from the filters query parameter.
     filters = []
     if params.publication_year:
@@ -94,7 +94,7 @@ async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> Elast
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
         # Return the response with pagination info.
-        return ElasticResponse[MaveDBData](total=total, start=params.start, size=params.size,
+        return ElasticResponse[MaveDBData, MaveDBAggregationResponse](total=total, start=params.start, size=params.size,
                               results=hits,
                               aggregations=response["aggregations"])
     except Exception as e:

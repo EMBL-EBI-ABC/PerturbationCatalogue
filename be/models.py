@@ -1,19 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Generic, List, Literal, TypeVar
 
-T = TypeVar("T")
+T = TypeVar("T")  # Datasource data type
+A = TypeVar("A")  # Datasource aggregation type
 
-class MaveDBData(BaseModel):
-    urn: str
-    title: str
-    shortDescription: str
-    sequenceType: str
-    geneName: str
-    geneCategory: str
-    publicationUrl: str
-    # TODO: undef values are strings, convert it to None
-    publicationYear: int|str
-    numVariants: int|str
+
+# Generic aggregation classes.
 
 class AggregationBucket(BaseModel):
     key: int|str
@@ -24,24 +16,21 @@ class Aggregation(BaseModel):
     sum_other_doc_count: int
     buckets: list[AggregationBucket]
 
-class AggregationResponse(BaseModel):
-    publicationYear: Aggregation
-    sequenceType: Aggregation
-    geneCategory: Aggregation
 
-# Elastic response classes.
+# Generic Elastic response classes.
 
-class ElasticResponse(BaseModel, Generic[T]):
+class ElasticResponse(BaseModel, Generic[T, A]):
     total: int
     start: int
     size: int
-    results: list[T]
-    aggregations: AggregationResponse
+    results: List[T]
+    aggregations: A
 
 class ElasticDetailsResponse(BaseModel, Generic[T]):
     results: List[T]
 
-# Elastic query classes.
+
+# Base Elastic query class.
 
 class SearchParams(BaseModel):
     model_config = {
@@ -55,6 +44,26 @@ class SearchParams(BaseModel):
     # No sorting by default, child classes can override this.
     sort_field: str | None = None
     sort_order: Literal["desc", "asc"] = "asc"
+
+
+# MaveDB.
+
+class MaveDBData(BaseModel):
+    urn: str
+    title: str
+    shortDescription: str
+    sequenceType: str
+    geneName: str
+    geneCategory: str
+    publicationUrl: str
+    # TODO: undef values are strings, convert it to None
+    publicationYear: int|str
+    numVariants: int|str
+
+class MaveDBAggregationResponse(BaseModel):
+    publicationYear: Aggregation
+    sequenceType: Aggregation
+    geneCategory: Aggregation
 
 class MaveDBSearchParams(SearchParams):
     sort_field: str | None = Field("publicationYear", description="Sort field")
