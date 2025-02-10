@@ -16,6 +16,8 @@ class Aggregation(BaseModel):
     sum_other_doc_count: int
     buckets: list[AggregationBucket]
 
+def get_list_of_aggregations(aggregation_class):
+    return sorted(aggregation_class.schema()["properties"].keys())
 
 # Generic Elastic response classes.
 
