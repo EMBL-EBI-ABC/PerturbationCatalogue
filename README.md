@@ -7,7 +7,7 @@ This monorepo contains data processing, back-end, and front-end facilities for t
 * **Website** → https://perturbation-catalogue-fe-959149465821.europe-west2.run.app
 
 ## Set up
-This repository uses the [Black formatter](https://black.readthedocs.io/en/stable/) for Python code. To set it up, use:
+To automatically enforce the code style before committing, run:
 
 ```python
 pip install pre-commit black
