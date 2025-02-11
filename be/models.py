@@ -19,6 +19,7 @@ class Aggregation(BaseModel):
 def get_list_of_aggregations(aggregation_class):
     return sorted(aggregation_class.schema()["properties"].keys())
 
+
 # Generic Elastic response classes.
 
 class ElasticResponse(BaseModel, Generic[T, A]):

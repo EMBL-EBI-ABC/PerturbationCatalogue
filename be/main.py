@@ -60,7 +60,7 @@ app.add_middleware(
 
 # Generic search methods.
 
-async def elastic_search(params, index_name, data_class, aggregation_class):
+async def elastic_search(index_name, params, data_class, aggregation_class):
 
     # Build the query body based on whether there is full text search.
     if params.q:
@@ -70,7 +70,7 @@ async def elastic_search(params, index_name, data_class, aggregation_class):
 
     # Adding filters.
     filters = []
-    aggregation_fields=get_list_of_aggregations(MaveDBAggregationResponse)
+    aggregation_fields=get_list_of_aggregations(aggregation_class)
     if aggregation_fields:
         for aggregation_field in aggregation_fields:
             filter_value = getattr(params, aggregation_field)
@@ -118,14 +118,14 @@ async def elastic_search(params, index_name, data_class, aggregation_class):
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
-async def elastic_details(index_name, record_id):
+async def elastic_details(index_name, record_id, data_class):
     try:
         response = await app.state.es_client.search(
             index=index_name,
             q=f"_id:{urllib.parse.quote(record_id)}"
         )
         hits = [r["_source"] for r in response["hits"]["hits"]]
-        return hits
+        return ElasticDetailsResponse[data_class](results=hits)
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
@@ -138,8 +138,8 @@ async def mavedb_search(
     params: Annotated[MaveDBSearchParams, Query()]
     ) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
     return await elastic_search(
-        params=params,
         index_name="mavedb",
+        params=params,
         data_class=MaveDBData,
         aggregation_class=MaveDBAggregationResponse,
     )
@@ -148,5 +148,8 @@ async def mavedb_search(
 async def mavedb_details(
     record_id: Annotated[str, Path(description="Record ID")]
     ) -> ElasticDetailsResponse[MaveDBData]:
-    hits = await elastic_details("mavedb", record_id)
-    return ElasticDetailsResponse[MaveDBData](results=hits)
+    return await elastic_details(
+        index_name="mavedb",
+        record_id=record_id,
+        data_class=MaveDBData,
+    )
