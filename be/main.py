@@ -8,8 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 from typing import Annotated
 
-from constants import AGGREGATION_FIELDS
-from models import MaveDBResponse, MaveDBDetailsResponse, SearchParams
+from models import (
+    get_list_of_aggregations,
+    ElasticResponse,
+    ElasticDetailsResponse,
+    MaveDBData,
+    MaveDBSearchParams,
+    MaveDBAggregationResponse
+)
 
 
 @asynccontextmanager
@@ -52,17 +58,9 @@ app.add_middleware(
 )
 
 
-@app.get("/mavedb/search")
-async def mavedb_search(params: Annotated[SearchParams, Query()]) -> MaveDBResponse:
-    # Adding filters from the filters query parameter.
-    filters = []
-    if params.publication_year:
-        filters.append(
-            {"terms": {"publicationYear": [params.publication_year]}})
-    if params.gene_category:
-        filters.append({"terms": {"geneCategory": [params.gene_category]}})
-    if params.sequence_type:
-        filters.append({"terms": {"sequenceType": [params.sequence_type]}})
+# Generic search methods.
+
+async def elastic_search(params, filters, index_name, aggregation_fields=None):
 
     # Build the query body based on whether there is full text search.
     if params.q:
@@ -78,38 +76,81 @@ async def mavedb_search(params: Annotated[SearchParams, Query()]) -> MaveDBRespo
         }
     }, "aggs": defaultdict(dict)}
 
-    # Adding aggregation fields
-    for aggregation_field in AGGREGATION_FIELDS:
-        search_body["aggs"][aggregation_field] = {
-            "terms": {"field": aggregation_field}
-        }
+    # Adding aggregation fields.
+    if aggregation_fields:
+        for aggregation_field in aggregation_fields:
+            search_body["aggs"][aggregation_field] = {
+                "terms": {"field": aggregation_field}
+            }
 
     # Adding sort field and sort order
     search_body['sort'] = [{params.sort_field: {"order": params.sort_order}}]
 
+    # Performing the search.
     try:
         # Execute the async search request.
-        response = await app.state.es_client.search(index="mavedb", body=search_body)
+        response = await app.state.es_client.search(index=index_name, body=search_body)
         # Extract total count and hits.
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
-        # Return the response with pagination info.
-        return MaveDBResponse(total=total, start=params.start, size=params.size,
-                              results=hits,
-                              aggregations=response["aggregations"])
+        aggregations = response["aggregations"]
+        return total, hits, aggregations
+
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+async def elastic_details(index_name, record_id):
+    try:
+        response = await app.state.es_client.search(
+            index=index_name,
+            q=f"_id:{urllib.parse.quote(record_id)}"
+        )
+        hits = [r["_source"] for r in response["hits"]["hits"]]
+        return hits
+    except Exception as e:
+        # Handle Elasticsearch errors.
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+# MaveDB.
+
+@app.get("/mavedb/search")
+async def mavedb_search(
+    params: Annotated[MaveDBSearchParams, Query()]
+    ) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
+
+    # Adding filters from the filters query parameter.
+    filters = []
+    if params.publication_year:
+        filters.append(
+            {"terms": {"publicationYear": [params.publication_year]}})
+    if params.gene_category:
+        filters.append({"terms": {"geneCategory": [params.gene_category]}})
+    if params.sequence_type:
+        filters.append({"terms": {"sequenceType": [params.sequence_type]}})
+
+    # Perform the search.
+    total, hits, aggregations = await elastic_search(
+        params=params,
+        filters=filters,
+        index_name="mavedb",
+        aggregation_fields=get_list_of_aggregations(MaveDBAggregationResponse),
+    )
+
+    # Return the results.
+    return ElasticResponse[MaveDBData, MaveDBAggregationResponse](
+        total=total,
+        start=params.start,
+        size=params.size,
+        results=hits,
+        aggregations=aggregations,
+    )
 
 
 @app.get("/mavedb/search/{record_id}")
-async def mavedb_details(record_id: Annotated[
-    str, Path(description="Record id")]) -> MaveDBDetailsResponse:
-    try:
-        response = await app.state.es_client.search(index="mavedb",
-                                   q=f"_id:{urllib.parse.quote(record_id)}")
-        hits = [r["_source"] for r in response["hits"]["hits"]]
-        return MaveDBDetailsResponse(results=hits)
-    except Exception as e:
-        # Handle Elasticsearch errors.
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+async def mavedb_details(
+    record_id: Annotated[str, Path(description="Record ID")]
+    ) -> ElasticDetailsResponse[MaveDBData]:
+    hits = await elastic_details("mavedb", record_id)
+    return ElasticDetailsResponse[MaveDBData](results=hits)
