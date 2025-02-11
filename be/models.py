@@ -8,7 +8,7 @@ A = TypeVar("A")  # Datasource aggregation type
 # Generic aggregation classes.
 
 class AggregationBucket(BaseModel):
-    key: int|str
+    key: int | str
     doc_count: int
 
 class Aggregation(BaseModel):
@@ -49,34 +49,81 @@ class SearchParams(BaseModel):
     sort_order: Literal["desc", "asc"] = "asc"
 
 
+# Datasource definition.
+
+class FieldDefinition:
+    def __init__(self, name: str, type: type, filterable: bool = False):
+        self.name = name
+        self.type = type
+        self.filterable = filterable
+
+
+class DataSource:
+    def __init__(
+        self,
+        name: str,
+        fields: List[FieldDefinition],
+        default_sort_field: str,
+        default_sort_order: Literal["desc", "asc"],
+    ):
+        self.name = name
+        self.fields = fields
+        self.default_sort_field = default_sort_field
+        self.default_sort_order = default_sort_order
+
+    def generate_classes(self):
+        fields = {field.name: (field.type, field.filterable) for field in self.fields}
+
+        class Data(BaseModel):
+            __annotations__ = {name: type for name, (type, _) in fields.items()}
+
+        class AggregationResponse(BaseModel):
+            __annotations__ = {
+                name: Aggregation
+                for name, (_, filterable) in fields.items()
+                if filterable
+            }
+
+        class SearchParamsExtended(SearchParams):
+            # Define filterable fields with default values
+            locals().update(
+                {
+                    name: Field(None, description=f"{name} query", alias=name)
+                    for name, (type_, filterable) in fields.items()
+                    if filterable
+                }
+            )
+            __annotations__ = {
+                name: type_ | None
+                for name, (type_, filterable) in fields.items()
+                if filterable
+            }
+            # Define default sort field and order.
+            sort_field: str | None = Field(
+                self.default_sort_field, description="Sort field"
+            )
+            sort_order: Literal["desc", "asc"] = Field(
+                self.default_sort_order, description="Sort order"
+            )
+
+        return Data, AggregationResponse, SearchParamsExtended
+
+
 # MaveDB.
-
-class MaveDBData(BaseModel):
-    urn: str
-    title: str
-    shortDescription: str
-    sequenceType: str
-    geneName: str
-    geneCategory: str
-    publicationUrl: str
-    # TODO: undef values are strings, convert it to None
-    publicationYear: int|str
-    numVariants: int|str
-
-class MaveDBAggregationResponse(BaseModel):
-    publicationYear: Aggregation
-    sequenceType: Aggregation
-    geneCategory: Aggregation
-
-class MaveDBSearchParams(SearchParams):
-    sort_field: str | None = Field("publicationYear", description="Sort field")
-    sort_order: Literal["desc", "asc"] = "desc"
-    publicationYear: str | None = Field(
-        None, description="PublicationYear query", alias="publicationYear"
-    )
-    geneCategory: str | None = Field(
-        None, description="GeneCategory query", alias="geneCategory"
-    )
-    sequenceType: str | None = Field(
-        None, description="SequenceType query", alias="sequenceType"
-    )
+mavedb = DataSource(
+    name="MaveDB",
+    fields=[
+        FieldDefinition(name="urn", type=str),
+        FieldDefinition(name="title", type=str),
+        FieldDefinition(name="shortDescription", type=str),
+        FieldDefinition(name="sequenceType", type=str, filterable=True),
+        FieldDefinition(name="geneName", type=str),
+        FieldDefinition(name="geneCategory", type=str, filterable=True),
+        FieldDefinition(name="publicationUrl", type=str),
+        FieldDefinition(name="publicationYear", type=int, filterable=True),
+        FieldDefinition(name="numVariants", type=int),
+    ],
+    default_sort_field="publicationYear",
+    default_sort_order="desc",
+)
+MaveDBData, MaveDBAggregationResponse, MaveDBSearchParams = mavedb.generate_classes()
