@@ -72,7 +72,6 @@ async def elastic_search(params, filters, index_name, aggregation_fields=None):
     # Adding aggregation fields.
     if aggregation_fields:
         for aggregation_field in aggregation_fields:
-            print(aggregation_field)
             search_body["aggs"][aggregation_field] = {
                 "terms": {"field": aggregation_field}
             }
