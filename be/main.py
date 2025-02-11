@@ -8,7 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 from typing import Annotated
 
-from models import get_list_of_aggregations, ElasticResponse, ElasticDetailsResponse, MaveDBData, MaveDBSearchParams, MaveDBAggregationResponse
+from models import (
+    get_list_of_aggregations,
+    ElasticResponse,
+    ElasticDetailsResponse,
+    MaveDBData,
+    MaveDBSearchParams,
+    MaveDBAggregationResponse
+)
 
 
 @asynccontextmanager
@@ -109,7 +116,9 @@ async def elastic_details(index_name, record_id):
 # MaveDB.
 
 @app.get("/mavedb/search")
-async def mavedb_search(params: Annotated[MaveDBSearchParams, Query()]) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
+async def mavedb_search(
+    params: Annotated[MaveDBSearchParams, Query()]
+    ) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
 
     # Adding filters from the filters query parameter.
     filters = []

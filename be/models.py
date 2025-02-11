@@ -70,6 +70,12 @@ class MaveDBAggregationResponse(BaseModel):
 class MaveDBSearchParams(SearchParams):
     sort_field: str | None = Field("publicationYear", description="Sort field")
     sort_order: Literal["desc", "asc"] = "desc"
-    publication_year: str | None = Field(None, description="PublicationYear query", alias="publicationYear")
-    gene_category: str | None = Field(None, description="GeneCategory query", alias="geneCategory")
-    sequence_type: str | None = Field(None, description="SequenceType query", alias="sequenceType")
+    publication_year: str | None = Field(
+        None, description="PublicationYear query", alias="publicationYear"
+    )
+    gene_category: str | None = Field(
+        None, description="GeneCategory query", alias="geneCategory"
+    )
+    sequence_type: str | None = Field(
+        None, description="SequenceType query", alias="sequenceType"
+    )
