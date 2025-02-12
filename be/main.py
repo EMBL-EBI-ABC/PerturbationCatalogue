@@ -74,7 +74,6 @@ async def elastic_search(index_name, params, data_class, aggregation_class):
     if aggregation_fields:
         for aggregation_field in aggregation_fields:
             filter_value = getattr(params, aggregation_field)
-            print(f"{aggregation_field}={filter_value}")
             if filter_value:
                 filters.append(
                     {"terms": {aggregation_field: [filter_value]}})
