@@ -1,77 +1,37 @@
 table_schema = {
     "fields": [
-        {
-            "name": "title",
-            "type": "STRING",
-            "mode": "REQUIRED"
-        },
-        {
-            "name": "asOf",
-            "type": "TIMESTAMP",
-            "mode": "REQUIRED"
-        },
+        {"name": "title", "type": "STRING", "mode": "REQUIRED"},
+        {"name": "asOf", "type": "TIMESTAMP", "mode": "REQUIRED"},
         {
             "name": "experimentSets",
             "type": "RECORD",
             "mode": "REPEATED",
             "fields": [
-                {
-                    "name": "urn",
-                    "type": "STRING",
-                    "mode": "REQUIRED"
-                },
-                {
-                    "name": "publishedDate",
-                    "type": "DATE",
-                    "mode": "REQUIRED"
-                },
-                {
-                    "name": "id",
-                    "type": "INTEGER",
-                    "mode": "REQUIRED"
-                },
+                {"name": "urn", "type": "STRING", "mode": "REQUIRED"},
+                {"name": "publishedDate", "type": "DATE", "mode": "REQUIRED"},
+                {"name": "id", "type": "INTEGER", "mode": "REQUIRED"},
                 {
                     "name": "experiments",
                     "type": "RECORD",
                     "mode": "REPEATED",
                     "fields": [
-                        {
-                            "name": "title",
-                            "type": "STRING",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "title", "type": "STRING", "mode": "REQUIRED"},
                         {
                             "name": "shortDescription",
                             "type": "STRING",
-                            "mode": "REQUIRED"
+                            "mode": "REQUIRED",
                         },
-                        {
-                            "name": "abstractText",
-                            "type": "STRING",
-                            "mode": "REQUIRED"
-                        },
-                        {
-                            "name": "methodText",
-                            "type": "STRING",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "abstractText", "type": "STRING", "mode": "REQUIRED"},
+                        {"name": "methodText", "type": "STRING", "mode": "REQUIRED"},
                         {
                             "name": "extraMetadata",
                             "type": "RECORD",
                             "mode": "REPEATED",
                             "fields": [
-                                {
-                                    "name": "keyname",
-                                    "type": "STRING",
-                                    "mode": ""
-                                }
-                            ]
+                                {"name": "keyname", "type": "STRING", "mode": ""}
+                            ],
                         },
-                        {
-                            "name": "urn",
-                            "type": "STRING",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "urn", "type": "STRING", "mode": "REQUIRED"},
                         {
                             "name": "createdBy",
                             "type": "RECORD",
@@ -80,19 +40,19 @@ table_schema = {
                                 {
                                     "name": "orcidId",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "firstName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "lastName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
-                                }
-                            ]
+                                    "mode": "REQUIRED",
+                                },
+                            ],
                         },
                         {
                             "name": "modifiedBy",
@@ -102,39 +62,31 @@ table_schema = {
                                 {
                                     "name": "orcidId",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "firstName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "lastName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
-                                }
-                            ]
+                                    "mode": "REQUIRED",
+                                },
+                            ],
                         },
-                        {
-                            "name": "creationDate",
-                            "type": "DATE",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "creationDate", "type": "DATE", "mode": "REQUIRED"},
                         {
                             "name": "modificationDate",
                             "type": "DATE",
-                            "mode": "REQUIRED"
+                            "mode": "REQUIRED",
                         },
-                        {
-                            "name": "publishedDate",
-                            "type": "DATE",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "publishedDate", "type": "DATE", "mode": "REQUIRED"},
                         {
                             "name": "experimentSetUrn",
                             "type": "STRING",
-                            "mode": "REQUIRED"
+                            "mode": "REQUIRED",
                         },
                         {
                             "name": "doiIdentifiers",
@@ -144,19 +96,11 @@ table_schema = {
                                 {
                                     "name": "identifier",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "id",
-                                    "type": "INTEGER",
-                                    "mode": "NULLABLE"
-                                },
-                                {
-                                    "name": "url",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                }
-                            ]
+                                {"name": "id", "type": "INTEGER", "mode": "NULLABLE"},
+                                {"name": "url", "type": "STRING", "mode": "NULLABLE"},
+                            ],
                         },
                         {
                             "name": "primaryPublicationIdentifiers",
@@ -166,32 +110,24 @@ table_schema = {
                                 {
                                     "name": "identifier",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "dbName",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "url",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                },
+                                {"name": "url", "type": "STRING", "mode": "NULLABLE"},
                                 {
                                     "name": "referenceHtml",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "title",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                },
+                                {"name": "title", "type": "STRING", "mode": "NULLABLE"},
                                 {
                                     "name": "abstract",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "authors",
@@ -201,46 +137,42 @@ table_schema = {
                                         {
                                             "name": "name",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "primary",
                                             "type": "BOOLEAN",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "publicationDoi",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "preprintDoi",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "publicationYear",
                                     "type": "INTEGER",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "preprintDate",
                                     "type": "DATE",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "publicationJournal",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "id",
-                                    "type": "INTEGER",
-                                    "mode": "NULLABLE"
-                                }
-                            ]
+                                {"name": "id", "type": "INTEGER", "mode": "NULLABLE"},
+                            ],
                         },
                         {
                             "name": "secondaryPublicationIdentifiers",
@@ -250,32 +182,24 @@ table_schema = {
                                 {
                                     "name": "identifier",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "dbName",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "url",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                },
+                                {"name": "url", "type": "STRING", "mode": "NULLABLE"},
                                 {
                                     "name": "referenceHtml",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "title",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                },
+                                {"name": "title", "type": "STRING", "mode": "NULLABLE"},
                                 {
                                     "name": "abstract",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "authors",
@@ -285,46 +209,42 @@ table_schema = {
                                         {
                                             "name": "name",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "primary",
                                             "type": "BOOLEAN",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "publicationDoi",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "preprintDoi",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "publicationYear",
                                     "type": "INTEGER",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "preprintDate",
                                     "type": "DATE",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "publicationJournal",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "id",
-                                    "type": "INTEGER",
-                                    "mode": "NULLABLE"
-                                }
-                            ]
+                                {"name": "id", "type": "INTEGER", "mode": "NULLABLE"},
+                            ],
                         },
                         {
                             "name": "rawReadIdentifiers",
@@ -334,69 +254,49 @@ table_schema = {
                                 {
                                     "name": "identifier",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "id",
-                                    "type": "INTEGER",
-                                    "mode": "NULLABLE"
-                                },
-                                {
-                                    "name": "url",
-                                    "type": "STRING",
-                                    "mode": "NULLABLE"
-                                }
-                            ]
+                                {"name": "id", "type": "INTEGER", "mode": "NULLABLE"},
+                                {"name": "url", "type": "STRING", "mode": "NULLABLE"},
+                            ],
                         },
-                        {
-                            "name": "keywords",
-                            "type": "STRING",
-                            "mode": "REPEATED"
-                        },
+                        {"name": "keywords", "type": "STRING", "mode": "REPEATED"},
                         {
                             "name": "scoreSets",
                             "type": "RECORD",
                             "mode": "REPEATED",
                             "fields": [
-                                {
-                                    "name": "title",
-                                    "type": "STRING",
-                                    "mode": "REQUIRED"
-                                },
+                                {"name": "title", "type": "STRING", "mode": "REQUIRED"},
                                 {
                                     "name": "methodText",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "abstractText",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "shortDescription",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "extraMetadata",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "dataUsagePolicy",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
-                                {
-                                    "name": "urn",
-                                    "type": "STRING",
-                                    "mode": "REQUIRED"
-                                },
+                                {"name": "urn", "type": "STRING", "mode": "REQUIRED"},
                                 {
                                     "name": "numVariants",
                                     "type": "INTEGER",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "license",
@@ -406,49 +306,49 @@ table_schema = {
                                         {
                                             "name": "longName",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "shortName",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "link",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "version",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "id",
                                             "type": "INTEGER",
-                                            "mode": "REQUIRED"
-                                        }
-                                    ]
+                                            "mode": "REQUIRED",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "supersededScoreSetUrn",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "supersedingScoreSetUrn",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
+                                    "mode": "NULLABLE",
                                 },
                                 {
                                     "name": "metaAnalyzesScoreSetUrns",
                                     "type": "STRING",
-                                    "mode": "REPEATED"
+                                    "mode": "REPEATED",
                                 },
                                 {
                                     "name": "metaAnalyzedByScoreSetUrns",
                                     "type": "STRING",
-                                    "mode": "REPEATED"
+                                    "mode": "REPEATED",
                                 },
                                 {
                                     "name": "doiIdentifiers",
@@ -458,19 +358,19 @@ table_schema = {
                                         {
                                             "name": "identifier",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "id",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "url",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "primaryPublicationIdentifiers",
@@ -480,32 +380,32 @@ table_schema = {
                                         {
                                             "name": "identifier",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "dbName",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "url",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "referenceHtml",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "title",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "abstract",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "authors",
@@ -515,46 +415,46 @@ table_schema = {
                                                 {
                                                     "name": "name",
                                                     "type": "STRING",
-                                                    "mode": "NULLABLE"
+                                                    "mode": "NULLABLE",
                                                 },
                                                 {
                                                     "name": "primary",
                                                     "type": "BOOLEAN",
-                                                    "mode": "NULLABLE"
-                                                }
-                                            ]
+                                                    "mode": "NULLABLE",
+                                                },
+                                            ],
                                         },
                                         {
                                             "name": "publicationDoi",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "preprintDoi",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "publicationYear",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "preprintDate",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "publicationJournal",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "id",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "secondaryPublicationIdentifiers",
@@ -564,32 +464,32 @@ table_schema = {
                                         {
                                             "name": "identifier",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "dbName",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "url",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "referenceHtml",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "title",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "abstract",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "authors",
@@ -599,61 +499,61 @@ table_schema = {
                                                 {
                                                     "name": "name",
                                                     "type": "STRING",
-                                                    "mode": "NULLABLE"
+                                                    "mode": "NULLABLE",
                                                 },
                                                 {
                                                     "name": "primary",
                                                     "type": "BOOLEAN",
-                                                    "mode": "NULLABLE"
-                                                }
-                                            ]
+                                                    "mode": "NULLABLE",
+                                                },
+                                            ],
                                         },
                                         {
                                             "name": "publicationDoi",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "preprintDoi",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "publicationYear",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "preprintDate",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "publicationJournal",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "id",
                                             "type": "INTEGER",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "publishedDate",
                                     "type": "DATE",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "creationDate",
                                     "type": "DATE",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "modificationDate",
                                     "type": "DATE",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "createdBy",
@@ -663,19 +563,19 @@ table_schema = {
                                         {
                                             "name": "orcidId",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "firstName",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
+                                            "mode": "NULLABLE",
                                         },
                                         {
                                             "name": "lastName",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "modifiedBy",
@@ -685,19 +585,19 @@ table_schema = {
                                         {
                                             "name": "orcidId",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "firstName",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "lastName",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
-                                        }
-                                    ]
+                                            "mode": "REQUIRED",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "targetGenes",
@@ -707,12 +607,12 @@ table_schema = {
                                         {
                                             "name": "name",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "category",
                                             "type": "STRING",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "externalIdentifiers",
@@ -727,41 +627,41 @@ table_schema = {
                                                         {
                                                             "name": "dbName",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
+                                                            "mode": "NULLABLE",
                                                         },
                                                         {
                                                             "name": "identifier",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
+                                                            "mode": "NULLABLE",
                                                         },
                                                         {
                                                             "name": "dbVersion",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
+                                                            "mode": "NULLABLE",
                                                         },
                                                         {
                                                             "name": "url",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
+                                                            "mode": "NULLABLE",
                                                         },
                                                         {
                                                             "name": "referenceHtml",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
-                                                        }
-                                                    ]
+                                                            "mode": "NULLABLE",
+                                                        },
+                                                    ],
                                                 },
                                                 {
                                                     "name": "offset",
                                                     "type": "INTEGER",
-                                                    "mode": "REQUIRED"
+                                                    "mode": "REQUIRED",
                                                 },
-                                            ]
+                                            ],
                                         },
                                         {
                                             "name": "id",
                                             "type": "INTEGER",
-                                            "mode": "REQUIRED"
+                                            "mode": "REQUIRED",
                                         },
                                         {
                                             "name": "targetSequence",
@@ -771,17 +671,17 @@ table_schema = {
                                                 {
                                                     "name": "sequenceType",
                                                     "type": "STRING",
-                                                    "mode": "REQUIRED"
+                                                    "mode": "REQUIRED",
                                                 },
                                                 {
                                                     "name": "sequence",
                                                     "type": "STRING",
-                                                    "mode": "REQUIRED"
+                                                    "mode": "REQUIRED",
                                                 },
                                                 {
                                                     "name": "label",
                                                     "type": "STRING",
-                                                    "mode": "NULLABLE"
+                                                    "mode": "NULLABLE",
                                                 },
                                                 {
                                                     "name": "taxonomy",
@@ -791,58 +691,58 @@ table_schema = {
                                                         {
                                                             "name": "taxId",
                                                             "type": "INTEGER",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "organismName",
                                                             "type": "STRING",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "commonName",
                                                             "type": "STRING",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "rank",
                                                             "type": "STRING",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "hasDescribedSpeciesName",
                                                             "type": "BOOLEAN",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "articleReference",
                                                             "type": "STRING",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "genomeId",
                                                             "type": "STRING",
-                                                            "mode": "NULLABLE"
+                                                            "mode": "NULLABLE",
                                                         },
                                                         {
                                                             "name": "id",
                                                             "type": "INTEGER",
-                                                            "mode": "REQUIRED"
+                                                            "mode": "REQUIRED",
                                                         },
                                                         {
                                                             "name": "url",
                                                             "type": "STRING",
-                                                            "mode": "REQUIRED"
-                                                        }
-                                                    ]
-                                                }
-                                            ]
+                                                            "mode": "REQUIRED",
+                                                        },
+                                                    ],
+                                                },
+                                            ],
                                         },
                                         {
                                             "name": "targetAccession",
                                             "type": "STRING",
-                                            "mode": "NULLABLE"
-                                        }
-                                    ]
+                                            "mode": "NULLABLE",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "datasetColumns",
@@ -852,36 +752,36 @@ table_schema = {
                                         {
                                             "name": "countColumns",
                                             "type": "STRING",
-                                            "mode": "REPEATED"
+                                            "mode": "REPEATED",
                                         },
                                         {
                                             "name": "scoreColumns",
                                             "type": "STRING",
-                                            "mode": "REPEATED"
-                                        }
-                                    ]
+                                            "mode": "REPEATED",
+                                        },
+                                    ],
                                 },
                                 {
                                     "name": "keywords",
                                     "type": "STRING",
-                                    "mode": "REPEATED"
+                                    "mode": "REPEATED",
                                 },
                                 {
                                     "name": "private",
                                     "type": "BOOLEAN",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "processingState",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "processingErrors",
                                     "type": "STRING",
-                                    "mode": "NULLABLE"
-                                }
-                            ]
+                                    "mode": "NULLABLE",
+                                },
+                            ],
                         },
                         {
                             "name": "createdBy",
@@ -891,19 +791,19 @@ table_schema = {
                                 {
                                     "name": "orcidId",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "firstName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "lastName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
-                                }
-                            ]
+                                    "mode": "REQUIRED",
+                                },
+                            ],
                         },
                         {
                             "name": "modifiedBy",
@@ -913,33 +813,29 @@ table_schema = {
                                 {
                                     "name": "orcidId",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "firstName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
+                                    "mode": "REQUIRED",
                                 },
                                 {
                                     "name": "lastName",
                                     "type": "STRING",
-                                    "mode": "REQUIRED"
-                                }
-                            ]
+                                    "mode": "REQUIRED",
+                                },
+                            ],
                         },
-                        {
-                            "name": "creationDate",
-                            "type": "DATE",
-                            "mode": "REQUIRED"
-                        },
+                        {"name": "creationDate", "type": "DATE", "mode": "REQUIRED"},
                         {
                             "name": "modificationDate",
                             "type": "DATE",
-                            "mode": "REQUIRED"
-                        }
-                    ]
-                }
-            ]
-        }
+                            "mode": "REQUIRED",
+                        },
+                    ],
+                },
+            ],
+        },
     ]
 }
