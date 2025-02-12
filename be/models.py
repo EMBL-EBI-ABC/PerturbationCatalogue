@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Generic, List, Literal, TypeVar
+from typing import Generic, Literal, TypeVar
 
 T = TypeVar("T")  # Datasource data type
 A = TypeVar("A")  # Datasource aggregation type
@@ -26,11 +26,11 @@ class ElasticResponse(BaseModel, Generic[T, A]):
     total: int
     start: int
     size: int
-    results: List[T]
+    results: list[T]
     aggregations: A
 
 class ElasticDetailsResponse(BaseModel, Generic[T]):
-    results: List[T]
+    results: list[T]
 
 
 # Base Elastic query class.
@@ -62,7 +62,7 @@ class DataSource:
     def __init__(
         self,
         name: str,
-        fields: List[FieldDefinition],
+        fields: list[FieldDefinition],
         default_sort_field: str,
         default_sort_order: Literal["desc", "asc"],
     ):
