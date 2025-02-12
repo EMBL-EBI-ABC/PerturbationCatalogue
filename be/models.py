@@ -7,20 +7,24 @@ A = TypeVar("A")  # Datasource aggregation type
 
 # Generic aggregation classes.
 
+
 class AggregationBucket(BaseModel):
     key: int | str
     doc_count: int
+
 
 class Aggregation(BaseModel):
     doc_count_error_upper_bound: int
     sum_other_doc_count: int
     buckets: list[AggregationBucket]
 
+
 def get_list_of_aggregations(aggregation_class):
     return sorted(aggregation_class.schema()["properties"].keys())
 
 
 # Generic Elastic response classes.
+
 
 class ElasticResponse(BaseModel, Generic[T, A]):
     total: int
@@ -29,11 +33,13 @@ class ElasticResponse(BaseModel, Generic[T, A]):
     results: list[T]
     aggregations: A
 
+
 class ElasticDetailsResponse(BaseModel, Generic[T]):
     results: list[T]
 
 
 # Base Elastic query class.
+
 
 class SearchParams(BaseModel):
     model_config = {
@@ -50,6 +56,7 @@ class SearchParams(BaseModel):
 
 
 # Datasource definition.
+
 
 class FieldDefinition:
     def __init__(self, name: str, type: type, filterable: bool = False):
