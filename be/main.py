@@ -60,13 +60,23 @@ app.add_middleware(
 
 # Generic search methods.
 
-async def elastic_search(params, filters, index_name, aggregation_fields=None):
+async def elastic_search(index_name, params, data_class, aggregation_class):
 
     # Build the query body based on whether there is full text search.
     if params.q:
         query_body = {"multi_match": {"query": params.q, "fields": ["*"]}}
     else:
         query_body = {"match_all": {}}
+
+    # Adding filters.
+    filters = []
+    aggregation_fields=get_list_of_aggregations(aggregation_class)
+    if aggregation_fields:
+        for aggregation_field in aggregation_fields:
+            filter_value = getattr(params, aggregation_field)
+            if filter_value:
+                filters.append(
+                    {"terms": {aggregation_field: [filter_value]}})
 
     # Combine query with filters.
     search_body = {"from": params.start, "size": params.size, "query": {
@@ -94,20 +104,27 @@ async def elastic_search(params, filters, index_name, aggregation_fields=None):
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
         aggregations = response["aggregations"]
-        return total, hits, aggregations
+        # Return the results.
+        return ElasticResponse[data_class, aggregation_class](
+            total=total,
+            start=params.start,
+            size=params.size,
+            results=hits,
+            aggregations=aggregations,
+        )
 
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
-async def elastic_details(index_name, record_id):
+async def elastic_details(index_name, record_id, data_class):
     try:
         response = await app.state.es_client.search(
             index=index_name,
             q=f"_id:{urllib.parse.quote(record_id)}"
         )
         hits = [r["_source"] for r in response["hits"]["hits"]]
-        return hits
+        return ElasticDetailsResponse[data_class](results=hits)
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
@@ -119,38 +136,19 @@ async def elastic_details(index_name, record_id):
 async def mavedb_search(
     params: Annotated[MaveDBSearchParams, Query()]
     ) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
-
-    # Adding filters from the filters query parameter.
-    filters = []
-    if params.publication_year:
-        filters.append(
-            {"terms": {"publicationYear": [params.publication_year]}})
-    if params.gene_category:
-        filters.append({"terms": {"geneCategory": [params.gene_category]}})
-    if params.sequence_type:
-        filters.append({"terms": {"sequenceType": [params.sequence_type]}})
-
-    # Perform the search.
-    total, hits, aggregations = await elastic_search(
-        params=params,
-        filters=filters,
+    return await elastic_search(
         index_name="mavedb",
-        aggregation_fields=get_list_of_aggregations(MaveDBAggregationResponse),
+        params=params,
+        data_class=MaveDBData,
+        aggregation_class=MaveDBAggregationResponse,
     )
-
-    # Return the results.
-    return ElasticResponse[MaveDBData, MaveDBAggregationResponse](
-        total=total,
-        start=params.start,
-        size=params.size,
-        results=hits,
-        aggregations=aggregations,
-    )
-
 
 @app.get("/mavedb/search/{record_id}")
 async def mavedb_details(
     record_id: Annotated[str, Path(description="Record ID")]
     ) -> ElasticDetailsResponse[MaveDBData]:
-    hits = await elastic_details("mavedb", record_id)
-    return ElasticDetailsResponse[MaveDBData](results=hits)
+    return await elastic_details(
+        index_name="mavedb",
+        record_id=record_id,
+        data_class=MaveDBData,
+    )
