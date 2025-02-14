@@ -134,3 +134,28 @@ mavedb = DataSource(
     default_sort_order="desc",
 )
 MaveDBData, MaveDBAggregationResponse, MaveDBSearchParams = mavedb.generate_classes()
+
+
+# DepMap.
+depmap = DataSource(
+    name="DepMap",
+    fields=[
+        FieldDefinition(name="ModelID", type=str),
+        FieldDefinition(name="CellLineName", type=str),
+        FieldDefinition(name="OncotreeLineage", type=str, filterable=True),
+        FieldDefinition(name="OncotreePrimaryDisease", type=str),
+        FieldDefinition(name="OncotreeSubtype", type=str),
+        FieldDefinition(name="Age", type=float | None),
+        FieldDefinition(name="AgeCategory", type=str, filterable=True),
+        FieldDefinition(name="Sex", type=str, filterable=True),
+        FieldDefinition(name="PrimaryOrMetastasis", type=str, filterable=True),
+        FieldDefinition(name="SampleCollectionSite", type=str, filterable=True),
+        FieldDefinition(name="CatalogNumber", type=str),
+        FieldDefinition(name="ModelType", type=str, filterable=True),
+        FieldDefinition(name="high_dependency_genes", type=list[str]),
+    ],
+    default_sort_field="OncotreePrimaryDisease",
+    default_sort_order="asc",
+)
+
+DepMapData, DepMapAggregationResponse, DepMapSearchParams = depmap.generate_classes()
