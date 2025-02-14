@@ -15,6 +15,9 @@ from models import (
     MaveDBData,
     MaveDBSearchParams,
     MaveDBAggregationResponse,
+    DepMapData,
+    DepMapSearchParams,
+    DepMapAggregationResponse,
 )
 
 
@@ -158,4 +161,30 @@ async def mavedb_details(
         index_name="mavedb",
         record_id=record_id,
         data_class=MaveDBData,
+    )
+
+
+# DepMap.
+
+
+@app.get("/depmap/search")
+async def depmap_search(
+    params: Annotated[DepMapSearchParams, Query()],
+) -> ElasticResponse[DepMapData, DepMapAggregationResponse]:
+    return await elastic_search(
+        index_name="depmap",
+        params=params,
+        data_class=DepMapData,
+        aggregation_class=DepMapAggregationResponse,
+    )
+
+
+@app.get("/depmap/search/{record_id}")
+async def depmap_details(
+    record_id: Annotated[str, Path(description="Record ID")],
+) -> ElasticDetailsResponse[DepMapData]:
+    return await elastic_details(
+        index_name="depmap",
+        record_id=record_id,
+        data_class=DepMapData,
     )
