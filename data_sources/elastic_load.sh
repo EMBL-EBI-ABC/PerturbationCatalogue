@@ -4,19 +4,28 @@ set -euo pipefail
 export ELASTIC_ENDPOINT="$1"
 export ELASTIC_INDEX="$2"
 export JSONL_DATA="$3"
+export FIELD_PROPERTIES="$4"
 
 echo "Removing the index..."
 curl -X DELETE "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application/json"
 
 echo -e "\nCreating the index..."
-curl -X PUT "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application/json" -d'{
+curl -X PUT "${ELASTIC_ENDPOINT}/${ELASTIC_INDEX}" -H "Content-Type: application/json" -d"$(cat <<EOF
+{
   "settings": {
     "index": {
       "number_of_shards": 1,
       "number_of_replicas": 1
     }
+  },
+  "mappings": {
+    "properties": {
+      $FIELD_PROPERTIES
+    }
   }
-}'
+}
+EOF
+)"
 
 echo -e "\nPreparing the data for loading..."
 gsutil -q cp "${JSONL_DATA}" /tmp/metadata.jsonl
