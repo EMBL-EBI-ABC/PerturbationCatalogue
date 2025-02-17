@@ -68,13 +68,26 @@ footer = html.Footer(
 home_layout = html.Div(
     [
         html.Div(
-            html.Img(
-                src="https://acxngcvroo.cloudimg.io/v7/https://www.embl.org/files/wp-content/uploads/roundels.png",
-                style={"width": "100%", "background-color": "rgb(0, 112, 73, 0.8)"},
-            ),
-            className="mb-4",
+            style={"position": "relative", "text-align": "center"},
+            children=[
+                html.Img(
+                    src="https://acxngcvroo.cloudimg.io/v7/https://www.embl.org/files/wp-content/uploads/roundels.png",
+                    style={"width": "100%", "background-color": "rgb(0, 112, 73, 0.8)"},
+                ),
+                html.H1(
+                    "Perturbation Catalogue",
+                    style={
+                        "font-size": "300%",
+                        "position": "absolute",
+                        "top": "50%",
+                        "left": "50%",
+                        "transform": "translate(-50%, -50%)",
+                        "color": "white",
+                    },
+                ),
+            ],
         ),
-        html.H1("Perturbation Catalogue", className="text-center my-4"),
+        html.H1("", className="text-center my-4"),
         dbc.Container(
             [
                 dbc.Row(
