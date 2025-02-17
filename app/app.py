@@ -55,20 +55,23 @@ footer = html.Footer(
             html.Div("Powered by ", style={"display": "inline"}),
             html.Img(
                 src="/assets/embl-ebi-logo.png",
-                height="20px",
+                height="29px",
                 style={"display": "inline"},
             ),
         ],
-        className="text-center py-2",
+        className="text-center py-3",
     ),
-    className="fixed-bottom bg-dark text-white",
+    className="fixed-bottom bg-light text-dark",
 )
 
 # Home page layout
 home_layout = html.Div(
     [
         html.Div(
-            html.Img(src="/assets/banner.png", style={"width": "100%"}),
+            html.Img(
+                src="https://acxngcvroo.cloudimg.io/v7/https://www.embl.org/files/wp-content/uploads/roundels.png",
+                style={"width": "100%", "background-color": "rgb(0, 112, 73, 0.8)"},
+            ),
             className="mb-4",
         ),
         html.H1("Perturbation Catalogue", className="text-center my-4"),
