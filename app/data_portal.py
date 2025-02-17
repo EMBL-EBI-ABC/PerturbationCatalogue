@@ -1,20 +1,40 @@
 import dash
 from dash import dcc, html, Input, Output
+import dash_bootstrap_components as dbc
 import requests
 import json
 
 # Initialize the Dash app
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # Define the layout
 app.layout = html.Div(
     [
         dcc.Input(id="search", type="text", placeholder="Search...", debounce=True),
-        dcc.Input(id="size", type="number", placeholder="Page size", value=10, min=1),
-        dcc.Input(id="start", type="number", placeholder="Start", value=0, min=0),
         dcc.Dropdown(id="sequenceType", placeholder="Select sequenceType"),
         dcc.Dropdown(id="geneCategory", placeholder="Select geneCategory"),
         dcc.Dropdown(id="publicationYear", placeholder="Select publicationYear"),
+        html.Div(
+            [
+                html.Label("Items per page:"),
+                dcc.Dropdown(
+                    id="size",
+                    options=[{"label": str(i), "value": i} for i in [10, 50, 100, 200]],
+                    value=10,
+                    clearable=False,
+                ),
+                html.Span(id="pagination-info"),
+                dbc.Pagination(
+                    id="pagination",
+                    max_value=1,
+                    active_page=1,
+                    first_last=True,
+                    fully_expanded=False,
+                    previous_next=True,
+                ),
+            ],
+            style={"display": "flex", "alignItems": "center", "gap": "10px"},
+        ),
         html.Pre(id="output", style={"white-space": "pre-wrap"}),
     ]
 )
@@ -27,18 +47,22 @@ app.layout = html.Div(
         Output("sequenceType", "options"),
         Output("geneCategory", "options"),
         Output("publicationYear", "options"),
+        Output("pagination", "max_value"),
+        Output("pagination-info", "children"),
     ],
     [
         Input("search", "value"),
         Input("size", "value"),
-        Input("start", "value"),
+        Input("pagination", "active_page"),
         Input("sequenceType", "value"),
         Input("geneCategory", "value"),
         Input("publicationYear", "value"),
     ],
 )
-def fetch_data(q, size, start, sequenceType, geneCategory, publicationYear):
+def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
     base_url = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
+    start = (page - 1) * size if page else 0
+
     params = {
         k: v
         for k, v in {
@@ -53,30 +77,44 @@ def fetch_data(q, size, start, sequenceType, geneCategory, publicationYear):
     }
 
     response = requests.get(base_url, params=params)
-
     if response.status_code == 200:
         data = response.json()
-        aggregations = data.get("aggregations", {})
+        total = data.get("total", 0)
+        max_pages = max(1, (total + size - 1) // size) if total > 0 else 1
+        start_index = start + 1 if total > 0 else 0
+        end_index = min(start + size, total)
+
         sequenceType_options = [
             {"label": b["key"], "value": b["key"]}
-            for b in aggregations.get("sequenceType", {}).get("buckets", [])
+            for b in data.get("aggregations", {})
+            .get("sequenceType", {})
+            .get("buckets", [])
         ]
         geneCategory_options = [
             {"label": b["key"], "value": b["key"]}
-            for b in aggregations.get("geneCategory", {}).get("buckets", [])
+            for b in data.get("aggregations", {})
+            .get("geneCategory", {})
+            .get("buckets", [])
         ]
         publicationYear_options = [
             {"label": str(b["key"]), "value": b["key"]}
-            for b in aggregations.get("publicationYear", {}).get("buckets", [])
+            for b in data.get("aggregations", {})
+            .get("publicationYear", {})
+            .get("buckets", [])
         ]
+
+        pagination_info = f"{start_index} - {end_index} of {total}"
+
         return (
             json.dumps(data, indent=2),
             sequenceType_options,
             geneCategory_options,
             publicationYear_options,
+            max_pages,
+            pagination_info,
         )
     else:
-        return f"Error: {response.status_code}\n{response.text}", [], [], []
+        return f"Error: {response.status_code}\n{response.text}", [], [], [], 1, ""
 
 
 # Run the app
