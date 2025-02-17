@@ -26,6 +26,13 @@ app.layout = html.Div(
                                         inline=True,
                                         style={"width": "100%"},
                                     ),
+                                    dbc.Button(
+                                        "Clear",
+                                        id="clear-sequenceType",
+                                        color="secondary",
+                                        size="sm",
+                                        style={"margin-top": "10px"},
+                                    ),
                                 ]
                             )
                         ),
@@ -39,6 +46,13 @@ app.layout = html.Div(
                                         inline=True,
                                         style={"width": "100%"},
                                     ),
+                                    dbc.Button(
+                                        "Clear",
+                                        id="clear-geneCategory",
+                                        color="secondary",
+                                        size="sm",
+                                        style={"margin-top": "10px"},
+                                    ),
                                 ]
                             )
                         ),
@@ -51,6 +65,13 @@ app.layout = html.Div(
                                         options=[],
                                         inline=True,
                                         style={"width": "100%"},
+                                    ),
+                                    dbc.Button(
+                                        "Clear",
+                                        id="clear-publicationYear",
+                                        color="secondary",
+                                        size="sm",
+                                        style={"margin-top": "10px"},
                                     ),
                                 ]
                             )
@@ -233,6 +254,36 @@ def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
         )
     else:
         return [], [], [], [], [], 1, ""
+
+
+# Clearing the filters
+
+
+@app.callback(
+    [
+        Output("sequenceType", "value"),
+        Output("geneCategory", "value"),
+        Output("publicationYear", "value"),
+    ],
+    [
+        Input("clear-sequenceType", "n_clicks"),
+        Input("clear-geneCategory", "n_clicks"),
+        Input("clear-publicationYear", "n_clicks"),
+    ],
+)
+def clear_filters(clear_seq, clear_gene, clear_pub):
+    # Reset values when respective "Clear" buttons are clicked
+    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+
+    if triggered_id == "clear-sequenceType":
+        return [None, dash.no_update, dash.no_update]
+    elif triggered_id == "clear-geneCategory":
+        return [dash.no_update, None, dash.no_update]
+    elif triggered_id == "clear-publicationYear":
+        return [dash.no_update, dash.no_update, None]
+
+    # Return current values if no button was clicked
+    return [dash.no_update, dash.no_update, dash.no_update]
 
 
 # Run the app
