@@ -129,9 +129,14 @@ def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
 
         pagination_info = f"{start_index} - {end_index} of {total}"
 
-        # Dynamically generate columns based on keys in the first result (assuming all items have the same keys)
+        # Dynamically generate columns based on keys in the first result
         if data["results"]:
-            columns = [{"name": key, "id": key} for key in data["results"][0].keys()]
+            # Exclude the columns you want to hide
+            columns = [
+                {"name": key, "id": key}
+                for key in data["results"][0].keys()
+                if key not in ["shortDescription", "publicationUrl", "title"]
+            ]
             table_data = data["results"]
         else:
             columns = []
