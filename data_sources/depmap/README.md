@@ -36,5 +36,32 @@ gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/depmap"
 gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl
 
 # Ingest into Elastic.
-bash ../elastic_load.sh "${ELASTIC_ENDPOINT}" "depmap" "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl"
+bash ../elastic_load.sh \
+  "${ELASTIC_ENDPOINT}" \
+  "depmap" \
+  "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
+  '
+    "OncotreePrimaryDisease": {
+      "type": "text",
+      "fielddata": true
+    },
+    "AgeCategory": {
+      "type": "keyword"
+    },
+    "ModelType": {
+      "type": "keyword"
+    },
+    "OncotreeLineage": {
+      "type": "keyword"
+    },
+    "PrimaryOrMetastasis": {
+      "type": "keyword"
+    },
+    "SampleCollectionSite": {
+      "type": "keyword"
+    },
+    "Sex": {
+      "type": "keyword"
+    }
+  '
 ```
