@@ -13,12 +13,11 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 navbar = dbc.Navbar(
     dbc.Container(
         [
-            html.A(
-                html.I(className="bi bi-house-door", style={"color": "white"}), href="/"
-            ),
-            dbc.NavbarBrand("Home", className="ms-2", style={"color": "white"}),
             dbc.Nav(
                 [
+                    dbc.NavItem(
+                        dbc.NavLink("Home", href="/", style={"color": "white"})
+                    ),
                     dbc.NavItem(
                         dbc.NavLink(
                             "Data Portal", href="/data-portal", style={"color": "white"}
@@ -40,9 +39,9 @@ navbar = dbc.Navbar(
                         dbc.NavLink("About", href="/about", style={"color": "white"})
                     ),
                 ],
-                className="ms-auto",
             ),
-        ]
+        ],
+        className="d-flex justify-content-center",
     ),
     color="success",
     dark=True,
