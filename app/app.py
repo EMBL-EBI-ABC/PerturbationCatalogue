@@ -2,12 +2,18 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
+from data_portal import data_portal_layout, data_portal_callbacks
+
 # URLs for iframes
 DASHBOARDS_URL = "https://lookerstudio.google.com/embed/reporting/86ab32f9-151b-4f91-87eb-060a22f2f890/page/QJFZE"
 DATA_ANALYTICS_URL = "https://lookerstudio.google.com/embed/reporting/8e98079d-144b-4583-a108-844b2ed3adf7/page/6eWZE"
 ABOUT_URL = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/redoc"
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    suppress_callback_exceptions=True,
+)
 
 # Top navigation bar
 navbar = dbc.Navbar(
@@ -214,7 +220,11 @@ app.layout = html.Div(
 )
 
 
-# Callback for page routing
+# Initialise callbacks for the data portal component.
+data_portal_callbacks(app)
+
+
+# Main callbacks.
 @app.callback(dash.Output("page-content", "children"), [dash.Input("url", "pathname")])
 def display_page(pathname):
     if pathname == "/dashboards":
@@ -224,9 +234,7 @@ def display_page(pathname):
     elif pathname == "/about":
         return iframe_layout(ABOUT_URL)
     elif pathname == "/data-portal":
-        return html.Div(
-            [html.H2("Data Portal - Placeholder")]
-        )  # To be implemented later
+        return data_portal_layout
     return home_layout
 
 

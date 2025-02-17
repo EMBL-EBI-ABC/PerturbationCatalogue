@@ -4,11 +4,9 @@ import dash_bootstrap_components as dbc
 from dash.dash_table import DataTable
 import requests
 
-# Initialize the Dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # Define the layout
-app.layout = html.Div(
+data_portal_layout = html.Div(
     [
         dbc.Row(
             [
@@ -141,7 +139,7 @@ app.layout = html.Div(
                                     "whiteSpace": "normal",  # Wrap text inside cells
                                     "textAlign": "left",  # Left-align text inside cells
                                     "padding": "5px",  # Add padding for better readability
-                                    "fontSize": "12px",  # Smaller font size for the table
+                                    "fontSize": "13px",  # Smaller font size for the table
                                 },
                                 style_data_conditional=[
                                     {
@@ -163,128 +161,131 @@ app.layout = html.Div(
 )
 
 
-# API call function
-@app.callback(
-    [
-        Output("data-table", "columns"),
-        Output("data-table", "data"),
-        Output("sequenceType", "options"),
-        Output("geneCategory", "options"),
-        Output("publicationYear", "options"),
-        Output("pagination", "max_value"),
-        Output("pagination-info", "children"),
-    ],
-    [
-        Input("search", "value"),
-        Input("size", "value"),
-        Input("pagination", "active_page"),
-        Input("sequenceType", "value"),
-        Input("geneCategory", "value"),
-        Input("publicationYear", "value"),
-    ],
-)
-def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
-    base_url = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
-    start = (page - 1) * size if page else 0
+def data_portal_callbacks(app):
 
-    params = {
-        k: v
-        for k, v in {
-            "q": q,
-            "size": size,
-            "start": start,
-            "sequenceType": sequenceType,
-            "geneCategory": geneCategory,
-            "publicationYear": publicationYear,
-        }.items()
-        if v not in [None, ""]
-    }
+    # API call function
+    @app.callback(
+        [
+            Output("data-table", "columns"),
+            Output("data-table", "data"),
+            Output("sequenceType", "options"),
+            Output("geneCategory", "options"),
+            Output("publicationYear", "options"),
+            Output("pagination", "max_value"),
+            Output("pagination-info", "children"),
+        ],
+        [
+            Input("search", "value"),
+            Input("size", "value"),
+            Input("pagination", "active_page"),
+            Input("sequenceType", "value"),
+            Input("geneCategory", "value"),
+            Input("publicationYear", "value"),
+        ],
+    )
+    def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
+        base_url = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
+        start = (page - 1) * size if page else 0
 
-    response = requests.get(base_url, params=params)
-    if response.status_code == 200:
-        data = response.json()
-        total = data.get("total", 0)
-        max_pages = max(1, (total + size - 1) // size) if total > 0 else 1
-        start_index = start + 1 if total > 0 else 0
-        end_index = min(start + size, total)
+        params = {
+            k: v
+            for k, v in {
+                "q": q,
+                "size": size,
+                "start": start,
+                "sequenceType": sequenceType,
+                "geneCategory": geneCategory,
+                "publicationYear": publicationYear,
+            }.items()
+            if v not in [None, ""]
+        }
 
-        sequenceType_options = [
-            {"label": b["key"], "value": b["key"]}
-            for b in data.get("aggregations", {})
-            .get("sequenceType", {})
-            .get("buckets", [])
-        ]
-        geneCategory_options = [
-            {"label": b["key"], "value": b["key"]}
-            for b in data.get("aggregations", {})
-            .get("geneCategory", {})
-            .get("buckets", [])
-        ]
-        publicationYear_options = [
-            {"label": str(b["key"]), "value": b["key"]}
-            for b in data.get("aggregations", {})
-            .get("publicationYear", {})
-            .get("buckets", [])
-        ]
+        response = requests.get(base_url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            total = data.get("total", 0)
+            max_pages = max(1, (total + size - 1) // size) if total > 0 else 1
+            start_index = start + 1 if total > 0 else 0
+            end_index = min(start + size, total)
 
-        pagination_info = f"{start_index} - {end_index} of {total}"
-
-        # Dynamically generate columns based on keys in the first result
-        if data["results"]:
-            # Exclude the columns you want to hide
-            columns = [
-                {"name": key, "id": key}
-                for key in data["results"][0].keys()
-                if key not in ["shortDescription", "publicationUrl", "title"]
+            sequenceType_options = [
+                {"label": b["key"], "value": b["key"]}
+                for b in data.get("aggregations", {})
+                .get("sequenceType", {})
+                .get("buckets", [])
             ]
-            table_data = data["results"]
+            geneCategory_options = [
+                {"label": b["key"], "value": b["key"]}
+                for b in data.get("aggregations", {})
+                .get("geneCategory", {})
+                .get("buckets", [])
+            ]
+            publicationYear_options = [
+                {"label": str(b["key"]), "value": b["key"]}
+                for b in data.get("aggregations", {})
+                .get("publicationYear", {})
+                .get("buckets", [])
+            ]
+
+            pagination_info = f"{start_index} - {end_index} of {total}"
+
+            # Dynamically generate columns based on keys in the first result
+            if data["results"]:
+                # Exclude the columns you want to hide
+                columns = [
+                    {"name": key, "id": key}
+                    for key in data["results"][0].keys()
+                    if key not in ["shortDescription", "publicationUrl", "title"]
+                ]
+                table_data = data["results"]
+            else:
+                columns = []
+                table_data = []
+
+            return (
+                columns,
+                table_data,
+                sequenceType_options,
+                geneCategory_options,
+                publicationYear_options,
+                max_pages,
+                pagination_info,
+            )
         else:
-            columns = []
-            table_data = []
+            return [], [], [], [], [], 1, ""
 
-        return (
-            columns,
-            table_data,
-            sequenceType_options,
-            geneCategory_options,
-            publicationYear_options,
-            max_pages,
-            pagination_info,
-        )
-    else:
-        return [], [], [], [], [], 1, ""
+    # Clearing the filters
 
+    @app.callback(
+        [
+            Output("sequenceType", "value"),
+            Output("geneCategory", "value"),
+            Output("publicationYear", "value"),
+        ],
+        [
+            Input("clear-sequenceType", "n_clicks"),
+            Input("clear-geneCategory", "n_clicks"),
+            Input("clear-publicationYear", "n_clicks"),
+        ],
+    )
+    def clear_filters(clear_seq, clear_gene, clear_pub):
+        # Reset values when respective "Clear" buttons are clicked
+        triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
-# Clearing the filters
+        if triggered_id == "clear-sequenceType":
+            return [None, dash.no_update, dash.no_update]
+        elif triggered_id == "clear-geneCategory":
+            return [dash.no_update, None, dash.no_update]
+        elif triggered_id == "clear-publicationYear":
+            return [dash.no_update, dash.no_update, None]
 
-
-@app.callback(
-    [
-        Output("sequenceType", "value"),
-        Output("geneCategory", "value"),
-        Output("publicationYear", "value"),
-    ],
-    [
-        Input("clear-sequenceType", "n_clicks"),
-        Input("clear-geneCategory", "n_clicks"),
-        Input("clear-publicationYear", "n_clicks"),
-    ],
-)
-def clear_filters(clear_seq, clear_gene, clear_pub):
-    # Reset values when respective "Clear" buttons are clicked
-    triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-
-    if triggered_id == "clear-sequenceType":
-        return [None, dash.no_update, dash.no_update]
-    elif triggered_id == "clear-geneCategory":
-        return [dash.no_update, None, dash.no_update]
-    elif triggered_id == "clear-publicationYear":
-        return [dash.no_update, dash.no_update, None]
-
-    # Return current values if no button was clicked
-    return [dash.no_update, dash.no_update, dash.no_update]
+        # Return current values if no button was clicked
+        return [dash.no_update, dash.no_update, dash.no_update]
 
 
 # Run the app
 if __name__ == "__main__":
+    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+    app.layout = data_portal_layout
+    data_portal_callbacks(app)
     app.run_server(debug=True)
