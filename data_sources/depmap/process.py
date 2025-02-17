@@ -77,7 +77,19 @@ def main():
     ]
     df = df[columns_to_keep]
 
-    # Step 10: Save to JSONL format
+    # Step 10: Replace null values with "Unknown"
+    # In source data, missing values are sometimes null and sometimes "Unknown". This
+    # step fixes the inconsistency.
+    na_values = {
+        # Categorical fields; in alignment with other values in the field.
+        "SampleCollectionSite": "Unavailable",
+        "PrimaryOrMetastasis": "Unavailable",
+        # This is not categorical, so better to simply keep it empty when null.
+        "CatalogNumber": "",
+    }
+    df.fillna(value=na_values, inplace=True)
+
+    # Step 11: Save to JSONL format
     df.to_json(args.output_filename, orient="records", lines=True)
 
 
