@@ -1,6 +1,7 @@
 import dash
 from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
+from dash.dash_table import DataTable
 import requests
 import json
 
@@ -35,7 +36,9 @@ app.layout = html.Div(
             ],
             style={"display": "flex", "alignItems": "center", "gap": "10px"},
         ),
-        html.Pre(id="output", style={"white-space": "pre-wrap"}),
+        DataTable(
+            id="data-table", style_table={"height": "400px", "overflowY": "auto"}
+        ),
     ]
 )
 
@@ -43,7 +46,8 @@ app.layout = html.Div(
 # API call function
 @app.callback(
     [
-        Output("output", "children"),
+        Output("data-table", "columns"),
+        Output("data-table", "data"),
         Output("sequenceType", "options"),
         Output("geneCategory", "options"),
         Output("publicationYear", "options"),
@@ -105,8 +109,17 @@ def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
 
         pagination_info = f"{start_index} - {end_index} of {total}"
 
+        # Dynamically generate columns based on keys in the first result (assuming all items have the same keys)
+        if data["results"]:
+            columns = [{"name": key, "id": key} for key in data["results"][0].keys()]
+            table_data = data["results"]
+        else:
+            columns = []
+            table_data = []
+
         return (
-            json.dumps(data, indent=2),
+            columns,
+            table_data,
             sequenceType_options,
             geneCategory_options,
             publicationYear_options,
@@ -114,7 +127,7 @@ def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
             pagination_info,
         )
     else:
-        return f"Error: {response.status_code}\n{response.text}", [], [], [], 1, ""
+        return [], [], [], [], [], 1, ""
 
 
 # Run the app
