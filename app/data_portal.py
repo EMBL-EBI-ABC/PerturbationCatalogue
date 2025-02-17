@@ -13,103 +13,131 @@ app.layout = html.Div(
     [
         dbc.Row(
             [
+                # Left column for filter cards
                 dbc.Col(
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                html.H5("Filters", className="card-title"),
-                                dcc.Dropdown(
-                                    id="sequenceType",
-                                    placeholder="Select sequenceType",
-                                    style={"width": "100%"},
-                                ),
-                                dcc.Dropdown(
-                                    id="geneCategory",
-                                    placeholder="Select geneCategory",
-                                    style={"width": "100%"},
-                                ),
-                                dcc.Dropdown(
-                                    id="publicationYear",
-                                    placeholder="Select publicationYear",
-                                    style={"width": "100%"},
-                                ),
-                            ]
-                        )
-                    ),
-                    width=3,  # 20% width
-                ),
-                dbc.Col(
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                dcc.Input(
-                                    id="search",
-                                    type="text",
-                                    placeholder="Search...",
-                                    debounce=True,
-                                    style={"width": "100%", "margin-bottom": "10px"},
-                                ),
-                                html.Div(
-                                    [
-                                        html.Label("Items per page:"),
-                                        dcc.Dropdown(
-                                            id="size",
-                                            options=[
-                                                {"label": str(i), "value": i}
-                                                for i in [10, 50, 100, 200]
-                                            ],
-                                            value=10,
-                                            clearable=False,
-                                            style={"width": "auto"},
-                                        ),
-                                        html.Span(id="pagination-info"),
-                                    ],
-                                    style={
-                                        "display": "flex",
-                                        "alignItems": "center",
-                                        "gap": "10px",
-                                    },
-                                ),
-                                dbc.Pagination(
-                                    id="pagination",
-                                    max_value=1,
-                                    active_page=1,
-                                    first_last=True,
-                                    fully_expanded=False,
-                                    previous_next=True,
-                                    style={"margin-top": "10px"},
-                                ),
-                                html.Div(
-                                    DataTable(
-                                        id="data-table",
-                                        columns=[],  # Columns will be updated dynamically
-                                        data=[],  # Data will be updated dynamically
-                                        style_table={
-                                            "height": "100%",
-                                            "overflowY": "auto",
-                                            "width": "100%",
-                                        },
-                                        style_cell={
-                                            "whiteSpace": "normal",  # Wrap text inside cells
-                                            "textAlign": "left",  # Left-align text inside cells
-                                            "padding": "5px",  # Add padding for better readability
-                                        },
-                                        style_data_conditional=[
-                                            {
-                                                "if": {"column_id": col},
-                                                "textAlign": "left",
-                                            }
-                                            for col in []  # Apply to all columns
-                                        ],
-                                    )
-                                ),
-                            ]
+                    [
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    html.H5("Sequence Type", className="card-title"),
+                                    dbc.RadioItems(
+                                        id="sequenceType",
+                                        options=[],
+                                        inline=True,
+                                        style={"width": "100%"},
+                                    ),
+                                ]
+                            )
                         ),
-                        style={"padding": "20px"},
-                    ),
-                    width=9,  # 80% width
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    html.H5("Gene Category", className="card-title"),
+                                    dbc.RadioItems(
+                                        id="geneCategory",
+                                        options=[],
+                                        inline=True,
+                                        style={"width": "100%"},
+                                    ),
+                                ]
+                            )
+                        ),
+                        dbc.Card(
+                            dbc.CardBody(
+                                [
+                                    html.H5("Publication Year", className="card-title"),
+                                    dbc.RadioItems(
+                                        id="publicationYear",
+                                        options=[],
+                                        inline=True,
+                                        style={"width": "100%"},
+                                    ),
+                                ]
+                            )
+                        ),
+                    ],
+                    width=3,  # 20% width for filters
+                    style={
+                        "padding": "10px",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "gap": "10px",
+                    },
                 ),
-            ]
+                # Right column for table and pagination controls
+                dbc.Col(
+                    [
+                        dcc.Input(
+                            id="search",
+                            type="text",
+                            placeholder="Search...",
+                            debounce=True,
+                            style={"width": "100%", "margin-bottom": "10px"},
+                        ),
+                        html.Div(
+                            [
+                                html.Label("Items per page:"),
+                                dcc.Dropdown(
+                                    id="size",
+                                    options=[
+                                        {"label": str(i), "value": i}
+                                        for i in [10, 50, 100, 200]
+                                    ],
+                                    value=10,
+                                    clearable=False,
+                                    style={"width": "auto"},
+                                ),
+                                html.Span(id="pagination-info"),
+                            ],
+                            style={
+                                "display": "flex",
+                                "alignItems": "center",
+                                "gap": "10px",
+                            },
+                        ),
+                        dbc.Pagination(
+                            id="pagination",
+                            max_value=1,
+                            active_page=1,
+                            first_last=True,
+                            fully_expanded=False,
+                            previous_next=True,
+                            style={
+                                "margin-top": "10px",
+                                "color": "white",
+                            },
+                        ),
+                        html.Div(
+                            DataTable(
+                                id="data-table",
+                                columns=[],  # Columns will be updated dynamically
+                                data=[],  # Data will be updated dynamically
+                                style_table={
+                                    "height": "100%",
+                                    "overflowY": "auto",
+                                    "width": "100%",
+                                },
+                                style_cell={
+                                    "whiteSpace": "normal",  # Wrap text inside cells
+                                    "textAlign": "left",  # Left-align text inside cells
+                                    "padding": "5px",  # Add padding for better readability
+                                    "fontSize": "12px",  # Smaller font size for the table
+                                },
+                                style_data_conditional=[
+                                    {
+                                        "if": {"column_id": col},
+                                        "textAlign": "left",
+                                    }
+                                    for col in []  # Apply to all columns
+                                ],
+                            )
+                        ),
+                    ],
+                    width=9,  # 80% width for table and pagination controls
+                    style={"padding": "10px"},
+                ),
+            ],
+            className="g-0",  # Remove gutters
         ),
     ]
 )
