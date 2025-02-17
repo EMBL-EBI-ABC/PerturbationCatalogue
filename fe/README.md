@@ -1,6 +1,31 @@
-# Fe
+# Perturbation Catalogue front-end
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.0.5.
+This project was originally generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.0.5.
+
+## Google Cloud Run deployment
+1. Go to https://console.cloud.google.com/run.
+1. Deploy container → Service → Continuously deploy from a repository (source or function).
+1. Set up cloud build.
+1. Choose this repository → Next.
+1. Build type: Dockerfile; Source location: `/fe/Dockerfile` → Save.
+1. Service name: `perturbation-catalogue-fe`.
+1. Choose region.
+1. Pick: Allow unauthenticated invokations.
+1. Pick: CPU is only allocated during request processing.
+1. Container(s), volumes, networking, security → Container(s) → Container port: 80
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
+   - FASTAPI_URL
+1. Click: Create.
+
+The deployment can then be accessed at the URL shown on the build page.
+
+Set up path trigger:
+
+1. Go to https://console.cloud.google.com/cloud-build/triggers.
+1. Edit the perturbation-catalogue-fe trigger.
+1. Click on “Show included and ignored files filters”.
+1. Set “Included files filters (glob)” to `fe/**`.
+1. Clik on “Save”.
 
 ## Development server
 
