@@ -5,7 +5,6 @@ from dash.dash_table import DataTable
 import requests
 
 
-# Define the layout
 data_portal_layout = html.Div(
     [
         dbc.Row(
@@ -74,12 +73,12 @@ data_portal_layout = html.Div(
                             )
                         ),
                     ],
-                    width=3,  # 20% width for filters
+                    width=2,
                     style={
-                        "padding": "10px",
+                        "padding": "30px 0px 0px 20px",  # Increased outer padding for more space
                         "display": "flex",
                         "flexDirection": "column",
-                        "gap": "10px",
+                        "gap": "12px",  # Reduced gap between cards
                     },
                 ),
                 # Right column for table and pagination controls
@@ -90,7 +89,10 @@ data_portal_layout = html.Div(
                             type="text",
                             placeholder="Search...",
                             debounce=True,
-                            style={"width": "100%", "margin-bottom": "10px"},
+                            style={
+                                "width": "100%",
+                                "margin-bottom": "15px",
+                            },  # Reduced margin bottom
                         ),
                         html.Div(
                             [
@@ -110,7 +112,7 @@ data_portal_layout = html.Div(
                             style={
                                 "display": "flex",
                                 "alignItems": "center",
-                                "gap": "10px",
+                                "gap": "12px",  # Slightly reduced gap between controls
                             },
                         ),
                         dbc.Pagination(
@@ -121,7 +123,7 @@ data_portal_layout = html.Div(
                             fully_expanded=False,
                             previous_next=True,
                             style={
-                                "margin-top": "10px",
+                                "margin-top": "15px",  # Consistent margin for pagination
                                 "color": "white",
                             },
                         ),
@@ -139,7 +141,8 @@ data_portal_layout = html.Div(
                                     "whiteSpace": "normal",  # Wrap text inside cells
                                     "textAlign": "left",  # Left-align text inside cells
                                     "padding": "5px",  # Add padding for better readability
-                                    "fontSize": "13px",  # Smaller font size for the table
+                                    # "fontSize": "13px",  # Smaller font size for the table
+                                    "fontFamily": "system-ui",  # Set font to system UI
                                 },
                                 style_data_conditional=[
                                     {
@@ -151,8 +154,10 @@ data_portal_layout = html.Div(
                             )
                         ),
                     ],
-                    width=9,  # 80% width for table and pagination controls
-                    style={"padding": "10px"},
+                    width=10,  # 80% width for table and pagination controls
+                    style={
+                        "padding": "32px 25px 100px 25px"
+                    },  # Increased outer padding for more space
                 ),
             ],
             className="g-0",  # Remove gutters
