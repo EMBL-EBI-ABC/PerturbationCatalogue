@@ -22,29 +22,52 @@ navbar = dbc.Navbar(
             dbc.Nav(
                 [
                     dbc.NavItem(
-                        dbc.NavLink("Home", href="/", style={"color": "white"})
-                    ),
-                    dbc.NavItem(
                         dbc.NavLink(
-                            "Data Portal", href="/data-portal", style={"color": "white"}
+                            "Home",
+                            href="/",
+                            id="nav-home",
+                            style={"color": "white"},
+                            className="nav-link-custom",  # Add a custom class for styling
                         )
                     ),
                     dbc.NavItem(
                         dbc.NavLink(
-                            "Dashboards", href="/dashboards", style={"color": "white"}
+                            "Data Portal",
+                            href="/data-portal",
+                            id="nav-data-portal",
+                            style={"color": "white"},
+                            className="nav-link-custom",
+                        )
+                    ),
+                    dbc.NavItem(
+                        dbc.NavLink(
+                            "Dashboards",
+                            href="/dashboards",
+                            id="nav-dashboards",
+                            style={"color": "white"},
+                            className="nav-link-custom",
                         )
                     ),
                     dbc.NavItem(
                         dbc.NavLink(
                             "Data Analytics",
                             href="/data-analytics",
+                            id="nav-data-analytics",
                             style={"color": "white"},
+                            className="nav-link-custom",
                         )
                     ),
                     dbc.NavItem(
-                        dbc.NavLink("About", href="/about", style={"color": "white"})
+                        dbc.NavLink(
+                            "About",
+                            href="/about",
+                            id="nav-about",
+                            style={"color": "white"},
+                            className="nav-link-custom",
+                        )
                     ),
                 ],
+                className="ml-auto",
             ),
         ],
         className="d-flex justify-content-center",
@@ -53,6 +76,7 @@ navbar = dbc.Navbar(
     dark=True,
     className="fixed-top",
 )
+
 
 # Footer
 footer = html.Footer(
@@ -224,18 +248,79 @@ app.layout = html.Div(
 data_portal_callbacks(app)
 
 
-# Main callbacks.
-@app.callback(dash.Output("page-content", "children"), [dash.Input("url", "pathname")])
+# Callback to update page content and navbar active state
+@app.callback(
+    [
+        dash.Output("page-content", "children"),
+        dash.Output("nav-home", "style"),
+        dash.Output("nav-data-portal", "style"),
+        dash.Output("nav-dashboards", "style"),
+        dash.Output("nav-data-analytics", "style"),
+        dash.Output("nav-about", "style"),
+    ],
+    [dash.Input("url", "pathname")],
+)
 def display_page(pathname):
+    # Define the default style (non-active)
+    default_style = {"color": "white"}
+
+    # Define the active style (bold text)
+    active_style = {"color": "white", "fontWeight": "bold"}
+
+    # Determine which page is active
+    home_style = active_style if pathname == "/" else default_style
+    data_portal_style = active_style if pathname == "/data-portal" else default_style
+    dashboards_style = active_style if pathname == "/dashboards" else default_style
+    data_analytics_style = (
+        active_style if pathname == "/data-analytics" else default_style
+    )
+    about_style = active_style if pathname == "/about" else default_style
+
+    # Return the corresponding layout and styles
     if pathname == "/dashboards":
-        return iframe_layout(DASHBOARDS_URL)
+        return (
+            iframe_layout(DASHBOARDS_URL),
+            home_style,
+            data_portal_style,
+            dashboards_style,
+            data_analytics_style,
+            about_style,
+        )
     elif pathname == "/data-analytics":
-        return iframe_layout(DATA_ANALYTICS_URL)
+        return (
+            iframe_layout(DATA_ANALYTICS_URL),
+            home_style,
+            data_portal_style,
+            dashboards_style,
+            data_analytics_style,
+            about_style,
+        )
     elif pathname == "/about":
-        return iframe_layout(ABOUT_URL)
+        return (
+            iframe_layout(ABOUT_URL),
+            home_style,
+            data_portal_style,
+            dashboards_style,
+            data_analytics_style,
+            about_style,
+        )
     elif pathname == "/data-portal":
-        return data_portal_layout
-    return home_layout
+        return (
+            data_portal_layout,
+            home_style,
+            data_portal_style,
+            dashboards_style,
+            data_analytics_style,
+            about_style,
+        )
+    return (
+        home_layout,
+        home_style,
+        data_portal_style,
+        dashboards_style,
+        data_analytics_style,
+        about_style,
+    )
 
 
 if __name__ == "__main__":
