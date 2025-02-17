@@ -38,25 +38,20 @@ app.layout = html.Div(
         ),
         DataTable(
             id="data-table",
-            style_table={
-                "width": "100%",
-                "maxWidth": "100%",
-                "overflowX": "auto",  # Allow for table overflow if needed, no horizontal scroll
-            },
+            columns=[],  # Columns will be updated dynamically
+            data=[],  # Data will be updated dynamically
+            style_table={"height": "100%", "overflowY": "auto", "width": "100%"},
             style_cell={
-                "whiteSpace": "normal",  # Ensures text wraps in cells
-                "textOverflow": "ellipsis",  # Ensures ellipsis for overflow
-                "maxWidth": "200px",  # Set a max width for each cell (optional)
+                "whiteSpace": "normal",  # Wrap text inside cells
+                "textAlign": "left",  # Left-align text inside cells
+                "padding": "5px",  # Add padding for better readability
             },
-            style_header={"textAlign": "center"},
-            style_data={"whiteSpace": "normal"},
-            style_cell_conditional=[
+            style_data_conditional=[
                 {
-                    "if": {
-                        "column_id": "column_name"
-                    },  # Replace with actual column names if needed
-                    "textAlign": "center",
+                    "if": {"column_id": col},
+                    "textAlign": "left",
                 }
+                for col in []  # Apply to all columns
             ],
         ),
     ]
