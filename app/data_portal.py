@@ -29,7 +29,7 @@ app.layout = html.Div(
                                     dbc.Button(
                                         "Clear",
                                         id="clear-sequenceType",
-                                        color="secondary",
+                                        color="success",
                                         size="sm",
                                         style={"margin-top": "10px"},
                                     ),
@@ -49,7 +49,7 @@ app.layout = html.Div(
                                     dbc.Button(
                                         "Clear",
                                         id="clear-geneCategory",
-                                        color="secondary",
+                                        color="success",
                                         size="sm",
                                         style={"margin-top": "10px"},
                                     ),
@@ -69,7 +69,7 @@ app.layout = html.Div(
                                     dbc.Button(
                                         "Clear",
                                         id="clear-publicationYear",
-                                        color="secondary",
+                                        color="success",
                                         size="sm",
                                         style={"margin-top": "10px"},
                                     ),
