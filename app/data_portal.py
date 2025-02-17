@@ -11,48 +11,105 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 # Define the layout
 app.layout = html.Div(
     [
-        dcc.Input(id="search", type="text", placeholder="Search...", debounce=True),
-        dcc.Dropdown(id="sequenceType", placeholder="Select sequenceType"),
-        dcc.Dropdown(id="geneCategory", placeholder="Select geneCategory"),
-        dcc.Dropdown(id="publicationYear", placeholder="Select publicationYear"),
-        html.Div(
+        dbc.Row(
             [
-                html.Label("Items per page:"),
-                dcc.Dropdown(
-                    id="size",
-                    options=[{"label": str(i), "value": i} for i in [10, 50, 100, 200]],
-                    value=10,
-                    clearable=False,
+                dbc.Col(
+                    dbc.Card(
+                        dbc.CardBody(
+                            [
+                                html.H5("Filters", className="card-title"),
+                                dcc.Dropdown(
+                                    id="sequenceType",
+                                    placeholder="Select sequenceType",
+                                    style={"width": "100%"},
+                                ),
+                                dcc.Dropdown(
+                                    id="geneCategory",
+                                    placeholder="Select geneCategory",
+                                    style={"width": "100%"},
+                                ),
+                                dcc.Dropdown(
+                                    id="publicationYear",
+                                    placeholder="Select publicationYear",
+                                    style={"width": "100%"},
+                                ),
+                            ]
+                        )
+                    ),
+                    width=3,  # 20% width
                 ),
-                html.Span(id="pagination-info"),
-                dbc.Pagination(
-                    id="pagination",
-                    max_value=1,
-                    active_page=1,
-                    first_last=True,
-                    fully_expanded=False,
-                    previous_next=True,
+                dbc.Col(
+                    dbc.Card(
+                        dbc.CardBody(
+                            [
+                                dcc.Input(
+                                    id="search",
+                                    type="text",
+                                    placeholder="Search...",
+                                    debounce=True,
+                                    style={"width": "100%", "margin-bottom": "10px"},
+                                ),
+                                html.Div(
+                                    [
+                                        html.Label("Items per page:"),
+                                        dcc.Dropdown(
+                                            id="size",
+                                            options=[
+                                                {"label": str(i), "value": i}
+                                                for i in [10, 50, 100, 200]
+                                            ],
+                                            value=10,
+                                            clearable=False,
+                                            style={"width": "auto"},
+                                        ),
+                                        html.Span(id="pagination-info"),
+                                    ],
+                                    style={
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "gap": "10px",
+                                    },
+                                ),
+                                dbc.Pagination(
+                                    id="pagination",
+                                    max_value=1,
+                                    active_page=1,
+                                    first_last=True,
+                                    fully_expanded=False,
+                                    previous_next=True,
+                                    style={"margin-top": "10px"},
+                                ),
+                                html.Div(
+                                    DataTable(
+                                        id="data-table",
+                                        columns=[],  # Columns will be updated dynamically
+                                        data=[],  # Data will be updated dynamically
+                                        style_table={
+                                            "height": "100%",
+                                            "overflowY": "auto",
+                                            "width": "100%",
+                                        },
+                                        style_cell={
+                                            "whiteSpace": "normal",  # Wrap text inside cells
+                                            "textAlign": "left",  # Left-align text inside cells
+                                            "padding": "5px",  # Add padding for better readability
+                                        },
+                                        style_data_conditional=[
+                                            {
+                                                "if": {"column_id": col},
+                                                "textAlign": "left",
+                                            }
+                                            for col in []  # Apply to all columns
+                                        ],
+                                    )
+                                ),
+                            ]
+                        ),
+                        style={"padding": "20px"},
+                    ),
+                    width=9,  # 80% width
                 ),
-            ],
-            style={"display": "flex", "alignItems": "center", "gap": "10px"},
-        ),
-        DataTable(
-            id="data-table",
-            columns=[],  # Columns will be updated dynamically
-            data=[],  # Data will be updated dynamically
-            style_table={"height": "100%", "overflowY": "auto", "width": "100%"},
-            style_cell={
-                "whiteSpace": "normal",  # Wrap text inside cells
-                "textAlign": "left",  # Left-align text inside cells
-                "padding": "5px",  # Add padding for better readability
-            },
-            style_data_conditional=[
-                {
-                    "if": {"column_id": col},
-                    "textAlign": "left",
-                }
-                for col in []  # Apply to all columns
-            ],
+            ]
         ),
     ]
 )
