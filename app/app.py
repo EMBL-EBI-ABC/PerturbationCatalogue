@@ -253,12 +253,12 @@ def iframe_layout(url):
                 src=url,
                 style={
                     "width": "100%",
-                    "height": "calc(100vh - 100px)",
+                    "height": "calc(100vh - 130px)",
                     "border": "none",
                 },
             )
         ],
-        className="mt-5",
+        className="mt-0",
     )
 
 

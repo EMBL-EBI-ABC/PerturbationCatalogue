@@ -144,7 +144,7 @@ data_portal_layout = html.Div(
                     md=8,
                     sm=12,
                     xs=12,
-                    style={"padding": "32px 25px 100px 25px"},
+                    style={"padding": "32px 25px 25px 25px"},
                 ),
             ],
             className="g-0",
