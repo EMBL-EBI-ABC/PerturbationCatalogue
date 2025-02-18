@@ -5,6 +5,7 @@ from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 import cookie_banner
+import google_analytics
 import data_portal
 
 # URLs for iframes.
@@ -20,37 +21,11 @@ app = dash.Dash(
 
 # Initialise callbacks for external components. This ensures that interactivity defined
 # in the sub-modules can work across the app.
-# cookie_banner.register_callbacks(app)
+cookie_banner.register_callbacks(app)
 data_portal.register_callbacks(app)
 
-app.index_string = """
-<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-        <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-2TM7RP1SB5"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-
-            gtag('config', 'G-2TM7RP1SB5');
-        </script>
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>
-"""
+# Inject Google Analytics scripts.
+app.index_string = google_analytics.inject
 
 # Define app pages.
 Page = namedtuple("Page", ["name", "selector", "button", "description", "resolver"])
