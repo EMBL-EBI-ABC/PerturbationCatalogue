@@ -316,7 +316,7 @@ def data_portal_callbacks(app):
                 .get("buckets", [])
             ]
 
-            pagination_info = f"{start_index} - {end_index} of {total}"
+            pagination_info = f"{start_index} – {end_index} of {total}"
 
             if data["results"]:
                 columns = [
