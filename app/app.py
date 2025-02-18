@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 import cookie_banner
 import google_analytics
 import data_portal
+import home_page
 
 # URLs for iframes.
 DASHBOARDS_URL = "https://lookerstudio.google.com/embed/reporting/86ab32f9-151b-4f91-87eb-060a22f2f890/page/QJFZE"
@@ -35,7 +36,7 @@ pages = [
         selector="home",
         button=None,
         description=None,
-        resolver=lambda url: home_layout,
+        resolver=lambda url: home_page.layout(pages),
     ),
     Page(
         name="Data Portal",
@@ -108,62 +109,6 @@ footer = html.Footer(
     className="bg-light text-dark",
 )
 
-# Home page layout.
-home_layout = html.Div(
-    [
-        html.Div(
-            style={"position": "relative", "text-align": "center"},
-            children=[
-                html.Img(
-                    src="https://acxngcvroo.cloudimg.io/v7/https://www.embl.org/files/wp-content/uploads/roundels.png",
-                    style={"width": "100%", "background-color": "rgb(0, 112, 73, 0.8)"},
-                ),
-                html.H1(
-                    "Perturbation Catalogue",
-                    style={
-                        "font-size": "300%",
-                        "position": "absolute",
-                        "top": "50%",
-                        "left": "50%",
-                        "transform": "translate(-50%, -50%)",
-                        "color": "white",
-                    },
-                ),
-            ],
-        ),
-        html.H1("", className="text-center my-4"),
-        dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            html.H5(page.name),
-                                            html.P(page.description),
-                                            dbc.Button(
-                                                page.button,
-                                                href=f"/{page.selector}",
-                                                color="success",
-                                            ),
-                                        ]
-                                    )
-                                ]
-                            ),
-                            md=4,
-                            className="mb-4",
-                        )
-                        for page in pages
-                        if page.button is not None
-                    ],
-                ),
-            ]
-        ),
-    ]
-)
-
 
 # Layout for iframe-based pages.
 def iframe_layout(url):
@@ -230,7 +175,7 @@ def display_page(pathname):
     }
 
     # Determine the layout to return based on the pathname.
-    layout = home_layout
+    layout = home_page.layout(pages)
     for page in pages:
         if pathname.startswith("/" + page.selector):
             layout = page.resolver(pathname)
