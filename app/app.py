@@ -55,6 +55,8 @@ pages = [
     Page(name="Data Analytics", selector="data-analytics"),
     Page(name="About", selector="about"),
 ]
+
+# Top navigation bar.
 navbar = dbc.Navbar(
     dbc.Container(
         [
@@ -62,62 +64,24 @@ navbar = dbc.Navbar(
                 [
                     dbc.NavItem(
                         dbc.NavLink(
-                            "Home",
-                            href="/",
-                            id="nav-home",
-                            style={"color": "white"},
-                            className="nav-link-custom",  # Add a custom class for styling
-                        )
-                    ),
-                    dbc.NavItem(
-                        dbc.NavLink(
-                            "Data Portal",
-                            href="/data-portal",
-                            id="nav-data-portal",
+                            page.name,
+                            href=f"/{page.selector}",
+                            id=f"nav-{page.selector}",
                             style={"color": "white"},
                             className="nav-link-custom",
                         )
-                    ),
-                    dbc.NavItem(
-                        dbc.NavLink(
-                            "Dashboards",
-                            href="/dashboards",
-                            id="nav-dashboards",
-                            style={"color": "white"},
-                            className="nav-link-custom",
-                        )
-                    ),
-                    dbc.NavItem(
-                        dbc.NavLink(
-                            "Data Analytics",
-                            href="/data-analytics",
-                            id="nav-data-analytics",
-                            style={"color": "white"},
-                            className="nav-link-custom",
-                        )
-                    ),
-                    dbc.NavItem(
-                        dbc.NavLink(
-                            "About",
-                            href="/about",
-                            id="nav-about",
-                            style={"color": "white"},
-                            className="nav-link-custom",
-                        )
-                    ),
+                    )
+                    for page in pages
                 ],
-                className="ml-auto",
             ),
         ],
-        className="d-flex justify-content-center",
+        className="justify-content-center",
     ),
     color="success",
-    dark=True,
-    className="sticky-top",  # Use sticky-top for better responsiveness
+    className="sticky-top",
 )
 
-
-# Footer
+# Footer.
 footer = html.Footer(
     dbc.Container(
         [
