@@ -269,7 +269,9 @@ def display_page(pathname):
 
     # Determine which page is active
     home_style = active_style if pathname == "/" else default_style
-    data_portal_style = active_style if pathname == "/data-portal" else default_style
+    data_portal_style = (
+        active_style if pathname.startswith("/data-portal") else default_style
+    )
     dashboards_style = active_style if pathname == "/dashboards" else default_style
     data_analytics_style = (
         active_style if pathname == "/data-analytics" else default_style
