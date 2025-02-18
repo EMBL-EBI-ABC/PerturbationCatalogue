@@ -1,8 +1,16 @@
+from collections import namedtuple
+
 import dash
 from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 import requests
 
+FilterField = namedtuple("FilterField", ["id", "title"])
+filter_fields = [
+    FilterField(id="sequenceType", title="Sequence Type"),
+    FilterField(id="geneCategory", title="Gene Category"),
+    FilterField(id="publicationYear", title="Publication Year"),
+]
 
 data_portal_layout = html.Div(
     [
@@ -14,63 +22,24 @@ data_portal_layout = html.Div(
                         dbc.Card(
                             dbc.CardBody(
                                 [
-                                    html.H5("Sequence Type", className="card-title"),
+                                    html.H5(field.title, className="card-title"),
                                     dbc.RadioItems(
-                                        id="sequenceType",
+                                        id=field.id,
                                         options=[],
                                         inline=True,
                                         style={"width": "100%"},
                                     ),
                                     dbc.Button(
                                         "Clear",
-                                        id="clear-sequenceType",
+                                        id=f"clear-{field.id}",  # Compute clear_id dynamically
                                         color="success",
                                         size="sm",
                                         style={"margin-top": "10px"},
                                     ),
                                 ]
                             )
-                        ),
-                        dbc.Card(
-                            dbc.CardBody(
-                                [
-                                    html.H5("Gene Category", className="card-title"),
-                                    dbc.RadioItems(
-                                        id="geneCategory",
-                                        options=[],
-                                        inline=True,
-                                        style={"width": "100%"},
-                                    ),
-                                    dbc.Button(
-                                        "Clear",
-                                        id="clear-geneCategory",
-                                        color="success",
-                                        size="sm",
-                                        style={"margin-top": "10px"},
-                                    ),
-                                ]
-                            )
-                        ),
-                        dbc.Card(
-                            dbc.CardBody(
-                                [
-                                    html.H5("Publication Year", className="card-title"),
-                                    dbc.RadioItems(
-                                        id="publicationYear",
-                                        options=[],
-                                        inline=True,
-                                        style={"width": "100%"},
-                                    ),
-                                    dbc.Button(
-                                        "Clear",
-                                        id="clear-publicationYear",
-                                        color="success",
-                                        size="sm",
-                                        style={"margin-top": "10px"},
-                                    ),
-                                ]
-                            )
-                        ),
+                        )
+                        for field in filter_fields
                     ],
                     width=2,
                     lg=2,

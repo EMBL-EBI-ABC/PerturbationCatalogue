@@ -10,6 +10,7 @@ import data_portal
 import iframe
 import home_page
 
+# Initialise the app.
 app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
@@ -105,7 +106,7 @@ footer = html.Footer(
     className="bg-light text-dark",
 )
 
-# Define the layout.
+# Overall app layout.
 app.layout = html.Div(
     [
         # Cookie banner.
