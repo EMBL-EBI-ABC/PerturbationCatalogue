@@ -103,7 +103,7 @@ navbar = dbc.Navbar(
     ),
     color="success",
     dark=True,
-    className="fixed-top",
+    className="sticky-top",  # Use sticky-top for better responsiveness
 )
 
 
@@ -120,7 +120,7 @@ footer = html.Footer(
         ],
         className="text-center py-3",
     ),
-    className="fixed-bottom bg-light text-dark",
+    className="bg-light text-dark",
 )
 
 # Home page layout
@@ -299,9 +299,14 @@ app.layout = html.Div(
         ),
         navbar,
         dcc.Location(id="url", refresh=False),
-        html.Div(id="page-content", className="mt-5"),
+        # Main content that takes up remaining space
+        html.Div(
+            id="page-content",
+            className="flex-grow-1",  # Ensures content takes up available space
+        ),
         footer,
-    ]
+    ],
+    className="d-flex flex-column min-vh-100",  # Flexbox column layout with full viewport height
 )
 
 
