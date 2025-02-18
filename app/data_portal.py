@@ -98,6 +98,14 @@ data_portal_layout = html.Div(
                             },
                         ),
                         html.Div(
+                            id="data-table",
+                            style={
+                                "height": "100%",
+                                "overflowY": "auto",
+                                "width": "100%",
+                            },
+                        ),
+                        html.Div(
                             [
                                 dbc.Pagination(
                                     id="pagination",
@@ -128,14 +136,6 @@ data_portal_layout = html.Div(
                                 "display": "flex",
                                 "alignItems": "center",
                                 "gap": "12px",
-                            },
-                        ),
-                        html.Div(
-                            id="data-table",
-                            style={
-                                "height": "100%",
-                                "overflowY": "auto",
-                                "width": "100%",
                             },
                         ),
                     ],
