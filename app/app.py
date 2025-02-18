@@ -4,6 +4,7 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
+import cookie_banner
 import data_portal
 
 # URLs for iframes.
@@ -16,6 +17,11 @@ app = dash.Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
 )
+
+# Initialise callbacks for external components. This ensures that interactivity defined
+# in the sub-modules can work across the app.
+# cookie_banner.register_callbacks(app)
+data_portal.register_callbacks(app)
 
 app.index_string = """
 <!DOCTYPE html>
@@ -204,77 +210,22 @@ def iframe_layout(url):
 # Define the layout.
 app.layout = html.Div(
     [
-        dcc.Store(id="cookie-consent-store", storage_type="local"),
-        # Cookie Banner.
-        html.Div(
-            id="cookie-banner",
-            children=[
-                html.Div(
-                    [
-                        html.P(
-                            "This website uses cookies to improve your experience.",
-                            className="mb-0 me-3",
-                        ),
-                        html.Button(
-                            "Accept",
-                            id="accept-cookies",
-                            className="btn btn-success me-2",
-                        ),
-                        html.Button(
-                            "Reject", id="reject-cookies", className="btn btn-danger"
-                        ),
-                    ],
-                    className="alert alert-dark d-flex justify-content-center align-items-center gap-2 px-3 py-2",
-                    style={
-                        "position": "fixed",
-                        "bottom": "0",
-                        "width": "100%",
-                        "zIndex": "1050",
-                        "borderRadius": "0",
-                    },
-                )
-            ],
-            hidden=True,
-        ),
+        # Cookie banner.
+        cookie_banner.store,
+        cookie_banner.layout,
+        # Navigation bar.
         navbar,
         dcc.Location(id="url", refresh=False),
+        # Main content.
         html.Div(
             id="page-content",
             className="flex-grow-1",
         ),
+        # Footer.
         footer,
     ],
     className="d-flex flex-column min-vh-100",
 )
-
-
-@app.callback(
-    [
-        dash.Output("cookie-banner", "hidden"),
-        dash.Output("cookie-consent-store", "data"),
-    ],
-    [
-        dash.Input("accept-cookies", "n_clicks"),
-        dash.Input("reject-cookies", "n_clicks"),
-    ],
-    [dash.State("cookie-consent-store", "data")],
-    prevent_initial_call=False,
-)
-def handle_cookie_consent(accept_clicks, reject_clicks, store_data):
-    ctx = dash.callback_context
-    if store_data:
-        return True, dash.no_update  # Hide banner if choice was already made
-
-    if ctx.triggered:
-        button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if button_id in ["accept-cookies", "reject-cookies"]:
-            return True, {"cookie_consent": button_id}
-
-    return False, dash.no_update  # Show banner if no choice stored
-
-
-# Initialise callbacks for the data portal component.
-data_portal.register_callbacks(app)  # data_portal_callbacks(app)
 
 
 # Callback to update page content and navbar active state.
