@@ -47,13 +47,33 @@ app.index_string = """
 """
 
 # Define app pages.
-Page = namedtuple("Page", ["name", "selector"])
+Page = namedtuple("Page", ["name", "selector", "button", "description"])
 pages = [
-    Page(name="Home", selector="home"),
-    Page(name="Data Portal", selector="data-portal"),
-    Page(name="Dashboards", selector="dashboards"),
-    Page(name="Data Analytics", selector="data-analytics"),
-    Page(name="About", selector="about"),
+    Page(name="Home", selector="home", button=None, description=None),
+    Page(
+        name="Data Portal",
+        selector="data-portal",
+        button="Open Data Portal",
+        description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
+    ),
+    Page(
+        name="Dashboards",
+        selector="dashboards",
+        button="Explore Dashboards",
+        description="The Dashboards tab provides a visual overview of the existing data.",
+    ),
+    Page(
+        name="Data Analytics",
+        selector="data-analytics",
+        button="Data Analytics",
+        description="The Data Analytics tab allows users to search the data using the Data Warehouse.",
+    ),
+    Page(
+        name="About",
+        selector="about",
+        button="Contact Us",
+        description="Here you can find more information about how to get help or propose new features.",
+    ),
 ]
 
 # Top navigation bar.
@@ -97,7 +117,7 @@ footer = html.Footer(
     className="bg-light text-dark",
 )
 
-# Home page layout
+# Home page layout.
 home_layout = html.Div(
     [
         html.Div(
@@ -130,13 +150,11 @@ home_layout = html.Div(
                                 [
                                     dbc.CardBody(
                                         [
-                                            html.H5("Data Portal"),
-                                            html.P(
-                                                "The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities."
-                                            ),
+                                            html.H5(page.name),
+                                            html.P(page.description),
                                             dbc.Button(
-                                                "Open Data Portal",
-                                                href="/data-portal",
+                                                page.button,
+                                                href=f"/{page.selector}",
                                                 color="success",
                                             ),
                                         ]
@@ -144,74 +162,11 @@ home_layout = html.Div(
                                 ]
                             ),
                             md=4,
-                        ),
-                        dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            html.H5("Dashboards"),
-                                            html.P(
-                                                "The Dashboards tab provides a visual overview of the existing data."
-                                            ),
-                                            dbc.Button(
-                                                "Explore Dashboards",
-                                                href="/dashboards",
-                                                color="success",
-                                            ),
-                                        ]
-                                    )
-                                ]
-                            ),
-                            md=4,
-                        ),
-                        dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            html.H5("Data Analytics"),
-                                            html.P(
-                                                "The Data Analytics tab allows users to search the data using the Data Warehouse."
-                                            ),
-                                            dbc.Button(
-                                                "Data Analytics",
-                                                href="/data-analytics",
-                                                color="success",
-                                            ),
-                                        ]
-                                    )
-                                ]
-                            ),
-                            md=4,
-                        ),
+                            className="mb-4",
+                        )
+                        for page in pages
+                        if page.button is not None
                     ],
-                    className="mb-4",
-                ),
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            html.H5("About"),
-                                            html.P(
-                                                "Here you can find more information about how to get help or propose new features."
-                                            ),
-                                            dbc.Button(
-                                                "Contact us",
-                                                href="/about",
-                                                color="success",
-                                            ),
-                                        ]
-                                    )
-                                ]
-                            ),
-                            md=4,
-                        ),
-                    ],
-                    className="mb-4 justify-content-center",
                 ),
             ]
         ),
@@ -219,7 +174,7 @@ home_layout = html.Div(
 )
 
 
-# Layout for iframe-based pages
+# Layout for iframe-based pages.
 def iframe_layout(url):
     return html.Div(
         [
@@ -236,11 +191,11 @@ def iframe_layout(url):
     )
 
 
-# Define the layout
+# Define the layout.
 app.layout = html.Div(
     [
         dcc.Store(id="cookie-consent-store", storage_type="local"),
-        # Cookie Banner
+        # Cookie Banner.
         html.Div(
             id="cookie-banner",
             children=[
