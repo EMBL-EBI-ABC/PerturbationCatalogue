@@ -225,9 +225,8 @@ def register_callbacks(app):
     @app.callback(
         [
             Output("data-table", "children"),
-            Output("sequenceType", "options"),
-            Output("geneCategory", "options"),
-            Output("publicationYear", "options"),
+            # Available filter options.
+            *[Output(f.id, "options") for f in filter_fields],
             Output("pagination", "max_value"),
             Output("pagination-info", "children"),
         ],
@@ -235,9 +234,8 @@ def register_callbacks(app):
             Input("search", "value"),
             Input("size", "value"),
             Input("pagination", "active_page"),
-            Input("sequenceType", "value"),
-            Input("geneCategory", "value"),
-            Input("publicationYear", "value"),
+            # Filter values.
+            *[Input(f.id, "value") for f in filter_fields],
         ],
     )
     def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
@@ -265,23 +263,15 @@ def register_callbacks(app):
             start_index = start + 1 if total > 0 else 0
             end_index = min(start + size, total)
 
-            sequenceType_options = [
-                {"label": b["key"], "value": b["key"]}
-                for b in data.get("aggregations", {})
-                .get("sequenceType", {})
-                .get("buckets", [])
-            ]
-            geneCategory_options = [
-                {"label": b["key"], "value": b["key"]}
-                for b in data.get("aggregations", {})
-                .get("geneCategory", {})
-                .get("buckets", [])
-            ]
-            publicationYear_options = [
-                {"label": str(b["key"]), "value": b["key"]}
-                for b in data.get("aggregations", {})
-                .get("publicationYear", {})
-                .get("buckets", [])
+            # Get available options for each filter.
+            filter_options = [
+                [
+                    {"label": b["key"], "value": b["key"]}
+                    for b in data.get("aggregations", {})
+                    .get(filter_field.id, {})
+                    .get("buckets", [])
+                ]
+                for filter_field in filter_fields
             ]
 
             pagination_info = f"{start_index} – {end_index} of {total}"
@@ -327,9 +317,7 @@ def register_callbacks(app):
 
             return (
                 table,
-                sequenceType_options,
-                geneCategory_options,
-                publicationYear_options,
+                *filter_options,
                 max_pages,
                 pagination_info,
             )
