@@ -12,11 +12,11 @@ filter_fields = [
     FilterField(id="publicationYear", title="Publication Year"),
 ]
 
-data_portal_layout = html.Div(
+main_layout = html.Div(
     [
         dbc.Row(
             [
-                # Left column for filter cards
+                # Left column for filter cards.
                 dbc.Col(
                     [
                         dbc.Card(
@@ -31,7 +31,7 @@ data_portal_layout = html.Div(
                                     ),
                                     dbc.Button(
                                         "Clear",
-                                        id=f"clear-{field.id}",  # Compute clear_id dynamically
+                                        id=f"clear-{field.id}",
                                         color="success",
                                         size="sm",
                                         style={"margin-top": "10px"},
@@ -53,7 +53,7 @@ data_portal_layout = html.Div(
                         "gap": "12px",
                     },
                 ),
-                # Right column for table and pagination controls
+                # Right column for table and pagination controls.
                 dbc.Col(
                     [
                         dcc.Input(
@@ -337,28 +337,23 @@ def register_callbacks(app):
             return html.Div("Error fetching data."), [], [], [], 1, ""
 
     @app.callback(
-        [
-            Output("sequenceType", "value"),
-            Output("geneCategory", "value"),
-            Output("publicationYear", "value"),
-        ],
-        [
-            Input("clear-sequenceType", "n_clicks"),
-            Input("clear-geneCategory", "n_clicks"),
-            Input("clear-publicationYear", "n_clicks"),
-        ],
+        [Output(field.id, "value") for field in filter_fields],
+        [Input(f"clear-{field.id}", "n_clicks") for field in filter_fields],
     )
-    def clear_filters(clear_seq, clear_gene, clear_pub):
+    def clear_filters(*args):
+        # Get the ID of the triggered input
         triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
-        if triggered_id == "clear-sequenceType":
-            return [None, dash.no_update, dash.no_update]
-        elif triggered_id == "clear-geneCategory":
-            return [dash.no_update, None, dash.no_update]
-        elif triggered_id == "clear-publicationYear":
-            return [dash.no_update, dash.no_update, None]
+        # Initialize the result with no_update for all outputs
+        result = [dash.no_update] * len(filter_fields)
 
-        return [dash.no_update, dash.no_update, dash.no_update]
+        # Find the index of the triggered filter and set its value to None
+        for i, field in enumerate(filter_fields):
+            if triggered_id == f"clear-{field.id}":
+                result[i] = None
+                break
+
+        return result
 
 
 def resolver(url_parts):
@@ -366,4 +361,4 @@ def resolver(url_parts):
     if len(url_parts) == 1:
         return details_layout(url_parts[0])
     # Otherwise, return the main data portal page.
-    return data_portal_layout
+    return main_layout
