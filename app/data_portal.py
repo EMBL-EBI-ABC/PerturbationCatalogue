@@ -94,13 +94,12 @@ data_portal_layout = html.Div(
                             debounce=True,
                             style={
                                 "width": "100%",
-                                "margin-bottom": "15px",
+                                "margin-bottom": "20px",
                             },
                         ),
                         html.Div(
                             id="data-table",
                             style={
-                                "height": "100%",
                                 "overflowY": "auto",
                                 "width": "100%",
                             },
