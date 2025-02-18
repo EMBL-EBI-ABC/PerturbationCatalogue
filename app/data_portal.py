@@ -312,14 +312,33 @@ def data_portal_callbacks(app):
 
             if data["results"]:
                 columns = [
-                    key
-                    for key in data["results"][0].keys()
-                    if key not in ["shortDescription", "publicationUrl", "title"]
+                    "URN",
+                    "Sequence Type",
+                    "Gene Name",
+                    "Gene Category",
+                    "Publication Year",
+                    "Number of Variants",
                 ]
                 table_header = [html.Thead(html.Tr([html.Th(col) for col in columns]))]
                 rows = []
                 for row in data["results"]:
-                    rows.append(html.Tr([html.Td(row[col]) for col in columns]))
+                    urn_link = html.A(
+                        row["urn"],
+                        href=f"/data-portal/{row['urn']}",
+                        style={"whiteSpace": "nowrap", "textDecoration": "none"},
+                    )
+                    rows.append(
+                        html.Tr(
+                            [
+                                html.Td(urn_link),
+                                html.Td(row.get("sequenceType", "N/A")),
+                                html.Td(row.get("geneName", "N/A")),
+                                html.Td(row.get("geneCategory", "N/A")),
+                                html.Td(row.get("publicationYear", "N/A")),
+                                html.Td(row.get("numVariants", "N/A")),
+                            ]
+                        )
+                    )
                 table_body = [html.Tbody(rows)]
                 table = dbc.Table(
                     table_header + table_body,
