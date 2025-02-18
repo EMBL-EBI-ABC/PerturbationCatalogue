@@ -99,6 +99,18 @@ data_portal_layout = html.Div(
                         ),
                         html.Div(
                             [
+                                dbc.Pagination(
+                                    id="pagination",
+                                    max_value=1,
+                                    active_page=1,
+                                    first_last=True,
+                                    fully_expanded=False,
+                                    previous_next=True,
+                                    style={
+                                        "margin-top": "15px",
+                                        "color": "white",
+                                    },
+                                ),
                                 html.Label("Items per page:"),
                                 dcc.Dropdown(
                                     id="size",
@@ -108,7 +120,7 @@ data_portal_layout = html.Div(
                                     ],
                                     value=10,
                                     clearable=False,
-                                    style={"width": "auto"},
+                                    style={"width": "70px"},
                                 ),
                                 html.Span(id="pagination-info"),
                             ],
@@ -116,18 +128,6 @@ data_portal_layout = html.Div(
                                 "display": "flex",
                                 "alignItems": "center",
                                 "gap": "12px",
-                            },
-                        ),
-                        dbc.Pagination(
-                            id="pagination",
-                            max_value=1,
-                            active_page=1,
-                            first_last=True,
-                            fully_expanded=False,
-                            previous_next=True,
-                            style={
-                                "margin-top": "15px",
-                                "color": "white",
                             },
                         ),
                         html.Div(
