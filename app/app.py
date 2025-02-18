@@ -1,10 +1,12 @@
+from collections import namedtuple
+
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from data_portal import data_portal_layout, details_layout, data_portal_callbacks
 
-# URLs for iframes
+# URLs for iframes.
 DASHBOARDS_URL = "https://lookerstudio.google.com/embed/reporting/86ab32f9-151b-4f91-87eb-060a22f2f890/page/QJFZE"
 DATA_ANALYTICS_URL = "https://lookerstudio.google.com/embed/reporting/8e98079d-144b-4583-a108-844b2ed3adf7/page/6eWZE"
 ABOUT_URL = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/redoc"
@@ -44,7 +46,15 @@ app.index_string = """
 </html>
 """
 
-# Top navigation bar
+# Define app pages.
+Page = namedtuple("Page", ["name", "selector"])
+pages = [
+    Page(name="Home", selector="home"),
+    Page(name="Data Portal", selector="data-portal"),
+    Page(name="Dashboards", selector="dashboards"),
+    Page(name="Data Analytics", selector="data-analytics"),
+    Page(name="About", selector="about"),
+]
 navbar = dbc.Navbar(
     dbc.Container(
         [
