@@ -251,7 +251,7 @@ def details_layout(urn):
     )
 
 
-def data_portal_callbacks(app):
+def register_callbacks(app):
 
     @app.callback(
         [
@@ -392,8 +392,9 @@ def data_portal_callbacks(app):
         return [dash.no_update, dash.no_update, dash.no_update]
 
 
-if __name__ == "__main__":
-    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-    app.layout = data_portal_layout
-    data_portal_callbacks(app)
-    app.run_server(debug=True)
+def resolver(url_parts):
+    # If there's something after the main URL, return details page.
+    if len(url_parts) == 1:
+        return details_layout(url_parts[0])
+    # Otherwise, return the main data portal page.
+    return data_portal_layout
