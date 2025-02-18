@@ -1,7 +1,6 @@
 import dash
 from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
-from dash.dash_table import DataTable
 import requests
 
 
@@ -75,10 +74,10 @@ data_portal_layout = html.Div(
                     ],
                     width=2,
                     style={
-                        "padding": "30px 0px 0px 20px",  # Increased outer padding for more space
+                        "padding": "30px 0px 0px 20px",
                         "display": "flex",
                         "flexDirection": "column",
-                        "gap": "12px",  # Reduced gap between cards
+                        "gap": "12px",
                     },
                 ),
                 # Right column for table and pagination controls
@@ -92,7 +91,7 @@ data_portal_layout = html.Div(
                             style={
                                 "width": "100%",
                                 "margin-bottom": "15px",
-                            },  # Reduced margin bottom
+                            },
                         ),
                         html.Div(
                             [
@@ -112,7 +111,7 @@ data_portal_layout = html.Div(
                             style={
                                 "display": "flex",
                                 "alignItems": "center",
-                                "gap": "12px",  # Slightly reduced gap between controls
+                                "gap": "12px",
                             },
                         ),
                         dbc.Pagination(
@@ -123,66 +122,40 @@ data_portal_layout = html.Div(
                             fully_expanded=False,
                             previous_next=True,
                             style={
-                                "margin-top": "15px",  # Consistent margin for pagination
+                                "margin-top": "15px",
                                 "color": "white",
                             },
                         ),
                         html.Div(
-                            DataTable(
-                                id="data-table",
-                                columns=[],  # Columns will be updated dynamically
-                                data=[],  # Data will be updated dynamically
-                                style_table={
-                                    "height": "100%",
-                                    "overflowY": "auto",
-                                    "width": "100%",
-                                },
-                                style_cell={
-                                    "whiteSpace": "normal",  # Wrap text inside cells
-                                    "textAlign": "left",  # Left-align text inside cells
-                                    "padding": "5px",  # Add padding for better readability
-                                    # "fontSize": "13px",  # Smaller font size for the table
-                                    "fontFamily": "system-ui",  # Set font to system UI
-                                },
-                                style_data_conditional=[
-                                    {
-                                        "if": {"column_id": col},
-                                        "textAlign": "left",
-                                    }
-                                    for col in []  # Apply to all columns
-                                ],
-                            )
+                            id="data-table",
+                            style={
+                                "height": "100%",
+                                "overflowY": "auto",
+                                "width": "100%",
+                            },
                         ),
                     ],
-                    width=10,  # 80% width for table and pagination controls
-                    style={
-                        "padding": "32px 25px 100px 25px"
-                    },  # Increased outer padding for more space
+                    width=10,
+                    style={"padding": "32px 25px 100px 25px"},
                 ),
             ],
-            className="g-0",  # Remove gutters
+            className="g-0",
         ),
     ]
 )
 
 
 def details_layout(urn):
-    # Make the API call to fetch data
     api_url = f"https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search/{urn}"
     response = requests.get(api_url)
 
-    # Check if the API call was successful
     if response.status_code != 200:
         return html.Div(
             "Error: Unable to fetch data from the API.", className="alert alert-danger"
         )
 
-    # Extract data from the API response
-    data = response.json().get("results", [{}])[
-        0
-    ]  # Default to an empty dict if no results
+    data = response.json().get("results", [{}])[0]
 
-    # Create the Bootstrap card layout
     return html.Div(
         [
             html.Div(
@@ -273,11 +246,9 @@ def details_layout(urn):
 
 def data_portal_callbacks(app):
 
-    # API call function
     @app.callback(
         [
-            Output("data-table", "columns"),
-            Output("data-table", "data"),
+            Output("data-table", "children"),
             Output("sequenceType", "options"),
             Output("geneCategory", "options"),
             Output("publicationYear", "options"),
@@ -339,22 +310,28 @@ def data_portal_callbacks(app):
 
             pagination_info = f"{start_index} - {end_index} of {total}"
 
-            # Dynamically generate columns based on keys in the first result
             if data["results"]:
-                # Exclude the columns you want to hide
                 columns = [
-                    {"name": key, "id": key}
+                    key
                     for key in data["results"][0].keys()
                     if key not in ["shortDescription", "publicationUrl", "title"]
                 ]
-                table_data = data["results"]
+                table_header = [html.Thead(html.Tr([html.Th(col) for col in columns]))]
+                rows = []
+                for row in data["results"]:
+                    rows.append(html.Tr([html.Td(row[col]) for col in columns]))
+                table_body = [html.Tbody(rows)]
+                table = dbc.Table(
+                    table_header + table_body,
+                    bordered=True,
+                    hover=True,
+                    responsive=True,
+                )
             else:
-                columns = []
-                table_data = []
+                table = html.Div("No data found.")
 
             return (
-                columns,
-                table_data,
+                table,
                 sequenceType_options,
                 geneCategory_options,
                 publicationYear_options,
@@ -362,9 +339,7 @@ def data_portal_callbacks(app):
                 pagination_info,
             )
         else:
-            return [], [], [], [], [], 1, ""
-
-    # Clearing the filters
+            return html.Div("Error fetching data."), [], [], [], 1, ""
 
     @app.callback(
         [
@@ -379,7 +354,6 @@ def data_portal_callbacks(app):
         ],
     )
     def clear_filters(clear_seq, clear_gene, clear_pub):
-        # Reset values when respective "Clear" buttons are clicked
         triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
 
         if triggered_id == "clear-sequenceType":
@@ -389,11 +363,9 @@ def data_portal_callbacks(app):
         elif triggered_id == "clear-publicationYear":
             return [dash.no_update, dash.no_update, None]
 
-        # Return current values if no button was clicked
         return [dash.no_update, dash.no_update, dash.no_update]
 
 
-# Run the app
 if __name__ == "__main__":
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
     app.layout = data_portal_layout
