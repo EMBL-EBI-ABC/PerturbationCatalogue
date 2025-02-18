@@ -2,7 +2,7 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from data_portal import data_portal_layout, data_portal_callbacks
+from data_portal import data_portal_layout, details_layout, data_portal_callbacks
 
 # URLs for iframes
 DASHBOARDS_URL = "https://lookerstudio.google.com/embed/reporting/86ab32f9-151b-4f91-87eb-060a22f2f890/page/QJFZE"
@@ -307,6 +307,16 @@ def display_page(pathname):
     elif pathname == "/data-portal":
         return (
             data_portal_layout,
+            home_style,
+            data_portal_style,
+            dashboards_style,
+            data_analytics_style,
+            about_style,
+        )
+    elif pathname and pathname.startswith("/data-portal/urn:"):
+        urn = pathname.split("/")[-1]
+        return (
+            details_layout(urn),
             home_style,
             data_portal_style,
             dashboards_style,
