@@ -15,6 +15,35 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
 )
 
+app.index_string = """
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-2TM7RP1SB5"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'G-2TM7RP1SB5');
+        </script>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+"""
+
 # Top navigation bar
 navbar = dbc.Navbar(
     dbc.Container(
@@ -291,10 +320,7 @@ app.layout = html.Div(
 def handle_cookie_consent(accept_clicks, reject_clicks, store_data):
     ctx = dash.callback_context
     if store_data:
-        print("Yep, STORE DATA")
         return True, dash.no_update  # Hide banner if choice was already made
-    else:
-        print("no store data?")
 
     if ctx.triggered:
         button_id = ctx.triggered[0]["prop_id"].split(".")[0]
