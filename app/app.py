@@ -146,7 +146,7 @@ def display_page(pathname):
     styles = {
         page.selector: (
             active_style
-            if pathname == f"/{page.selector}"
+            if pathname.startswith(f"/{page.selector}")
             or (page.selector == "home" and pathname == "/")
             else default_style
         )
@@ -156,13 +156,14 @@ def display_page(pathname):
     # Determine the layout to return based on the pathname.
     layout = home_page.layout(pages)
     for page in pages:
-        if pathname.startswith("/" + page.selector):
+        if pathname.startswith(f"/{page.selector}"):
             layout = page.resolver(pathname)
 
     # Return the corresponding layout and styles.
     return [layout] + [styles[page.selector] for page in pages]
 
 
+# Expose the server variable for Gunicorn.
 server = app.server
 
 if __name__ == "__main__":
