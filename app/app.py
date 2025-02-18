@@ -7,12 +7,8 @@ import dash_bootstrap_components as dbc
 import cookie_banner
 import google_analytics
 import data_portal
+import iframe
 import home_page
-
-# URLs for iframes.
-DASHBOARDS_URL = "https://lookerstudio.google.com/embed/reporting/86ab32f9-151b-4f91-87eb-060a22f2f890/page/QJFZE"
-DATA_ANALYTICS_URL = "https://lookerstudio.google.com/embed/reporting/8e98079d-144b-4583-a108-844b2ed3adf7/page/6eWZE"
-ABOUT_URL = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/redoc"
 
 app = dash.Dash(
     __name__,
@@ -50,21 +46,21 @@ pages = [
         selector="dashboards",
         button="Explore Dashboards",
         description="The Dashboards tab provides a visual overview of the existing data.",
-        resolver=lambda url: iframe_layout(DASHBOARDS_URL),
+        resolver=lambda url: iframe.layout(iframe.DASHBOARDS_URL),
     ),
     Page(
         name="Data Analytics",
         selector="data-analytics",
         button="Data Analytics",
         description="The Data Analytics tab allows users to search the data using the Data Warehouse.",
-        resolver=lambda url: iframe_layout(DATA_ANALYTICS_URL),
+        resolver=lambda url: iframe.layout(iframe.DATA_ANALYTICS_URL),
     ),
     Page(
         name="About",
         selector="about",
         button="Contact Us",
         description="Here you can find more information about how to get help or propose new features.",
-        resolver=lambda url: iframe_layout(ABOUT_URL),
+        resolver=lambda url: iframe.layout(iframe.ABOUT_URL),
     ),
 ]
 
@@ -108,24 +104,6 @@ footer = html.Footer(
     ),
     className="bg-light text-dark",
 )
-
-
-# Layout for iframe-based pages.
-def iframe_layout(url):
-    return html.Div(
-        [
-            html.Iframe(
-                src=url,
-                style={
-                    "width": "100%",
-                    "height": "calc(100vh - 130px)",
-                    "border": "none",
-                },
-            )
-        ],
-        className="mt-0",
-    )
-
 
 # Define the layout.
 app.layout = html.Div(
