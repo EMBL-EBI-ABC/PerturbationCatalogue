@@ -9,7 +9,21 @@ layout = html.Div(
         html.Div(
             [
                 html.P(
-                    "This website uses cookies to improve your experience.",
+                    [
+                        "This website requires cookies, and the limited processing of your personal data in order to function. By using the site you are agreeing to this as outlined in our ",
+                        html.A(
+                            "Privacy Notice",
+                            href="https://www.ebi.ac.uk/data-protection/privacy-notice/perturbation-catalogue",
+                            target="_blank",
+                        ),
+                        " and our ",
+                        html.A(
+                            "Terms of Use",
+                            href="https://www.ebi.ac.uk/about/terms-of-use",
+                            target="_blank",
+                        ),
+                        ".",
+                    ],
                     className="mb-0 me-3",
                 ),
                 html.Button(
