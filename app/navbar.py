@@ -1,0 +1,50 @@
+import dash_bootstrap_components as dbc
+from dash import Input, Output, State, callback
+
+
+def layout(pages):
+    return dbc.Navbar(
+        dbc.Container(
+            [
+                dbc.NavbarBrand(
+                    "Perturbation Catalogue", href="/", className="text-white"
+                ),
+                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
+                dbc.Collapse(
+                    dbc.Nav(
+                        [
+                            dbc.NavItem(
+                                dbc.NavLink(
+                                    page.name,
+                                    href=f"/{page.selector}",
+                                    id=f"nav-{page.selector}",
+                                    className="nav-link-custom text-white",
+                                )
+                            )
+                            for page in pages
+                        ],
+                        className="ms-auto",  # Push menu items to the right
+                        navbar=True,
+                    ),
+                    id="navbar-collapse",
+                    is_open=False,
+                    navbar=True,
+                ),
+            ],
+            className="justify-content-between",
+        ),
+        color="success",
+        dark=True,
+        className="sticky-top",
+    )
+
+
+def register_callbacks(app):
+    @callback(
+        Output("navbar-collapse", "is_open"),
+        Input("navbar-toggler", "n_clicks"),
+        State("navbar-collapse", "is_open"),
+        prevent_initial_call=True,
+    )
+    def toggle_navbar(n_clicks, is_open):
+        return not is_open

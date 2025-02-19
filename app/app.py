@@ -9,6 +9,7 @@ import google_analytics
 import data_portal
 import iframe
 import home_page
+import navbar
 
 # Initialise the app.
 app = dash.Dash(
@@ -21,6 +22,7 @@ app = dash.Dash(
 # in the sub-modules can work across the app.
 cookie_banner.register_callbacks(app)
 data_portal.register_callbacks(app)
+navbar.register_callbacks(app)
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
@@ -65,31 +67,6 @@ pages = [
     ),
 ]
 
-# Top navigation bar.
-navbar = dbc.Navbar(
-    dbc.Container(
-        [
-            dbc.Nav(
-                [
-                    dbc.NavItem(
-                        dbc.NavLink(
-                            page.name,
-                            href=f"/{page.selector}",
-                            id=f"nav-{page.selector}",
-                            style={"color": "white"},
-                            className="nav-link-custom",
-                        )
-                    )
-                    for page in pages
-                ],
-            ),
-        ],
-        className="justify-content-center",
-    ),
-    color="success",
-    className="sticky-top",
-)
-
 # Footer.
 footer = html.Footer(
     dbc.Container(
@@ -113,7 +90,7 @@ app.layout = html.Div(
         cookie_banner.store,
         cookie_banner.layout,
         # Navigation bar.
-        navbar,
+        navbar.layout(pages),
         dcc.Location(id="url", refresh=False),
         # Main content.
         html.Div(
@@ -167,4 +144,4 @@ def display_page(pathname):
 server = app.server
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)
