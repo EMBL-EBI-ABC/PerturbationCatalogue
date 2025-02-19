@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
 import requests
 
@@ -12,11 +12,15 @@ filter_fields = [
     FilterField(id="publicationYear", title="Publication Year"),
 ]
 
+sortable_columns = {
+    "publicationYear": "Publication Year",
+    "numVariants": "Number of Variants",
+}
+
 main_layout = html.Div(
     [
         dbc.Row(
             [
-                # Left column for filter cards.
                 dbc.Col(
                     [
                         dbc.Card(
@@ -53,7 +57,6 @@ main_layout = html.Div(
                         "gap": "12px",
                     },
                 ),
-                # Right column for table and pagination controls.
                 dbc.Col(
                     [
                         dcc.Input(
@@ -65,6 +68,10 @@ main_layout = html.Div(
                                 "width": "100%",
                                 "margin-bottom": "20px",
                             },
+                        ),
+                        dcc.Store(
+                            id="sort-store",
+                            data={"field": "publicationYear", "order": "desc"},
                         ),
                         html.Div(
                             id="data-table",
@@ -119,6 +126,32 @@ main_layout = html.Div(
         ),
     ]
 )
+
+
+def create_sort_header(column_name, field_name, current_sort):
+    if field_name not in sortable_columns and field_name is not None:
+        return html.Th(column_name)
+
+    if field_name is None:
+        return html.Th(column_name)
+
+    is_sorted = current_sort["field"] == field_name
+    order = current_sort["order"] if is_sorted else None
+    arrow = "🡫" if order == "desc" else "🡩" if order == "asc" else ""
+    return html.Th(
+        html.Div(
+            [
+                column_name + " " + arrow,
+            ],
+            style={
+                "display": "flex",
+                "alignItems": "center",
+                "cursor": "pointer",
+                "color": "blue" if is_sorted else "inherit",
+            },
+        ),
+        id={"type": "sort-header-container", "field": field_name},
+    )
 
 
 def details_layout(urn):
@@ -221,11 +254,34 @@ def details_layout(urn):
 
 
 def register_callbacks(app):
+    @app.callback(
+        Output("sort-store", "data"),
+        [
+            Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
+        ],
+        State("sort-store", "data"),
+    )
+    def update_sort(container_clicks, current_sort):
+        if not dash.callback_context.triggered:
+            return dash.no_update
+
+        triggered_id = dash.callback_context.triggered[0]["prop_id"]
+        if not triggered_id:
+            return dash.no_update
+
+        field = eval(triggered_id.split(".")[0])["field"]
+
+        if current_sort["field"] != field:
+            return {"field": field, "order": "asc"}
+        else:
+            if current_sort["order"] == "asc":
+                return {"field": field, "order": "desc"}
+            else:
+                return {"field": field, "order": "asc"}
 
     @app.callback(
         [
             Output("data-table", "children"),
-            # Available filter options.
             *[Output(f.id, "options") for f in filter_fields],
             Output("pagination", "max_value"),
             Output("pagination-info", "children"),
@@ -234,11 +290,13 @@ def register_callbacks(app):
             Input("search", "value"),
             Input("size", "value"),
             Input("pagination", "active_page"),
-            # Filter values.
+            Input("sort-store", "data"),
             *[Input(f.id, "value") for f in filter_fields],
         ],
     )
-    def fetch_data(q, size, page, sequenceType, geneCategory, publicationYear):
+    def fetch_data(
+        q, size, page, sort_data, sequenceType, geneCategory, publicationYear
+    ):
         base_url = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
         start = (page - 1) * size if page else 0
 
@@ -251,6 +309,8 @@ def register_callbacks(app):
                 "sequenceType": sequenceType,
                 "geneCategory": geneCategory,
                 "publicationYear": publicationYear,
+                "sort_field": sort_data.get("field"),
+                "sort_order": sort_data.get("order"),
             }.items()
             if v not in [None, ""]
         }
@@ -263,7 +323,6 @@ def register_callbacks(app):
             start_index = start + 1 if total > 0 else 0
             end_index = min(start + size, total)
 
-            # Get available options for each filter.
             filter_options = [
                 [
                     {"label": b["key"], "value": b["key"]}
@@ -278,14 +337,25 @@ def register_callbacks(app):
 
             if data["results"]:
                 columns = [
-                    "URN",
-                    "Sequence Type",
-                    "Gene Name",
-                    "Gene Category",
-                    "Publication Year",
-                    "Number of Variants",
+                    ("URN", None),
+                    ("Sequence Type", None),
+                    ("Gene Name", None),
+                    ("Gene Category", None),
+                    ("Publication Year", "publicationYear"),
+                    ("Number of Variants", "numVariants"),
                 ]
-                table_header = [html.Thead(html.Tr([html.Th(col) for col in columns]))]
+
+                table_header = [
+                    html.Thead(
+                        html.Tr(
+                            [
+                                create_sort_header(col[0], col[1], sort_data)
+                                for col in columns
+                            ]
+                        )
+                    )
+                ]
+
                 rows = []
                 for row in data["results"]:
                     urn_link = html.A(
@@ -331,16 +401,13 @@ def register_callbacks(app):
     def clear_filters(*args):
         # Get the ID of the triggered input
         triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-
         # Initialize the result with no_update for all outputs
         result = [dash.no_update] * len(filter_fields)
-
         # Find the index of the triggered filter and set its value to None
         for i, field in enumerate(filter_fields):
             if triggered_id == f"clear-{field.id}":
                 result[i] = None
                 break
-
         return result
 
 
