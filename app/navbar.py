@@ -28,7 +28,8 @@ def layout(pages):
                     navbar=True,
                 ),
             ],
-            className="justify-content-between",
+            fluid=True,
+            className="pe-4",
         ),
         color=None,  # Remove default Bootstrap color
         dark=True,
