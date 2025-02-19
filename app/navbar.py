@@ -6,9 +6,6 @@ def layout(pages):
     return dbc.Navbar(
         dbc.Container(
             [
-                dbc.NavbarBrand(
-                    "Perturbation Catalogue", href="/", className="text-white"
-                ),
                 dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
                 dbc.Collapse(
                     dbc.Nav(
