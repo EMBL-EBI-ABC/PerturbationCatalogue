@@ -37,9 +37,12 @@ layout = html.Div(
             style={
                 "position": "fixed",
                 "bottom": "0",
+                "left": "0",
                 "width": "100%",
                 "zIndex": "1050",
                 "borderRadius": "0",
+                "margin": "0",  # Remove any potential margin
+                "padding": "0",  # Ensure no padding is added by the container
             },
         )
     ],
