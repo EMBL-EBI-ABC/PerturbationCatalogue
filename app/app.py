@@ -95,12 +95,14 @@ app.layout = html.Div(
         # Main content.
         html.Div(
             id="page-content",
-            className="flex-grow-1",
+            style={
+                "flex": "1",
+            },
         ),
         # Footer.
         footer,
     ],
-    className="d-flex flex-column min-vh-100",
+    className="d-flex flex-column vh-100",
 )
 
 

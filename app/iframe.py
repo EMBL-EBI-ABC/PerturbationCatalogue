@@ -14,10 +14,17 @@ def layout(url):
                 src=url,
                 style={
                     "width": "100%",
-                    "height": "calc(100vh - 130px)",
+                    "height": "100%",
                     "border": "none",
                 },
             )
         ],
+        style={
+            "width": "100%",
+            "height": "100%",
+            "border": "none",
+            "display": "flex",
+            "flexDirection": "column",
+        },
         className="mt-0",
     )
