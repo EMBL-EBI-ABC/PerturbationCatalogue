@@ -80,7 +80,8 @@ footer = html.Footer(
         ],
         className="text-center py-3",
     ),
-    className="bg-light text-dark",
+    className="text-dark",
+    style={"backgroundColor": "rgb(74, 78, 80)"},
 )
 
 # Overall app layout.

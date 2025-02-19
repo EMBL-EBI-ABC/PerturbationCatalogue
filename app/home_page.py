@@ -12,6 +12,7 @@ def layout(pages):
                         src="https://acxngcvroo.cloudimg.io/v7/https://www.embl.org/files/wp-content/uploads/roundels.png",
                         style={
                             "width": "100%",
+                            "color": "rgb(24, 29, 25)",
                             "background-color": "rgb(0, 112, 73, 0.8)",
                         },
                     ),

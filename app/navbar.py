@@ -1,5 +1,5 @@
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback
+from dash import Input, Output, State, callback, html
 
 
 def layout(pages):
@@ -33,9 +33,10 @@ def layout(pages):
             ],
             className="justify-content-between",
         ),
-        color="success",
+        color=None,  # Remove default Bootstrap color
         dark=True,
         className="sticky-top",
+        style={"backgroundColor": "rgb(23, 140, 67)"},
     )
 
 
