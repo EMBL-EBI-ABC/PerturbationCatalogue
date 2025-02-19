@@ -14,7 +14,10 @@ import navbar
 # Initialise the app.
 app = dash.Dash(
     __name__,
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css",
+    ],
     suppress_callback_exceptions=True,
 )
 
@@ -28,7 +31,9 @@ navbar.register_callbacks(app)
 app.index_string = google_analytics.inject
 
 # Define app pages.
-Page = namedtuple("Page", ["name", "selector", "button", "description", "resolver"])
+Page = namedtuple(
+    "Page", ["name", "selector", "button", "description", "resolver", "icon"]
+)
 pages = [
     Page(
         name="Home",
@@ -36,6 +41,7 @@ pages = [
         button=None,
         description=None,
         resolver=lambda url: home_page.layout(pages),
+        icon="bi-house",
     ),
     Page(
         name="Data Portal",
@@ -43,6 +49,7 @@ pages = [
         button="Open Data Portal",
         description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
         resolver=lambda url: data_portal.resolver(url.split("/")[2:]),
+        icon="bi-table",
     ),
     Page(
         name="Dashboards",
@@ -50,6 +57,7 @@ pages = [
         button="Explore Dashboards",
         description="The Dashboards tab provides a visual overview of the existing data.",
         resolver=lambda url: iframe.layout(iframe.DASHBOARDS_URL),
+        icon="bi-bar-chart-line",
     ),
     Page(
         name="Data Analytics",
@@ -57,6 +65,7 @@ pages = [
         button="Data Analytics",
         description="The Data Analytics tab allows users to search the data using the Data Warehouse.",
         resolver=lambda url: iframe.layout(iframe.DATA_ANALYTICS_URL),
+        icon="bi-graph-up",
     ),
     Page(
         name="About",
@@ -64,6 +73,7 @@ pages = [
         button="Contact Us",
         description="Here you can find more information about how to get help or propose new features.",
         resolver=lambda url: iframe.layout(iframe.ABOUT_URL),
+        icon="bi-question-circle",
     ),
 ]
 

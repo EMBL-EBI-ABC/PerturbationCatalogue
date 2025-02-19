@@ -12,7 +12,10 @@ def layout(pages):
                         [
                             dbc.NavItem(
                                 dbc.NavLink(
-                                    page.name,
+                                    [
+                                        html.I(className=f"bi {page.icon} me-2"),
+                                        page.name,
+                                    ],
                                     href=f"/{page.selector}",
                                     id=f"nav-{page.selector}",
                                     className="nav-link-custom text-white",
@@ -20,7 +23,7 @@ def layout(pages):
                             )
                             for page in pages
                         ],
-                        className="ms-auto",  # Push menu items to the right
+                        className="ms-auto",
                         navbar=True,
                     ),
                     id="navbar-collapse",
@@ -31,7 +34,7 @@ def layout(pages):
             fluid=True,
             className="pe-4",
         ),
-        color=None,  # Remove default Bootstrap color
+        color=None,
         dark=True,
         className="sticky-top",
         style={"backgroundColor": "rgb(23, 140, 67)"},
