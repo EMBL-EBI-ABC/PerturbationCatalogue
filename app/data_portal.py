@@ -75,12 +75,17 @@ main_layout = html.Div(
                             id="sort-store",
                             data={"field": "publicationYear", "order": "desc"},
                         ),
-                        html.Div(
-                            id="data-table",
-                            style={
-                                "overflowY": "auto",
-                                "width": "100%",
-                            },
+                        dbc.Spinner(
+                            html.Div(
+                                id="data-table",
+                                style={
+                                    "overflowY": "auto",
+                                    "width": "100%",
+                                    "minHeight": "100px",
+                                },
+                            ),
+                            color="primary",
+                            spinner_style={"width": "48px", "height": "48px"},
                         ),
                         html.Div(
                             [
