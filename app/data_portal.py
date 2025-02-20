@@ -35,7 +35,7 @@ def create_table_header(column_name, field_name, current_sort):
                 className="d-flex align-items-center",
                 style={
                     "cursor": "pointer",
-                    "color": "blue" if is_sorted else "inherit",
+                    "color": "var(--custom-color)" if is_sorted else "inherit",
                 },
             ),
             id={"type": "sort-header-container", "field": field_name},
