@@ -1,0 +1,7 @@
+.clear-button {
+    display: none;  /* By default, hide the Clear button. */
+}
+
+.radio-buttons:has(input:checked) ~ .clear-button  {
+    display: block;  /* If any options are selected, show the Clear button. */
+}

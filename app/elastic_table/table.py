@@ -14,16 +14,18 @@ def layout(filter_fields):
                                     [
                                         html.H5(field.title),
                                         dbc.RadioItems(
-                                            id=field.id, options=[], className="w-100"
+                                            id=field.id,
+                                            options=[],
+                                            className="w-100 radio-buttons",
                                         ),
                                         dbc.Button(
                                             "Clear",
                                             id=f"clear-{field.id}",
                                             color="success",
                                             size="sm",
-                                            className="mt-2",
+                                            className="mt-2 clear-button",
                                         ),
-                                    ]
+                                    ],
                                 )
                             )
                             for field in filter_fields
