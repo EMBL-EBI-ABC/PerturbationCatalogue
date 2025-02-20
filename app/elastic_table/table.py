@@ -16,7 +16,7 @@ def layout(filter_fields):
                                         dbc.RadioItems(
                                             id=field.id,
                                             options=[],
-                                            inline=True,
+                                            inline=False,
                                             style={"width": "100%"},
                                         ),
                                         dbc.Button(
@@ -24,7 +24,7 @@ def layout(filter_fields):
                                             id=f"clear-{field.id}",
                                             color="success",
                                             size="sm",
-                                            style={"margin-top": "10px"},
+                                            className="mt-2",
                                         ),
                                     ]
                                 )
@@ -36,12 +36,7 @@ def layout(filter_fields):
                         md=4,
                         sm=12,
                         xs=12,
-                        style={
-                            "padding": "30px 0px 0px 20px",
-                            "display": "flex",
-                            "flexDirection": "column",
-                            "gap": "12px",
-                        },
+                        className="pt-4 ps-4 d-flex flex-column gap-3",
                     ),
                     dbc.Col(
                         [
@@ -50,10 +45,7 @@ def layout(filter_fields):
                                 type="text",
                                 placeholder="Search...",
                                 debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "margin-bottom": "20px",
-                                },
+                                className="mb-3 w-100",
                             ),
                             dcc.Store(
                                 id="sort-store",
@@ -81,10 +73,7 @@ def layout(filter_fields):
                                             first_last=True,
                                             fully_expanded=False,
                                             previous_next=True,
-                                            style={
-                                                "margin-top": "15px",
-                                                "color": "white",
-                                            },
+                                            className="mt-3",
                                         ),
                                         width="auto",
                                         className="me-auto",
@@ -100,7 +89,7 @@ def layout(filter_fields):
                                                 ],
                                                 value=10,
                                                 clearable=False,
-                                                style={"width": "70px"},
+                                                className="w-70",
                                             ),
                                             html.Span(id="pagination-info"),
                                         ],
@@ -116,7 +105,7 @@ def layout(filter_fields):
                         md=8,
                         sm=12,
                         xs=12,
-                        style={"padding": "32px 25px 25px 25px"},
+                        className="pt-4 pe-4 ps-3",
                     ),
                 ],
                 className="g-0",
