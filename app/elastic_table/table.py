@@ -12,12 +12,9 @@ def layout(filter_fields):
                             dbc.Card(
                                 dbc.CardBody(
                                     [
-                                        html.H5(field.title, className="card-title"),
+                                        html.H5(field.title),
                                         dbc.RadioItems(
-                                            id=field.id,
-                                            options=[],
-                                            inline=False,
-                                            style={"width": "100%"},
+                                            id=field.id, options=[], className="w-100"
                                         ),
                                         dbc.Button(
                                             "Clear",
@@ -54,11 +51,8 @@ def layout(filter_fields):
                             dbc.Spinner(
                                 html.Div(
                                     id="data-table",
-                                    style={
-                                        "overflowY": "auto",
-                                        "width": "100%",
-                                        "minHeight": "100px",
-                                    },
+                                    className="w-100 overflow-auto",
+                                    style={"minHeight": "100px"},
                                 ),
                                 color="primary",
                                 spinner_style={"width": "48px", "height": "48px"},
@@ -71,8 +65,8 @@ def layout(filter_fields):
                                             max_value=1,
                                             active_page=1,
                                             first_last=True,
-                                            fully_expanded=False,
                                             previous_next=True,
+                                            fully_expanded=False,
                                             className="mt-3",
                                         ),
                                         width="auto",
@@ -109,6 +103,6 @@ def layout(filter_fields):
                     ),
                 ],
                 className="g-0",
-            ),
+            )
         ]
     )

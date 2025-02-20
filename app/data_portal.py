@@ -20,57 +20,98 @@ sortable_columns = {
 }
 
 
-def create_sort_header(column_name, field_name, current_sort):
+def create_table_header(column_name, field_name, current_sort):
     if field_name not in sortable_columns and field_name is not None:
         return html.Th(column_name)
 
-    if field_name is None:
-        return html.Th(column_name)
-
-    is_sorted = current_sort["field"] == field_name
-    order = current_sort["order"] if is_sorted else None
+    is_sorted = current_sort.get("field") == field_name
+    order = current_sort.get("order") if is_sorted else None
     arrow = "🡫" if order == "desc" else "🡩" if order == "asc" else ""
-    return html.Th(
-        html.Div(
+
+    return (
+        html.Th(
+            html.Div(
+                [f"{column_name} {arrow}"],
+                className="d-flex align-items-center",
+                style={
+                    "cursor": "pointer",
+                    "color": "blue" if is_sorted else "inherit",
+                },
+            ),
+            id={"type": "sort-header-container", "field": field_name},
+        )
+        if field_name is not None
+        else html.Th(column_name)
+    )
+
+
+def create_table(data, sort_data):
+    if not data:
+        return html.Div("No data found.")
+
+    columns = [
+        ("URN", None),
+        ("Sequence Type", None),
+        ("Gene Name", None),
+        ("Gene Category", None),
+        ("Publication Year", "publicationYear"),
+        ("Number of Variants", "numVariants"),
+    ]
+
+    rows = [
+        html.Tr(
             [
-                column_name + " " + arrow,
-            ],
-            style={
-                "display": "flex",
-                "alignItems": "center",
-                "cursor": "pointer",
-                "color": "blue" if is_sorted else "inherit",
-            },
-        ),
-        id={"type": "sort-header-container", "field": field_name},
+                html.Td(
+                    html.A(
+                        row["urn"],
+                        href=f"/data-portal/{row['urn']}",
+                        className="text-decoration-none text-nowrap",
+                    )
+                ),
+                html.Td(row.get("sequenceType", "N/A")),
+                html.Td(row.get("geneName", "N/A")),
+                html.Td(row.get("geneCategory", "N/A")),
+                html.Td(row.get("publicationYear", "N/A")),
+                html.Td(row.get("numVariants", "N/A")),
+            ]
+        )
+        for row in data
+    ]
+
+    return dbc.Table(
+        [
+            html.Thead(
+                html.Tr(
+                    [create_table_header(col[0], col[1], sort_data) for col in columns]
+                )
+            ),
+            html.Tbody(rows),
+        ],
+        bordered=True,
+        hover=True,
+        responsive=True,
     )
 
 
 def register_callbacks(app):
     @app.callback(
         Output("sort-store", "data"),
-        [
-            Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
-        ],
+        Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
         State("sort-store", "data"),
     )
-    def update_sort(container_clicks, current_sort):
+    def update_sort(_, current_sort):
         if not dash.callback_context.triggered:
             return dash.no_update
 
-        triggered_id = dash.callback_context.triggered[0]["prop_id"]
-        if not triggered_id:
-            return dash.no_update
-
-        field = eval(triggered_id.split(".")[0])["field"]
-
+        field = eval(dash.callback_context.triggered[0]["prop_id"].split(".")[0])[
+            "field"
+        ]
         if current_sort["field"] != field:
             return {"field": field, "order": "asc"}
-        else:
-            if current_sort["order"] == "asc":
-                return {"field": field, "order": "desc"}
-            else:
-                return {"field": field, "order": "asc"}
+        return {
+            "field": field,
+            "order": "desc" if current_sort["order"] == "asc" else "asc",
+        }
 
     @app.callback(
         [
@@ -87,126 +128,58 @@ def register_callbacks(app):
             *[Input(f.id, "value") for f in filter_fields],
         ],
     )
-    def fetch_data(
-        q, size, page, sort_data, sequenceType, geneCategory, publicationYear
-    ):
-        base_url = "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
-        start = (page - 1) * size if page else 0
-
+    def fetch_data(q, size, page, sort_data, *filter_values):
         params = {
-            k: v
-            for k, v in {
-                "q": q,
-                "size": size,
-                "start": start,
-                "sequenceType": sequenceType,
-                "geneCategory": geneCategory,
-                "publicationYear": publicationYear,
-                "sort_field": sort_data.get("field"),
-                "sort_order": sort_data.get("order"),
-            }.items()
-            if v not in [None, ""]
+            "q": q,
+            "size": size,
+            "start": (page - 1) * size if page else 0,
+            **{f.id: v for f, v in zip(filter_fields, filter_values) if v},
+            "sort_field": sort_data.get("field"),
+            "sort_order": sort_data.get("order"),
         }
 
-        response = requests.get(base_url, params=params)
-        if response.status_code == 200:
-            data = response.json()
-            total = data.get("total", 0)
-            max_pages = max(1, (total + size - 1) // size) if total > 0 else 1
-            start_index = start + 1 if total > 0 else 0
-            end_index = min(start + size, total)
+        response = requests.get(
+            "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
+            params={k: v for k, v in params.items() if v is not None},
+        )
 
-            filter_options = [
-                [
-                    {"label": b["key"], "value": b["key"]}
-                    for b in data.get("aggregations", {})
-                    .get(filter_field.id, {})
-                    .get("buckets", [])
-                ]
-                for filter_field in filter_fields
-            ]
-
-            pagination_info = f"{start_index} – {end_index} of {total}"
-
-            if data["results"]:
-                columns = [
-                    ("URN", None),
-                    ("Sequence Type", None),
-                    ("Gene Name", None),
-                    ("Gene Category", None),
-                    ("Publication Year", "publicationYear"),
-                    ("Number of Variants", "numVariants"),
-                ]
-
-                table_header = [
-                    html.Thead(
-                        html.Tr(
-                            [
-                                create_sort_header(col[0], col[1], sort_data)
-                                for col in columns
-                            ]
-                        )
-                    )
-                ]
-
-                rows = []
-                for row in data["results"]:
-                    urn_link = html.A(
-                        row["urn"],
-                        href=f"/data-portal/{row['urn']}",
-                        style={"whiteSpace": "nowrap", "textDecoration": "none"},
-                    )
-                    rows.append(
-                        html.Tr(
-                            [
-                                html.Td(urn_link),
-                                html.Td(row.get("sequenceType", "N/A")),
-                                html.Td(row.get("geneName", "N/A")),
-                                html.Td(row.get("geneCategory", "N/A")),
-                                html.Td(row.get("publicationYear", "N/A")),
-                                html.Td(row.get("numVariants", "N/A")),
-                            ]
-                        )
-                    )
-                table_body = [html.Tbody(rows)]
-                table = dbc.Table(
-                    table_header + table_body,
-                    bordered=True,
-                    hover=True,
-                    responsive=True,
-                )
-            else:
-                table = html.Div("No data found.")
-
-            return (
-                table,
-                *filter_options,
-                max_pages,
-                pagination_info,
-            )
-        else:
+        if response.status_code != 200:
             return html.Div("Error fetching data."), [], [], [], 1, ""
 
+        data = response.json()
+        total = data.get("total", 0)
+        start = params["start"]
+
+        filter_options = [
+            [
+                {"label": f"{b['key']} ({b['doc_count']})", "value": b["key"]}
+                for b in data.get("aggregations", {}).get(f.id, {}).get("buckets", [])
+            ]
+            for f in filter_fields
+        ]
+
+        return (
+            create_table(data.get("results", []), sort_data),
+            *filter_options,
+            max(1, (total + size - 1) // size) if total > 0 else 1,
+            f"{start + 1} – {min(start + size, total)} of {total}" if total > 0 else "",
+        )
+
     @app.callback(
-        [Output(field.id, "value") for field in filter_fields],
-        [Input(f"clear-{field.id}", "n_clicks") for field in filter_fields],
+        [Output(f.id, "value") for f in filter_fields],
+        [Input(f"clear-{f.id}", "n_clicks") for f in filter_fields],
     )
-    def clear_filters(*args):
-        # Get the ID of the triggered input
-        triggered_id = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-        # Initialize the result with no_update for all outputs
-        result = [dash.no_update] * len(filter_fields)
-        # Find the index of the triggered filter and set its value to None
-        for i, field in enumerate(filter_fields):
-            if triggered_id == f"clear-{field.id}":
-                result[i] = None
-                break
-        return result
+    def clear_filters(*_):
+        triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
+        return [
+            None if f"clear-{f.id}" == triggered else dash.no_update
+            for f in filter_fields
+        ]
 
 
 def resolver(url_parts):
-    # If there's something after the main URL, return details page.
-    if len(url_parts) == 1:
-        return details.layout(url_parts[0])
-    # Otherwise, return the main data portal page.
-    return table.layout(filter_fields)
+    return (
+        details.layout(url_parts[0])
+        if len(url_parts) == 1
+        else table.layout(filter_fields)
+    )
