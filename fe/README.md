@@ -18,8 +18,8 @@ docker build -t dash-app . && docker run -p 80:80 dash-app
 1. Deploy container → Service → Continuously deploy from a repository (source or function).
 1. Set up cloud build.
 1. Choose this repository → Next.
-1. Build type: Dockerfile; Source location: `/app/Dockerfile` → Save.
-1. Service name: `perturbation-catalogue-app`.
+1. Build type: Dockerfile; Source location: `/fe/Dockerfile` → Save.
+1. Service name: `perturbation-catalogue-dash`.
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.

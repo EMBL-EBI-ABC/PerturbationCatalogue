@@ -4,7 +4,7 @@
 
 This monorepo contains data processing, back-end, and front-end facilities for the Perturbation Catalogue project. Try it out:
 * **API** → https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search
-* **Website** → https://perturbation-catalogue-app-959149465821.europe-west2.run.app
+* **Website** → https://perturbation-catalogue-dash-959149465821.europe-west2.run.app
 
 ## Set up
 To automatically enforce the code style before committing, run:

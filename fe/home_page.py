@@ -15,7 +15,7 @@ def layout(pages):
                             "color": "rgb(24, 29, 25)",
                             "background-color": "rgb(0, 112, 73, 0.8)",
                             "object-fit": "cover",
-                            "height": "clamp(200px, 25vw, 1000px)",
+                            "height": "clamp(200px, 25vw, 400px)",
                         },
                     ),
                     html.H1(
