@@ -14,12 +14,14 @@ def layout(pages):
                             "width": "100%",
                             "color": "rgb(24, 29, 25)",
                             "background-color": "rgb(0, 112, 73, 0.8)",
+                            "object-fit": "cover",
+                            "height": "clamp(200px, 25vw, 1000px)",
                         },
                     ),
                     html.H1(
                         "Perturbation Catalogue",
                         style={
-                            "font-size": "300%",
+                            "font-size": "clamp(200%, 8vw, 300%)",
                             "position": "absolute",
                             "top": "50%",
                             "left": "50%",
@@ -54,9 +56,9 @@ def layout(pages):
                                 className="mb-4",
                             )
                             for page in pages
-                            if page.button is not None
-                        ],
-                    ),
+                            if page.button
+                        ]
+                    )
                 ]
             ),
         ]
