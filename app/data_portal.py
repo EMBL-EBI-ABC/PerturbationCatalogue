@@ -172,7 +172,7 @@ def register_callbacks(app):
     def clear_filters(*_):
         triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
         return [
-            None if f"clear-{f.id}" == triggered else dash.no_update
+            [] if f"clear-{f.id}" == triggered else dash.no_update
             for f in filter_fields
         ]
 

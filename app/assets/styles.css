@@ -1,7 +1,7 @@
-.clear-button {
+.elastic-table-filter-clear {
     display: none;  /* By default, hide the Clear button. */
 }
 
-.radio-buttons:has(input:checked) ~ .clear-button  {
+.elastic-table-filter-checklist:has(input:checked) ~ .elastic-table-filter-clear  {
     display: block;  /* If any options are selected, show the Clear button. */
 }

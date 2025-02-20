@@ -13,17 +13,17 @@ def layout(filter_fields):
                                 dbc.CardBody(
                                     [
                                         html.H5(field.title),
-                                        dbc.RadioItems(
+                                        dbc.Checklist(
                                             id=field.id,
                                             options=[],
-                                            className="w-100 radio-buttons",
+                                            className="w-100 elastic-table-filter-checklist",
                                         ),
                                         dbc.Button(
                                             "Clear",
                                             id=f"clear-{field.id}",
                                             color="success",
                                             size="sm",
-                                            className="mt-2 clear-button",
+                                            className="mt-2 elastic-table-filter-clear",
                                         ),
                                     ],
                                 )
