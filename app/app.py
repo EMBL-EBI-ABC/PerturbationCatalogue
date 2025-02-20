@@ -81,16 +81,17 @@ pages = [
 footer = html.Footer(
     dbc.Container(
         [
-            html.Div("Powered by ", style={"display": "inline"}),
+            html.Div("Powered by ", style={"display": "inline", "margin-right": "5px"}),
             html.Img(
                 src="/assets/embl-ebi-logo.png",
-                height="29px",
+                height="30px",
                 style={"display": "inline"},
             ),
         ],
-        className="text-center py-3",
+        className="text-left py-3 text-light",
+        fluid=True,
+        style={"padding-left": "20px"},
     ),
-    className="text-dark",
     style={"backgroundColor": "rgb(74, 78, 80)"},
 )
 
