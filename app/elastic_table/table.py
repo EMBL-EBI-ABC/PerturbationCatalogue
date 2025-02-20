@@ -62,19 +62,6 @@ def layout(filter_fields):
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Pagination(
-                                            id="pagination",
-                                            max_value=1,
-                                            active_page=1,
-                                            first_last=True,
-                                            previous_next=True,
-                                            fully_expanded=False,
-                                            className="mt-3",
-                                        ),
-                                        width="auto",
-                                        className="me-auto",
-                                    ),
-                                    dbc.Col(
                                         [
                                             html.Label("Items per page:"),
                                             dcc.Dropdown(
@@ -85,15 +72,27 @@ def layout(filter_fields):
                                                 ],
                                                 value=10,
                                                 clearable=False,
-                                                className="w-70",
+                                                style={"width": "70px"},
                                             ),
                                             html.Span(id="pagination-info"),
                                         ],
                                         width="auto",
-                                        className="d-flex align-items-center gap-2",
+                                        className="d-flex align-items-center gap-2 me-3",
+                                    ),
+                                    dbc.Col(
+                                        dbc.Pagination(
+                                            id="pagination",
+                                            max_value=1,
+                                            active_page=1,
+                                            first_last=True,
+                                            previous_next=True,
+                                            fully_expanded=False,
+                                            className="mt-3",
+                                        ),
+                                        width="auto",
                                     ),
                                 ],
-                                className="g-0 mt-0",
+                                className="g-0 mt-0 justify-content-end",
                             ),
                         ],
                         width=10,
