@@ -43,7 +43,6 @@ def layout(filter_fields):
                                 id="search",
                                 type="text",
                                 placeholder="Search...",
-                                debounce=True,
                                 className="mb-3 w-100",
                             ),
                             dcc.Store(
