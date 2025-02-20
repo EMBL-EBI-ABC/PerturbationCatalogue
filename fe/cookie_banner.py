@@ -43,6 +43,7 @@ layout = html.Div(
                 "borderRadius": "0",
                 "margin": "0",  # Remove any potential margin
                 "padding": "0",  # Ensure no padding is added by the container
+                "min-height": "70px",
             },
         )
     ],

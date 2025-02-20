@@ -47,7 +47,7 @@ pages = [
         name="Data Portal",
         selector="data-portal",
         button="Open Data Portal",
-        description="DEPLOYMENT TEST The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
+        description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
         resolver=lambda url: data_portal.resolver(url.split("/")[2:]),
         icon="bi-table",
     ),
