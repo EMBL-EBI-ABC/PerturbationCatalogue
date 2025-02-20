@@ -71,38 +71,44 @@ def layout(filter_fields):
                                 color="primary",
                                 spinner_style={"width": "48px", "height": "48px"},
                             ),
-                            html.Div(
+                            dbc.Row(
                                 [
-                                    dbc.Pagination(
-                                        id="pagination",
-                                        max_value=1,
-                                        active_page=1,
-                                        first_last=True,
-                                        fully_expanded=False,
-                                        previous_next=True,
-                                        style={
-                                            "margin-top": "15px",
-                                            "color": "white",
-                                        },
+                                    dbc.Col(
+                                        dbc.Pagination(
+                                            id="pagination",
+                                            max_value=1,
+                                            active_page=1,
+                                            first_last=True,
+                                            fully_expanded=False,
+                                            previous_next=True,
+                                            style={
+                                                "margin-top": "15px",
+                                                "color": "white",
+                                            },
+                                        ),
+                                        width="auto",
+                                        className="me-auto",
                                     ),
-                                    html.Label("Items per page:"),
-                                    dcc.Dropdown(
-                                        id="size",
-                                        options=[
-                                            {"label": str(i), "value": i}
-                                            for i in [10, 50, 100, 200]
+                                    dbc.Col(
+                                        [
+                                            html.Label("Items per page:"),
+                                            dcc.Dropdown(
+                                                id="size",
+                                                options=[
+                                                    {"label": str(i), "value": i}
+                                                    for i in [10, 50, 100, 200]
+                                                ],
+                                                value=10,
+                                                clearable=False,
+                                                style={"width": "70px"},
+                                            ),
+                                            html.Span(id="pagination-info"),
                                         ],
-                                        value=10,
-                                        clearable=False,
-                                        style={"width": "70px"},
+                                        width="auto",
+                                        className="d-flex align-items-center gap-2",
                                     ),
-                                    html.Span(id="pagination-info"),
                                 ],
-                                style={
-                                    "display": "flex",
-                                    "alignItems": "center",
-                                    "gap": "12px",
-                                },
+                                className="g-0 mt-0",
                             ),
                         ],
                         width=10,
