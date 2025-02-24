@@ -1,12 +1,15 @@
+import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, html
+from dash import Input, Output, State, callback, html, dcc
 
+from pages._pages import pages
 
-def layout(pages):
-    home_page = next(page for page in pages if page.selector == "home")
-    other_pages = [page for page in pages if page.selector != "home"]
+home_page = next(page for page in pages if page.selector == "home")
+other_pages = [page for page in pages if page.selector != "home"]
 
-    return dbc.Navbar(
+layout = dbc.Navbar(
+    [
+        dcc.Location(id="navbar_url", refresh=False),
         dbc.Container(
             [
                 dbc.Nav(
@@ -53,14 +56,16 @@ def layout(pages):
             fluid=True,
             className="pe-4",
         ),
-        color=None,
-        dark=True,
-        className="sticky-top",
-        style={"backgroundColor": "rgb(23, 140, 67)"},
-    )
+    ],
+    color=None,
+    dark=True,
+    className="sticky-top",
+    style={"backgroundColor": "rgb(23, 140, 67)"},
+)
 
 
 def register_callbacks(app):
+
     @callback(
         Output("navbar-collapse", "is_open"),
         Input("navbar-toggler", "n_clicks"),
@@ -68,4 +73,34 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def toggle_navbar(n_clicks, is_open):
+        """Collapse and expand the navbar."""
         return not is_open
+
+    @callback(
+        [
+            # Current navbar element styles.
+            dash.Output(f"nav-{page.selector}", "style")
+            for page in pages
+        ],
+        [dash.Input("navbar_url", "pathname")],
+    )
+    def highlight_bold(pathname):
+        """Highlight the active navbar element in bold."""
+
+        # Available navbar element styles.
+        default_style = {"color": "white"}
+        active_style = {"color": "white", "fontWeight": "bold"}
+
+        # Determine which page is active.
+        styles = {
+            page.selector: (
+                active_style
+                if pathname.startswith(f"/{page.selector}")
+                or (page.selector == "home" and pathname == "/")
+                else default_style
+            )
+            for page in pages
+        }
+
+        # Return the corresponding layout and styles.
+        return [styles[page.selector] for page in pages]

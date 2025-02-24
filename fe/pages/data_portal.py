@@ -5,7 +5,8 @@ from dash import html, Input, Output, State
 import dash_bootstrap_components as dbc
 import requests
 
-from elastic_table import details, table
+from .elastic_table import details, table
+
 
 FilterField = namedtuple("FilterField", ["id", "title"])
 filter_fields = [
@@ -18,6 +19,14 @@ sortable_columns = {
     "publicationYear": "Publication Year",
     "numVariants": "Number of Variants",
 }
+
+
+dash.register_page(
+    "data-portal", path_template="/data-portal", layout=table.layout(filter_fields)
+)
+dash.register_page(
+    "data-portal-details", path_template="/data-portal/<urn>", layout=details.layout
+)
 
 
 def create_table_header(column_name, field_name, current_sort):
@@ -175,11 +184,3 @@ def register_callbacks(app):
             [] if f"clear-{f.id}" == triggered else dash.no_update
             for f in filter_fields
         ]
-
-
-def resolver(url_parts):
-    return (
-        details.layout(url_parts[0])
-        if len(url_parts) == 1
-        else table.layout(filter_fields)
-    )
