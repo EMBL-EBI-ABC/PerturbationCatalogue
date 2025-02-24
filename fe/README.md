@@ -33,7 +33,7 @@ The deployment can then be accessed at the URL shown on the build page.
 This ensures that the deployment is only updated when something in `fe` is modified.
 
 1. Go to https://console.cloud.google.com/cloud-build/triggers.
-1. Edit the perturbation-catalogue-app trigger.
+1. Edit the perturbation-catalogue-dash trigger.
 1. Click on “Show included and ignored files filters”.
 1. Set “Included files filters (glob)” to `fe/**`.
 1. Click on “Save”.
