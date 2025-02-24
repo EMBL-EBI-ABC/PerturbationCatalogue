@@ -3,9 +3,28 @@ from dash import Input, Output, State, callback, html
 
 
 def layout(pages):
+    home_page = next(page for page in pages if page.selector == "home")
+    other_pages = [page for page in pages if page.selector != "home"]
+
     return dbc.Navbar(
         dbc.Container(
             [
+                dbc.Nav(
+                    [
+                        dbc.NavItem(
+                            dbc.NavLink(
+                                [
+                                    html.I(className=f"bi {home_page.icon} me-2"),
+                                    home_page.name,
+                                ],
+                                href=f"/{home_page.selector}",
+                                id=f"nav-{home_page.selector}",
+                                className="nav-link-custom text-white",
+                            )
+                        )
+                    ],
+                    className="me-auto",
+                ),
                 dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
                 dbc.Collapse(
                     dbc.Nav(
@@ -21,7 +40,7 @@ def layout(pages):
                                     className="nav-link-custom text-white",
                                 )
                             )
-                            for page in pages
+                            for page in other_pages
                         ],
                         className="ms-auto",
                         navbar=True,
