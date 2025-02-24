@@ -7,7 +7,7 @@ dash.register_page(
     path="/data-analytics",
     name="Data Analytics",
     button="Data Analytics",
-    description="The Data Analytics tab allows users to search the data using the Data Warehouse.",
+    description="The Data Analytics tab allows users to search the data using the Data Warehouse",
     icon="bi-graph-up",
 )
 
