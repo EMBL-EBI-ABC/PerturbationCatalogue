@@ -41,7 +41,7 @@ def create_table_header(column_name, field_name, current_sort):
 
     is_sorted = current_sort.get("field") == field_name
     order = current_sort.get("order") if is_sorted else None
-    arrow = "🡫" if order == "desc" else "🡩" if order == "asc" else ""
+    arrow = "↓" if order == "desc" else "↑" if order == "asc" else ""
 
     return (
         html.Th(
