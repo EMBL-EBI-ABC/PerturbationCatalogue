@@ -6,7 +6,7 @@ from ._order import get_pages
 
 dash.register_page(
     __name__,
-    path="/home",
+    path="/",
     name="Home",
     button=None,
     description=None,

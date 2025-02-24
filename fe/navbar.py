@@ -94,8 +94,11 @@ def register_callbacks(app):
         styles = {
             page["supplied_path"][1:]: (
                 active_style
-                if pathname.startswith(f"/{page['supplied_path'][1:]}")
-                or (page["supplied_path"][1:] == "home" and pathname == "/")
+                if (
+                    page["supplied_path"][1:] != ""
+                    and pathname.startswith(f"/{page['supplied_path'][1:]}")
+                )
+                or (page["supplied_path"][1:] == "" and pathname == "/")
                 else default_style
             )
             for page in get_pages(require_icon=True)
