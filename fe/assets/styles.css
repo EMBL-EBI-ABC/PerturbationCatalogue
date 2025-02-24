@@ -1,0 +1,39 @@
+/* Make Dash page_content container fill the available space. Especially important for iframes. */
+
+:has(#_pages_content) {
+    display: flex;
+    flex: 1;
+}
+
+#_pages_content {
+    display: flex;
+    flex: 1;
+}
+
+/* Bootstrap colour settings. */
+
+:root {
+    /* Primary colour */
+    --custom-color-rgb: 23, 140, 67;
+    --custom-color: rgb(var(--custom-color-rgb));
+    --bs-link-color-rgb: var(--custom-color-rgb);
+    --bs-link-color: var(--custom-color);
+    /* Hover colour */
+    --bs-link-hover-color-rgb: 63, 180, 107;
+    --bs-link-hover-color: rgb(var(--bs-link-hover-color-rgb))
+  }
+
+.pagination {
+    --bs-pagination-active-bg: var(--custom-color);
+    --bs-pagination-active-border-color: var(--custom-color);
+}
+
+/* Elastic table styles. */
+
+.elastic-table-filter-clear {
+    display: none;  /* By default, hide the Clear button. */
+}
+
+.elastic-table-filter-checklist:has(input:checked) ~ .elastic-table-filter-clear  {
+    display: block;  /* If any options are selected, show the Clear button. */
+}
