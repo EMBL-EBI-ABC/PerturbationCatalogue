@@ -44,7 +44,7 @@ footer = html.Footer(
         fluid=True,
         style={"padding-left": "20px"},
     ),
-    style={"backgroundColor": "rgb(74, 78, 80)"},
+    style={"backgroundColor": "rgb(74, 78, 80)", "position": "relative"},
 )
 
 # Overall app layout.
