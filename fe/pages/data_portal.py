@@ -41,13 +41,17 @@ def create_table_header(column_name, field_name, current_sort):
 
     is_sorted = current_sort.get("field") == field_name
     order = current_sort.get("order") if is_sorted else None
-    arrow = "↓" if order == "desc" else "↑" if order == "asc" else ""
+    icon = "sort-up" if order == "asc" else "sort-down" if order == "desc" else ""
 
     return (
         html.Th(
             html.Div(
-                [f"{column_name} {arrow}"],
-                className="d-flex align-items-center",
+                (
+                    [column_name, html.I(className=f"bi bi-{icon}")]
+                    if icon
+                    else column_name
+                ),
+                className="d-flex align-items-center gap-1",
                 style={
                     "cursor": "pointer",
                     "color": "var(--custom-color)" if is_sorted else "inherit",
