@@ -24,4 +24,4 @@ def get_pages(
 
 
 def get_home_page():
-    return get_pages(include_home=True, include_other=False)[0]
+    return get_all_pages_dict()["Home"]

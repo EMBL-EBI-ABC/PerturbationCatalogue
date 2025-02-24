@@ -52,7 +52,7 @@ layout = dbc.Navbar(
     color=None,
     dark=True,
     className="sticky-top",
-    style={"backgroundColor": "rgb(23, 140, 67)"},
+    style={"backgroundColor": "var(--custom-color)"},
 )
 
 
@@ -84,20 +84,18 @@ def register_callbacks(app):
         active_style = {"color": "white", "fontWeight": "bold"}
 
         # Determine which page is active.
-        styles = {
-            page["supplied_path"][1:]: (
+        styles = [
+            (
                 active_style
-                if (
+                if (pathname == page["supplied_path"] == "/")
+                or (
                     page["supplied_path"] != "/"
                     and pathname.startswith(page["supplied_path"])
                 )
-                or (page["supplied_path"] == "/" and pathname == "/")
                 else default_style
             )
             for page in get_pages(require_icon=True)
-        }
-
-        # Return the corresponding layout and styles.
-        return [
-            styles[page["supplied_path"][1:]] for page in get_pages(require_icon=True)
         ]
+
+        # Return the corresponding navigation item styles.
+        return styles
