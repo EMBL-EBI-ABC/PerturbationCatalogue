@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 import dash
-from dash import html, Input, Output, State
+from dash import html, Input, Output, State, dcc
 import dash_bootstrap_components as dbc
 import requests
 
@@ -133,6 +133,13 @@ def register_callbacks(app):
         }
 
     @app.callback(
+        Output("elastic-table-timer", "n_intervals"),
+        Input("search", "value"),
+    )
+    def start_timer(value):
+        return 0
+
+    @app.callback(
         [
             Output("data-table", "children"),
             *[Output(f.id, "options") for f in filter_fields],
@@ -140,14 +147,19 @@ def register_callbacks(app):
             Output("pagination-info", "children"),
         ],
         [
-            Input("search", "value"),
+            State("search", "value"),
+            Input("elastic-table-timer", "n_intervals"),
             Input("size", "value"),
             Input("pagination", "active_page"),
             Input("sort-store", "data"),
             *[Input(f.id, "value") for f in filter_fields],
         ],
+        State("search", "value"),
     )
-    def fetch_data(q, size, page, sort_data, *filter_values):
+    def fetch_data(q, n_intervals, size, page, sort_data, *filter_values):
+        if n_intervals != 1:
+            return dash.no_update
+
         params = {
             "q": q,
             "size": size,
