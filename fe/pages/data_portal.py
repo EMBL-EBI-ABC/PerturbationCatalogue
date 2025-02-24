@@ -22,7 +22,13 @@ sortable_columns = {
 
 
 dash.register_page(
-    "data-portal", path_template="/data-portal", layout=table.layout(filter_fields)
+    __name__,
+    path="/data-portal",
+    name="Data Portal",
+    button="Open Data Portal",
+    description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
+    icon="bi-table",
+    layout=table.layout(filter_fields),
 )
 dash.register_page(
     "data-portal-details", path_template="/data-portal/<urn>", layout=details.layout

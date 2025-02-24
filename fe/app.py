@@ -1,10 +1,9 @@
 import dash
-from dash import html, dcc
+from dash import html
 import dash_bootstrap_components as dbc
 
 import cookie_banner
 import google_analytics
-import navbar
 
 # Initialise the app.
 app = dash.Dash(
@@ -18,13 +17,13 @@ app = dash.Dash(
 )
 
 # Initialise callbacks for external components. This ensures that interactivity defined
-# in the sub-modules can work across the app.
+# in the sub-modules can work across the app. Note that these have to be imported
+# *after* app initialisation.
+from pages import data_portal
+import navbar
+
 cookie_banner.register_callbacks(app)
 navbar.register_callbacks(app)
-
-# Initialise callbacks for page components.
-from pages import data_portal
-
 data_portal.register_callbacks(app)
 
 # Inject Google Analytics scripts.
@@ -64,9 +63,9 @@ app.layout = html.Div(
     className="d-flex flex-column vh-100",
 )
 
-
 # Expose the server variable for Gunicorn.
 server = app.server
+
 
 if __name__ == "__main__":
     app.run_server(debug=True)
