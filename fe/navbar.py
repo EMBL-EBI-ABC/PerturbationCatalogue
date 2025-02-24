@@ -6,53 +6,29 @@ from pages._order import get_pages, get_home_page
 
 
 def nav_item(page):
-    return dbc.Nav(
-        [
-            dbc.NavItem(
-                dbc.NavLink(
-                    [
-                        html.I(className=f"bi {page['icon']} me-2"),
-                        page["name"],
-                    ],
-                    href=page["supplied_path"],
-                    id=f"nav-{page['supplied_path'][1:]}",
-                    className="nav-link-custom text-white",
-                )
-            )
-        ],
-        className="me-auto",
+    return dbc.NavItem(
+        dbc.NavLink(
+            [
+                html.I(className=f"bi {page['icon']} me-2"),
+                page["name"],
+            ],
+            href=page["supplied_path"],
+            id=f"nav-{page['supplied_path'][1:]}",
+            className="nav-link-custom text-white",
+        )
     )
 
 
-layout = dbc.Navbar(
-    [
-        dcc.Location(id="navbar_url", refresh=False),
-        dbc.Container(
-            [
-                nav_item(get_home_page()),
-                dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
-                dbc.Collapse(
-                    dbc.Nav(
-                        [
-                            nav_item(page)
-                            for page in get_pages(include_home=False, require_icon=True)
-                        ],
-                        className="ms-auto",
-                        navbar=True,
-                    ),
-                    id="navbar-collapse",
-                    is_open=False,
-                    navbar=True,
-                ),
-            ],
-            fluid=True,
-            className="pe-4",
-        ),
+layout = dbc.NavbarSimple(
+    children=[
+        nav_item(page) for page in get_pages(include_home=False, require_icon=True)
     ],
+    brand=nav_item(get_home_page()),
+    brand_href=get_home_page()["supplied_path"],
     color=None,
-    dark=True,
     className="sticky-top",
     style={"backgroundColor": "var(--custom-color)"},
+    fluid=True,
 )
 
 
