@@ -4,44 +4,37 @@ from dash import Input, Output, State, callback, html, dcc
 
 from pages._order import get_pages, get_home_page
 
-home_page = get_home_page()
+
+def nav_item(page):
+    return dbc.Nav(
+        [
+            dbc.NavItem(
+                dbc.NavLink(
+                    [
+                        html.I(className=f"bi {page['icon']} me-2"),
+                        page["name"],
+                    ],
+                    href=page["supplied_path"],
+                    id=f"nav-{page['supplied_path'][1:]}",
+                    className="nav-link-custom text-white",
+                )
+            )
+        ],
+        className="me-auto",
+    )
+
 
 layout = dbc.Navbar(
     [
         dcc.Location(id="navbar_url", refresh=False),
         dbc.Container(
             [
-                dbc.Nav(
-                    [
-                        dbc.NavItem(
-                            dbc.NavLink(
-                                [
-                                    html.I(className=f"bi {home_page['icon']} me-2"),
-                                    home_page["name"],
-                                ],
-                                href=home_page["supplied_path"],
-                                id=f"nav-{home_page['supplied_path'][1:]}",
-                                className="nav-link-custom text-white",
-                            )
-                        )
-                    ],
-                    className="me-auto",
-                ),
+                nav_item(get_home_page()),
                 dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
                 dbc.Collapse(
                     dbc.Nav(
                         [
-                            dbc.NavItem(
-                                dbc.NavLink(
-                                    [
-                                        html.I(className=f"bi {page['icon']} me-2"),
-                                        page["name"],
-                                    ],
-                                    href=page["supplied_path"],
-                                    id=f"nav-{page['supplied_path'][1:]}",
-                                    className="nav-link-custom text-white",
-                                )
-                            )
+                            nav_item(page)
                             for page in get_pages(include_home=False, require_icon=True)
                         ],
                         className="ms-auto",
@@ -95,10 +88,10 @@ def register_callbacks(app):
             page["supplied_path"][1:]: (
                 active_style
                 if (
-                    page["supplied_path"][1:] != ""
-                    and pathname.startswith(f"/{page['supplied_path'][1:]}")
+                    page["supplied_path"] != "/"
+                    and pathname.startswith(page["supplied_path"])
                 )
-                or (page["supplied_path"][1:] == "" and pathname == "/")
+                or (page["supplied_path"] == "/" and pathname == "/")
                 else default_style
             )
             for page in get_pages(require_icon=True)

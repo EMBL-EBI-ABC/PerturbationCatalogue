@@ -2,7 +2,7 @@
 
 ## Local run — direct
 ```bash
-pip install -r requirements.txt && python3 app.py
+pip install --quiet -r requirements.txt && python3 app.py
 ```
 
 ## Local run — Docker
@@ -30,10 +30,10 @@ The deployment can then be accessed at the URL shown on the build page.
 
 ### Set up path trigger
 
-This ensures that the deployment is only updated when something in `app` is modified.
+This ensures that the deployment is only updated when something in `fe` is modified.
 
 1. Go to https://console.cloud.google.com/cloud-build/triggers.
 1. Edit the perturbation-catalogue-app trigger.
 1. Click on “Show included and ignored files filters”.
-1. Set “Included files filters (glob)” to `app/**`.
-1. Clik on “Save”.
+1. Set “Included files filters (glob)” to `fe/**`.
+1. Click on “Save”.
