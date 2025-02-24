@@ -31,7 +31,7 @@ app.index_string = google_analytics.inject
 
 # Footer.
 footer = html.Footer(
-    dbc.Container(
+    html.Div(
         [
             html.Div("Powered by ", style={"display": "inline", "margin-right": "5px"}),
             html.Img(
@@ -41,7 +41,6 @@ footer = html.Footer(
             ),
         ],
         className="text-left py-3 text-light",
-        fluid=True,
         style={"padding-left": "20px"},
     ),
     style={"backgroundColor": "rgb(74, 78, 80)", "position": "relative"},
@@ -56,7 +55,11 @@ app.layout = html.Div(
         # Navigation bar.
         navbar.layout,
         # Main content.
-        dash.page_container,
+        dbc.Container(
+            dash.page_container,
+            fluid=True,
+            className="p-0 m-0",
+        ),
         # Footer.
         footer,
     ],
