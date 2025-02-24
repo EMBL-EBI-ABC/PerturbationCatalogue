@@ -134,10 +134,12 @@ def register_callbacks(app):
 
     @app.callback(
         Output("elastic-table-timer", "n_intervals"),
+        Output("elastic-table-timer", "disabled"),
         Input("search", "value"),
+        prevent_initial_call=True,
     )
     def start_timer(value):
-        return 0
+        return 0, False
 
     @app.callback(
         [
@@ -157,7 +159,7 @@ def register_callbacks(app):
         State("search", "value"),
     )
     def fetch_data(q, n_intervals, size, page, sort_data, *filter_values):
-        if n_intervals != 1:
+        if n_intervals is not None and n_intervals != 1:
             return dash.no_update
 
         params = {

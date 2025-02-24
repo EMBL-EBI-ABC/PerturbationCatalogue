@@ -5,7 +5,9 @@ import dash_bootstrap_components as dbc
 def layout(filter_fields):
     return html.Div(
         [
-            dcc.Interval(id="elastic-table-timer", interval=1000, max_intervals=1),
+            dcc.Interval(
+                id="elastic-table-timer", interval=1000, max_intervals=1, disabled=True
+            ),
             dbc.Row(
                 [
                     dbc.Col(
