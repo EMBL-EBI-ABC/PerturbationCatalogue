@@ -1,4 +1,4 @@
-"""A reusable and configurable class for a table and details views."""
+"""A reusable and configurable class for table and details views populated by the Elastic API."""
 
 from collections import namedtuple
 
