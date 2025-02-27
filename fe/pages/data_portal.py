@@ -1,6 +1,5 @@
-from dash import html
-
 import dash
+from dash import html
 
 from .elastic_table import ElasticTable, Column
 
