@@ -2,9 +2,9 @@ from dash import html
 
 
 def layout(urn):
-    from ..data_portal import elastic_table
+    from ..data_portal import mavedb_table
 
-    data = elastic_table.get_detail(urn)
+    data = mavedb_table.get_detail(urn)
 
     if isinstance(data, html.Div):  # Error response
         return data

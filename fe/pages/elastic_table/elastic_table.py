@@ -1,4 +1,3 @@
-from collections import namedtuple
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
@@ -22,7 +21,7 @@ class ElasticTable:
         self.default_sort_field = default_sort_field
         self.default_sort_order = default_sort_order
 
-    def layout(self):
+    def table_layout(self):
         return html.Div(
             [
                 dcc.Interval(

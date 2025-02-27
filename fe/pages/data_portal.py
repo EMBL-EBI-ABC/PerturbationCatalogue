@@ -9,7 +9,7 @@ from .elastic_table.elastic_table import ElasticTable
 FilterField = namedtuple("FilterField", ["id", "title"])
 
 
-elastic_table = ElasticTable(
+mavedb_table = ElasticTable(
     api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
     columns=[
         ("URN", "urn"),
@@ -40,7 +40,7 @@ dash.register_page(
     button="Open Data Portal",
     description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
     icon="bi-table",
-    layout=elastic_table.layout(),
+    layout=mavedb_table.table_layout(),
 )
 dash.register_page(
     "data-portal-details", path_template="/data-portal/<urn>", layout=details.layout
@@ -48,4 +48,4 @@ dash.register_page(
 
 
 def register_callbacks(app):
-    elastic_table.register_callbacks(app)
+    mavedb_table.register_callbacks(app)
