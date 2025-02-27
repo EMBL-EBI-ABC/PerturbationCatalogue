@@ -192,48 +192,58 @@ class ElasticTable:
 
         data = data[0]
 
-        return html.Div(
+        return dbc.Container(
             [
-                html.Div(
+                dbc.Row(
                     [
-                        html.Div(
-                            [
-                                html.Div(
-                                    [
-                                        self.format_title(data, "title"),
-                                        self.format_subtitle(data, "shortDescription"),
-                                        self.format_button(
-                                            "View on MaveDB",
-                                            f"https://www.mavedb.org/score-sets/{urn}/",
-                                        ),
-                                        self.format_text(data, "urn", "URN"),
-                                        self.format_text(
-                                            data, "sequenceType", "Sequence Type"
-                                        ),
-                                        self.format_text(data, "geneName", "Gene Name"),
-                                        self.format_text(
-                                            data, "geneCategory", "Gene Category"
-                                        ),
-                                        self.format_link(
-                                            data, "publicationUrl", "Publication URL"
-                                        ),
-                                        self.format_text(
-                                            data, "publicationYear", "Publication Year"
-                                        ),
-                                        self.format_text(
-                                            data, "numVariants", "Number of Variants"
-                                        ),
-                                    ],
-                                    className="card-body",
-                                )
-                            ],
-                            className="card",
+                        dbc.Col(
+                            dbc.Card(
+                                [
+                                    dbc.CardBody(
+                                        [
+                                            self.format_title(data, "title"),
+                                            self.format_subtitle(
+                                                data, "shortDescription"
+                                            ),
+                                            self.format_button(
+                                                "View on MaveDB",
+                                                f"https://www.mavedb.org/score-sets/{urn}/",
+                                            ),
+                                            self.format_text(data, "urn", "URN"),
+                                            self.format_text(
+                                                data, "sequenceType", "Sequence Type"
+                                            ),
+                                            self.format_text(
+                                                data, "geneName", "Gene Name"
+                                            ),
+                                            self.format_text(
+                                                data, "geneCategory", "Gene Category"
+                                            ),
+                                            self.format_link(
+                                                data,
+                                                "publicationUrl",
+                                                "Publication URL",
+                                            ),
+                                            self.format_text(
+                                                data,
+                                                "publicationYear",
+                                                "Publication Year",
+                                            ),
+                                            self.format_text(
+                                                data,
+                                                "numVariants",
+                                                "Number of Variants",
+                                            ),
+                                        ]
+                                    )
+                                ]
+                            ),
+                            width={"size": 8, "offset": 2},
                         )
-                    ],
-                    className="col-md-8 mx-auto",
+                    ]
                 )
             ],
-            className="container mt-4",
+            className="mt-4",
         )
 
     def create_table_header(self, column_name, field_name, current_sort):
