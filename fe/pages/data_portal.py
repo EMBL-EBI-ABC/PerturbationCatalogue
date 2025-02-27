@@ -10,12 +10,8 @@ FilterField = namedtuple("FilterField", ["id", "title"])
 
 # MaveDB.
 
-mavedb_api_endpoint = (
-    "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search"
-)
-
 mavedb_table = ElasticTable(
-    api_endpoint=mavedb_api_endpoint,
+    api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
     columns=[
         ("URN", "urn"),
         ("Sequence Type", "sequenceType"),
