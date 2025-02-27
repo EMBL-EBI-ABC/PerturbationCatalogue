@@ -36,9 +36,11 @@ class ElasticTable:
     # Table view.
 
     def _get_table_columns(self):
+        """Returns columns that should be displayed in the table view."""
         return [col for col in self.columns if col.display_table]
 
     def _fetch_data(self, q, size, page, sort_data, filter_values):
+        """Fetches data from the API endpoint with the given parameters."""
         params = {
             "q": q,
             "size": size,
@@ -63,6 +65,7 @@ class ElasticTable:
         return response, params
 
     def _create_table_header(self, col, current_sort):
+        """Creates a table header cell with optional sort indicator."""
         if not col.sortable:
             return html.Th(col.display_name)
 
@@ -87,6 +90,7 @@ class ElasticTable:
         )
 
     def _create_table(self, data, sort_data):
+        """Creates a Dash Bootstrap table from the provided data."""
         if not data:
             return html.Div("No data found.")
 
@@ -120,6 +124,7 @@ class ElasticTable:
         )
 
     def table_layout(self):
+        """Returns the complete layout for the table view."""
         default_sort_column = next(
             (col for col in self.columns if col.default_sort), None
         )
@@ -251,11 +256,13 @@ class ElasticTable:
 
     # Details view.
 
-    def _get_detail(self, urn):
-        response = requests.get(f"{self.api_endpoint}/{urn}")
+    def _get_detail(self, record_id):
+        """Fetches details for a specific item by its URN."""
+        response = requests.get(f"{self.api_endpoint}/{record_id}")
         return response.json()
 
     def _format_title(self, data):
+        """Formats the title section of the details view."""
         title_field = next(
             col.field_name for col in self.columns if col.display_details == "title"
         )
@@ -265,6 +272,7 @@ class ElasticTable:
         )
 
     def _format_subtitle(self, data):
+        """Formats the subtitle section of the details view."""
         subtitle_field = next(
             col.field_name for col in self.columns if col.display_details == "subtitle"
         )
@@ -274,6 +282,7 @@ class ElasticTable:
         )
 
     def _format_button(self, urn):
+        """Creates a button for the details view."""
         return html.A(
             self.details_button_name,
             href=self.details_button_link(urn),
@@ -281,6 +290,7 @@ class ElasticTable:
         )
 
     def _format_item(self, data, col):
+        """Formats a single item in the details view."""
         if col.display_details == "text":
             return html.P(
                 [
@@ -302,8 +312,9 @@ class ElasticTable:
                 className="card-text",
             )
 
-    def details_layout(self, urn):
-        data = self._get_detail(urn).get("results", [{}])
+    def details_layout(self, record_id):
+        """Returns the complete layout for the details view."""
+        data = self._get_detail(record_id).get("results", [{}])
 
         if not data:
             return dbc.Alert(
@@ -321,7 +332,7 @@ class ElasticTable:
                             [
                                 self._format_title(data),
                                 self._format_subtitle(data),
-                                self._format_button(urn),
+                                self._format_button(record_id),
                                 *[
                                     self._format_item(data, col)
                                     for col in self.columns
@@ -341,6 +352,7 @@ class ElasticTable:
     # Callbacks.
 
     def register_callbacks(self, app):
+        """Registers all necessary Dash callbacks for the table functionality."""
 
         # Update sort direction.
         @app.callback(
@@ -351,6 +363,7 @@ class ElasticTable:
             dash.State("sort-store", "data"),
         )
         def update_sort(_, current_sort):
+            """Updates the sort direction when a column header is clicked."""
             if not dash.callback_context.triggered:
                 return dash.no_update
 
@@ -372,6 +385,7 @@ class ElasticTable:
             prevent_initial_call=True,
         )
         def start_timer(value):
+            """Starts the debounce timer when the search input changes."""
             return 0, False
 
         # Fetch data when parameters change.
@@ -401,6 +415,7 @@ class ElasticTable:
             dash.State("search", "value"),
         )
         def fetch_data(q, n_intervals, size, page, sort_data, *filter_values):
+            """Fetches and refreshes the table data based on current filters and parameters."""
             if n_intervals is not None and n_intervals != 1:
                 return dash.no_update
 
@@ -455,6 +470,7 @@ class ElasticTable:
             ],
         )
         def clear_filters(*_):
+            """Clears the selected filter values when a clear button is clicked."""
             triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
             return [
                 [] if f"clear-{col.field_name}" == triggered else dash.no_update

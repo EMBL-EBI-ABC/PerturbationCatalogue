@@ -85,7 +85,7 @@ dash.register_page(
 
 dash.register_page(
     "data-portal-details",
-    path_template="/data-portal/<urn>",
+    path_template="/data-portal/<record_id>",
     layout=mavedb_table.details_layout,
 )
 
