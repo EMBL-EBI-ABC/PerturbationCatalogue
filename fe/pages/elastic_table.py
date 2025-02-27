@@ -4,17 +4,18 @@ import dash_bootstrap_components as dbc
 import requests
 from collections import namedtuple
 
-ColumnDefinition = namedtuple(
+Column = namedtuple(
     "ColumnDefinition",
     [
         "field_name",
         "display_name",
+        "display_table",
+        "display_details",
         "filterable",
         "sortable",
         "default_sort",
-        "display_table",
-        "display_details",
     ],
+    defaults=[None, None, True, None, False, False, False],
 )
 
 

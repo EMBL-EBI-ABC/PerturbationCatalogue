@@ -2,94 +2,65 @@ from collections import namedtuple
 
 import dash
 
-from .elastic_table import ElasticTable, ColumnDefinition
+from .elastic_table import ElasticTable, Column
 
 # MaveDB.
 
 columns = [
-    # Special columns: title and subtitle, to be displayed on details page only.
-    ColumnDefinition(
+    # Special columns: title and subtitle, for details view only.
+    Column(
         field_name="title",
-        display_name="Title",
-        filterable=False,
-        sortable=False,
-        default_sort=False,
         display_table=False,
         display_details="title",
     ),
-    ColumnDefinition(
+    Column(
         field_name="shortDescription",
-        display_name="Short description",
-        filterable=False,
-        sortable=False,
-        default_sort=False,
         display_table=False,
         display_details="subtitle",
     ),
-    # Special column: URN, to serve as the primary key and to construct the details button link.
-    ColumnDefinition(
+    # Special column: URN, to serve as the primary key and link construction.
+    Column(
         field_name="urn",
         display_name="URN",
-        filterable=False,
-        sortable=False,
-        default_sort=False,
-        display_table=True,
         display_details="text",
     ),
-    # Rest of columns.
-    ColumnDefinition(
+    # Data columns.
+    Column(
         field_name="sequenceType",
         display_name="Sequence Type",
-        filterable=True,
-        sortable=False,
-        default_sort=False,
-        display_table=True,
         display_details="text",
+        filterable=True,
     ),
-    ColumnDefinition(
+    Column(
         field_name="geneName",
         display_name="Gene Name",
-        filterable=False,
-        sortable=False,
-        default_sort=False,
-        display_table=True,
         display_details="text",
     ),
-    ColumnDefinition(
+    Column(
         field_name="geneCategory",
         display_name="Gene Category",
-        filterable=True,
-        sortable=False,
-        default_sort=False,
-        display_table=True,
         display_details="text",
+        filterable=True,
     ),
-    ColumnDefinition(
+    Column(
         field_name="publicationUrl",
         display_name="Publication URL",
-        filterable=False,
-        sortable=True,
-        default_sort=False,
         display_table=False,
         display_details="link",
     ),
-    ColumnDefinition(
+    Column(
         field_name="publicationYear",
         display_name="Publication Year",
+        display_details="text",
         filterable=True,
         sortable=True,
         default_sort="desc",
-        display_table=True,
-        display_details="text",
     ),
-    ColumnDefinition(
+    Column(
         field_name="numVariants",
         display_name="Number of Variants",
-        filterable=False,
-        sortable=True,
-        default_sort=False,
-        display_table=True,
         display_details="text",
+        sortable=True,
     ),
 ]
 
