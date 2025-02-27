@@ -1,17 +1,15 @@
 from dash import html
-import requests
 
 
 def layout(urn):
-    api_url = f"https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search/{urn}"
-    response = requests.get(api_url)
+    from ..data_portal import elastic_table
 
-    if response.status_code != 200:
-        return html.Div(
-            "Error: Unable to fetch data from the API.", className="alert alert-danger"
-        )
+    data = elastic_table.get_detail(urn)
 
-    data = response.json().get("results", [{}])[0]
+    if isinstance(data, html.Div):  # Error response
+        return data
+
+    data = data.get("results", [{}])[0]
 
     return html.Div(
         [
