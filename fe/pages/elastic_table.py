@@ -1,7 +1,9 @@
+"""A reusable and configurable class for a table and details views."""
+
 from collections import namedtuple
 
 import dash
-from dash import html, dcc
+from dash import html, dcc, Output, Input, State
 import dash_bootstrap_components as dbc
 import requests
 
@@ -355,11 +357,9 @@ class ElasticTable:
         """Registers all necessary Dash callbacks for the table functionality."""
 
         @app.callback(
-            dash.Output("sort-store", "data"),
-            dash.Input(
-                {"type": "sort-header-container", "field": dash.ALL}, "n_clicks"
-            ),
-            dash.State("sort-store", "data"),
+            Output("sort-store", "data"),
+            Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
+            State("sort-store", "data"),
         )
         def update_sort(_, current_sort):
             """Updates the sort direction when a column header is clicked."""
@@ -377,9 +377,9 @@ class ElasticTable:
             }
 
         @app.callback(
-            dash.Output("elastic-table-timer", "n_intervals"),
-            dash.Output("elastic-table-timer", "disabled"),
-            dash.Input("search", "value"),
+            Output("elastic-table-timer", "n_intervals"),
+            Output("elastic-table-timer", "disabled"),
+            Input("search", "value"),
             prevent_initial_call=True,
         )
         def start_timer(value):
@@ -388,28 +388,28 @@ class ElasticTable:
 
         @app.callback(
             [
-                dash.Output("data-table", "children"),
+                Output("data-table", "children"),
                 *[
-                    dash.Output(col.field_name, "options")
+                    Output(col.field_name, "options")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
-                dash.Output("pagination", "max_value"),
-                dash.Output("pagination-info", "children"),
+                Output("pagination", "max_value"),
+                Output("pagination-info", "children"),
             ],
             [
-                dash.State("search", "value"),
-                dash.Input("elastic-table-timer", "n_intervals"),
-                dash.Input("size", "value"),
-                dash.Input("pagination", "active_page"),
-                dash.Input("sort-store", "data"),
+                State("search", "value"),
+                Input("elastic-table-timer", "n_intervals"),
+                Input("size", "value"),
+                Input("pagination", "active_page"),
+                Input("sort-store", "data"),
                 *[
-                    dash.Input(col.field_name, "value")
+                    Input(col.field_name, "value")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
             ],
-            dash.State("search", "value"),
+            State("search", "value"),
         )
         def fetch_data(q, n_intervals, size, page, sort_data, *filter_values):
             """Fetches and refreshes the table data based on current filters and parameters."""
@@ -455,12 +455,12 @@ class ElasticTable:
 
         @app.callback(
             [
-                dash.Output(col.field_name, "value")
+                Output(col.field_name, "value")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
             [
-                dash.Input(f"clear-{col.field_name}", "n_clicks")
+                Input(f"clear-{col.field_name}", "n_clicks")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
