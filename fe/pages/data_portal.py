@@ -2,35 +2,58 @@ from collections import namedtuple
 
 import dash
 
-from .elastic_table import ElasticTable
-
-
-FilterField = namedtuple("FilterField", ["id", "title"])
-
+from .elastic_table import ElasticTable, ColumnDefinition
 
 # MaveDB.
 
+columns = [
+    ColumnDefinition(
+        field_name="urn",
+        display_name="URN",
+        filterable=False,
+        sortable=False,
+        default_sort=False,
+    ),
+    ColumnDefinition(
+        field_name="sequenceType",
+        display_name="Sequence Type",
+        filterable=True,
+        sortable=False,
+        default_sort=False,
+    ),
+    ColumnDefinition(
+        field_name="geneName",
+        display_name="Gene Name",
+        filterable=False,
+        sortable=False,
+        default_sort=False,
+    ),
+    ColumnDefinition(
+        field_name="geneCategory",
+        display_name="Gene Category",
+        filterable=True,
+        sortable=False,
+        default_sort=False,
+    ),
+    ColumnDefinition(
+        field_name="publicationYear",
+        display_name="Publication Year",
+        filterable=True,
+        sortable=True,
+        default_sort=True,
+    ),
+    ColumnDefinition(
+        field_name="numVariants",
+        display_name="Number of Variants",
+        filterable=False,
+        sortable=True,
+        default_sort=False,
+    ),
+]
+
 mavedb_table = ElasticTable(
     api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
-    columns=[
-        ("URN", "urn"),
-        ("Sequence Type", "sequenceType"),
-        ("Gene Name", "geneName"),
-        ("Gene Category", "geneCategory"),
-        ("Publication Year", "publicationYear"),
-        ("Number of Variants", "numVariants"),
-    ],
-    filter_fields=[
-        FilterField(id="sequenceType", title="Sequence Type"),
-        FilterField(id="geneCategory", title="Gene Category"),
-        FilterField(id="publicationYear", title="Publication Year"),
-    ],
-    sortable_columns={
-        "publicationYear": "Publication Year",
-        "numVariants": "Number of Variants",
-    },
-    default_sort_field="publicationYear",
-    default_sort_order="desc",
+    columns=columns,
 )
 
 dash.register_page(
@@ -48,7 +71,6 @@ dash.register_page(
     path_template="/data-portal/<urn>",
     layout=mavedb_table.details_layout,
 )
-
 
 # Callbacks.
 

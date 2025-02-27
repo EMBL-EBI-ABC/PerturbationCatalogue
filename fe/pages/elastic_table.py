@@ -2,6 +2,12 @@ import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 import requests
+from collections import namedtuple
+
+ColumnDefinition = namedtuple(
+    "ColumnDefinition",
+    ["field_name", "display_name", "filterable", "sortable", "default_sort"],
+)
 
 
 class ElasticTable:
@@ -9,17 +15,14 @@ class ElasticTable:
         self,
         api_endpoint,
         columns,
-        filter_fields,
-        sortable_columns,
-        default_sort_field,
         default_sort_order="desc",
     ):
         self.api_endpoint = api_endpoint
         self.columns = columns
-        self.filter_fields = filter_fields
-        self.sortable_columns = sortable_columns
-        self.default_sort_field = default_sort_field
         self.default_sort_order = default_sort_order
+        self.default_sort_field = next(
+            (col.field_name for col in columns if col.default_sort), None
+        )
 
     def table_layout(self):
         return html.Div(
@@ -37,15 +40,15 @@ class ElasticTable:
                                 dbc.Card(
                                     dbc.CardBody(
                                         [
-                                            html.H5(field.title),
+                                            html.H5(col.display_name),
                                             dbc.Checklist(
-                                                id=field.id,
+                                                id=col.field_name,
                                                 options=[],
                                                 className="w-100 elastic-table-filter-checklist",
                                             ),
                                             dbc.Button(
                                                 "Clear",
-                                                id=f"clear-{field.id}",
+                                                id=f"clear-{col.field_name}",
                                                 color="success",
                                                 size="sm",
                                                 className="mt-2 elastic-table-filter-clear",
@@ -53,7 +56,8 @@ class ElasticTable:
                                         ],
                                     )
                                 )
-                                for field in self.filter_fields
+                                for col in self.columns
+                                if col.filterable
                             ],
                             width=2,
                             lg=2,
@@ -247,7 +251,9 @@ class ElasticTable:
         )
 
     def create_table_header(self, column_name, field_name, current_sort):
-        if field_name not in self.sortable_columns and field_name is not None:
+        if field_name is None or not any(
+            col.field_name == field_name and col.sortable for col in self.columns
+        ):
             return html.Th(column_name)
 
         is_sorted = current_sort.get("field") == field_name
@@ -289,10 +295,12 @@ class ElasticTable:
                                 className="text-decoration-none text-nowrap",
                             )
                         )
-                        if column[0] == "URN"
-                        else html.Td(row.get(column[1], "N/A") if column[1] else "N/A")
+                        if col.field_name == "urn"
+                        else html.Td(
+                            row.get(col.field_name, "N/A") if col.field_name else "N/A"
+                        )
                     )
-                    for column in self.columns
+                    for col in self.columns
                 ]
             )
             for row in data
@@ -303,7 +311,9 @@ class ElasticTable:
                 html.Thead(
                     html.Tr(
                         [
-                            self.create_table_header(col[0], col[1], sort_data)
+                            self.create_table_header(
+                                col.display_name, col.field_name, sort_data
+                            )
                             for col in self.columns
                         ]
                     )
@@ -315,6 +325,9 @@ class ElasticTable:
             responsive=True,
         )
 
+    def get_filterable_columns(self):
+        return [col.field_name for col in self.columns if col.filterable]
+
     def get_detail_url(self, urn):
         return f"/data-portal/{urn}"
 
@@ -323,7 +336,13 @@ class ElasticTable:
             "q": q,
             "size": size,
             "start": (page - 1) * size if page else 0,
-            **{f.id: v for f, v in zip(self.filter_fields, filter_values) if v},
+            **{
+                field_name: value
+                for field_name, value in zip(
+                    self.get_filterable_columns(), filter_values
+                )
+                if value
+            },
             "sort_field": sort_data.get("field"),
             "sort_order": sort_data.get("order"),
         }
@@ -369,7 +388,11 @@ class ElasticTable:
         @app.callback(
             [
                 dash.Output("data-table", "children"),
-                *[dash.Output(f.id, "options") for f in self.filter_fields],
+                *[
+                    dash.Output(col.field_name, "options")
+                    for col in self.columns
+                    if col.filterable
+                ],
                 dash.Output("pagination", "max_value"),
                 dash.Output("pagination-info", "children"),
             ],
@@ -379,7 +402,11 @@ class ElasticTable:
                 dash.Input("size", "value"),
                 dash.Input("pagination", "active_page"),
                 dash.Input("sort-store", "data"),
-                *[dash.Input(f.id, "value") for f in self.filter_fields],
+                *[
+                    dash.Input(col.field_name, "value")
+                    for col in self.columns
+                    if col.filterable
+                ],
             ],
             dash.State("search", "value"),
         )
@@ -392,7 +419,7 @@ class ElasticTable:
             if response.status_code != 200:
                 return (
                     html.Div("Error fetching data."),
-                    *[[]] * len(self.filter_fields),
+                    *[[]] * len([col for col in self.columns if col.filterable]),
                     1,
                     "",
                 )
@@ -405,10 +432,11 @@ class ElasticTable:
                 [
                     {"label": f"{b['key']} ({b['doc_count']})", "value": b["key"]}
                     for b in data.get("aggregations", {})
-                    .get(f.id, {})
+                    .get(col.field_name, {})
                     .get("buckets", [])
                 ]
-                for f in self.filter_fields
+                for col in self.columns
+                if col.filterable
             ]
 
             return (
@@ -423,14 +451,23 @@ class ElasticTable:
             )
 
         @app.callback(
-            [dash.Output(f.id, "value") for f in self.filter_fields],
-            [dash.Input(f"clear-{f.id}", "n_clicks") for f in self.filter_fields],
+            [
+                dash.Output(col.field_name, "value")
+                for col in self.columns
+                if col.filterable
+            ],
+            [
+                dash.Input(f"clear-{col.field_name}", "n_clicks")
+                for col in self.columns
+                if col.filterable
+            ],
         )
         def clear_filters(*_):
             triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
             return [
-                [] if f"clear-{f.id}" == triggered else dash.no_update
-                for f in self.filter_fields
+                [] if f"clear-{col.field_name}" == triggered else dash.no_update
+                for col in self.columns
+                if col.filterable
             ]
 
     def get_detail(self, urn):
