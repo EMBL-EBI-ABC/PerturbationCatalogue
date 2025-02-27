@@ -354,7 +354,6 @@ class ElasticTable:
     def register_callbacks(self, app):
         """Registers all necessary Dash callbacks for the table functionality."""
 
-        # Update sort direction.
         @app.callback(
             dash.Output("sort-store", "data"),
             dash.Input(
@@ -377,7 +376,6 @@ class ElasticTable:
                 "order": "desc" if current_sort["order"] == "asc" else "asc",
             }
 
-        # Debounce timer for the input field.
         @app.callback(
             dash.Output("elastic-table-timer", "n_intervals"),
             dash.Output("elastic-table-timer", "disabled"),
@@ -388,7 +386,6 @@ class ElasticTable:
             """Starts the debounce timer when the search input changes."""
             return 0, False
 
-        # Fetch data when parameters change.
         @app.callback(
             [
                 dash.Output("data-table", "children"),
@@ -456,7 +453,6 @@ class ElasticTable:
                 ),
             )
 
-        # Clear filters.
         @app.callback(
             [
                 dash.Output(col.field_name, "value")
