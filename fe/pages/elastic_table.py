@@ -227,6 +227,7 @@ class ElasticTable:
                                                 first_last=True,
                                                 previous_next=True,
                                                 fully_expanded=False,
+                                                className="mt-3",
                                             ),
                                             width="auto",
                                         ),
