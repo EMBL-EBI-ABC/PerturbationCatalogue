@@ -1,8 +1,9 @@
+from collections import namedtuple
+
 import dash
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 import requests
-from collections import namedtuple
 
 Column = namedtuple(
     "ColumnDefinition",
@@ -30,9 +31,6 @@ class ElasticTable:
     ):
         self.api_endpoint = api_endpoint
         self.columns = columns
-        default_sort_column = next((col for col in columns if col.default_sort), None)
-        self.default_sort_order = default_sort_column.default_sort
-        self.default_sort_field = default_sort_column.field_name
         self.details_page_url = details_page_url
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
@@ -143,6 +141,9 @@ class ElasticTable:
         )
 
     def table_layout(self):
+        default_sort_column = next(
+            (col for col in self.columns if col.default_sort), None
+        )
         return html.Div(
             [
                 dcc.Interval(
@@ -195,8 +196,8 @@ class ElasticTable:
                                 dcc.Store(
                                     id="sort-store",
                                     data={
-                                        "field": self.default_sort_field,
-                                        "order": self.default_sort_order,
+                                        "field": default_sort_column.field_name,
+                                        "order": default_sort_column.default_sort,
                                     },
                                 ),
                                 dbc.Spinner(
