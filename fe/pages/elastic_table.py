@@ -16,7 +16,7 @@ Column = namedtuple(
         "sortable",
         "default_sort",
     ],
-    defaults=[None, None, True, None, False, False, False],
+    defaults=[None, None, lambda x: x, None, False, False, False],
 )
 
 
@@ -25,13 +25,11 @@ class ElasticTable:
         self,
         api_endpoint,
         columns,
-        details_page_url,
         details_button_name,
         details_button_link,
     ):
         self.api_endpoint = api_endpoint
         self.columns = columns
-        self.details_page_url = details_page_url
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
 
@@ -93,28 +91,6 @@ class ElasticTable:
         if not data:
             return html.Div("No data found.")
 
-        rows = [
-            html.Tr(
-                [
-                    (
-                        html.Td(
-                            html.A(
-                                row["urn"],
-                                href=self.details_page_url(row["urn"]),
-                                className="text-decoration-none text-nowrap",
-                            )
-                        )
-                        if col.field_name == "urn"
-                        else html.Td(
-                            row.get(col.field_name, "N/A") if col.field_name else "N/A"
-                        )
-                    )
-                    for col in self._get_table_columns()
-                ]
-            )
-            for row in data
-        ]
-
         return dbc.Table(
             [
                 html.Thead(
@@ -125,7 +101,19 @@ class ElasticTable:
                         ]
                     )
                 ),
-                html.Tbody(rows),
+                html.Tbody(
+                    [
+                        html.Tr(
+                            [
+                                html.Td(
+                                    col.display_table(row.get(col.field_name, "N/A"))
+                                )
+                                for col in self._get_table_columns()
+                            ]
+                        )
+                        for row in data
+                    ]
+                ),
             ],
             bordered=True,
             hover=True,

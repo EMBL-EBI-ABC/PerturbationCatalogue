@@ -1,3 +1,5 @@
+from dash import html
+
 import dash
 
 from .elastic_table import ElasticTable, Column
@@ -23,6 +25,11 @@ mavedb_table = ElasticTable(
             field_name="urn",
             display_name="URN",
             display_details="text",
+            display_table=lambda urn: html.A(
+                urn,
+                href=f"/data-portal/{urn}",
+                className="text-decoration-none text-nowrap",
+            ),
         ),
         # Data columns.
         Column(
@@ -63,7 +70,6 @@ mavedb_table = ElasticTable(
             sortable=True,
         ),
     ],
-    details_page_url=lambda urn: f"/data-portal/{urn}",
     details_button_name="View on MaveDB",
     details_button_link=lambda urn: f"https://www.mavedb.org/score-sets/{urn}/",
 )
