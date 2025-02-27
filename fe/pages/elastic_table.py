@@ -6,7 +6,15 @@ from collections import namedtuple
 
 ColumnDefinition = namedtuple(
     "ColumnDefinition",
-    ["field_name", "display_name", "filterable", "sortable", "default_sort"],
+    [
+        "field_name",
+        "display_name",
+        "filterable",
+        "sortable",
+        "default_sort",
+        "display_table",
+        "display_details",
+    ],
 )
 
 
@@ -15,14 +23,19 @@ class ElasticTable:
         self,
         api_endpoint,
         columns,
-        default_sort_order="desc",
+        details_button_name,
+        details_button_link,
     ):
         self.api_endpoint = api_endpoint
         self.columns = columns
-        self.default_sort_order = default_sort_order
-        self.default_sort_field = next(
-            (col.field_name for col in columns if col.default_sort), None
-        )
+        default_sort_column = next((col for col in columns if col.default_sort), None)
+        self.default_sort_order = default_sort_column.default_sort
+        self.default_sort_field = default_sort_column.field_name
+        self.details_button_name = details_button_name
+        self.details_button_link = details_button_link
+
+    def _get_table_columns(self):
+        return [col for col in self.columns if col.display_table]
 
     def table_layout(self):
         return html.Div(
@@ -56,7 +69,7 @@ class ElasticTable:
                                         ],
                                     )
                                 )
-                                for col in self.columns
+                                for col in self._get_table_columns()
                                 if col.filterable
                             ],
                             width=2,
@@ -140,50 +153,56 @@ class ElasticTable:
             style={"width": "100%"},
         )
 
-    def format_title(self, data, field):
+    def format_title(self, data):
+        title_field = [
+            col.field_name for col in self.columns if col.display_details == "title"
+        ][0]
         return html.H4(
-            data.get(field, "N/A"),
+            data.get(title_field, "N/A"),
             className="card-title",
         )
 
-    def format_subtitle(self, data, field):
+    def format_subtitle(self, data):
+        subtitle_field = [
+            col.field_name for col in self.columns if col.display_details == "subtitle"
+        ][0]
         return html.P(
-            data.get(field, "N/A"),
+            data.get(subtitle_field, "N/A"),
             className="card-text",
         )
 
-    def format_button(self, text, href):
+    def format_button(self, urn):
         return html.Div(
             [
                 html.A(
-                    text,
-                    href=href,
+                    self.details_button_name,
+                    href=self.details_button_link(urn),
                     className="btn btn-primary mb-3",
                 )
             ]
         )
 
-    def format_text(self, data, field, name):
-        return html.P(
-            [
-                html.Strong(f"{name}: "),
-                str(data.get(field, "N/A")),
-            ],
-            className="card-text",
-        )
-
-    def format_link(self, data, field, name):
-        return html.P(
-            [
-                html.Strong(f"{name}: "),
-                html.A(
-                    data.get(field, "N/A"),
-                    href=data.get(field, "#"),
-                    target="_blank",
-                ),
-            ],
-            className="card-text",
-        )
+    def format_item(self, data, col):
+        if col.display_details == "text":
+            return html.P(
+                [
+                    html.Strong(f"{col.display_name}: "),
+                    str(data.get(col.field_name, "N/A")),
+                ],
+                className="card-text",
+            )
+        else:
+            return html.P(
+                [
+                    html.Strong(f"{col.display_name}: "),
+                    html.A(
+                        data.get(col.field_name, "N/A"),
+                        href=data.get(col.field_name, "#"),
+                        target="_blank",
+                    ),
+                ],
+                className="card-text",
+            )
 
     def details_layout(self, urn):
         data = self.get_detail(urn).get("results", [{}])
@@ -205,39 +224,15 @@ class ElasticTable:
                                 [
                                     dbc.CardBody(
                                         [
-                                            self.format_title(data, "title"),
-                                            self.format_subtitle(
-                                                data, "shortDescription"
-                                            ),
-                                            self.format_button(
-                                                "View on MaveDB",
-                                                f"https://www.mavedb.org/score-sets/{urn}/",
-                                            ),
-                                            self.format_text(data, "urn", "URN"),
-                                            self.format_text(
-                                                data, "sequenceType", "Sequence Type"
-                                            ),
-                                            self.format_text(
-                                                data, "geneName", "Gene Name"
-                                            ),
-                                            self.format_text(
-                                                data, "geneCategory", "Gene Category"
-                                            ),
-                                            self.format_link(
-                                                data,
-                                                "publicationUrl",
-                                                "Publication URL",
-                                            ),
-                                            self.format_text(
-                                                data,
-                                                "publicationYear",
-                                                "Publication Year",
-                                            ),
-                                            self.format_text(
-                                                data,
-                                                "numVariants",
-                                                "Number of Variants",
-                                            ),
+                                            self.format_title(data),
+                                            self.format_subtitle(data),
+                                            self.format_button(urn),
+                                            *[
+                                                self.format_item(data, col)
+                                                for col in self.columns
+                                                if col.display_details
+                                                in ("text", "link")
+                                            ],
                                         ]
                                     )
                                 ]
@@ -252,7 +247,8 @@ class ElasticTable:
 
     def create_table_header(self, column_name, field_name, current_sort):
         if field_name is None or not any(
-            col.field_name == field_name and col.sortable for col in self.columns
+            col.field_name == field_name and col.sortable
+            for col in self._get_table_columns()
         ):
             return html.Th(column_name)
 
@@ -300,7 +296,7 @@ class ElasticTable:
                             row.get(col.field_name, "N/A") if col.field_name else "N/A"
                         )
                     )
-                    for col in self.columns
+                    for col in self._get_table_columns()
                 ]
             )
             for row in data
@@ -314,7 +310,7 @@ class ElasticTable:
                             self.create_table_header(
                                 col.display_name, col.field_name, sort_data
                             )
-                            for col in self.columns
+                            for col in self._get_table_columns()
                         ]
                     )
                 ),
@@ -326,7 +322,7 @@ class ElasticTable:
         )
 
     def get_filterable_columns(self):
-        return [col.field_name for col in self.columns if col.filterable]
+        return [col.field_name for col in self._get_table_columns() if col.filterable]
 
     def get_detail_url(self, urn):
         return f"/data-portal/{urn}"
@@ -390,7 +386,7 @@ class ElasticTable:
                 dash.Output("data-table", "children"),
                 *[
                     dash.Output(col.field_name, "options")
-                    for col in self.columns
+                    for col in self._get_table_columns()
                     if col.filterable
                 ],
                 dash.Output("pagination", "max_value"),
@@ -404,7 +400,7 @@ class ElasticTable:
                 dash.Input("sort-store", "data"),
                 *[
                     dash.Input(col.field_name, "value")
-                    for col in self.columns
+                    for col in self._get_table_columns()
                     if col.filterable
                 ],
             ],
@@ -419,7 +415,8 @@ class ElasticTable:
             if response.status_code != 200:
                 return (
                     html.Div("Error fetching data."),
-                    *[[]] * len([col for col in self.columns if col.filterable]),
+                    *[[]]
+                    * len([col for col in self._get_table_columns() if col.filterable]),
                     1,
                     "",
                 )
@@ -435,7 +432,7 @@ class ElasticTable:
                     .get(col.field_name, {})
                     .get("buckets", [])
                 ]
-                for col in self.columns
+                for col in self._get_table_columns()
                 if col.filterable
             ]
 
@@ -453,12 +450,12 @@ class ElasticTable:
         @app.callback(
             [
                 dash.Output(col.field_name, "value")
-                for col in self.columns
+                for col in self._get_table_columns()
                 if col.filterable
             ],
             [
                 dash.Input(f"clear-{col.field_name}", "n_clicks")
-                for col in self.columns
+                for col in self._get_table_columns()
                 if col.filterable
             ],
         )
@@ -466,7 +463,7 @@ class ElasticTable:
             triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
             return [
                 [] if f"clear-{col.field_name}" == triggered else dash.no_update
-                for col in self.columns
+                for col in self._get_table_columns()
                 if col.filterable
             ]
 
