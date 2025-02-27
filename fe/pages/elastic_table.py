@@ -69,11 +69,10 @@ class ElasticTable:
         is_sorted = current_sort.get("field") == col.field_name
         order = current_sort.get("order") if is_sorted else None
         icon = {"asc": "sort-up", "desc": "sort-down"}.get(order, "")
-        content = (
-            [col.display_name, html.I(className=f"bi bi-{icon}")]
-            if icon
-            else col.display_name
-        )
+
+        content = [col.display_name]
+        if icon:
+            content.append(html.I(className=f"bi bi-{icon}"))
 
         return html.Th(
             html.Div(
@@ -124,9 +123,35 @@ class ElasticTable:
         default_sort_column = next(
             (col for col in self.columns if col.default_sort), None
         )
+
+        # Prepare filter column components
+        filter_columns = [
+            dbc.Card(
+                dbc.CardBody(
+                    [
+                        html.H5(col.display_name),
+                        dbc.Checklist(
+                            id=col.field_name,
+                            options=[],
+                            className="w-100 elastic-table-filter-checklist",
+                        ),
+                        dbc.Button(
+                            "Clear",
+                            id=f"clear-{col.field_name}",
+                            color="success",
+                            size="sm",
+                            className="mt-2 elastic-table-filter-clear",
+                        ),
+                    ]
+                )
+            )
+            for col in self._get_table_columns()
+            if col.filterable
+        ]
+
         return html.Div(
             [
-                # Debounce timer for input.
+                # Debounce timer for input
                 dcc.Interval(
                     id="elastic-table-timer",
                     interval=1000,
@@ -135,49 +160,27 @@ class ElasticTable:
                 ),
                 dbc.Row(
                     [
-                        # Filters to the left.
+                        # Filters sidebar
                         dbc.Col(
-                            [
-                                dbc.Card(
-                                    dbc.CardBody(
-                                        [
-                                            html.H5(col.display_name),
-                                            dbc.Checklist(
-                                                id=col.field_name,
-                                                options=[],
-                                                className="w-100 elastic-table-filter-checklist",
-                                            ),
-                                            dbc.Button(
-                                                "Clear",
-                                                id=f"clear-{col.field_name}",
-                                                color="success",
-                                                size="sm",
-                                                className="mt-2 elastic-table-filter-clear",
-                                            ),
-                                        ],
-                                    )
-                                )
-                                for col in self._get_table_columns()
-                                if col.filterable
-                            ],
-                            width=2,
+                            filter_columns,
+                            width={"size": 2, "order": 1},
                             lg=2,
                             md=4,
                             sm=12,
                             xs=12,
                             className="pt-4 ps-4 d-flex flex-column gap-3",
                         ),
-                        # Everything else to the right.
+                        # Main content area
                         dbc.Col(
                             [
-                                # Search field.
+                                # Search field
                                 dcc.Input(
                                     id="search",
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
-                                # Current sort direction store.
+                                # Current sort direction store
                                 dcc.Store(
                                     id="sort-store",
                                     data={
@@ -185,7 +188,7 @@ class ElasticTable:
                                         "order": default_sort_column.default_sort,
                                     },
                                 ),
-                                # Main table with spinner.
+                                # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
                                         id="data-table",
@@ -195,7 +198,7 @@ class ElasticTable:
                                     color="primary",
                                     spinner_style={"width": "48px", "height": "48px"},
                                 ),
-                                # Pagination controls.
+                                # Pagination controls
                                 dbc.Row(
                                     [
                                         dbc.Col(
@@ -224,15 +227,14 @@ class ElasticTable:
                                                 first_last=True,
                                                 previous_next=True,
                                                 fully_expanded=False,
-                                                className="mt-3",
                                             ),
                                             width="auto",
                                         ),
                                     ],
-                                    className="g-0 mt-0 justify-content-end",
+                                    className="justify-content-end g-0 mt-0",
                                 ),
                             ],
-                            width=10,
+                            width={"size": 10, "order": 2},
                             lg=10,
                             md=8,
                             sm=12,
@@ -243,7 +245,7 @@ class ElasticTable:
                     className="g-0",
                 ),
             ],
-            style={"width": "100%"},
+            className="w-100",
         )
 
     # Details view.
@@ -271,14 +273,10 @@ class ElasticTable:
         )
 
     def _format_button(self, urn):
-        return html.Div(
-            [
-                html.A(
-                    self.details_button_name,
-                    href=self.details_button_link(urn),
-                    className="btn btn-primary mb-3",
-                )
-            ]
+        return html.A(
+            self.details_button_name,
+            href=self.details_button_link(urn),
+            className="btn btn-primary mb-3",
         )
 
     def _format_item(self, data, col):
@@ -307,41 +305,36 @@ class ElasticTable:
         data = self._get_detail(urn).get("results", [{}])
 
         if not data:
-            return html.Div(
+            return dbc.Alert(
                 "Error: Unable to fetch data from the API.",
-                className="alert alert-danger",
+                color="danger",
             )
 
         data = data[0]
 
-        return dbc.Container(
-            [
-                dbc.Row(
-                    [
-                        dbc.Col(
-                            dbc.Card(
-                                [
-                                    dbc.CardBody(
-                                        [
-                                            self._format_title(data),
-                                            self._format_subtitle(data),
-                                            self._format_button(urn),
-                                            *[
-                                                self._format_item(data, col)
-                                                for col in self.columns
-                                                if col.display_details
-                                                in ("text", "link")
-                                            ],
-                                        ]
-                                    )
-                                ]
-                            ),
-                            width={"size": 8, "offset": 2},
+        return html.Div(
+            dbc.Row(
+                dbc.Col(
+                    dbc.Card(
+                        dbc.CardBody(
+                            [
+                                self._format_title(data),
+                                self._format_subtitle(data),
+                                self._format_button(urn),
+                                *[
+                                    self._format_item(data, col)
+                                    for col in self.columns
+                                    if col.display_details in ("text", "link")
+                                ],
+                            ]
                         )
-                    ]
-                )
-            ],
-            className="mt-4",
+                    ),
+                    width={"size": 8},
+                    className="mx-auto",
+                ),
+                className="mt-4 g-0",
+            ),
+            className="w-100",
         )
 
     # Callbacks.
