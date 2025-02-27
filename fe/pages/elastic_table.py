@@ -126,6 +126,7 @@ class ElasticTable:
         )
         return html.Div(
             [
+                # Debounce timer for input.
                 dcc.Interval(
                     id="elastic-table-timer",
                     interval=1000,
@@ -134,6 +135,7 @@ class ElasticTable:
                 ),
                 dbc.Row(
                     [
+                        # Filters to the left.
                         dbc.Col(
                             [
                                 dbc.Card(
@@ -165,14 +167,17 @@ class ElasticTable:
                             xs=12,
                             className="pt-4 ps-4 d-flex flex-column gap-3",
                         ),
+                        # Everything else to the right.
                         dbc.Col(
                             [
+                                # Search field.
                                 dcc.Input(
                                     id="search",
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
+                                # Current sort direction store.
                                 dcc.Store(
                                     id="sort-store",
                                     data={
@@ -180,6 +185,7 @@ class ElasticTable:
                                         "order": default_sort_column.default_sort,
                                     },
                                 ),
+                                # Main table with spinner.
                                 dbc.Spinner(
                                     html.Div(
                                         id="data-table",
@@ -189,6 +195,7 @@ class ElasticTable:
                                     color="primary",
                                     spinner_style={"width": "48px", "height": "48px"},
                                 ),
+                                # Pagination controls.
                                 dbc.Row(
                                     [
                                         dbc.Col(
@@ -246,18 +253,18 @@ class ElasticTable:
         return response.json()
 
     def _format_title(self, data):
-        title_field = [
+        title_field = next(
             col.field_name for col in self.columns if col.display_details == "title"
-        ][0]
+        )
         return html.H4(
             data.get(title_field, "N/A"),
             className="card-title",
         )
 
     def _format_subtitle(self, data):
-        subtitle_field = [
+        subtitle_field = next(
             col.field_name for col in self.columns if col.display_details == "subtitle"
-        ][0]
+        )
         return html.P(
             data.get(subtitle_field, "N/A"),
             className="card-text",
@@ -340,6 +347,8 @@ class ElasticTable:
     # Callbacks.
 
     def register_callbacks(self, app):
+
+        # Update sort direction.
         @app.callback(
             dash.Output("sort-store", "data"),
             dash.Input(
@@ -361,6 +370,7 @@ class ElasticTable:
                 "order": "desc" if current_sort["order"] == "asc" else "asc",
             }
 
+        # Debounce timer for the input field.
         @app.callback(
             dash.Output("elastic-table-timer", "n_intervals"),
             dash.Output("elastic-table-timer", "disabled"),
@@ -370,6 +380,7 @@ class ElasticTable:
         def start_timer(value):
             return 0, False
 
+        # Fetch data when parameters change.
         @app.callback(
             [
                 dash.Output("data-table", "children"),
@@ -436,6 +447,7 @@ class ElasticTable:
                 ),
             )
 
+        # Clear filters.
         @app.callback(
             [
                 dash.Output(col.field_name, "value")
