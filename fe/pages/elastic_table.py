@@ -40,7 +40,7 @@ class ElasticTable:
     def _get_table_columns(self):
         return [col for col in self.columns if col.display_table]
 
-    def fetch_data(self, q, size, page, sort_data, filter_values):
+    def _fetch_data(self, q, size, page, sort_data, filter_values):
         params = {
             "q": q,
             "size": size,
@@ -64,7 +64,7 @@ class ElasticTable:
 
         return response, params
 
-    def create_table_header(self, column_name, field_name, current_sort):
+    def _create_table_header(self, column_name, field_name, current_sort):
         if field_name is None or not any(
             col.field_name == field_name and col.sortable
             for col in self._get_table_columns()
@@ -95,7 +95,7 @@ class ElasticTable:
             else html.Th(column_name)
         )
 
-    def create_table(self, data, sort_data):
+    def _create_table(self, data, sort_data):
         if not data:
             return html.Div("No data found.")
 
@@ -126,7 +126,7 @@ class ElasticTable:
                 html.Thead(
                     html.Tr(
                         [
-                            self.create_table_header(
+                            self._create_table_header(
                                 col.display_name, col.field_name, sort_data
                             )
                             for col in self._get_table_columns()
@@ -261,11 +261,11 @@ class ElasticTable:
 
     # Details view.
 
-    def get_detail(self, urn):
+    def _get_detail(self, urn):
         response = requests.get(f"{self.api_endpoint}/{urn}")
         return response.json()
 
-    def format_title(self, data):
+    def _format_title(self, data):
         title_field = [
             col.field_name for col in self.columns if col.display_details == "title"
         ][0]
@@ -274,7 +274,7 @@ class ElasticTable:
             className="card-title",
         )
 
-    def format_subtitle(self, data):
+    def _format_subtitle(self, data):
         subtitle_field = [
             col.field_name for col in self.columns if col.display_details == "subtitle"
         ][0]
@@ -283,7 +283,7 @@ class ElasticTable:
             className="card-text",
         )
 
-    def format_button(self, urn):
+    def _format_button(self, urn):
         return html.Div(
             [
                 html.A(
@@ -294,7 +294,7 @@ class ElasticTable:
             ]
         )
 
-    def format_item(self, data, col):
+    def _format_item(self, data, col):
         if col.display_details == "text":
             return html.P(
                 [
@@ -317,7 +317,7 @@ class ElasticTable:
             )
 
     def details_layout(self, urn):
-        data = self.get_detail(urn).get("results", [{}])
+        data = self._get_detail(urn).get("results", [{}])
 
         if not data:
             return html.Div(
@@ -336,11 +336,11 @@ class ElasticTable:
                                 [
                                     dbc.CardBody(
                                         [
-                                            self.format_title(data),
-                                            self.format_subtitle(data),
-                                            self.format_button(urn),
+                                            self._format_title(data),
+                                            self._format_subtitle(data),
+                                            self._format_button(urn),
                                             *[
-                                                self.format_item(data, col)
+                                                self._format_item(data, col)
                                                 for col in self.columns
                                                 if col.display_details
                                                 in ("text", "link")
@@ -419,7 +419,7 @@ class ElasticTable:
             if n_intervals is not None and n_intervals != 1:
                 return dash.no_update
 
-            response, params = self.fetch_data(q, size, page, sort_data, filter_values)
+            response, params = self._fetch_data(q, size, page, sort_data, filter_values)
 
             if response.status_code != 200:
                 return (
@@ -446,7 +446,7 @@ class ElasticTable:
             ]
 
             return (
-                self.create_table(data.get("results", []), sort_data),
+                self._create_table(data.get("results", []), sort_data),
                 *filter_options,
                 max(1, (total + size - 1) // size) if total > 0 else 1,
                 (
