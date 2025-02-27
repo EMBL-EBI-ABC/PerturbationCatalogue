@@ -64,35 +64,29 @@ class ElasticTable:
 
         return response, params
 
-    def _create_table_header(self, column_name, field_name, current_sort):
-        if field_name is None or not any(
-            col.field_name == field_name and col.sortable
-            for col in self._get_table_columns()
-        ):
-            return html.Th(column_name)
+    def _create_table_header(self, col, current_sort):
+        if not col.sortable:
+            return html.Th(col.display_name)
 
-        is_sorted = current_sort.get("field") == field_name
+        is_sorted = current_sort.get("field") == col.field_name
         order = current_sort.get("order") if is_sorted else None
-        icon = "sort-up" if order == "asc" else "sort-down" if order == "desc" else ""
+        icon = {"asc": "sort-up", "desc": "sort-down"}.get(order, "")
+        content = (
+            [col.display_name, html.I(className=f"bi bi-{icon}")]
+            if icon
+            else col.display_name
+        )
 
-        return (
-            html.Th(
-                html.Div(
-                    (
-                        [column_name, html.I(className=f"bi bi-{icon}")]
-                        if icon
-                        else column_name
-                    ),
-                    className="d-flex align-items-center gap-1",
-                    style={
-                        "cursor": "pointer",
-                        "color": "var(--custom-color)" if is_sorted else "inherit",
-                    },
-                ),
-                id={"type": "sort-header-container", "field": field_name},
-            )
-            if field_name is not None
-            else html.Th(column_name)
+        return html.Th(
+            html.Div(
+                content,
+                className="d-flex align-items-center gap-1",
+                style={
+                    "cursor": "pointer",
+                    "color": "var(--custom-color)" if is_sorted else "inherit",
+                },
+            ),
+            id={"type": "sort-header-container", "field": col.field_name},
         )
 
     def _create_table(self, data, sort_data):
@@ -126,9 +120,7 @@ class ElasticTable:
                 html.Thead(
                     html.Tr(
                         [
-                            self._create_table_header(
-                                col.display_name, col.field_name, sort_data
-                            )
+                            self._create_table_header(col, sort_data)
                             for col in self._get_table_columns()
                         ]
                     )
