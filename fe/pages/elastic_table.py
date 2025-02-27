@@ -136,13 +136,61 @@ class ElasticTable:
             style={"width": "100%"},
         )
 
+    def format_title(self, data, field):
+        return html.H4(
+            data.get(field, "N/A"),
+            className="card-title",
+        )
+
+    def format_subtitle(self, data, field):
+        return html.P(
+            data.get(field, "N/A"),
+            className="card-text",
+        )
+
+    def format_button(self, text, href):
+        return html.Div(
+            [
+                html.A(
+                    text,
+                    href=href,
+                    className="btn btn-primary mb-3",
+                )
+            ]
+        )
+
+    def format_text(self, data, field, name):
+        return html.P(
+            [
+                html.Strong(f"{name}: "),
+                str(data.get(field, "N/A")),
+            ],
+            className="card-text",
+        )
+
+    def format_link(self, data, field, name):
+        return html.P(
+            [
+                html.Strong(f"{name}: "),
+                html.A(
+                    data.get(field, "N/A"),
+                    href=data.get(field, "#"),
+                    target="_blank",
+                ),
+            ],
+            className="card-text",
+        )
+
     def details_layout(self, urn):
-        data = self.get_detail(urn)
+        data = self.get_detail(urn).get("results", [{}])
 
-        if isinstance(data, html.Div):  # Error response
-            return data
+        if not data:
+            return html.Div(
+                "Error: Unable to fetch data from the API.",
+                className="alert alert-danger",
+            )
 
-        data = data.get("results", [{}])[0]
+        data = data[0]
 
         return html.Div(
             [
@@ -152,77 +200,28 @@ class ElasticTable:
                             [
                                 html.Div(
                                     [
-                                        html.H4(
-                                            data.get("title", "N/A"),
-                                            className="card-title",
+                                        self.format_title(data, "title"),
+                                        self.format_subtitle(data, "shortDescription"),
+                                        self.format_button(
+                                            "View on MaveDB",
+                                            f"https://www.mavedb.org/score-sets/{urn}/",
                                         ),
-                                        html.P(
-                                            data.get("shortDescription", "N/A"),
-                                            className="card-text",
+                                        self.format_text(data, "urn", "URN"),
+                                        self.format_text(
+                                            data, "sequenceType", "Sequence Type"
                                         ),
-                                        html.Div(
-                                            [
-                                                html.A(
-                                                    "View on MaveDB",
-                                                    href=f"https://www.mavedb.org/score-sets/{urn}/",
-                                                    className="btn btn-primary mb-3",
-                                                )
-                                            ]
+                                        self.format_text(data, "geneName", "Gene Name"),
+                                        self.format_text(
+                                            data, "geneCategory", "Gene Category"
                                         ),
-                                        html.P(
-                                            [
-                                                html.Strong("URN: "),
-                                                data.get("urn", "N/A"),
-                                            ],
-                                            className="card-text",
+                                        self.format_link(
+                                            data, "publicationUrl", "Publication URL"
                                         ),
-                                        html.P(
-                                            [
-                                                html.Strong("Sequence Type: "),
-                                                data.get("sequenceType", "N/A"),
-                                            ],
-                                            className="card-text",
+                                        self.format_text(
+                                            data, "publicationYear", "Publication Year"
                                         ),
-                                        html.P(
-                                            [
-                                                html.Strong("Gene Name: "),
-                                                data.get("geneName", "N/A"),
-                                            ],
-                                            className="card-text",
-                                        ),
-                                        html.P(
-                                            [
-                                                html.Strong("Gene Category: "),
-                                                data.get("geneCategory", "N/A"),
-                                            ],
-                                            className="card-text",
-                                        ),
-                                        html.P(
-                                            [
-                                                html.Strong("Publication: "),
-                                                html.A(
-                                                    data.get("publicationUrl", "N/A"),
-                                                    href=data.get(
-                                                        "publicationUrl", "#"
-                                                    ),
-                                                    target="_blank",
-                                                ),
-                                            ],
-                                            className="card-text",
-                                        ),
-                                        html.P(
-                                            [
-                                                html.Strong("Publication Year: "),
-                                                str(data.get("publicationYear", "N/A")),
-                                            ],
-                                            className="card-text",
-                                        ),
-                                        html.P(
-                                            [
-                                                html.Strong("Number of Variants: "),
-                                                str(data.get("numVariants", "N/A")),
-                                            ],
-                                            className="card-text",
+                                        self.format_text(
+                                            data, "numVariants", "Number of Variants"
                                         ),
                                     ],
                                     className="card-body",
@@ -426,11 +425,4 @@ class ElasticTable:
 
     def get_detail(self, urn):
         response = requests.get(f"{self.api_endpoint}/{urn}")
-
-        if response.status_code != 200:
-            return html.Div(
-                "Error: Unable to fetch data from the API.",
-                className="alert alert-danger",
-            )
-
         return response.json()

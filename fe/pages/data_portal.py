@@ -2,7 +2,7 @@ from collections import namedtuple
 
 import dash
 
-from .elastic_table.elastic_table import ElasticTable
+from .elastic_table import ElasticTable
 
 
 FilterField = namedtuple("FilterField", ["id", "title"])
