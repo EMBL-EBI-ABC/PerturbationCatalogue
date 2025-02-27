@@ -63,6 +63,7 @@ mavedb_table = ElasticTable(
             sortable=True,
         ),
     ],
+    details_page_url=lambda urn: f"/data-portal/{urn}",
     details_button_name="View on MaveDB",
     details_button_link=lambda urn: f"https://www.mavedb.org/score-sets/{urn}/",
 )

@@ -24,6 +24,7 @@ class ElasticTable:
         self,
         api_endpoint,
         columns,
+        details_page_url,
         details_button_name,
         details_button_link,
     ):
@@ -32,11 +33,114 @@ class ElasticTable:
         default_sort_column = next((col for col in columns if col.default_sort), None)
         self.default_sort_order = default_sort_column.default_sort
         self.default_sort_field = default_sort_column.field_name
+        self.details_page_url = details_page_url
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
 
+    # Table view.
+
     def _get_table_columns(self):
         return [col for col in self.columns if col.display_table]
+
+    def fetch_data(self, q, size, page, sort_data, filter_values):
+        params = {
+            "q": q,
+            "size": size,
+            "start": (page - 1) * size if page else 0,
+            **{
+                field_name: value
+                for field_name, value in zip(
+                    [col.field_name for col in self.columns if col.filterable],
+                    filter_values,
+                )
+                if value
+            },
+            "sort_field": sort_data.get("field"),
+            "sort_order": sort_data.get("order"),
+        }
+
+        response = requests.get(
+            self.api_endpoint,
+            params={k: v for k, v in params.items() if v is not None},
+        )
+
+        return response, params
+
+    def create_table_header(self, column_name, field_name, current_sort):
+        if field_name is None or not any(
+            col.field_name == field_name and col.sortable
+            for col in self._get_table_columns()
+        ):
+            return html.Th(column_name)
+
+        is_sorted = current_sort.get("field") == field_name
+        order = current_sort.get("order") if is_sorted else None
+        icon = "sort-up" if order == "asc" else "sort-down" if order == "desc" else ""
+
+        return (
+            html.Th(
+                html.Div(
+                    (
+                        [column_name, html.I(className=f"bi bi-{icon}")]
+                        if icon
+                        else column_name
+                    ),
+                    className="d-flex align-items-center gap-1",
+                    style={
+                        "cursor": "pointer",
+                        "color": "var(--custom-color)" if is_sorted else "inherit",
+                    },
+                ),
+                id={"type": "sort-header-container", "field": field_name},
+            )
+            if field_name is not None
+            else html.Th(column_name)
+        )
+
+    def create_table(self, data, sort_data):
+        if not data:
+            return html.Div("No data found.")
+
+        rows = [
+            html.Tr(
+                [
+                    (
+                        html.Td(
+                            html.A(
+                                row["urn"],
+                                href=self.details_page_url(row["urn"]),
+                                className="text-decoration-none text-nowrap",
+                            )
+                        )
+                        if col.field_name == "urn"
+                        else html.Td(
+                            row.get(col.field_name, "N/A") if col.field_name else "N/A"
+                        )
+                    )
+                    for col in self._get_table_columns()
+                ]
+            )
+            for row in data
+        ]
+
+        return dbc.Table(
+            [
+                html.Thead(
+                    html.Tr(
+                        [
+                            self.create_table_header(
+                                col.display_name, col.field_name, sort_data
+                            )
+                            for col in self._get_table_columns()
+                        ]
+                    )
+                ),
+                html.Tbody(rows),
+            ],
+            bordered=True,
+            hover=True,
+            responsive=True,
+        )
 
     def table_layout(self):
         return html.Div(
@@ -154,6 +258,12 @@ class ElasticTable:
             style={"width": "100%"},
         )
 
+    # Details view.
+
+    def get_detail(self, urn):
+        response = requests.get(f"{self.api_endpoint}/{urn}")
+        return response.json()
+
     def format_title(self, data):
         title_field = [
             col.field_name for col in self.columns if col.display_details == "title"
@@ -246,110 +356,7 @@ class ElasticTable:
             className="mt-4",
         )
 
-    def create_table_header(self, column_name, field_name, current_sort):
-        if field_name is None or not any(
-            col.field_name == field_name and col.sortable
-            for col in self._get_table_columns()
-        ):
-            return html.Th(column_name)
-
-        is_sorted = current_sort.get("field") == field_name
-        order = current_sort.get("order") if is_sorted else None
-        icon = "sort-up" if order == "asc" else "sort-down" if order == "desc" else ""
-
-        return (
-            html.Th(
-                html.Div(
-                    (
-                        [column_name, html.I(className=f"bi bi-{icon}")]
-                        if icon
-                        else column_name
-                    ),
-                    className="d-flex align-items-center gap-1",
-                    style={
-                        "cursor": "pointer",
-                        "color": "var(--custom-color)" if is_sorted else "inherit",
-                    },
-                ),
-                id={"type": "sort-header-container", "field": field_name},
-            )
-            if field_name is not None
-            else html.Th(column_name)
-        )
-
-    def create_table(self, data, sort_data):
-        if not data:
-            return html.Div("No data found.")
-
-        rows = [
-            html.Tr(
-                [
-                    (
-                        html.Td(
-                            html.A(
-                                row["urn"],
-                                href=f"{self.get_detail_url(row['urn'])}",
-                                className="text-decoration-none text-nowrap",
-                            )
-                        )
-                        if col.field_name == "urn"
-                        else html.Td(
-                            row.get(col.field_name, "N/A") if col.field_name else "N/A"
-                        )
-                    )
-                    for col in self._get_table_columns()
-                ]
-            )
-            for row in data
-        ]
-
-        return dbc.Table(
-            [
-                html.Thead(
-                    html.Tr(
-                        [
-                            self.create_table_header(
-                                col.display_name, col.field_name, sort_data
-                            )
-                            for col in self._get_table_columns()
-                        ]
-                    )
-                ),
-                html.Tbody(rows),
-            ],
-            bordered=True,
-            hover=True,
-            responsive=True,
-        )
-
-    def get_filterable_columns(self):
-        return [col.field_name for col in self._get_table_columns() if col.filterable]
-
-    def get_detail_url(self, urn):
-        return f"/data-portal/{urn}"
-
-    def fetch_data(self, q, size, page, sort_data, filter_values):
-        params = {
-            "q": q,
-            "size": size,
-            "start": (page - 1) * size if page else 0,
-            **{
-                field_name: value
-                for field_name, value in zip(
-                    self.get_filterable_columns(), filter_values
-                )
-                if value
-            },
-            "sort_field": sort_data.get("field"),
-            "sort_order": sort_data.get("order"),
-        }
-
-        response = requests.get(
-            self.api_endpoint,
-            params={k: v for k, v in params.items() if v is not None},
-        )
-
-        return response, params
+    # Callbacks.
 
     def register_callbacks(self, app):
         @app.callback(
@@ -467,7 +474,3 @@ class ElasticTable:
                 for col in self._get_table_columns()
                 if col.filterable
             ]
-
-    def get_detail(self, urn):
-        response = requests.get(f"{self.api_endpoint}/{urn}")
-        return response.json()
