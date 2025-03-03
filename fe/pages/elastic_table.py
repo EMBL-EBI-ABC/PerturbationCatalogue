@@ -170,11 +170,8 @@ class ElasticTable:
                         # Filters sidebar
                         dbc.Col(
                             filter_columns,
-                            width={"size": 2, "order": 1},
-                            lg=2,
-                            md=4,
-                            sm=12,
                             xs=12,
+                            md=3,
                             className="pt-4 ps-4 d-flex flex-column gap-3",
                         ),
                         # Main content area
@@ -242,11 +239,6 @@ class ElasticTable:
                                     className="justify-content-end g-0 mt-0",
                                 ),
                             ],
-                            width={"size": 10, "order": 2},
-                            lg=10,
-                            md=8,
-                            sm=12,
-                            xs=12,
                             className="pt-4 pe-4 ps-3",
                         ),
                     ],
