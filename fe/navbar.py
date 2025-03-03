@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, html, dcc
+from dash import Input, Output, State, callback, html
 
 from pages._order import get_pages, get_home_page
 
@@ -50,7 +50,7 @@ def register_callbacks(app):
             dash.Output(f"nav-{page['supplied_path'][1:]}", "style")
             for page in get_pages(require_icon=True)
         ],
-        [dash.Input("navbar_url", "pathname")],
+        [dash.Input("_pages_location", "pathname")],
     )
     def highlight_bold(pathname):
         """Highlight the active navbar element in bold."""
