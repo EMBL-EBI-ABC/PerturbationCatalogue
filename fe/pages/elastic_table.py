@@ -158,9 +158,6 @@ class ElasticTable:
 
         return html.Div(
             [
-                # Store to track debounce state
-                dcc.Store(id="search-input-value", data=""),
-                dcc.Store(id="search-applied-value", data=""),
                 dbc.Row(
                     [
                         # Filters sidebar
@@ -180,6 +177,8 @@ class ElasticTable:
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
+                                # Store to track debounce state
+                                dcc.Store(id="search-input-value", data=""),
                                 # Current sort direction store
                                 dcc.Store(
                                     id="sort-store",
