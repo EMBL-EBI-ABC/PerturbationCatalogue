@@ -158,13 +158,6 @@ class ElasticTable:
 
         return html.Div(
             [
-                # Debounce timer for input
-                dcc.Interval(
-                    id="elastic-table-timer",
-                    interval=1000,
-                    max_intervals=1,
-                    disabled=True,
-                ),
                 dbc.Row(
                     [
                         # Filters sidebar
@@ -184,6 +177,8 @@ class ElasticTable:
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
+                                # Store to track debounce state
+                                dcc.Store(id="search-input-value", data=""),
                                 # Current sort direction store
                                 dcc.Store(
                                     id="sort-store",
@@ -348,6 +343,36 @@ class ElasticTable:
     def register_callbacks(self, app):
         """Registers all necessary Dash callbacks for the table functionality."""
 
+        # Clientside callback for text input debounce.
+        app.clientside_callback(
+            """
+        function(value, oldValue) {
+            if (value === oldValue) {
+                return window.dash_clientside.no_update;
+            }
+
+            // If search is empty or being cleared, update immediately without debounce
+            if (!value || value === '') {
+                return value;
+            }
+
+            // Clear any existing timeouts
+            if (window.searchDebounceTimeout) {
+                clearTimeout(window.searchDebounceTimeout);
+            }
+
+            return new Promise((resolve) => {
+                window.searchDebounceTimeout = setTimeout(() => {
+                    resolve(value);
+                }, 750); // Debounce in ms
+            });
+        }
+        """,
+            Output("search-input-value", "data"),
+            Input("search", "value"),
+            State("search-input-value", "data"),
+        )
+
         @app.callback(
             Output("sort-store", "data"),
             Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
@@ -369,16 +394,6 @@ class ElasticTable:
             }
 
         @app.callback(
-            Output("elastic-table-timer", "n_intervals"),
-            Output("elastic-table-timer", "disabled"),
-            Input("search", "value"),
-            prevent_initial_call=True,
-        )
-        def start_timer(value):
-            """Starts the debounce timer when the search input changes."""
-            return 0, False
-
-        @app.callback(
             [
                 Output("data-table", "children"),
                 *[
@@ -390,8 +405,7 @@ class ElasticTable:
                 Output("pagination-info", "children"),
             ],
             [
-                State("search", "value"),
-                Input("elastic-table-timer", "n_intervals"),
+                Input("search-input-value", "data"),
                 Input("size", "value"),
                 Input("pagination", "active_page"),
                 Input("sort-store", "data"),
@@ -401,13 +415,9 @@ class ElasticTable:
                     if col.filterable
                 ],
             ],
-            State("search", "value"),
         )
-        def fetch_data(q, n_intervals, size, page, sort_data, *filter_values):
+        def fetch_data(q, size, page, sort_data, *filter_values):
             """Fetches and refreshes the table data based on current filters and parameters."""
-            if n_intervals is not None and n_intervals != 1:
-                return dash.no_update
-
             response, params = self._fetch_data(q, size, page, sort_data, filter_values)
 
             if response.status_code != 200:
