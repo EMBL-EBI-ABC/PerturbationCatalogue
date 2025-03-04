@@ -29,6 +29,9 @@
                     "default": null,
                     "title": "Method Uri"
                 },
+                "sequencing_library_kit": {
+                    "$ref": "#/$defs/SequencingLibraryKits"
+                },
                 "sequencing_platform": {
                     "$ref": "#/$defs/SequencingPlatform"
                 },
@@ -50,6 +53,7 @@
                 "readout_type",
                 "readout_technology",
                 "method_name",
+                "sequencing_library_kit",
                 "sequencing_platform",
                 "sequencing_strategy",
                 "software_counts",
@@ -83,11 +87,16 @@
                 "dataset_description": {
                     "title": "Dataset Description",
                     "type": "string"
+                },
+                "dataset_file_name": {
+                    "title": "Dataset File Name",
+                    "type": "string"
                 }
             },
             "required": [
                 "dataset_accession",
-                "dataset_description"
+                "dataset_description",
+                "dataset_file_name"
             ],
             "title": "AssociatedDatasets",
             "type": "object"
@@ -190,6 +199,11 @@
                 "replicates": {
                     "$ref": "#/$defs/Replicates"
                 },
+                "number_of_samples": {
+                    "minimum": 1,
+                    "title": "Number Of Samples",
+                    "type": "integer"
+                },
                 "number_of_perturbed_cells": {
                     "minimum": 1,
                     "title": "Number Of Perturbed Cells",
@@ -210,6 +224,7 @@
                 "title",
                 "summary",
                 "replicates",
+                "number_of_samples",
                 "number_of_perturbed_cells",
                 "number_of_perturbed_genes",
                 "coverage"
@@ -18176,6 +18191,19 @@
                 "cells"
             ],
             "title": "SampleQuantityUnit",
+            "type": "string"
+        },
+        "SequencingLibraryKits": {
+            "enum": [
+                "10x Genomics Single Cell 3' v1",
+                "10x Genomics Single Cell 3' v2",
+                "10x Genomics Single Cell 3' v3",
+                "10x Genomics Single Cell 3' v4",
+                "10x Genomics Single Cell 5' v1",
+                "10x Genomics Single Cell 5' v2",
+                "10x Genomics Single Cell 5' v3"
+            ],
+            "title": "SequencingLibraryKits",
             "type": "string"
         },
         "SequencingPlatform": {

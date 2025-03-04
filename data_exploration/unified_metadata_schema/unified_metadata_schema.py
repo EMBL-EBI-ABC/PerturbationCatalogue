@@ -1,18 +1,18 @@
 import json
-
 from pydantic import BaseModel, model_validator, HttpUrl, Field
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from enum import Enum
 
-
+# function to make enums
 def make_enum(name, values):
     return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
 
-
+# load the options from the JSON file
 with open("enums.json", "r") as f:
     options = json.load(f)
 
+# create the enums
 TreatmentNames = make_enum("Treatments", ["Other"] + list(options["treatments"]))
 TimepointUnit = make_enum("TimepointUnit", options["timepoint_unit"])
 Replicates = make_enum("Replicates", options["replicates"])
@@ -35,6 +35,7 @@ ReadoutDimensionality = make_enum(
 ReadoutType = make_enum("ReadoutType", options["readout_type"])
 ReadoutTechnology = make_enum("ReadoutTechnology", options["readout_technology"])
 MethodName = make_enum("MethodName", options["method_name"])
+SequencingLibraryKits = make_enum("SequencingLibraryKits", options["sequencing_library_kits"])
 SequencingPlatform = make_enum("SequencingPlatform", options["sequencing_platform"])
 SequencingStrategy = make_enum("SequencingStrategy", options["sequencing_strategy"])
 SoftwareCounts = make_enum("SoftwareCounts", options["software_counts"])
@@ -52,11 +53,10 @@ PhenotypeNames = make_enum(
     "PhenotypeNames", ["Other"] + list(options["associated_phenotypes"])
 )
 
-
+# Define the models
 class Author(BaseModel):
     first_name: str
     last_name: str
-
 
 class StudyDetails(BaseModel):
     title: str
@@ -65,11 +65,9 @@ class StudyDetails(BaseModel):
     first_author: Author
     last_author: Author
 
-
 class Timepoint(BaseModel):
     timepoint_value: float
     timepoint_unit: TimepointUnit
-
 
 class Treatment(BaseModel):
     term_id: TreatmentNames
@@ -89,17 +87,16 @@ class Treatment(BaseModel):
             print("Treatment parameters have been updated")
         return values
 
-
 class ExperimentDetails(BaseModel):
     title: str
     summary: str
     treatments: Optional[List[Treatment]] = None
     timepoints: Optional[List[Timepoint]] = None
     replicates: Replicates
+    number_of_samples: int = Field(ge=1)
     number_of_perturbed_cells: int = Field(ge=1)
     number_of_perturbed_genes: int = Field(ge=1)
     coverage: float = Field(ge=0)
-
 
 class Library(BaseModel):
     library_name: LibraryName
@@ -126,7 +123,6 @@ class Library(BaseModel):
             print("Library parameters have been updated")
         return values
 
-
 class PerturbationDetails(BaseModel):
     library_generation_type: LibraryGenerationType
     library_generation_method: LibraryGenerationMethod
@@ -138,19 +134,18 @@ class PerturbationDetails(BaseModel):
     library_expression_control: ExpressionControl
     library: Library
 
-
 class AssayDetails(BaseModel):
     readout_dimensionality: ReadoutDimensionality
     readout_type: ReadoutType
     readout_technology: ReadoutTechnology
     method_name: MethodName
     method_uri: Optional[HttpUrl] = None
+    sequencing_library_kit: SequencingLibraryKits
     sequencing_platform: SequencingPlatform
     sequencing_strategy: SequencingStrategy
     software_counts: SoftwareCounts
     software_analysis: SoftwareAnalysis
     reference_genome: ReferenceGenome
-
 
 class ModelSystemDetails(BaseModel):
     model_system: ModelSystem
@@ -211,7 +206,6 @@ class ModelSystemDetails(BaseModel):
             
         return values
             
-
 class Phenotype(BaseModel):
     term_id: PhenotypeNames
     term_label: str
@@ -230,13 +224,13 @@ class Phenotype(BaseModel):
             print("Phenotype parameters have been updated")
         return values
 
-
 class AssociatedDatasets(BaseModel):
     dataset_accession: str
     dataset_uri: Optional[HttpUrl] = None
     dataset_description: str
+    dataset_file_name: str
 
-
+# Assemble the main Experiment model
 class Experiment(BaseModel):
     study: StudyDetails
     experiment: ExperimentDetails
@@ -247,18 +241,17 @@ class Experiment(BaseModel):
     associated_datasets: List[AssociatedDatasets]
 
 
-
+# In-memory database for testing
 pertcat_db: list[Experiment] = []
-
 
 # save the schema to a file
 schema = Experiment.model_json_schema()
 with open("unified_metadata_schema.json", "w") as f:
     json.dump(schema, f, indent=4)
 
-# FastAPI app instance
-app = FastAPI()
 
+# FastAPI instance
+app = FastAPI()
 
 @app.post("/metadata/", response_model=Experiment)
 def add_metadata(metadata: Experiment):
@@ -267,11 +260,9 @@ def add_metadata(metadata: Experiment):
     pertcat_db.append(metadata)
     return metadata
 
-
 @app.get("/metadata/", response_model=List[Experiment])
 def read_metadata():
     return pertcat_db
-
 
 if __name__ == "__main__":
     import uvicorn
