@@ -296,7 +296,7 @@ class ElasticTable:
                 ],
                 className="card-text",
             )
-        else:
+        elif col.display_details == "link":
             return html.P(
                 [
                     html.Strong(f"{col.display_name}: "),

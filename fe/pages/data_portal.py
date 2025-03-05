@@ -91,15 +91,20 @@ depmap_table = ElasticTable(
     columns=[
         # Special columns: title and subtitle, displayed in both table and detail views.
         Column(
+            field_name="ModelID",
+            display_name="Model ID",
+            display_details="title",
+            display_table=lambda model_id: html.A(
+                model_id,
+                href=f"/data-portal/depmap/{model_id}",
+                className="text-decoration-none text-nowrap",
+            ),
+        ),
+        Column(
             field_name="OncotreePrimaryDisease",
             display_name="Oncotree Primary Disease",
             sortable=True,
             default_sort="asc",
-            display_details="title",
-        ),
-        Column(
-            field_name="ModelID",
-            display_name="Model ID",
             display_details="subtitle",
         ),
         # Data columns.
@@ -122,6 +127,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="Age",
             display_name="Age",
+            sortable=True,
             display_details="text",
         ),
         Column(
@@ -162,6 +168,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
+            display_table=lambda high_dependency_genes: " ".join(high_dependency_genes),
             display_details="text",
         ),
     ],
