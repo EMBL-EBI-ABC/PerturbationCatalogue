@@ -128,8 +128,12 @@ async def elastic_search(index_name, params, data_class, aggregation_class):
 
 async def elastic_details(index_name, record_id, data_class):
     try:
+        # Quote the request, except for colons; they might appear in IDs.
+        quoted_id = urllib.parse.quote(record_id).replace("%3A", ":")
+        if ":" in quoted_id:
+            quoted_id = '"' + quoted_id + '"'
         response = await app.state.es_client.search(
-            index=index_name, q=f"_id:{urllib.parse.quote(record_id)}"
+            index=index_name, query={"term": {"_id": quoted_id}}
         )
         hits = [r["_source"] for r in response["hits"]["hits"]]
         return ElasticDetailsResponse[data_class](results=hits)
