@@ -223,9 +223,9 @@ class ElasticTable:
                                                     id=f"{self.dom_prefix}-size",
                                                     options=[
                                                         {"label": str(i), "value": i}
-                                                        for i in [20, 50, 100, 200]
+                                                        for i in [10, 20, 50, 100, 200]
                                                     ],
-                                                    value=20,
+                                                    value=10,
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
