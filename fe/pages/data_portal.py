@@ -3,7 +3,9 @@ from dash import html
 
 from .elastic_table import ElasticTable, Column
 
+
 # MaveDB.
+
 
 mavedb_table = ElasticTable(
     api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
@@ -75,6 +77,16 @@ mavedb_table = ElasticTable(
 )
 
 dash.register_page(
+    "data-portal-details",
+    path_template="/data-portal/mavedb/<record_id>",
+    layout=mavedb_table.details_layout,
+)
+
+
+# Main data portal page.
+
+
+dash.register_page(
     __name__,
     path="/data-portal",
     name="Data Portal",
@@ -84,11 +96,6 @@ dash.register_page(
     layout=mavedb_table.table_layout,
 )
 
-dash.register_page(
-    "data-portal-details",
-    path_template="/data-portal/mavedb/<record_id>",
-    layout=mavedb_table.details_layout,
-)
 
 # Callbacks.
 
