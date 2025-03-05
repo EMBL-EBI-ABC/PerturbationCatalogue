@@ -25,13 +25,14 @@ Column = namedtuple(
 class ElasticTable:
     def __init__(
         self,
-        id,  # A globally unique ID to distinguish this table from other ElasticTable instances.
+        id,
         api_endpoint,
         columns,
         details_button_name,
         details_button_link,
         title=None,
     ):
+        # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
         self.columns = columns
@@ -145,7 +146,7 @@ class ElasticTable:
                     [
                         html.H5(col.display_name),
                         dbc.Checklist(
-                            id=col.field_name,
+                            id=f"{self.dom_prefix}-filter-{col.field_name}",
                             options=[],
                             className="w-100 elastic-table-filter-checklist",
                         ),
@@ -219,7 +220,7 @@ class ElasticTable:
                                             [
                                                 html.Label("Items per page:"),
                                                 dcc.Dropdown(
-                                                    id="size",
+                                                    id=f"{self.dom_prefix}-size",
                                                     options=[
                                                         {"label": str(i), "value": i}
                                                         for i in [20, 50, 100, 200]
@@ -228,14 +229,16 @@ class ElasticTable:
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
-                                                html.Span(id="pagination-info"),
+                                                html.Span(
+                                                    id=f"{self.dom_prefix}-pagination-info"
+                                                ),
                                             ],
                                             width="auto",
                                             className="d-flex align-items-center gap-2 me-3",
                                         ),
                                         dbc.Col(
                                             dbc.Pagination(
-                                                id="pagination",
+                                                id=f"{self.dom_prefix}-pagination",
                                                 max_value=1,
                                                 active_page=1,
                                                 first_last=True,
@@ -415,20 +418,20 @@ class ElasticTable:
             [
                 Output(f"{self.dom_prefix}-data-table", "children"),
                 *[
-                    Output(col.field_name, "options")
+                    Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
-                Output("pagination", "max_value"),
-                Output("pagination-info", "children"),
+                Output(f"{self.dom_prefix}-pagination", "max_value"),
+                Output(f"{self.dom_prefix}-pagination-info", "children"),
             ],
             [
                 Input(f"{self.dom_prefix}-search-input-value", "data"),
-                Input("size", "value"),
-                Input("pagination", "active_page"),
+                Input(f"{self.dom_prefix}-size", "value"),
+                Input(f"{self.dom_prefix}-pagination", "active_page"),
                 Input(f"{self.dom_prefix}-sort-store", "data"),
                 *[
-                    Input(col.field_name, "value")
+                    Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
@@ -475,7 +478,7 @@ class ElasticTable:
 
         @app.callback(
             [
-                Output(col.field_name, "value")
+                Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
