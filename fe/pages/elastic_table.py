@@ -32,7 +32,6 @@ class ElasticTable:
         title=None,
     ):
         self.api_endpoint = api_endpoint
-        self.title = title
         self.columns = columns
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
@@ -160,10 +159,17 @@ class ElasticTable:
         ]
 
         title_block = []
-        if self.title:
+        if self.title is not None:
             title_block = [
                 html.H1(
-                    self.title, className="display-4 mb-4", style={"textAlign": "left"}
+                    self.title,
+                    className="display-4 mb-2",
+                    style={
+                        "textAlign": "left",
+                        "paddingLeft": "1.5rem",
+                        "paddingTop": "1.5rem",
+                        "paddingBottom": "0.5rem",
+                    },
                 )
             ]
 
