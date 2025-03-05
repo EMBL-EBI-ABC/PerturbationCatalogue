@@ -83,6 +83,98 @@ dash.register_page(
 )
 
 
+# DepMap.
+
+
+depmap_table = ElasticTable(
+    api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/depmap/search",
+    columns=[
+        # Special columns: title and subtitle, displayed in both table and detail views.
+        Column(
+            field_name="OncotreePrimaryDisease",
+            display_name="Oncotree Primary Disease",
+            display_details="title",
+        ),
+        Column(
+            field_name="ModelID",
+            display_name="Model ID",
+            display_details="subtitle",
+        ),
+        # Data columns.
+        Column(
+            field_name="CellLineName",
+            display_name="Cell Line Name",
+            display_details="text",
+        ),
+        Column(
+            field_name="OncotreeLineage",
+            display_name="Oncotree Lineage",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="OncotreeSubtype",
+            display_name="Oncotree Subtype",
+            display_details="text",
+        ),
+        Column(
+            field_name="Age",
+            display_name="Age",
+            display_details="text",
+        ),
+        Column(
+            field_name="AgeCategory",
+            display_name="Age Category",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="Sex",
+            display_name="Sex",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="PrimaryOrMetastasis",
+            display_name="Primary or Metastasis",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="SampleCollectionSite",
+            display_name="Sample Collection Site",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="CatalogNumber",
+            display_name="Catalog Number",
+            display_details="text",
+        ),
+        Column(
+            field_name="ModelType",
+            display_name="Model Type",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="high_dependency_genes",
+            display_name="High Dependency Genes",
+            display_details="text",
+        ),
+    ],
+    details_button_name="View on DepMap",
+    details_button_link=lambda ModelID: f"https://depmap.org/portal/model/{ModelID}/",
+    title="DepMap",
+)
+
+dash.register_page(
+    "data-portal-details",
+    path_template="/data-portal/depmap/<record_id>",
+    layout=depmap_table.details_layout,
+)
+
+
 # Main data portal page.
 
 
