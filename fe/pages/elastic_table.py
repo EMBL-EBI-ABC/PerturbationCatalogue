@@ -167,7 +167,7 @@ class ElasticTable:
         # Table title block
         title_block = []
         if self.title is not None:
-            title_block = [html.H2(self.title, className="ps-4 pt-4 mb-0")]
+            title_block = [html.H2(self.title, className="ps-4 pt-5 mb-0")]
 
         return html.Div(
             [
