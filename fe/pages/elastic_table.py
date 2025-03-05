@@ -92,7 +92,10 @@ class ElasticTable:
                     "color": "var(--custom-color)" if is_sorted else "inherit",
                 },
             ),
-            id={"type": "sort-header-container", "field": col.field_name},
+            id={
+                "type": f"{self.dom_prefix}-sort-header-container",
+                "field": col.field_name,
+            },
         )
 
     def _create_table(self, data, sort_data):
@@ -148,7 +151,7 @@ class ElasticTable:
                         ),
                         dbc.Button(
                             "Clear",
-                            id=f"clear-{col.field_name}",
+                            id=f"{self.dom_prefix}-clear-{col.field_name}",
                             color="success",
                             size="sm",
                             className="mt-2 elastic-table-filter-clear",
@@ -182,7 +185,7 @@ class ElasticTable:
                             [
                                 # Search field
                                 dcc.Input(
-                                    id="search",
+                                    id=f"{self.dom_prefix}-search",
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
@@ -193,7 +196,7 @@ class ElasticTable:
                                 ),
                                 # Current sort direction store
                                 dcc.Store(
-                                    id="sort-store",
+                                    id=f"{self.dom_prefix}-sort-store",
                                     data={
                                         "field": default_sort_column.field_name,
                                         "order": default_sort_column.default_sort,
@@ -202,7 +205,7 @@ class ElasticTable:
                                 # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
-                                        id="data-table",
+                                        id=f"{self.dom_prefix}-data-table",
                                         className="w-100 overflow-auto",
                                         style={"minHeight": "100px"},
                                     ),
@@ -381,14 +384,17 @@ class ElasticTable:
             }
             """,
             Output(f"{self.dom_prefix}-search-input-value", "data"),
-            Input("search", "value"),
+            Input(f"{self.dom_prefix}-search", "value"),
             State(f"{self.dom_prefix}-search-input-value", "data"),
         )
 
         @app.callback(
-            Output("sort-store", "data"),
-            Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
-            State("sort-store", "data"),
+            Output(f"{self.dom_prefix}-sort-store", "data"),
+            Input(
+                {"type": f"{self.dom_prefix}-sort-header-container", "field": dash.ALL},
+                "n_clicks",
+            ),
+            State(f"{self.dom_prefix}-sort-store", "data"),
         )
         def update_sort(_, current_sort):
             """Updates the sort direction when a column header is clicked."""
@@ -407,7 +413,7 @@ class ElasticTable:
 
         @app.callback(
             [
-                Output("data-table", "children"),
+                Output(f"{self.dom_prefix}-data-table", "children"),
                 *[
                     Output(col.field_name, "options")
                     for col in self._get_table_columns()
@@ -420,7 +426,7 @@ class ElasticTable:
                 Input(f"{self.dom_prefix}-search-input-value", "data"),
                 Input("size", "value"),
                 Input("pagination", "active_page"),
-                Input("sort-store", "data"),
+                Input(f"{self.dom_prefix}-sort-store", "data"),
                 *[
                     Input(col.field_name, "value")
                     for col in self._get_table_columns()
@@ -474,7 +480,7 @@ class ElasticTable:
                 if col.filterable
             ],
             [
-                Input(f"clear-{col.field_name}", "n_clicks")
+                Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
@@ -483,7 +489,11 @@ class ElasticTable:
             """Clears the selected filter values when a clear button is clicked."""
             triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
             return [
-                [] if f"clear-{col.field_name}" == triggered else dash.no_update
+                (
+                    []
+                    if f"{self.dom_prefix}-clear-{col.field_name}" == triggered
+                    else dash.no_update
+                )
                 for col in self._get_table_columns()
                 if col.filterable
             ]
