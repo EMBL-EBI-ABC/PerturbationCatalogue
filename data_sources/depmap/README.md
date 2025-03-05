@@ -40,7 +40,7 @@ bash ../elastic_load.sh \
   "${ELASTIC_ENDPOINT}" \
   "depmap" \
   "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
-  '
+  '{
     "OncotreePrimaryDisease": {
       "type": "text",
       "fielddata": true
@@ -63,5 +63,5 @@ bash ../elastic_load.sh \
     "Sex": {
       "type": "keyword"
     }
-  '
+  }'
 ```
