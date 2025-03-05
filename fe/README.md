@@ -2,7 +2,10 @@
 
 ## Local run — direct
 ```bash
-pip install --quiet -r requirements.txt && python3 app.py
+python3 -m venv env
+source env/bin/activate
+pip install --quiet -r requirements.txt
+python3 app.py
 ```
 
 ## Local run — Docker
