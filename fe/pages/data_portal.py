@@ -77,7 +77,7 @@ mavedb_table = ElasticTable(
 )
 
 dash.register_page(
-    "data-portal-details",
+    "data-portal-details-mavedb",
     path_template="/data-portal/mavedb/<record_id>",
     layout=mavedb_table.details_layout,
 )
@@ -93,6 +93,8 @@ depmap_table = ElasticTable(
         Column(
             field_name="OncotreePrimaryDisease",
             display_name="Oncotree Primary Disease",
+            sortable=True,
+            default_sort="asc",
             display_details="title",
         ),
         Column(
@@ -169,7 +171,7 @@ depmap_table = ElasticTable(
 )
 
 dash.register_page(
-    "data-portal-details",
+    "data-portal-details-depmap",
     path_template="/data-portal/depmap/<record_id>",
     layout=depmap_table.details_layout,
 )
@@ -185,7 +187,7 @@ dash.register_page(
     button="Open Data Portal",
     description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
     icon="bi-table",
-    layout=mavedb_table.table_layout,
+    layout=depmap_table.table_layout,
 )
 
 
@@ -193,4 +195,5 @@ dash.register_page(
 
 
 def register_callbacks(app):
-    mavedb_table.register_callbacks(app)
+    # mavedb_table.register_callbacks(app)
+    depmap_table.register_callbacks(app)
