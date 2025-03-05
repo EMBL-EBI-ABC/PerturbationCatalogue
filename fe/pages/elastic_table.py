@@ -161,16 +161,7 @@ class ElasticTable:
         title_block = []
         if self.title is not None:
             title_block = [
-                html.H1(
-                    self.title,
-                    className="display-4 mb-2",
-                    style={
-                        "textAlign": "left",
-                        "paddingLeft": "1.5rem",
-                        "paddingTop": "1.5rem",
-                        "paddingBottom": "0.5rem",
-                    },
-                )
+                html.H1(self.title, className="display-4 mb-1 ps-4 pt-4 text-start")
             ]
 
         return html.Div(
