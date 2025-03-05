@@ -25,12 +25,14 @@ Column = namedtuple(
 class ElasticTable:
     def __init__(
         self,
+        id,  # A globally unique ID to distinguish this table from other ElasticTable instances.
         api_endpoint,
         columns,
         details_button_name,
         details_button_link,
         title=None,
     ):
+        self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
         self.columns = columns
         self.details_button_name = details_button_name
@@ -186,7 +188,9 @@ class ElasticTable:
                                     className="mb-3 w-100",
                                 ),
                                 # Store to track debounce state
-                                dcc.Store(id="search-input-value", data=""),
+                                dcc.Store(
+                                    id=f"{self.dom_prefix}-search-input-value", data=""
+                                ),
                                 # Current sort direction store
                                 dcc.Store(
                                     id="sort-store",
@@ -354,31 +358,31 @@ class ElasticTable:
         # Clientside callback for text input debounce.
         app.clientside_callback(
             """
-        function(value, oldValue) {
-            if (value === oldValue) {
-                return window.dash_clientside.no_update;
-            }
+            function(value, oldValue) {
+                if (value === oldValue) {
+                    return window.dash_clientside.no_update;
+                }
 
-            // If search is empty or being cleared, update immediately without debounce
-            if (!value || value === '') {
-                return value;
-            }
+                // If search is empty or being cleared, update immediately without debounce
+                if (!value || value === '') {
+                    return value;
+                }
 
-            // Clear any existing timeouts
-            if (window.searchDebounceTimeout) {
-                clearTimeout(window.searchDebounceTimeout);
-            }
+                // Clear any existing timeouts
+                if (window.searchDebounceTimeout) {
+                    clearTimeout(window.searchDebounceTimeout);
+                }
 
-            return new Promise((resolve) => {
-                window.searchDebounceTimeout = setTimeout(() => {
-                    resolve(value);
-                }, 750); // Debounce in ms
-            });
-        }
-        """,
-            Output("search-input-value", "data"),
+                return new Promise((resolve) => {
+                    window.searchDebounceTimeout = setTimeout(() => {
+                        resolve(value);
+                    }, 750); // Debounce in ms
+                });
+            }
+            """,
+            Output(f"{self.dom_prefix}-search-input-value", "data"),
             Input("search", "value"),
-            State("search-input-value", "data"),
+            State(f"{self.dom_prefix}-search-input-value", "data"),
         )
 
         @app.callback(
@@ -413,7 +417,7 @@ class ElasticTable:
                 Output("pagination-info", "children"),
             ],
             [
-                Input("search-input-value", "data"),
+                Input(f"{self.dom_prefix}-search-input-value", "data"),
                 Input("size", "value"),
                 Input("pagination", "active_page"),
                 Input("sort-store", "data"),

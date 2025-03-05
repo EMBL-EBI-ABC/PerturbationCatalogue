@@ -194,7 +194,7 @@ dash.register_page(
     button="Open Data Portal",
     description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
     icon="bi-table",
-    layout=depmap_table.table_layout,
+    layout=[mavedb_table.table_layout, depmap_table.table_layout],
 )
 
 
@@ -202,5 +202,5 @@ dash.register_page(
 
 
 def register_callbacks(app):
-    # mavedb_table.register_callbacks(app)
+    mavedb_table.register_callbacks(app)
     depmap_table.register_callbacks(app)
