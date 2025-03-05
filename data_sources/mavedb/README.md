@@ -36,10 +36,10 @@ gsutil -q cp /tmp/metadata.jsonl "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl
 
 # Ingest into Elastic.
 python3 ../elastic_load.py \
-  "${ELASTIC_ENDPOINT}" \
-  "mavedb" \
-  "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" \
-  '{
+  --elastic-endpoint "${ELASTIC_ENDPOINT}" \
+  --elastic-index "mavedb" \
+  --jsonl-data "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" \
+  --field-properties '{
     "geneCategory": {
       "type": "keyword"
     },
