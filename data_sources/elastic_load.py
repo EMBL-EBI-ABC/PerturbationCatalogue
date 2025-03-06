@@ -2,19 +2,27 @@ import os
 import subprocess
 import sys
 import json
+import argparse
 
 
 def main():
-    if len(sys.argv) != 5:
-        print(
-            "Usage: python elastic_load.py <ELASTIC_ENDPOINT> <ELASTIC_INDEX> <JSONL_DATA> <FIELD_PROPERTIES>"
-        )
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Load data into Elasticsearch.")
+    parser.add_argument(
+        "--elastic-endpoint", required=True, help="Elasticsearch endpoint"
+    )
+    parser.add_argument(
+        "--elastic-index", required=True, help="Elasticsearch index name"
+    )
+    parser.add_argument("--jsonl-data", required=True, help="Path to JSONL data file")
+    parser.add_argument(
+        "--field-properties", required=True, help="Field properties in JSON format"
+    )
+    args = parser.parse_args()
 
-    ELASTIC_ENDPOINT = sys.argv[1]
-    ELASTIC_INDEX = sys.argv[2]
-    JSONL_DATA = sys.argv[3]
-    FIELD_PROPERTIES = sys.argv[4]
+    ELASTIC_ENDPOINT = args.elastic_endpoint
+    ELASTIC_INDEX = args.elastic_index
+    JSONL_DATA = args.jsonl_data
+    FIELD_PROPERTIES = args.field_properties
 
     print("Removing the index...")
     subprocess.run(
