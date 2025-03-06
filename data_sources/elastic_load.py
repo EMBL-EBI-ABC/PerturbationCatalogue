@@ -1,8 +1,7 @@
-import os
-import subprocess
-import sys
-import json
 import argparse
+import json
+import subprocess
+import requests
 
 
 def main():
@@ -19,46 +18,24 @@ def main():
     )
     args = parser.parse_args()
 
-    ELASTIC_ENDPOINT = args.elastic_endpoint
-    ELASTIC_INDEX = args.elastic_index
-    JSONL_DATA = args.jsonl_data
-    FIELD_PROPERTIES = args.field_properties
-
     print("Removing the index...")
-    subprocess.run(
-        [
-            "curl",
-            "-X",
-            "DELETE",
-            f"{ELASTIC_ENDPOINT}/{ELASTIC_INDEX}",
-            "-H",
-            "Content-Type: application/json",
-        ],
-        check=True,
-    )
+    response = requests.delete(f"{args.elastic_endpoint}/{args.elastic_index}")
 
-    print("\nCreating the index...")
+    print("Creating the index...")
     index_settings = {
         "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 1}},
-        "mappings": {"properties": json.loads(FIELD_PROPERTIES)},
+        "mappings": {"properties": json.loads(args.field_properties)},
     }
-    subprocess.run(
-        [
-            "curl",
-            "-X",
-            "PUT",
-            f"{ELASTIC_ENDPOINT}/{ELASTIC_INDEX}",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps(index_settings),
-        ],
-        check=True,
+    response = requests.put(
+        f"{args.elastic_endpoint}/{args.elastic_index}",
+        headers={"Content-Type": "application/json"},
+        data=json.dumps(index_settings),
     )
+    response.raise_for_status()
 
-    print("\nPreparing the data for loading...")
+    print("Preparing the data for loading...")
     subprocess.run(
-        ["gsutil", "-q", "cp", JSONL_DATA, "/tmp/metadata.jsonl"], check=True
+        ["gsutil", "-q", "cp", args.jsonl_data, "/tmp/metadata.jsonl"], check=True
     )
 
     with open("/tmp/metadata.jsonl", "r") as infile, open(
@@ -66,26 +43,21 @@ def main():
     ) as outfile:
         for i, line in enumerate(infile, 1):
             outfile.write(
-                json.dumps({"index": {"_index": ELASTIC_INDEX, "_id": str(i)}}) + "\n"
+                json.dumps({"index": {"_index": args.elastic_index, "_id": str(i)}})
+                + "\n"
             )
             outfile.write(line)
 
     print("Loading data into index...")
-    subprocess.run(
-        [
-            "curl",
-            "-X",
-            "POST",
-            f"{ELASTIC_ENDPOINT}/{ELASTIC_INDEX}/_bulk",
-            "-H",
-            "Content-Type: application/x-ndjson",
-            "--data-binary",
-            "@/tmp/formatted_metadata.jsonl",
-        ],
-        check=True,
-    )
+    with open("/tmp/formatted_metadata.jsonl", "rb") as data_file:
+        response = requests.post(
+            f"{args.elastic_endpoint}/{args.elastic_index}/_bulk",
+            headers={"Content-Type": "application/x-ndjson"},
+            data=data_file,
+        )
+    response.raise_for_status()
 
-    print("\nAll done.")
+    print("All done.")
 
 
 if __name__ == "__main__":
