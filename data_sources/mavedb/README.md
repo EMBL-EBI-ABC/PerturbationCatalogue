@@ -39,6 +39,7 @@ python3 ../elastic_load.py \
   --elastic-endpoint "${ELASTIC_ENDPOINT}" \
   --elastic-index "mavedb" \
   --jsonl-data "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" \
+  --id-field "urn" \
   --field-properties '{
     "geneCategory": {
       "type": "keyword"

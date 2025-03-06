@@ -16,6 +16,9 @@ def main():
     parser.add_argument(
         "--field-properties", required=True, help="Field properties in JSON format"
     )
+    parser.add_argument(
+        "--id-field", required=True, help="Field to use as the document ID"
+    )
     args = parser.parse_args()
 
     print("Removing the index...")
@@ -41,10 +44,11 @@ def main():
     with open("/tmp/metadata.jsonl", "r") as infile, open(
         "/tmp/formatted_metadata.jsonl", "w"
     ) as outfile:
-        for i, line in enumerate(infile, 1):
+        for line in infile:
+            record = json.loads(line)
+            _id = record.get(args.id_field)
             outfile.write(
-                json.dumps({"index": {"_index": args.elastic_index, "_id": str(i)}})
-                + "\n"
+                json.dumps({"index": {"_index": args.elastic_index, "_id": _id}}) + "\n"
             )
             outfile.write(line)
 
