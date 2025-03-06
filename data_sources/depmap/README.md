@@ -37,10 +37,10 @@ gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_depend
 
 # Ingest into Elastic.
 bash ../elastic_load.sh \
-  "${ELASTIC_ENDPOINT}" \
-  "depmap" \
-  "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
-  '{
+  --elastic-endpoint "${ELASTIC_ENDPOINT}" \
+  --elastic-index "depmap" \
+  --jsonl-data "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
+  --field-properties '{
     "OncotreePrimaryDisease": {
       "type": "text",
       "fielddata": true
