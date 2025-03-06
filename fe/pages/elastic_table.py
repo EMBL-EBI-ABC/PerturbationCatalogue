@@ -158,6 +158,7 @@ class ElasticTable:
             if col.filterable
         ]
 
+        # Table title block
         title_block = []
         if self.title is not None:
             title_block = [html.H2(self.title, className="ps-4 pt-4 mb-0")]
