@@ -71,6 +71,7 @@ mavedb_table = ElasticTable(
     ],
     details_button_name="View on MaveDB",
     details_button_link=lambda urn: f"https://www.mavedb.org/score-sets/{urn}/",
+    title="MaveDB",
 )
 
 dash.register_page(
