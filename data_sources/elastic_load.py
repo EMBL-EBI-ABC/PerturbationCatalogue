@@ -1,6 +1,7 @@
 import argparse
 import json
 import subprocess
+
 import requests
 
 
@@ -36,11 +37,12 @@ def main():
     )
     response.raise_for_status()
 
-    print("Preparing the data for loading...")
+    print("Fetching the processed data...")
     subprocess.run(
         ["gsutil", "-q", "cp", args.jsonl_data, "/tmp/metadata.jsonl"], check=True
     )
 
+    print("Preparing the data for loading...")
     with open("/tmp/metadata.jsonl", "r") as infile, open(
         "/tmp/formatted_metadata.jsonl", "w"
     ) as outfile:
