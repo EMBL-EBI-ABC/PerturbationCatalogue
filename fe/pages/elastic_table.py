@@ -29,11 +29,13 @@ class ElasticTable:
         columns,
         details_button_name,
         details_button_link,
+        title=None,
     ):
         self.api_endpoint = api_endpoint
         self.columns = columns
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
+        self.title = title
 
     # Table view.
 
@@ -156,8 +158,14 @@ class ElasticTable:
             if col.filterable
         ]
 
+        # Table title block
+        title_block = []
+        if self.title:
+            title_block = [html.H2(self.title, className="ps-4 pt-4 mb-0")]
+
         return html.Div(
             [
+                *title_block,
                 dbc.Row(
                     [
                         # Filters sidebar
