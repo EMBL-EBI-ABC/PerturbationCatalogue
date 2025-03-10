@@ -35,5 +35,17 @@ gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/mavedb"
 gsutil -q cp /tmp/metadata.jsonl "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
 
 # Ingest into Elastic.
-bash ../elastic_load.sh "${ELASTIC_ENDPOINT}" "mavedb" "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" ""
+python3 ../elastic_load.py \
+  --elastic-endpoint "${ELASTIC_ENDPOINT}" \
+  --elastic-index "mavedb" \
+  --jsonl-data "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" \
+  --id-field "urn" \
+  --field-properties '{
+    "geneCategory": {
+      "type": "keyword"
+    },
+    "sequenceType": {
+      "type": "keyword"
+    }
+  }'
 ```

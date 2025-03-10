@@ -36,11 +36,12 @@ gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/depmap"
 gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl
 
 # Ingest into Elastic.
-bash ../elastic_load.sh \
-  "${ELASTIC_ENDPOINT}" \
-  "depmap" \
-  "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
-  '
+python3 ../elastic_load.py \
+  --elastic-endpoint "${ELASTIC_ENDPOINT}" \
+  --elastic-index "depmap" \
+  --jsonl-data "gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl" \
+  --id-field "ModelID" \
+  --field-properties '{
     "OncotreePrimaryDisease": {
       "type": "text",
       "fielddata": true
@@ -63,5 +64,5 @@ bash ../elastic_load.sh \
     "Sex": {
       "type": "keyword"
     }
-  '
+  }'
 ```
