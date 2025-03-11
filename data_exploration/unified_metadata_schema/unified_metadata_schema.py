@@ -13,7 +13,6 @@ with open("enums.json", "r") as f:
     options = json.load(f)
 
 # create the enums
-TreatmentNames = make_enum("Treatments", ["Other"] + list(options["treatments"]))
 TimepointUnit = make_enum("TimepointUnit", options["timepoint_unit"])
 Replicates = make_enum("Replicates", options["replicates"])
 LibraryGenerationType = make_enum(
@@ -49,9 +48,6 @@ ModelName = make_enum("ModelName", options["model_name"])
 Sex = make_enum("Sex", options["sex"])
 DevelopmentalStages = make_enum("DevelopmentalStages", options["developmental_stages"])
 SampleQuantityUnit = make_enum("SampleQuantityUnit", options["sample_quantity_unit"])
-PhenotypeNames = make_enum(
-    "PhenotypeNames", ["Other"] + list(options["associated_phenotypes"])
-)
 
 # Define the models
 class Author(BaseModel):
@@ -70,22 +66,8 @@ class Timepoint(BaseModel):
     timepoint_unit: TimepointUnit
 
 class Treatment(BaseModel):
-    term_id: TreatmentNames
-    term_label: str
-    term_synonyms: Optional[List[str]] = None
-    iri: Optional[HttpUrl] = None
-
-    # Validate the Enum phenotype. If the treatment name is not "Other" (i.e. one of the Enum treatment EFO CHEMBL values),
-    # update the treatment parameters with the pre-defined values from the "options" dictionary
-    @model_validator(mode="before")
-    @classmethod
-    def validate_enum_treatments(cls, values):
-        term_id = values["term_id"]
-        if term_id != "Other":
-            term = options["treatments"][term_id]
-            values.update(term)
-            print("Treatment parameters have been updated")
-        return values
+    term_id: str = Field(..., description="Term ID of the treatment defined in ChEMBL", example="CHEBI:6904")
+    term_label: str = Field(..., description="Label of the treatment defined in ChEMBL", example="metoprolol")
 
 class ExperimentDetails(BaseModel):
     title: str
@@ -207,22 +189,8 @@ class ModelSystemDetails(BaseModel):
         return values
             
 class Phenotype(BaseModel):
-    term_id: PhenotypeNames
-    term_label: str
-    term_synonyms: Optional[List[str]] = None
-    iri: Optional[HttpUrl] = None
-
-    # Validate the Enum phenotype. If the phenotype name is not "Other" (i.e. one of the Enum phenotype values),
-    # update the phenotype parameters with the pre-defined values from the "options" dictionary
-    @model_validator(mode="before")
-    @classmethod
-    def validate_enum_phenotype(cls, values):
-        term_id = values["term_id"]
-        if term_id != "Other":
-            term = options["associated_phenotypes"][term_id]
-            values.update(term)
-            print("Phenotype parameters have been updated")
-        return values
+    term_id: str = Field(..., description="Term ID of the phenotype defined in EFO under parent term EFO:0000408 (disease)", example="MONDO:0004975")
+    term_label: str = Field(..., description="Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)", example="Alzheimer disease")
 
 class AssociatedDatasets(BaseModel):
     dataset_accession: str
