@@ -93,7 +93,10 @@ class ElasticTable:
                     "color": "var(--custom-color)" if is_sorted else "inherit",
                 },
             ),
-            id={"type": "sort-header-container", "field": col.field_name},
+            id={
+                "type": f"{self.dom_prefix}-sort-header-container",
+                "field": col.field_name,
+            },
         )
 
     def _create_table(self, data, sort_data):
