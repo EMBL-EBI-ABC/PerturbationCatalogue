@@ -25,12 +25,15 @@ Column = namedtuple(
 class ElasticTable:
     def __init__(
         self,
+        id,
         api_endpoint,
         columns,
         details_button_name,
         details_button_link,
         title=None,
     ):
+        # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
+        self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
         self.columns = columns
         self.details_button_name = details_button_name
@@ -90,7 +93,10 @@ class ElasticTable:
                     "color": "var(--custom-color)" if is_sorted else "inherit",
                 },
             ),
-            id={"type": "sort-header-container", "field": col.field_name},
+            id={
+                "type": f"{self.dom_prefix}-sort-header-container",
+                "field": col.field_name,
+            },
         )
 
     def _create_table(self, data, sort_data):
@@ -140,13 +146,13 @@ class ElasticTable:
                     [
                         html.H5(col.display_name),
                         dbc.Checklist(
-                            id=col.field_name,
+                            id=f"{self.dom_prefix}-filter-{col.field_name}",
                             options=[],
                             className="w-100 elastic-table-filter-checklist",
                         ),
                         dbc.Button(
                             "Clear",
-                            id=f"clear-{col.field_name}",
+                            id=f"{self.dom_prefix}-clear-{col.field_name}",
                             color="success",
                             size="sm",
                             className="mt-2 elastic-table-filter-clear",
@@ -180,16 +186,18 @@ class ElasticTable:
                             [
                                 # Search field
                                 dcc.Input(
-                                    id="search",
+                                    id=f"{self.dom_prefix}-search",
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
                                 # Store to track debounce state
-                                dcc.Store(id="search-input-value", data=""),
+                                dcc.Store(
+                                    id=f"{self.dom_prefix}-search-input-value", data=""
+                                ),
                                 # Current sort direction store
                                 dcc.Store(
-                                    id="sort-store",
+                                    id=f"{self.dom_prefix}-sort-store",
                                     data={
                                         "field": default_sort_column.field_name,
                                         "order": default_sort_column.default_sort,
@@ -198,7 +206,7 @@ class ElasticTable:
                                 # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
-                                        id="data-table",
+                                        id=f"{self.dom_prefix}-data-table",
                                         className="w-100 overflow-auto",
                                         style={"minHeight": "100px"},
                                     ),
@@ -212,23 +220,25 @@ class ElasticTable:
                                             [
                                                 html.Label("Items per page:"),
                                                 dcc.Dropdown(
-                                                    id="size",
+                                                    id=f"{self.dom_prefix}-size",
                                                     options=[
                                                         {"label": str(i), "value": i}
-                                                        for i in [20, 50, 100, 200]
+                                                        for i in [10, 20, 50, 100, 200]
                                                     ],
-                                                    value=20,
+                                                    value=10,
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
-                                                html.Span(id="pagination-info"),
+                                                html.Span(
+                                                    id=f"{self.dom_prefix}-pagination-info"
+                                                ),
                                             ],
                                             width="auto",
                                             className="d-flex align-items-center gap-2 me-3",
                                         ),
                                         dbc.Col(
                                             dbc.Pagination(
-                                                id="pagination",
+                                                id=f"{self.dom_prefix}-pagination",
                                                 max_value=1,
                                                 active_page=1,
                                                 first_last=True,
@@ -296,7 +306,7 @@ class ElasticTable:
                 ],
                 className="card-text",
             )
-        else:
+        elif col.display_details == "link":
             return html.P(
                 [
                     html.Strong(f"{col.display_name}: "),
@@ -354,37 +364,40 @@ class ElasticTable:
         # Clientside callback for text input debounce.
         app.clientside_callback(
             """
-        function(value, oldValue) {
-            if (value === oldValue) {
-                return window.dash_clientside.no_update;
-            }
+            function(value, oldValue) {
+                if (value === oldValue) {
+                    return window.dash_clientside.no_update;
+                }
 
-            // If search is empty or being cleared, update immediately without debounce
-            if (!value || value === '') {
-                return value;
-            }
+                // If search is empty or being cleared, update immediately without debounce
+                if (!value || value === '') {
+                    return value;
+                }
 
-            // Clear any existing timeouts
-            if (window.searchDebounceTimeout) {
-                clearTimeout(window.searchDebounceTimeout);
-            }
+                // Clear any existing timeouts
+                if (window.searchDebounceTimeout) {
+                    clearTimeout(window.searchDebounceTimeout);
+                }
 
-            return new Promise((resolve) => {
-                window.searchDebounceTimeout = setTimeout(() => {
-                    resolve(value);
-                }, 750); // Debounce in ms
-            });
-        }
-        """,
-            Output("search-input-value", "data"),
-            Input("search", "value"),
-            State("search-input-value", "data"),
+                return new Promise((resolve) => {
+                    window.searchDebounceTimeout = setTimeout(() => {
+                        resolve(value);
+                    }, 750); // Debounce in ms
+                });
+            }
+            """,
+            Output(f"{self.dom_prefix}-search-input-value", "data"),
+            Input(f"{self.dom_prefix}-search", "value"),
+            State(f"{self.dom_prefix}-search-input-value", "data"),
         )
 
         @app.callback(
-            Output("sort-store", "data"),
-            Input({"type": "sort-header-container", "field": dash.ALL}, "n_clicks"),
-            State("sort-store", "data"),
+            Output(f"{self.dom_prefix}-sort-store", "data"),
+            Input(
+                {"type": f"{self.dom_prefix}-sort-header-container", "field": dash.ALL},
+                "n_clicks",
+            ),
+            State(f"{self.dom_prefix}-sort-store", "data"),
         )
         def update_sort(_, current_sort):
             """Updates the sort direction when a column header is clicked."""
@@ -403,22 +416,22 @@ class ElasticTable:
 
         @app.callback(
             [
-                Output("data-table", "children"),
+                Output(f"{self.dom_prefix}-data-table", "children"),
                 *[
-                    Output(col.field_name, "options")
+                    Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
-                Output("pagination", "max_value"),
-                Output("pagination-info", "children"),
+                Output(f"{self.dom_prefix}-pagination", "max_value"),
+                Output(f"{self.dom_prefix}-pagination-info", "children"),
             ],
             [
-                Input("search-input-value", "data"),
-                Input("size", "value"),
-                Input("pagination", "active_page"),
-                Input("sort-store", "data"),
+                Input(f"{self.dom_prefix}-search-input-value", "data"),
+                Input(f"{self.dom_prefix}-size", "value"),
+                Input(f"{self.dom_prefix}-pagination", "active_page"),
+                Input(f"{self.dom_prefix}-sort-store", "data"),
                 *[
-                    Input(col.field_name, "value")
+                    Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
                     for col in self._get_table_columns()
                     if col.filterable
                 ],
@@ -465,12 +478,12 @@ class ElasticTable:
 
         @app.callback(
             [
-                Output(col.field_name, "value")
+                Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
             [
-                Input(f"clear-{col.field_name}", "n_clicks")
+                Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
                 for col in self._get_table_columns()
                 if col.filterable
             ],
@@ -479,7 +492,11 @@ class ElasticTable:
             """Clears the selected filter values when a clear button is clicked."""
             triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
             return [
-                [] if f"clear-{col.field_name}" == triggered else dash.no_update
+                (
+                    []
+                    if f"{self.dom_prefix}-clear-{col.field_name}" == triggered
+                    else dash.no_update
+                )
                 for col in self._get_table_columns()
                 if col.filterable
             ]
