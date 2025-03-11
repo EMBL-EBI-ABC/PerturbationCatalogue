@@ -206,7 +206,7 @@ class ElasticTable:
                                 # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
-                                        id="data-table",
+                                        id=f"{self.dom_prefix}-data-table",
                                         className="w-100 overflow-auto",
                                         style={"minHeight": "100px"},
                                     ),
