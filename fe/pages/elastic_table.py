@@ -25,12 +25,15 @@ Column = namedtuple(
 class ElasticTable:
     def __init__(
         self,
+        id,
         api_endpoint,
         columns,
         details_button_name,
         details_button_link,
         title=None,
     ):
+        # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
+        self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
         self.columns = columns
         self.details_button_name = details_button_name
