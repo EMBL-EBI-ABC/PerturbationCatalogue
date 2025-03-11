@@ -146,13 +146,13 @@ class ElasticTable:
                     [
                         html.H5(col.display_name),
                         dbc.Checklist(
-                            id=col.field_name,
+                            id=f"{self.dom_prefix}-filter-{col.field_name}",
                             options=[],
                             className="w-100 elastic-table-filter-checklist",
                         ),
                         dbc.Button(
                             "Clear",
-                            id=f"clear-{col.field_name}",
+                            id=f"{self.dom_prefix}-clear-{col.field_name}",
                             color="success",
                             size="sm",
                             className="mt-2 elastic-table-filter-clear",
