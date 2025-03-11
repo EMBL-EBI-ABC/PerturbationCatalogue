@@ -186,16 +186,18 @@ class ElasticTable:
                             [
                                 # Search field
                                 dcc.Input(
-                                    id="search",
+                                    id=f"{self.dom_prefix}-search",
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
                                 ),
                                 # Store to track debounce state
-                                dcc.Store(id="search-input-value", data=""),
+                                dcc.Store(
+                                    id=f"{self.dom_prefix}-search-input-value", data=""
+                                ),
                                 # Current sort direction store
                                 dcc.Store(
-                                    id="sort-store",
+                                    id=f"{self.dom_prefix}-sort-store",
                                     data={
                                         "field": default_sort_column.field_name,
                                         "order": default_sort_column.default_sort,
