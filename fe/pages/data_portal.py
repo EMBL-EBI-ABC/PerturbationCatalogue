@@ -48,12 +48,12 @@ mavedb_table = ElasticTable(
         ),
         Column(
             field_name="normalisedGeneName",
-            display_name="Gene Name",
+            display_name="Gene",
             display_details="text",
         ),
         Column(
             field_name="geneName",
-            display_name="Original Gene Name",
+            display_name="Domain",
             display_details="text",
         ),
         Column(
