@@ -51,9 +51,6 @@ python3 ../elastic_load.py \
     "AgeCategory": {
       "type": "keyword"
     },
-    "ModelType": {
-      "type": "keyword"
-    },
     "OncotreeLineage": {
       "type": "keyword"
     },

@@ -93,7 +93,6 @@ def main():
         "PrimaryOrMetastasis",
         "SampleCollectionSite",
         "CatalogNumber",
-        "ModelType",
         "high_dependency_genes",
     ]
     df = df[columns_to_keep]
