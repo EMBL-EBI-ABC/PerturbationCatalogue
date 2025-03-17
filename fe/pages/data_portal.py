@@ -222,3 +222,4 @@ dash.register_page(
 
 def register_callbacks(app):
     mavedb_table.register_callbacks(app)
+    depmap_table.register_callbacks(app)
