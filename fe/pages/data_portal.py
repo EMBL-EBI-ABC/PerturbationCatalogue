@@ -1,15 +1,21 @@
+import os
+
 import dash
 from dash import html
 
 from .elastic_table import ElasticTable, Column
 
 
-# MaveDB.
+# Common parameters.
 
+api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
+
+
+# MaveDB.
 
 mavedb_table = ElasticTable(
     id="mavedb",
-    api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search",
+    api_endpoint=f"{api_base_url}/mavedb/search",
     columns=[
         # Special columns: title and subtitle, for details view only.
         Column(
