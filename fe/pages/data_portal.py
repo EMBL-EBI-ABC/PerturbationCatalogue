@@ -131,7 +131,7 @@ depmap_table = ElasticTable(
     title="DepMap",
     description=(
         "DepMap provides CRISPR screening data identifying genes essential for the survival of specific cancer cell lines. "
-        "The table highlights genes with >95% probability of killing a cancer cell when knocked out. "
+        "The table contains only genes with >95% probability of killing a cancer cell when knocked out. "
         "Broadly essential (housekeeping) genes have been excluded. "
         "Click on a highlighted gene to view relevant functional data in MaveDB.",
     ),
