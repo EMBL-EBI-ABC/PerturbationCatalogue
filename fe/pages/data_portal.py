@@ -1,7 +1,8 @@
 import os
 
 import dash
-from dash import html
+from dash import html, Output, Input, callback
+from dash.dependencies import State
 
 from .elastic_table import ElasticTable, Column
 
@@ -17,7 +18,25 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 def high_dependency_genes(data):
     """Dynamic layout for the list of high dependency genes."""
     print(data)
-    return " ".join([g["name"] for g in data])
+    gene_elements = []
+
+    for g in data:
+        if g.get("xref") == "MaveDB":
+            # Create a link for genes with MaveDB cross-reference
+            gene_elements.append(
+                html.A(
+                    g["name"],
+                    href="#",
+                    # className="text-decoration-underline",
+                    id={"type": "gene-link", "index": g["name"]},
+                )
+            )
+            gene_elements.append(html.Span(" "))
+        else:
+            # Regular display for other genes
+            gene_elements.append(html.Span(g["name"] + " "))
+
+    return html.Span(gene_elements)
 
 
 depmap_table = ElasticTable(
@@ -237,3 +256,23 @@ dash.register_page(
 def register_callbacks(app):
     mavedb_table.register_callbacks(app)
     depmap_table.register_callbacks(app)
+
+    # Add callback for gene link click
+    @callback(
+        Output("elastic-table-mavedb-search", "value"),
+        Input({"type": "gene-link", "index": dash.dependencies.ALL}, "n_clicks"),
+        State({"type": "gene-link", "index": dash.dependencies.ALL}, "id"),
+        prevent_initial_call=True,
+    )
+    def gene_link_clicked(n_clicks, ids):
+        if not any(n_clicks):
+            return dash.no_update
+
+        # Find which link was clicked
+        for i, clicks in enumerate(n_clicks):
+            if clicks:
+                # Extract the gene name from the id
+                gene_name = ids[i]["index"]
+                return gene_name
+
+        return dash.no_update
