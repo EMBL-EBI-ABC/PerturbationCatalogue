@@ -17,7 +17,6 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 
 def high_dependency_genes(data):
     """Dynamic layout for the list of high dependency genes."""
-    print(data)
     gene_elements = []
 
     for g in data:
@@ -27,7 +26,6 @@ def high_dependency_genes(data):
                 html.A(
                     g["name"],
                     href="#",
-                    # className="text-decoration-underline",
                     id={"type": "gene-link", "index": g["name"]},
                 )
             )
