@@ -178,7 +178,7 @@ class ElasticTable:
                         dbc.Col(
                             filter_columns,
                             xs=12,
-                            md=3,
+                            md=2,
                             className="pt-4 ps-4 d-flex flex-column gap-3",
                         ),
                         # Main content area
