@@ -1,5 +1,6 @@
 import argparse
 import pandas as pd
+import json
 
 
 def main():
@@ -17,17 +18,30 @@ def main():
         "--model-metadata", required=True, help="Path to the model metadata CSV file."
     )
     parser.add_argument(
+        "--mavedb-metadata",
+        required=True,
+        help="Path to the MaveDB metadata JSONL file.",
+    )
+    parser.add_argument(
         "--output-filename", required=True, help="Path to the output JSONL file."
     )
     args = parser.parse_args()
 
-    # Step 1: Load gene dependency CSV
+    # Load MaveDB metadata and extract the set of normalisedGeneName
+    mavedb_genes = set()
+    with open(args.mavedb_metadata, "r") as f:
+        for line in f:
+            record = json.loads(line)
+            if "normalisedGeneName" in record:
+                mavedb_genes.add(record["normalisedGeneName"])
+
+    # Load gene dependency CSV
     gene_df = pd.read_csv(args.gene_dependency)
 
-    # Step 2: Set index to the first column (cancer screen ID)
+    # Set index to the first column (cancer screen ID)
     gene_df.set_index(gene_df.columns[0], inplace=True)
 
-    # Step 3: Remove rows and columns with missing values
+    # Remove rows and columns with missing values
     # Order is important, because we need to drop the small subset of genes which have a lot of missing values.
     # (Otherwise, we will lose a lot of good screens.)
     gene_df.dropna(
@@ -35,31 +49,38 @@ def main():
     )  # Drop columns with any missing values
     gene_df.dropna(axis=0, how="any", inplace=True)  # Drop rows with any missing values
 
-    # Step 4: Remove columns present in common essentials
+    # Remove columns present in common essentials
     with open(args.common_essentials, "r") as f:
         common_essentials = set(line.strip() for line in f)
     gene_df = gene_df.drop(
         columns=[col for col in gene_df.columns if col in common_essentials]
     )
 
-    # Step 5: Rename columns from "GENE (123)" to "GENE"
+    # Rename columns from "GENE (123)" to "GENE"
     gene_df.columns = [col.split(" ")[0] for col in gene_df.columns]
 
-    # Step 6: Create a new column with genes >= 0.95, sorted alphabetically
+    # Create a new column with genes >= 0.95, sorted alphabetically, and add xrefs to MaveDB.
     gene_df["high_dependency_genes"] = gene_df.apply(
-        lambda row: sorted(row.index[row >= 0.95].tolist()), axis=1
+        lambda row: sorted(
+            [
+                {"name": gene, "xref": "MaveDB" if gene in mavedb_genes else ""}
+                for gene in row.index[row >= 0.95].tolist()
+            ],
+            key=lambda x: x["name"],
+        ),
+        axis=1,
     )
     gene_df = gene_df[["high_dependency_genes"]]  # Drop all original columns
 
-    # Step 7: Load model metadata and join with gene_df
+    # Load model metadata and join with gene_df
     model_df = pd.read_csv(args.model_metadata)
     model_df.set_index("ModelID", inplace=True)
     df = gene_df.join(model_df, how="inner")
 
-    # Step 8: Reset index to make ModelID a column
+    # Reset index to make ModelID a column
     df = df.reset_index().rename(columns={"index": "ModelID"})
 
-    # Step 9: Keep only specified columns
+    # Keep only specified columns
     columns_to_keep = [
         "ModelID",
         "CellLineName",
@@ -77,7 +98,16 @@ def main():
     ]
     df = df[columns_to_keep]
 
-    # Step 10: Replace null values with "Unknown"
+    # Add the "xref" column
+    df["xref"] = df["high_dependency_genes"].apply(
+        lambda genes: (
+            "In MaveDB"
+            if any(gene["xref"] == "MaveDB" for gene in genes)
+            else "Not in MaveDB"
+        )
+    )
+
+    # Replace null values with "Unknown"
     # In source data, missing values are sometimes null and sometimes "Unknown". This
     # step fixes the inconsistency.
     na_values = {
@@ -89,7 +119,7 @@ def main():
     }
     df.fillna(value=na_values, inplace=True)
 
-    # Step 11: Save to JSONL format
+    # Save to JSONL format
     df.to_json(args.output_filename, orient="records", lines=True)
 
 
