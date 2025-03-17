@@ -29,7 +29,8 @@ def high_dependency_genes(data):
                         g["name"],
                         href="#",
                         id={"type": "gene-link", "index": g["name"]},
-                    )
+                        style={"textDecoration": "none"},
+                    ),
                 )
             )
             gene_elements.append(html.Span(" "))
