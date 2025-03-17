@@ -3,6 +3,8 @@ from collections import Counter
 import json
 import pandas as pd
 
+from gene_mapping import mapped_gene_names
+
 
 def process_json_to_csv(input_filename, output_filename):
     # Load JSON data from file.
@@ -50,6 +52,12 @@ def process_json_to_csv(input_filename, output_filename):
                 if primary_publications:
                     primary_publication = primary_publications[0]
 
+                # Normalise the gene name using the mapping dictionary.
+                original_gene_name = target_gene.get("name", "")
+                normalised_gene_name = mapped_gene_names.get(
+                    original_gene_name, original_gene_name
+                )
+
                 # Append row data with selected fields.
                 rows.append(
                     {
@@ -59,7 +67,8 @@ def process_json_to_csv(input_filename, output_filename):
                         # "methodText": score_set.get("methodText", ""),
                         # "abstractText": score_set.get("abstractText", ""),
                         "sequenceType": target_gene["targetSequence"]["sequenceType"],
-                        "geneName": target_gene.get("name", ""),
+                        "geneName": original_gene_name,
+                        "normalisedGeneName": normalised_gene_name,
                         "geneCategory": target_gene.get("category", ""),
                         "publicationUrl": (
                             primary_publication["url"] if primary_publication else ""
