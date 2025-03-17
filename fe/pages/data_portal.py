@@ -47,8 +47,13 @@ mavedb_table = ElasticTable(
             filterable=True,
         ),
         Column(
-            field_name="geneName",
+            field_name="normalisedGeneName",
             display_name="Gene Name",
+            display_details="text",
+        ),
+        Column(
+            field_name="geneName",
+            display_name="Original Gene Name",
             display_details="text",
         ),
         Column(
