@@ -24,6 +24,14 @@ depmap_table = ElasticTable(
     id="depmap",
     api_endpoint=f"{api_base_url}/depmap/search",
     columns=[
+        # Special column, displayed nowhere, used only for cross-ref filtering.
+        Column(
+            field_name="xref",
+            display_name="Cross-references",
+            filterable=True,
+            display_table=False,
+            display_details=False,
+        ),
         # Special columns: title and subtitle, displayed in both table and detail views.
         Column(
             field_name="ModelID",
