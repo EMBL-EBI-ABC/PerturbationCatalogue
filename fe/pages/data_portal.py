@@ -50,17 +50,7 @@ depmap_table = ElasticTable(
             display_table=False,
             display_details=False,
         ),
-        # Special columns: title and subtitle, displayed in both table and detail views.
-        Column(
-            field_name="ModelID",
-            display_name="Model ID",
-            display_details="title",
-            display_table=lambda model_id: html.A(
-                model_id,
-                href=f"/data-portal/depmap/{model_id}",
-                className="text-decoration-none text-nowrap",
-            ),
-        ),
+        # Subtitle.
         Column(
             field_name="OncotreePrimaryDisease",
             display_name="Oncotree Primary Disease",
@@ -72,6 +62,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="CellLineName",
             display_name="Cell Line Name",
+            display_table=False,
             display_details="text",
         ),
         Column(
@@ -83,6 +74,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="OncotreeSubtype",
             display_name="Oncotree Subtype",
+            display_table=False,
             display_details="text",
         ),
         Column(
@@ -118,6 +110,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="CatalogNumber",
             display_name="Catalog Number",
+            display_table=False,
             display_details="text",
         ),
         Column(
@@ -131,6 +124,17 @@ depmap_table = ElasticTable(
             display_name="High Dependency Genes",
             display_table=high_dependency_genes,
             display_details="text",
+        ),
+        # Title; displayed last in the table view.
+        Column(
+            field_name="ModelID",
+            display_name="Model ID",
+            display_details="title",
+            display_table=lambda model_id: html.A(
+                model_id,
+                href=f"/data-portal/depmap/{model_id}",
+                className="text-decoration-none text-nowrap",
+            ),
         ),
     ],
     details_button_name="View on DepMap",
