@@ -150,35 +150,6 @@ mavedb_table = ElasticTable(
     id="mavedb",
     api_endpoint=f"{api_base_url}/mavedb/search",
     columns=[
-        # Special columns: title and subtitle, for details view only.
-        Column(
-            field_name="title",
-            display_table=False,
-            display_details="title",
-        ),
-        Column(
-            field_name="shortDescription",
-            display_table=False,
-            display_details="subtitle",
-        ),
-        # Special column: URN, to serve as the primary key and link construction.
-        Column(
-            field_name="urn",
-            display_name="URN",
-            display_details="text",
-            display_table=lambda urn: html.A(
-                urn,
-                href=f"/data-portal/mavedb/{urn}",
-                className="text-decoration-none text-nowrap",
-            ),
-        ),
-        # Data columns.
-        Column(
-            field_name="sequenceType",
-            display_name="Sequence Type",
-            display_details="text",
-            filterable=True,
-        ),
         Column(
             field_name="normalisedGeneName",
             display_name="Gene",
@@ -192,6 +163,24 @@ mavedb_table = ElasticTable(
         Column(
             field_name="geneCategory",
             display_name="Gene Category",
+            display_details="text",
+            filterable=True,
+        ),
+        # Special columns: title and subtitle, for details view only.
+        Column(
+            field_name="title",
+            display_table=False,
+            display_details="title",
+        ),
+        Column(
+            field_name="shortDescription",
+            display_table=False,
+            display_details="subtitle",
+        ),
+        # Data columns.
+        Column(
+            field_name="sequenceType",
+            display_name="Sequence Type",
             display_details="text",
             filterable=True,
         ),
@@ -214,6 +203,17 @@ mavedb_table = ElasticTable(
             display_name="Number of Variants",
             display_details="text",
             sortable=True,
+        ),
+        # Special column: URN, to serve as the primary key and link construction.
+        Column(
+            field_name="urn",
+            display_name="MaveDB ID",
+            display_details="text",
+            display_table=lambda urn: html.A(
+                urn,
+                href=f"/data-portal/mavedb/{urn}",
+                className="text-decoration-none text-nowrap",
+            ),
         ),
     ],
     details_button_name="View on MaveDB",
