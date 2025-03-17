@@ -31,6 +31,7 @@ class ElasticTable:
         details_button_name,
         details_button_link,
         title=None,
+        description=None,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.dom_prefix = f"elastic-table-{id}"
@@ -39,6 +40,7 @@ class ElasticTable:
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
         self.title = title
+        self.description = description
 
     # Table view.
 
@@ -169,9 +171,15 @@ class ElasticTable:
         if self.title:
             title_block = [html.H2(self.title, className="ps-4 pt-4 mb-0")]
 
+        # Table description block
+        description_block = []
+        if self.description:
+            description_block = [html.H5(self.description, className="ps-4 pt-3 mb-0")]
+
         return html.Div(
             [
                 *title_block,
+                *description_block,
                 dbc.Row(
                     [
                         # Filters sidebar
