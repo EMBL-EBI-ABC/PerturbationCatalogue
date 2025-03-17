@@ -35,7 +35,7 @@ mavedb_table = ElasticTable(
             display_details="text",
             display_table=lambda urn: html.A(
                 urn,
-                href=f"/data-portal/{urn}",
+                href=f"/data-portal/mavedb/{urn}",
                 className="text-decoration-none text-nowrap",
             ),
         ),
