@@ -16,7 +16,7 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 
 depmap_table = ElasticTable(
     id="depmap",
-    api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/depmap/search",
+    api_endpoint=f"{api_base_url}/depmap/search",
     columns=[
         # Special columns: title and subtitle, displayed in both table and detail views.
         Column(
