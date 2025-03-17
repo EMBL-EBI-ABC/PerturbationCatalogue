@@ -1,5 +1,5 @@
 import dash
-
+import os
 from . import _iframe
 
 dash.register_page(
@@ -11,6 +11,4 @@ dash.register_page(
     icon="bi-question-circle",
 )
 
-layout = _iframe.layout(
-    "https://perturbation-catalogue-be-959149465821.europe-west2.run.app/redoc"
-)
+layout = _iframe.layout(f"{os.getenv('PERTURBATION_CATALOGUE_BE')}/redoc")
