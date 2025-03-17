@@ -24,16 +24,18 @@ def high_dependency_genes(data):
         if g.get("xref") == "MaveDB":
             # Create a link for genes with MaveDB cross-reference
             gene_elements.append(
-                html.A(
-                    g["name"],
-                    href="#",
-                    id={"type": "gene-link", "index": g["name"]},
+                html.B(
+                    html.A(
+                        g["name"],
+                        href="#",
+                        id={"type": "gene-link", "index": g["name"]},
+                    )
                 )
             )
             gene_elements.append(html.Span(" "))
         else:
             # Regular display for other genes
-            gene_elements.append(html.Span(g["name"] + " "))
+            gene_elements.append(html.Span(g["name"] + " ", className="text-muted"))
 
     return html.Span(gene_elements)
 
