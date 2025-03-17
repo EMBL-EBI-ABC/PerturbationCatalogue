@@ -26,6 +26,8 @@ docker build -t dash-app . && docker run -p 80:80 dash-app
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
+   - `PERTURBATION_CATALOGUE_BE` to point to back-end deployment base URL, starting with https:// and without the trailing slash
 1. Container(s), volumes, networking, security → Container(s) → Container port: 80
 1. Click: Create.
 
