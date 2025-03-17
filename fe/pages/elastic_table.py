@@ -258,7 +258,7 @@ class ElasticTable:
                     className="g-0",
                 ),
             ],
-            className="w-100",
+            className="w-100 mb-4",
         )
 
     # Details view.
