@@ -213,14 +213,9 @@ dash.register_page(
     button="Open Data Portal",
     description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
     icon="bi-table",
-    layout=mavedb_table.table_layout,
+    layout=complete_layout,
 )
 
-dash.register_page(
-    "data-portal-details",
-    path_template="/data-portal/<record_id>",
-    layout=mavedb_table.details_layout,
-)
 
 # Callbacks.
 
