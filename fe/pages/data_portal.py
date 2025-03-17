@@ -1,3 +1,4 @@
+import json
 import os
 
 import dash
@@ -255,7 +256,6 @@ def register_callbacks(app):
     mavedb_table.register_callbacks(app)
     depmap_table.register_callbacks(app)
 
-    # Add callback for gene link click
     @callback(
         Output("elastic-table-mavedb-search", "value"),
         Input({"type": "gene-link", "index": dash.dependencies.ALL}, "n_clicks"),
@@ -266,14 +266,21 @@ def register_callbacks(app):
         if not any(n_clicks):
             return dash.no_update
 
-        # Find which link was clicked
-        for i, clicks in enumerate(n_clicks):
-            if clicks:
-                # Extract the gene name from the id
-                gene_name = ids[i]["index"]
-                return gene_name
+        # Get the context of the callback to determine which input triggered it
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return dash.no_update
 
-        return dash.no_update
+        # Get the id of the component that triggered the callback
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+        # Extract the index from the triggered component's id
+        try:
+            triggered_dict = json.loads(triggered_id)
+            gene_name = triggered_dict["index"]
+            return gene_name
+        except:
+            return dash.no_update
 
     # Simple clientside callback for scrolling
     app.clientside_callback(
