@@ -125,6 +125,7 @@ mavedb = DataSource(
         FieldDefinition(name="shortDescription", type=str),
         FieldDefinition(name="sequenceType", type=str, filterable=True),
         FieldDefinition(name="geneName", type=str),
+        FieldDefinition(name="normalisedGeneName", type=str),
         FieldDefinition(name="geneCategory", type=str, filterable=True),
         FieldDefinition(name="publicationUrl", type=str),
         FieldDefinition(name="publicationYear", type=int | str, filterable=True),
