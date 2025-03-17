@@ -160,7 +160,7 @@ class ElasticTable:
                     ]
                 )
             )
-            for col in self._get_table_columns()
+            for col in self.columns
             if col.filterable
         ]
 
@@ -419,7 +419,7 @@ class ElasticTable:
                 Output(f"{self.dom_prefix}-data-table", "children"),
                 *[
                     Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
-                    for col in self._get_table_columns()
+                    for col in self.columns
                     if col.filterable
                 ],
                 Output(f"{self.dom_prefix}-pagination", "max_value"),
@@ -432,7 +432,7 @@ class ElasticTable:
                 Input(f"{self.dom_prefix}-sort-store", "data"),
                 *[
                     Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                    for col in self._get_table_columns()
+                    for col in self.columns
                     if col.filterable
                 ],
             ],
@@ -444,8 +444,7 @@ class ElasticTable:
             if response.status_code != 200:
                 return (
                     html.Div("Error fetching data."),
-                    *[[]]
-                    * len([col for col in self._get_table_columns() if col.filterable]),
+                    *[[]] * len([col for col in self.columns if col.filterable]),
                     1,
                     "",
                 )
@@ -461,7 +460,7 @@ class ElasticTable:
                     .get(col.field_name, {})
                     .get("buckets", [])
                 ]
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ]
 
@@ -479,12 +478,12 @@ class ElasticTable:
         @app.callback(
             [
                 Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ],
             [
                 Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ],
         )
@@ -497,6 +496,6 @@ class ElasticTable:
                     if f"{self.dom_prefix}-clear-{col.field_name}" == triggered
                     else dash.no_update
                 )
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ]
