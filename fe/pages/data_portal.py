@@ -89,6 +89,124 @@ mavedb_table = ElasticTable(
 )
 
 dash.register_page(
+    "data-portal-details-mavedb",
+    path_template="/data-portal/mavedb/<record_id>",
+    layout=mavedb_table.details_layout,
+)
+
+
+# DepMap.
+
+
+depmap_table = ElasticTable(
+    id="depmap",
+    api_endpoint="https://perturbation-catalogue-be-959149465821.europe-west2.run.app/depmap/search",
+    columns=[
+        # Special columns: title and subtitle, displayed in both table and detail views.
+        Column(
+            field_name="ModelID",
+            display_name="Model ID",
+            display_details="title",
+            display_table=lambda model_id: html.A(
+                model_id,
+                href=f"/data-portal/depmap/{model_id}",
+                className="text-decoration-none text-nowrap",
+            ),
+        ),
+        Column(
+            field_name="OncotreePrimaryDisease",
+            display_name="Oncotree Primary Disease",
+            sortable=True,
+            default_sort="asc",
+            display_details="subtitle",
+        ),
+        # Data columns.
+        Column(
+            field_name="CellLineName",
+            display_name="Cell Line Name",
+            display_details="text",
+        ),
+        Column(
+            field_name="OncotreeLineage",
+            display_name="Oncotree Lineage",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="OncotreeSubtype",
+            display_name="Oncotree Subtype",
+            display_details="text",
+        ),
+        Column(
+            field_name="Age",
+            display_name="Age",
+            sortable=True,
+            display_details="text",
+        ),
+        Column(
+            field_name="AgeCategory",
+            display_name="Age Category",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="Sex",
+            display_name="Sex",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="PrimaryOrMetastasis",
+            display_name="Primary or Metastasis",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="SampleCollectionSite",
+            display_name="Sample Collection Site",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="CatalogNumber",
+            display_name="Catalog Number",
+            display_details="text",
+        ),
+        Column(
+            field_name="ModelType",
+            display_name="Model Type",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="high_dependency_genes",
+            display_name="High Dependency Genes",
+            display_table=lambda high_dependency_genes: " ".join(high_dependency_genes),
+            display_details="text",
+        ),
+    ],
+    details_button_name="View on DepMap",
+    details_button_link=lambda ModelID: f"https://depmap.org/portal/model/{ModelID}/",
+    title="DepMap",
+)
+
+dash.register_page(
+    "data-portal-details-depmap",
+    path_template="/data-portal/depmap/<record_id>",
+    layout=depmap_table.details_layout,
+)
+
+
+# Main data portal page.
+
+
+def complete_layout():
+    return html.Div(
+        [datasource.table_layout() for datasource in (mavedb_table, depmap_table)]
+    )
+
+
+dash.register_page(
     __name__,
     path="/data-portal",
     name="Data Portal",
