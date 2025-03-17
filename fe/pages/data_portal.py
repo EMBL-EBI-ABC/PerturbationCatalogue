@@ -14,6 +14,12 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 # DepMap.
 
 
+def high_dependency_genes(data):
+    """Dynamic layout for the list of high dependency genes."""
+    print(data)
+    return " ".join([g["name"] for g in data])
+
+
 depmap_table = ElasticTable(
     id="depmap",
     api_endpoint=f"{api_base_url}/depmap/search",
@@ -97,7 +103,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
-            display_table=lambda high_dependency_genes: " ".join(high_dependency_genes),
+            display_table=high_dependency_genes,
             display_details="text",
         ),
     ],
