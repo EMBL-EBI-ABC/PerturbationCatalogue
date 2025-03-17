@@ -274,3 +274,18 @@ def register_callbacks(app):
                 return gene_name
 
         return dash.no_update
+
+    # Simple clientside callback for scrolling
+    app.clientside_callback(
+        """
+        function(value) {
+            if (value) {
+                document.getElementById('elastic-table-mavedb-search').scrollIntoView({behavior: 'smooth'});
+            }
+            return null;
+        }
+        """,
+        Output("elastic-table-mavedb-search", "_", allow_duplicate=True),
+        Input("elastic-table-mavedb-search", "value"),
+        prevent_initial_call=True,
+    )
