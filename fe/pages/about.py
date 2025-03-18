@@ -11,4 +11,5 @@ dash.register_page(
     icon="bi-question-circle",
 )
 
-layout = _iframe.layout(f"{os.getenv('PERTURBATION_CATALOGUE_BE')}/redoc")
+api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
+layout = _iframe.layout(f"{api_base_url}/redoc")
