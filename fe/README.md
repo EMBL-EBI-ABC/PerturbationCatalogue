@@ -21,7 +21,7 @@ docker build -t dash-app . && docker run -p 80:80 dash-app
 1. Deploy container → Service → Continuously deploy from a repository (source or function).
 1. Set up cloud build.
 1. Choose this repository → Next.
-1. Build type: Dockerfile; Source location: `/fe/Dockerfile` → Save.
+1. Branch: `^main$`; Build type: Dockerfile; Source location: `/fe/Dockerfile` → Save.
 1. Service name: `perturbation-catalogue-dash`.
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
@@ -42,3 +42,5 @@ This ensures that the deployment is only updated when something in `fe` is modif
 1. Click on “Show included and ignored files filters”.
 1. Set “Included files filters (glob)” to `fe/**`.
 1. Click on “Save”.
+
+Then, repeat the steps above with the branch set to `.*` and service name to `perturbation-catalogue-dash-live`. This will create a deployment which will automatically deploy the latest commit, not just from the main branch.
