@@ -18,12 +18,10 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 
 def high_dependency_genes(data):
     """Dynamic layout for the list of high dependency genes."""
-    gene_elements = []
-
-    for g in data:
-        if g.get("xref") == "MaveDB":
-            # Create a link for genes with MaveDB cross-reference
-            gene_elements.append(
+    # Create elements for MaveDB genes.
+    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
+        html.Span(
+            [
                 html.B(
                     html.A(
                         g["name"],
@@ -31,14 +29,30 @@ def high_dependency_genes(data):
                         id={"type": "gene-link", "index": g["name"]},
                         style={"textDecoration": "none"},
                     ),
-                )
-            )
-            gene_elements.append(html.Span(" "))
-        else:
-            # Regular display for other genes
-            gene_elements.append(html.Span(g["name"] + " ", className="text-muted"))
-
-    return html.Span(gene_elements)
+                ),
+                html.Span(" "),
+            ]
+        )
+        for g in sorted(
+            (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+        )
+    ]
+    # Create elements for other genes.
+    other_elements = [html.I("Other genes: ")] + [
+        html.Span(g["name"] + " ")
+        for g in sorted(
+            (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
+        )
+    ]
+    # Return two separate paragraphs with reduced space between them.
+    return html.Div(
+        [
+            html.P(mavedb_elements, style={"marginBottom": "5px"}),
+            html.P(
+                other_elements, style={"marginBottom": "0px"}, className="text-muted"
+            ),
+        ]
+    )
 
 
 depmap_table = ElasticTable(
