@@ -27,10 +27,12 @@ mirror_depmap https://ndownloader.figshare.com/files/51065297 Model.csv
 
 # Process.
 gsutil cp gs://${LAKE_BUCKET}/depmap/* /tmp
+gsutil cp  gs://$WAREHOUSE_BUCKET/mavedb/metadata.jsonl /tmp/mavedb_metadata.jsonl
 python3 process.py \
   --gene-dependency /tmp/CRISPRGeneDependency.csv \
   --common-essentials /tmp/CRISPRInferredCommonEssentials.csv \
   --model-metadata /tmp/Model.csv \
+  --mavedb-metadata /tmp/mavedb_metadata.jsonl \
   --output-filename /tmp/gene_dependency.jsonl
 gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/depmap"
 gsutil cp /tmp/gene_dependency.jsonl gs://${WAREHOUSE_BUCKET}/depmap/gene_dependency.jsonl
@@ -62,6 +64,9 @@ python3 ../elastic_load.py \
       "type": "keyword"
     },
     "Sex": {
+      "type": "keyword"
+    },
+    "xref": {
       "type": "keyword"
     }
   }'
