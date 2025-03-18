@@ -19,7 +19,7 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 def high_dependency_genes(data):
     """Dynamic layout for the list of high dependency genes."""
     # Create elements for MaveDB genes.
-    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
+    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
         html.Span(
             [
                 html.B(
@@ -30,7 +30,7 @@ def high_dependency_genes(data):
                         style={"textDecoration": "none"},
                     ),
                 ),
-                html.Span(" "),
+                html.Span(" "),
             ]
         )
         for g in sorted(
@@ -38,8 +38,8 @@ def high_dependency_genes(data):
         )
     ]
     # Create elements for other genes.
-    other_elements = [html.I("Other genes: ")] + [
-        html.Span(g["name"] + " ")
+    other_elements = [html.I("Other genes: ")] + [
+        html.Span(g["name"] + " ")
         for g in sorted(
             (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
         )
