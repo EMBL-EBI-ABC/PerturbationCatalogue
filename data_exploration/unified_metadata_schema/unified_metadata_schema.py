@@ -125,7 +125,7 @@ class Library(BaseModel):
         return values
 
 class PerturbationDetails(BaseModel):
-    library_generation_type: LibraryGenerationType = Field(..., description="Type of library generation (Exogenous or Endogenous)", example="Exogenous")
+    library_generation_type: LibraryGenerationType = Field(..., description="Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)", example="Exogenous")
     library_generation_method: LibraryGenerationMethod = Field(..., description="Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis')", example="SpCas9")
     enzyme_delivery_method: Optional[DeliveryMethod] = Field(None, description="Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Electroporation")
     library_delivery_method: DeliveryMethod = Field(..., description="Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Lentiviral transduction")
