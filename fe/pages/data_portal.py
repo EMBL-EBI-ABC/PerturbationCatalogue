@@ -45,6 +45,14 @@ depmap_table = ElasticTable(
     id="depmap",
     api_endpoint=f"{api_base_url}/depmap/search",
     columns=[
+        # Special field, not displayed anywhere and only used for filtering.
+        Column(
+            field_name="xref",
+            display_name="Cross-references",
+            display_table=False,
+            display_details=False,
+            filterable=True,
+        ),
         # Subtitle.
         Column(
             field_name="OncotreePrimaryDisease",
