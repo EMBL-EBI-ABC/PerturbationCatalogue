@@ -72,7 +72,7 @@ class SampleQuantity(BaseModel):
     sample_quantity_unit: SampleQuantityUnit = Field(..., description="Sample quantity unit", example="ng")
 
 class Treatment(BaseModel):
-    term_id: str = Field(..., description="Term ID of the treatment defined in ChEMBL", example="CHEBI:6904")
+    term_id: str = Field(..., description="Term ID in CURIE format of the treatment defined in ChEMBL", example="CHEBI:6904")
     term_label: str = Field(..., description="Label of the treatment defined in ChEMBL", example="metoprolol")
 
 class ExperimentDetails(BaseModel):
