@@ -32,7 +32,7 @@ layout = dbc.Container(
         dbc.Row([
             dbc.Col([
                 html.Label("Choose Y-axis category"),
-                dcc.Dropdown(["Sex", "Patient Race", "Primary Or Metastasis"], "Sex",
+                dcc.Dropdown(["Sex", "Ethnicity", "Primary Or Metastasis"], "Sex",
                              id="y-axis-dropdown")
             ], md=3),
             dbc.Col([
@@ -90,6 +90,8 @@ layout = dbc.Container(
 )
 def build_patients_dashboards(y_axis_value, x_axis_value):
     formatted_y_axis_value = y_axis_value.replace(" ", "")
+    if formatted_y_axis_value == "Ethnicity":
+        formatted_y_axis_value = "PatientRace"
     formatted_x_axis_value = x_axis_value.replace(" ", "")
     return px.bar(
         DEPMAP_DATA.groupby(by=[formatted_y_axis_value, formatted_x_axis_value],
