@@ -14,9 +14,9 @@ dash.register_page(
     icon="bi-bar-chart-line",
 )
 
-DEPMMAP_DATA = pd.read_parquet(
+DEPMAP_DATA = pd.read_parquet(
     os.path.abspath("./") + "/parquet_data_sources" + "/depmap_metadata.parquet")
-ONCTOTREE_LINEAGE_VALUES = DEPMMAP_DATA["OncotreeLineage"].unique()
+ONCTOTREE_LINEAGE_VALUES = DEPMAP_DATA["OncotreeLineage"].unique()
 
 MAVEDB_DATA = pd.read_parquet(
     os.path.abspath("./") + "/parquet_data_sources" + "/mavedb_metadata.parquet")
@@ -92,8 +92,8 @@ def build_patients_dashboards(y_axis_value, x_axis_value):
     formatted_y_axis_value = y_axis_value.replace(" ", "")
     formatted_x_axis_value = x_axis_value.replace(" ", "")
     return px.bar(
-        DEPMMAP_DATA.groupby(by=[formatted_y_axis_value, formatted_x_axis_value],
-                             as_index=False).size(),
+        DEPMAP_DATA.groupby(by=[formatted_y_axis_value, formatted_x_axis_value],
+                            as_index=False).size(),
         x=formatted_x_axis_value,
         y="size", color=formatted_y_axis_value,
         labels={formatted_x_axis_value: x_axis_value,
@@ -107,12 +107,12 @@ def build_patients_dashboards(y_axis_value, x_axis_value):
 )
 def build_samples_dashboards(oncotree_lineage_value):
     primary_disease_piechart = px.pie(
-        DEPMMAP_DATA[DEPMMAP_DATA["OncotreeLineage"] == oncotree_lineage_value].groupby(
+        DEPMAP_DATA[DEPMAP_DATA["OncotreeLineage"] == oncotree_lineage_value].groupby(
             by="OncotreePrimaryDisease", as_index=False).size(), values="size",
         names="OncotreePrimaryDisease", title="Oncotree Primary Disease",
         hole=.3)
     collection_site_barchart = px.bar(
-        DEPMMAP_DATA[DEPMMAP_DATA["OncotreeLineage"] == oncotree_lineage_value].groupby(
+        DEPMAP_DATA[DEPMAP_DATA["OncotreeLineage"] == oncotree_lineage_value].groupby(
             by="SampleCollectionSite",
             as_index=False).size(),
         x="size", y="SampleCollectionSite", title="Samples Collection Site",
