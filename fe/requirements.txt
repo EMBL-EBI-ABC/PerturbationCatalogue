@@ -1,3 +1,4 @@
-dash>=2.18.2
-dash_bootstrap_components>=1.7.1
+dash>=2.18.2,<3.0.0
+dash_bootstrap_components[pandas]>=1.7.1
 gunicorn>=23.0.0
+pyarrow>=19.0.1
