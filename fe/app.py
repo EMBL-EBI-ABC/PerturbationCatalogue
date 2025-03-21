@@ -79,7 +79,7 @@ footer = html.Footer(
     style={
         "backgroundColor": "#f0f0f0",
         "position": "relative",
-    },  # Very light grey background
+    },
 )
 
 # Overall app layout.
