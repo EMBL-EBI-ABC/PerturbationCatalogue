@@ -326,6 +326,8 @@ class ElasticTable:
                 ],
                 className="card-text",
             )
+        else:
+            return col.display_details(data.get(col.field_name, "N/A"))
 
     def details_layout(self, record_id):
         """Returns the complete layout for the details view."""
@@ -351,7 +353,8 @@ class ElasticTable:
                                 *[
                                     self._format_item(data, col)
                                     for col in self.columns
-                                    if col.display_details in ("text", "link")
+                                    if col.display_details
+                                    and col.display_details not in ("title", "subtitle")
                                 ],
                             ]
                         )
