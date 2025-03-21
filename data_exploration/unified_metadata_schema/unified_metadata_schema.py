@@ -184,9 +184,9 @@ class AssayDetails(BaseModel):
 class ModelSystemDetails(BaseModel):
     model_system: ModelSystem = Field(..., description="Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)", example="Cell line")
     species: Species = Field(..., description="Species used in the experiment", example="Homo sapiens")
-    tissue: Optional[List[str]] = Field(None, description="Specific biological tissue the sample is derived from. Must be a term label from UBERON anatomical entity; child of UBERON:0001062.", example="apex of heart")
-    cell_type: Optional[List[str]] = Field(None, description="Cell type/types profiled in the experiment. Must be a term label from Cell Ontology; child of CL:0000000.", example="macrophage")
-    cell_line: Optional[str] = Field(None, description="Cell line name used in the experiment. Must be a term label from EFO 'cultured cell' CL:0000010 parent", example="THP-1")
+    tissue: Optional[List[str]] = Field(None, description="Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON anatomical entity; child of UBERON:0001062.", example="UBERON:0002098")
+    cell_type: Optional[List[str]] = Field(None, description="Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology; child of CL:0000000.", example="CL:0000235")
+    cell_line: Optional[str] = Field(None, description="Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent", example="CLO:0009348")
     sex: Sex = Field(..., description="Model system organism's sex", example='Unknown')
     developmental_stage: Optional[List[DevelopmentalStages]] = Field(None, description="Developmental stage/age of the model system", example="Adult")
     passage_number: Optional[int] = Field(None, ge=1, description="Passage number of cultured cells (if known)", example = 23)
