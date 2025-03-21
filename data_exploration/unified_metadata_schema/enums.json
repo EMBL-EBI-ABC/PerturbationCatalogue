@@ -5,42 +5,6 @@
 		"Technical",
 		"None"
 	],
-	"library_generation_method": {
-		"Endogenous": [
-			"SpCas9",
-			"SaCas9",
-			"AsCas12a",
-			"LbCas12a",
-			"FnCas12a",
-			"MbCas12a",
-			"AaCas12b",
-			"RfxCas13d",
-			"dCas9",
-			"dCas9-KRAB",
-			"dCas9-VP64",
-			"dCas9-SAM",
-			"dCas9-Suntag",
-			"dCas9-VPR",
-			"Adenine Base Editing",
-			"Cytosine Base Editing",
-			"PE1",
-			"PE2",
-			"PE3",
-			"PE4",
-			"PE5",
-			"PEmax",
-			"twinPE",
-			"PE-nuclease"
-		],
-		"Exogenous": [
-			"doped oligo synthesis",
-			"error-prone PCR",
-			"microarray synthesis",
-			"nicking mutagenesis",
-			"oligo-directed mutagenic PCR",
-			"site-directed mutagenesis"
-		]
-	},
 	"delivery_method": [
 		"Lentiviral transduction",
 		"Adenoviral transduction",

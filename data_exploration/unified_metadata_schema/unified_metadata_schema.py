@@ -1,6 +1,6 @@
 import json
 from pydantic import BaseModel, model_validator, AfterValidator, BeforeValidator, HttpUrl, Field
-from typing import Optional, List, Annotated
+from typing import Optional, List, Literal
 from fastapi import FastAPI, HTTPException
 from enum import Enum
 from datetime import datetime, timedelta
@@ -119,8 +119,8 @@ class Library(BaseModel):
         return values
 
 class PerturbationDetails(BaseModel):
-    library_generation_type: LibraryGenerationType = Field(..., description="Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)", example="Exogenous")
-    library_generation_method: LibraryGenerationMethod = Field(..., description="Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis')", example="SpCas9")
+    library_generation_type: Literal['Endogenous', 'Exogenous'] = Field(..., description="Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)", example="Exogenous")
+    library_generation_method: str = Field(..., description="Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis'). Must be an EFO term in CURIE format under 'Genetic perturbation' EFO:0022867 parent", example="EFO:0022876")
     enzyme_delivery_method: Optional[DeliveryMethod] = Field(None, description="Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Electroporation")
     library_delivery_method: DeliveryMethod = Field(..., description="Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Lentiviral transduction")
     enzyme_integration_state: Optional[IntegrationState] = Field(None, description="Integration state of the enzyme used in the experiment (e.g. Episomal expression, Random locus integration)", example="Random locus integration")
