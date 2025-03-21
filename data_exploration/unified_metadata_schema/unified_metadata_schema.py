@@ -6,7 +6,7 @@ from enum import Enum
 from datetime import datetime
 
 
-# function to make enums
+# Function to make enums
 def make_enum(name, values):
     return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
 
