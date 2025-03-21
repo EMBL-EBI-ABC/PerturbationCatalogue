@@ -20,12 +20,6 @@ with open('crispr_libraries.json', 'r') as f:
 
 # Create the enums
 Replicates = make_enum("Replicates", options["replicates"])
-LibraryGenerationType = make_enum(
-    "LibraryGenerationType", options["library_generation_method"].keys()
-)
-LibraryGenerationMethod = make_enum(
-    "LibraryGenerationMethod", sum(options["library_generation_method"].values(), []) # flatten the list
-)
 DeliveryMethod = make_enum("DeliveryMethod", options["delivery_method"])
 IntegrationState = make_enum("IntegrationState", options["integration_state"])
 ExpressionControl = make_enum("ExpressionControl", options["expression_control"])
