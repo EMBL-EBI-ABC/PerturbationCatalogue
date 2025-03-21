@@ -157,16 +157,6 @@
             "title": "Author",
             "type": "object"
         },
-        "CellType": {
-            "enum": [
-                "neuron",
-                "macrophage",
-                "adipocyte",
-                "keratinocyte"
-            ],
-            "title": "CellType",
-            "type": "string"
-        },
         "DeliveryMethod": {
             "enum": [
                 "Lentiviral transduction",
@@ -193,6 +183,28 @@
             ],
             "title": "DevelopmentalStages",
             "type": "string"
+        },
+        "Disease": {
+            "properties": {
+                "term_id": {
+                    "description": "Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
+                    "example": "MONDO:0004975",
+                    "title": "Term Id",
+                    "type": "string"
+                },
+                "term_label": {
+                    "description": "Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
+                    "example": "Alzheimer disease",
+                    "title": "Term Label",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "term_id",
+                "term_label"
+            ],
+            "title": "Disease",
+            "type": "object"
         },
         "ExperimentDetails": {
             "properties": {
@@ -226,7 +238,8 @@
                     "anyOf": [
                         {
                             "items": {
-                                "$ref": "#/$defs/Timepoint"
+                                "format": "duration",
+                                "type": "string"
                             },
                             "type": "array"
                         },
@@ -235,7 +248,8 @@
                         }
                     ],
                     "default": null,
-                    "description": "List of timepoints captured in the experiment",
+                    "description": "List of timepoints captured in the experiment. Must be in the format of a timedelta object.",
+                    "example": "P1DT6H",
                     "title": "Timepoints"
                 },
                 "replicates": {
@@ -263,13 +277,6 @@
                     "minimum": 1,
                     "title": "Number Of Perturbed Genes",
                     "type": "integer"
-                },
-                "coverage": {
-                    "description": "Coverage of the experiment",
-                    "example": 100.0,
-                    "minimum": 0.0,
-                    "title": "Coverage",
-                    "type": "number"
                 }
             },
             "required": [
@@ -278,8 +285,7 @@
                 "replicates",
                 "number_of_samples",
                 "number_of_perturbed_cells",
-                "number_of_perturbed_genes",
-                "coverage"
+                "number_of_perturbed_genes"
             ],
             "title": "ExperimentDetails",
             "type": "object"
@@ -553,15 +559,6 @@
             "title": "MethodName",
             "type": "string"
         },
-        "ModelName": {
-            "enum": [
-                "CHO",
-                "THP-1",
-                "HEK293"
-            ],
-            "title": "ModelName",
-            "type": "string"
-        },
         "ModelSystem": {
             "enum": [
                 "Whole organism",
@@ -588,21 +585,8 @@
                 "tissue": {
                     "anyOf": [
                         {
-                            "$ref": "#/$defs/Tissue"
-                        },
-                        {
-                            "type": "null"
-                        }
-                    ],
-                    "default": null,
-                    "description": "Specific biological tissue the sample is derived from",
-                    "example": "Brain"
-                },
-                "cell_type": {
-                    "anyOf": [
-                        {
                             "items": {
-                                "$ref": "#/$defs/CellType"
+                                "type": "string"
                             },
                             "type": "array"
                         },
@@ -611,22 +595,40 @@
                         }
                     ],
                     "default": null,
-                    "description": "Cell type/types profiled in the experiment",
-                    "example": "macrophage",
-                    "title": "Cell Type"
+                    "description": "Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON anatomical entity; child of UBERON:0001062.",
+                    "example": "UBERON:0002098",
+                    "title": "Tissue"
                 },
-                "model_name": {
+                "cell_type": {
                     "anyOf": [
                         {
-                            "$ref": "#/$defs/ModelName"
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
                         },
                         {
                             "type": "null"
                         }
                     ],
                     "default": null,
-                    "description": "Cell line name used in the experiment",
-                    "example": "THP-1"
+                    "description": "Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology; child of CL:0000000.",
+                    "example": "CL:0000235",
+                    "title": "Cell Type"
+                },
+                "cell_line": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent",
+                    "example": "CLO:0009348",
+                    "title": "Cell Line"
                 },
                 "sex": {
                     "$ref": "#/$defs/Sex",
@@ -772,28 +774,6 @@
             "title": "PerturbationType",
             "type": "string"
         },
-        "Phenotype": {
-            "properties": {
-                "term_id": {
-                    "description": "Term ID of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
-                    "example": "MONDO:0004975",
-                    "title": "Term Id",
-                    "type": "string"
-                },
-                "term_label": {
-                    "description": "Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
-                    "example": "Alzheimer disease",
-                    "title": "Term Label",
-                    "type": "string"
-                }
-            },
-            "required": [
-                "term_id",
-                "term_label"
-            ],
-            "title": "Phenotype",
-            "type": "object"
-        },
         "ReadoutDimensionality": {
             "enum": [
                 "Single-dimensional assay",
@@ -861,7 +841,7 @@
                 "sample_quantity_unit": {
                     "$ref": "#/$defs/SampleQuantityUnit",
                     "description": "Sample quantity unit",
-                    "example": "ng"
+                    "example": "gram"
                 }
             },
             "required": [
@@ -873,14 +853,7 @@
         },
         "SampleQuantityUnit": {
             "enum": [
-                "nanogram",
-                "microgram",
-                "milligram",
                 "gram",
-                "kilogram",
-                "nanoliter",
-                "microliter",
-                "milliliter",
                 "liter",
                 "unit",
                 "colony-forming unit",
@@ -891,10 +864,12 @@
         },
         "SequencingLibraryKits": {
             "enum": [
+                "10x Genomics Single Cell 3-prime",
                 "10x Genomics Single Cell 3-prime v1",
                 "10x Genomics Single Cell 3-prime v2",
                 "10x Genomics Single Cell 3-prime v3",
                 "10x Genomics Single Cell 3-prime v4",
+                "10x Genomics Single Cell 5-prime",
                 "10x Genomics Single Cell 5-prime v1",
                 "10x Genomics Single Cell 5-prime v2",
                 "10x Genomics Single Cell 5-prime v3"
@@ -1011,7 +986,7 @@
                     "title": "Title",
                     "type": "string"
                 },
-                "uri": {
+                "study_uri": {
                     "anyOf": [
                         {
                             "format": "uri",
@@ -1025,7 +1000,7 @@
                     ],
                     "default": null,
                     "description": "URI/link of the study/publication",
-                    "title": "Uri"
+                    "title": "Study Uri"
                 },
                 "year": {
                     "description": "Year of the study/publication",
@@ -1053,54 +1028,10 @@
             "title": "StudyDetails",
             "type": "object"
         },
-        "Timepoint": {
-            "properties": {
-                "timepoint_value": {
-                    "description": "For experiments with multiple timepoints, value of the timepoint in the unit defined in timepoint_unit",
-                    "example": 1.0,
-                    "title": "Timepoint Value",
-                    "type": "number"
-                },
-                "timepoint_unit": {
-                    "$ref": "#/$defs/TimepointUnit",
-                    "description": "Unit of the timepoint",
-                    "example": "hour"
-                }
-            },
-            "required": [
-                "timepoint_value",
-                "timepoint_unit"
-            ],
-            "title": "Timepoint",
-            "type": "object"
-        },
-        "TimepointUnit": {
-            "enum": [
-                "second",
-                "minute",
-                "hour",
-                "day",
-                "week",
-                "month",
-                "year"
-            ],
-            "title": "TimepointUnit",
-            "type": "string"
-        },
-        "Tissue": {
-            "enum": [
-                "Spleen",
-                "Heart",
-                "Brain",
-                "Lung"
-            ],
-            "title": "Tissue",
-            "type": "string"
-        },
         "Treatment": {
             "properties": {
                 "term_id": {
-                    "description": "Term ID of the treatment defined in ChEMBL",
+                    "description": "Term ID in CURIE format of the treatment defined in ChEMBL",
                     "example": "CHEBI:6904",
                     "title": "Term Id",
                     "type": "string"
@@ -1136,11 +1067,11 @@
         "model_system": {
             "$ref": "#/$defs/ModelSystemDetails"
         },
-        "associated_phenotypes": {
+        "associated_diseases": {
             "items": {
-                "$ref": "#/$defs/Phenotype"
+                "$ref": "#/$defs/Disease"
             },
-            "title": "Associated Phenotypes",
+            "title": "Associated Diseases",
             "type": "array"
         },
         "associated_datasets": {
@@ -1157,7 +1088,7 @@
         "perturbation",
         "assay",
         "model_system",
-        "associated_phenotypes",
+        "associated_diseases",
         "associated_datasets"
     ],
     "title": "Experiment",
