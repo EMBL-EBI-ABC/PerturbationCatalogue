@@ -70,19 +70,28 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
                         style={"display": "none"},
                         id={"type": "other-genes-list", "index": str(id(data))},
                     ),
-                    html.Button(
-                        "Expand",
-                        id={"type": "toggle-other-genes", "index": str(id(data))},
-                        className="btn btn-sm",  # Bootstrap small button
-                        style={
-                            "marginLeft": "5px",
-                            "backgroundColor": "#f8f9fa",  # Light grey background
-                            "color": "#6c757d",  # Muted text color (matches Bootstrap's text-muted)
-                            "border": "1px solid #dee2e6",  # Light grey border
-                            "padding": "2px 8px",  # Smaller vertical padding
-                            "fontSize": "12px",  # Smaller font size
-                            "verticalAlign": "top",  # Align with preceding text
-                        },
+                    *(
+                        [
+                            html.Button(
+                                "Expand",
+                                id={
+                                    "type": "toggle-other-genes",
+                                    "index": str(id(data)),
+                                },
+                                className="btn btn-sm",
+                                style={
+                                    "marginLeft": "5px",
+                                    "backgroundColor": "#f8f9fa",
+                                    "color": "#6c757d",
+                                    "border": "1px solid #dee2e6",
+                                    "padding": "2px 8px",
+                                    "fontSize": "12px",
+                                    "verticalAlign": "top",
+                                },
+                            )
+                        ]
+                        if other_genes_toggled
+                        else []
                     ),
                 ],
                 style={"marginBottom": "0px"},
