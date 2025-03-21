@@ -1,6 +1,6 @@
 import json
-from pydantic import BaseModel, model_validator, HttpUrl, Field
-from typing import Optional, List
+from pydantic import BaseModel, model_validator, AfterValidator, BeforeValidator, HttpUrl, Field
+from typing import Optional, List, Annotated
 from fastapi import FastAPI, HTTPException
 from enum import Enum
 from datetime import datetime
@@ -44,12 +44,10 @@ SoftwareAnalysis = make_enum("SoftwareAnalysis", options["software_analysis"])
 ReferenceGenome = make_enum("ReferenceGenome", options["reference_genome"])
 ModelSystem = make_enum("ModelSystem", options["model_system"])
 Species = make_enum("Species", options["species"])
-Tissue = make_enum("Tissue", options["tissue"])
-CellType = make_enum("CellType", options["cell_type"])
-ModelName = make_enum("ModelName", options["model_name"])
 Sex = make_enum("Sex", options["sex"])
 DevelopmentalStages = make_enum("DevelopmentalStages", options["developmental_stages"])
 SampleQuantityUnit = make_enum("SampleQuantityUnit", options["sample_quantity_unit"])
+
 
 # Define the models
 class Author(BaseModel):
@@ -58,7 +56,7 @@ class Author(BaseModel):
 
 class StudyDetails(BaseModel):
     title: str = Field(..., description="Title of the study/publication")
-    uri: Optional[HttpUrl] = Field(None, description="URI/link of the study/publication")
+    study_uri: Optional[HttpUrl] = Field(None, description="URI/link of the study/publication")
     year: int = Field(ge=1950, le=datetime.now().year, description="Year of the study/publication", example=2024)
     first_author: Author = Field(..., description="First author of the study/publication")
     last_author: Author = Field(..., description="Last author of the study/publication")
@@ -84,7 +82,6 @@ class ExperimentDetails(BaseModel):
     number_of_samples: int = Field(..., ge=1, description="Number of samples in the experiment", example=3)
     number_of_perturbed_cells: int = Field(..., ge=1, description="Number of perturbed cells profiled in the experiment", example=200000)
     number_of_perturbed_genes: int = Field(..., ge=1, description="How many genes have been perturbed in the experiment", example=4)
-    coverage: float = Field(..., ge=0, description="Coverage of the experiment", example=100.0)
 
 class Library(BaseModel):
     library_name: str = Field(..., description="Name of the library used in the experiment", example="Bassik Human CRISPR Knockout Library")
@@ -187,9 +184,9 @@ class AssayDetails(BaseModel):
 class ModelSystemDetails(BaseModel):
     model_system: ModelSystem = Field(..., description="Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)", example="Cell line")
     species: Species = Field(..., description="Species used in the experiment", example="Homo sapiens")
-    tissue: Optional[Tissue] = Field(None, description="Specific biological tissue the sample is derived from" ,example="Brain")
-    cell_type: Optional[List[CellType]] = Field(None, description="Cell type/types profiled in the experiment", example="macrophage")
-    model_name: Optional[ModelName] = Field(None, description="Cell line name used in the experiment", example="THP-1")
+    tissue: Optional[List[str]] = Field(None, description="Specific biological tissue the sample is derived from. Must be a term label from UBERON anatomical entity; child of UBERON:0001062.", example="apex of heart")
+    cell_type: Optional[List[str]] = Field(None, description="Cell type/types profiled in the experiment. Must be a term label from Cell Ontology; child of CL:0000000.", example="macrophage")
+    cell_line: Optional[str] = Field(None, description="Cell line name used in the experiment. Must be a term label from EFO 'cultured cell' CL:0000010 parent", example="THP-1")
     sex: Sex = Field(..., description="Model system organism's sex", example='Unknown')
     developmental_stage: Optional[List[DevelopmentalStages]] = Field(None, description="Developmental stage/age of the model system", example="Adult")
     passage_number: Optional[int] = Field(None, ge=1, description="Passage number of cultured cells (if known)", example = 23)
@@ -205,8 +202,8 @@ class ModelSystemDetails(BaseModel):
                 raise ValueError("Tissue is required for tissue sample model system")
             if values.get("cell_type") is not None:
                 raise ValueError("Cell type is not required for tissue sample model system")
-            if values.get("model_name") is not None:
-                raise ValueError("Model name is not required for tissue sample model system")
+            if values.get("cell_line") is not None:
+                raise ValueError("Cell line name is not required for tissue sample model system")
             if values.get("passage_number") is not None:
                 raise ValueError("Passage number is not required for tissue sample model system")
             if values.get("developmental_stage") is None:
@@ -217,28 +214,28 @@ class ModelSystemDetails(BaseModel):
                 raise ValueError("Cell type is required for cell line model system")
             if values.get("passage_number") is None:
                 raise ValueError("Passage number is required for cell line model system")
-            if values.get("model_name") is None:
-                raise ValueError("Model name is required for cell line model system")
+            if values.get("cell_line") is None:
+                raise ValueError("Cell line name is required for cell line model system")
             if values.get("tissue") is not None:
                 raise ValueError("Tissue is not required for cell line model system")
-            if values.get("developmental_stage") is not None:
-                raise ValueError("Developmental stage is not required for cell line model system")
+            # if values.get("developmental_stage") is not None:
+            #     raise ValueError("Developmental stage is not required for cell line model system")
             
         if model_system == "Primary cell":
             if values.get("cell_type") is None:
                 raise ValueError("Cell type is required for primary cell model system")
             if values.get("passage_number") is None:
                 raise ValueError("Passage number is required for primary cell model system")
-            if values.get("model_name") is not None:
-                raise ValueError("Model name is not required for primary cell model system")
+            if values.get("cell_line") is not None:
+                raise ValueError("Cell line name is not required for primary cell model system")
             if values.get("tissue") is not None:
                 raise ValueError("Tissue is not required for primary cell model system")
             if values.get("developmental_stage") is None:
                 raise ValueError("Developmental stage is required for primary cell model system")
         
         if model_system == "Whole organism":
-            if values.get("model_name") is not None:
-                raise ValueError("Model name is not required for whole organism model system")
+            if values.get("cell_line") is not None:
+                raise ValueError("Cell line name is not required for whole organism model system")
             if values.get("tissue") is not None:
                 raise ValueError("Tissue is not required for whole organism model system")
             if values.get("cell_type") is not None:

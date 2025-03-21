@@ -217,10 +217,12 @@
 		"Singular G4"
 	],
 	"sequencing_library_kits": [
+		"10x Genomics Single Cell 3-prime",
 		"10x Genomics Single Cell 3-prime v1",
 		"10x Genomics Single Cell 3-prime v2",
 		"10x Genomics Single Cell 3-prime v3",
 		"10x Genomics Single Cell 3-prime v4",
+		"10x Genomics Single Cell 5-prime",
 		"10x Genomics Single Cell 5-prime v1",
 		"10x Genomics Single Cell 5-prime v2",
 		"10x Genomics Single Cell 5-prime v3"
@@ -264,23 +266,6 @@
 	],
 	"species": [
 		"Homo Sapiens"
-	],
-	"tissue": [
-		"Spleen",
-		"Heart",
-		"Brain",
-		"Lung"
-	],
-	"cell_type": [
-		"neuron",
-		"macrophage",
-		"adipocyte",
-		"keratinocyte"
-	],
-	"model_name": [
-		"CHO",
-		"THP-1",
-		"HEK293"
 	],
 	"sex": [
 		"Unknown",
