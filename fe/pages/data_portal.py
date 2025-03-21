@@ -5,7 +5,6 @@ import os
 import dash
 from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
-import dash_daq as daq
 
 from .elastic_table import ElasticTable, Column
 
@@ -52,13 +51,6 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     )
     other_genes_toggled = other_genes[max_other_genes:] if max_other_genes else []
 
-    # Create toggle.
-    toggle_switch = daq.ToggleSwitch(
-        id={"type": "toggle-other-genes", "index": str(id(data))},
-        value=False,
-        style={"display": "inline-block"},
-    )
-
     # Create layout.
     return html.Div(
         [
@@ -78,7 +70,11 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
                         style={"display": "none"},
                         id={"type": "other-genes-list", "index": str(id(data))},
                     ),
-                    toggle_switch,
+                    html.Button(
+                        "Expand",
+                        id={"type": "toggle-other-genes", "index": str(id(data))},
+                        style={"marginLeft": "5px", "fontSize": "12px"},
+                    ),
                 ],
                 style={"marginBottom": "0px"},
             ),
@@ -352,10 +348,20 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
 
-    @app.callback(
-        Output({"type": "other-genes-list", "index": MATCH}, "style"),
-        Input({"type": "toggle-other-genes", "index": MATCH}, "value"),
+    @callback(
+        [
+            Output({"type": "other-genes-list", "index": MATCH}, "style"),
+            Output({"type": "toggle-other-genes", "index": MATCH}, "children"),
+        ],
+        [Input({"type": "toggle-other-genes", "index": MATCH}, "n_clicks")],
+        [State({"type": "toggle-other-genes", "index": MATCH}, "children")],
     )
-    def toggle_genes(toggle_value):
-        """Toggle the visibility of hidden genes."""
-        return {"display": "inline"} if toggle_value else {"display": "none"}
+    def toggle_genes(n_clicks, current_label):
+        """Toggle the visibility of hidden genes and update button label."""
+        if n_clicks is None:
+            return {"display": "none"}, "Expand"
+
+        if current_label == "Expand":
+            return {"display": "inline"}, "Collapse"
+        else:
+            return {"display": "none"}, "Expand"
