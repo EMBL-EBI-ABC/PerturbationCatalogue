@@ -107,7 +107,9 @@ def main():
     )
 
     # For SampleCollectionSite, replace underscores with spaces to help with readability.
-    df["SampleCollectionSite"] = df["SampleCollectionSite"].str.replace("_", " ")
+    df["SampleCollectionSite"] = (
+        df["SampleCollectionSite"].str.replace("_", " ").str.capitalize()
+    )
 
     # Replace null values with "Unknown"
     # In source data, missing values are sometimes null and sometimes "Unknown". This
