@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 
@@ -16,7 +17,7 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 # DepMap.
 
 
-def high_dependency_genes(data):
+def high_dependency_genes(data, display_links=True):
     """Dynamic layout for the list of high dependency genes."""
     # Create elements for MaveDB genes.
     mavedb_elements = [html.I("Genes in MaveDB: ")] + [
@@ -28,7 +29,9 @@ def high_dependency_genes(data):
                         href="#",
                         id={"type": "gene-link", "index": g["name"]},
                         style={"textDecoration": "none"},
-                    ),
+                    )
+                    if display_links
+                    else g["name"]
                 ),
                 html.Span(" "),
             ]
@@ -140,7 +143,9 @@ depmap_table = ElasticTable(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
             display_table=high_dependency_genes,
-            display_details="text",
+            display_details=functools.partial(
+                high_dependency_genes, display_links=False
+            ),
         ),
         # Title; displayed last in the table view.
         Column(
