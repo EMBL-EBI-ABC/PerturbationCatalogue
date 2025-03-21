@@ -244,7 +244,7 @@ class ModelSystemDetails(BaseModel):
             
         return values
             
-class Phenotype(BaseModel):
+class Disease(BaseModel):
     term_id: str = Field(..., description="Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)", example="MONDO:0004975")
     term_label: str = Field(..., description="Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)", example="Alzheimer disease")
 
@@ -261,7 +261,7 @@ class Experiment(BaseModel):
     perturbation: PerturbationDetails
     assay: AssayDetails
     model_system: ModelSystemDetails
-    associated_phenotypes: List[Phenotype]
+    associated_diseases: List[Disease]
     associated_datasets: List[AssociatedDatasets]
 
 
