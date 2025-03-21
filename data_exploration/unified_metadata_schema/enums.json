@@ -282,14 +282,7 @@
 		"Unknown"
 	],
 	"sample_quantity_unit": [
-		"nanogram",
-		"microgram",
-		"milligram",
 		"gram",
-		"kilogram",
-		"nanoliter",
-		"microliter",
-		"milliliter",
 		"liter",
 		"unit",
 		"colony-forming unit",

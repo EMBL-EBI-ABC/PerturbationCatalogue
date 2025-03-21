@@ -63,7 +63,7 @@ class StudyDetails(BaseModel):
 
 class SampleQuantity(BaseModel):
     sample_quantity_value: float = Field(..., description="Sample quantity value", example=1.0)
-    sample_quantity_unit: SampleQuantityUnit = Field(..., description="Sample quantity unit", example="ng")
+    sample_quantity_unit: SampleQuantityUnit = Field(..., description="Sample quantity unit", example="gram")
 
 class Treatment(BaseModel):
     term_id: str = Field(..., description="Term ID in CURIE format of the treatment defined in ChEMBL", example="CHEBI:6904")
