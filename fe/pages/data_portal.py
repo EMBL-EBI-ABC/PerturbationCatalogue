@@ -3,7 +3,7 @@ import json
 import os
 
 import dash
-from dash import html, Output, Input, callback
+from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
 
 from .elastic_table import ElasticTable, Column
@@ -17,8 +17,9 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 # DepMap.
 
 
-def high_dependency_genes(data, display_links=True):
-    """Dynamic layout for the list of high dependency genes."""
+def high_dependency_genes(data, display_links=True, max_other_genes=None):
+    """Dynamic layout for the list of high dependency genes with toggle for other genes."""
+
     # Create elements for MaveDB genes.
     mavedb_elements = [html.I("Genes in MaveDB: ")] + [
         html.Span(
@@ -40,19 +41,60 @@ def high_dependency_genes(data, display_links=True):
             (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
         )
     ]
-    # Create elements for other genes.
-    other_elements = [html.I("Other genes: ")] + [
-        html.Span(g["name"] + " ")
-        for g in sorted(
-            (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
-        )
-    ]
-    # Return two separate paragraphs with reduced space between them.
+
+    # Split other genes into displayed and toggled.
+    other_genes = sorted(
+        (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
+    )
+    other_genes_always_displayed = (
+        other_genes[:max_other_genes] if max_other_genes else other_genes
+    )
+    other_genes_toggled = other_genes[max_other_genes:] if max_other_genes else []
+
+    # Create layout.
     return html.Div(
         [
             html.P(mavedb_elements, style={"marginBottom": "5px"}),
-            html.P(
-                other_elements, style={"marginBottom": "0px"}, className="text-muted"
+            html.Div(
+                [
+                    html.I("Other genes: "),
+                    html.Span(
+                        " ".join([g["name"] for g in other_genes_always_displayed])
+                        + " ",
+                        className="text-muted",
+                        style={"display": "inline"},
+                    ),
+                    html.Span(
+                        " ".join([g["name"] for g in other_genes_toggled]) + " ",
+                        className="text-muted",
+                        style={"display": "none"},
+                        id={"type": "other-genes-list", "index": str(id(data))},
+                    ),
+                    *(
+                        [
+                            html.Button(
+                                "Expand",
+                                id={
+                                    "type": "toggle-other-genes",
+                                    "index": str(id(data)),
+                                },
+                                className="btn btn-sm",
+                                style={
+                                    "marginLeft": "5px",
+                                    "backgroundColor": "#f8f9fa",
+                                    "color": "#6c757d",
+                                    "border": "1px solid #dee2e6",
+                                    "padding": "2px 8px",
+                                    "fontSize": "12px",
+                                    "verticalAlign": "top",
+                                },
+                            )
+                        ]
+                        if other_genes_toggled
+                        else []
+                    ),
+                ],
+                style={"marginBottom": "0px"},
             ),
         ]
     )
@@ -136,7 +178,7 @@ depmap_table = ElasticTable(
         Column(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
-            display_table=high_dependency_genes,
+            display_table=functools.partial(high_dependency_genes, max_other_genes=25),
             display_details=functools.partial(
                 high_dependency_genes, display_links=False
             ),
@@ -344,3 +386,21 @@ def register_callbacks(app):
         Input("elastic-table-mavedb-search", "value"),
         prevent_initial_call=True,
     )
+
+    @callback(
+        [
+            Output({"type": "other-genes-list", "index": MATCH}, "style"),
+            Output({"type": "toggle-other-genes", "index": MATCH}, "children"),
+        ],
+        [Input({"type": "toggle-other-genes", "index": MATCH}, "n_clicks")],
+        [State({"type": "toggle-other-genes", "index": MATCH}, "children")],
+    )
+    def toggle_genes(n_clicks, current_label):
+        """Toggle the visibility of hidden genes and update button label."""
+        if n_clicks is None:
+            return {"display": "none"}, "Expand"
+
+        if current_label == "Expand":
+            return {"display": "inline"}, "Collapse"
+        else:
+            return {"display": "none"}, "Expand"
