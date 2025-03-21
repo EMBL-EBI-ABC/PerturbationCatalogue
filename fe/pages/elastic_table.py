@@ -32,6 +32,7 @@ class ElasticTable:
         details_button_link,
         title=None,
         description=None,
+        default_page_size=20,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.dom_prefix = f"elastic-table-{id}"
@@ -41,6 +42,7 @@ class ElasticTable:
         self.details_button_link = details_button_link
         self.title = title
         self.description = description
+        self.default_page_size = default_page_size
 
     # Table view.
 
@@ -233,7 +235,7 @@ class ElasticTable:
                                                         {"label": str(i), "value": i}
                                                         for i in [10, 20, 50, 100, 200]
                                                     ],
-                                                    value=10,
+                                                    value=self.default_page_size,
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
