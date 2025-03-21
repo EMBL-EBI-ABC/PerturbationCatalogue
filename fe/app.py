@@ -33,17 +33,53 @@ app.index_string = google_analytics.inject
 footer = html.Footer(
     html.Div(
         [
-            html.Div("Powered by ", style={"display": "inline", "margin-right": "5px"}),
-            html.Img(
-                src="/assets/embl-ebi-logo.png",
-                height="30px",
-                style={"display": "inline"},
+            html.Div(
+                "Perturbation Catalogue is funded by ",
+                style={"display": "inline", "margin-right": "5px", "color": "black"},
+            ),
+            html.A(
+                href="https://www.ebi.ac.uk/",
+                target="_blank",
+                children=[
+                    html.Img(
+                        src="/assets/embl-ebi-logo.png",
+                        height="30px",
+                        style={
+                            "display": "inline",
+                            "vertical-align": "top",
+                            "margin-right": "10px",
+                            "margin-top": "-2px",
+                        },
+                    ),
+                ],
+            ),
+            html.Div(
+                "and ",
+                style={"display": "inline", "margin-right": "5px", "color": "black"},
+            ),
+            html.A(
+                href="https://www.opentargets.org/",
+                target="_blank",
+                children=[
+                    html.Img(
+                        src="/assets/open-targets-logo.png",
+                        height="32px",
+                        style={
+                            "display": "inline",
+                            "vertical-align": "top",
+                            "margin-top": "-3px",
+                        },
+                    ),
+                ],
             ),
         ],
-        className="text-left py-3 text-light",
-        style={"padding-left": "20px"},
+        className="text-left py-3",
+        style={"padding-left": "20px", "color": "black"},
     ),
-    style={"backgroundColor": "rgb(74, 78, 80)", "position": "relative"},
+    style={
+        "backgroundColor": "#f0f0f0",
+        "position": "relative",
+    },  # Very light grey background
 )
 
 # Overall app layout.
