@@ -3,7 +3,7 @@ from pydantic import BaseModel, model_validator, AfterValidator, BeforeValidator
 from typing import Optional, List, Annotated
 from fastapi import FastAPI, HTTPException
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # Function to make enums
@@ -61,10 +61,6 @@ class StudyDetails(BaseModel):
     first_author: Author = Field(..., description="First author of the study/publication")
     last_author: Author = Field(..., description="Last author of the study/publication")
 
-class Timepoint(BaseModel):
-    timepoint_value: float = Field(..., description="For experiments with multiple timepoints, value of the timepoint in the unit defined in timepoint_unit", example=1.0)
-    timepoint_unit: TimepointUnit = Field(..., description="Unit of the timepoint", example="hour")
-    
 class SampleQuantity(BaseModel):
     sample_quantity_value: float = Field(..., description="Sample quantity value", example=1.0)
     sample_quantity_unit: SampleQuantityUnit = Field(..., description="Sample quantity unit", example="ng")
@@ -77,7 +73,7 @@ class ExperimentDetails(BaseModel):
     title: str = Field(..., description="Title of the experiment")
     summary: str = Field(..., description="Short summary of the experiment")
     treatments: Optional[List[Treatment]] = Field(None, description="List of treatments used in the experiment, defined in ChEMBL")
-    timepoints: Optional[List[Timepoint]] = Field(None, description="List of timepoints captured in the experiment")
+    timepoints: Optional[List[timedelta]] = Field(None, description="List of timepoints captured in the experiment. Must be in the format of a timedelta object.", example="P1DT6H")
     replicates: Replicates = Field(..., description="Types of replicates used the experiment: Biological, Technical or Biological and Technical", example="Biological")
     number_of_samples: int = Field(..., ge=1, description="Number of samples in the experiment", example=3)
     number_of_perturbed_cells: int = Field(..., ge=1, description="Number of perturbed cells profiled in the experiment", example=200000)

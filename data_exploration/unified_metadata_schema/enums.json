@@ -281,15 +281,6 @@
 		"Older_Adult",
 		"Unknown"
 	],
-	"timepoint_unit": [
-		"second",
-		"minute",
-		"hour",
-		"day",
-		"week",
-		"month",
-		"year"
-	],
 	"sample_quantity_unit": [
 		"nanogram",
 		"microgram",
