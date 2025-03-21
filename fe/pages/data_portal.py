@@ -134,12 +134,6 @@ depmap_table = ElasticTable(
             display_details="text",
         ),
         Column(
-            field_name="ModelType",
-            display_name="Model Type",
-            display_details="text",
-            filterable=True,
-        ),
-        Column(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
             display_table=high_dependency_genes,
