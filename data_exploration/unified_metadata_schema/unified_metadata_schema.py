@@ -268,7 +268,7 @@ class Experiment(BaseModel):
 # In-memory database for testing
 pertcat_db: list[Experiment] = []
 
-# save the schema to a file
+# Save the schema to a file
 schema = Experiment.model_json_schema()
 with open("unified_metadata_schema.json", "w") as f:
     json.dump(schema, f, indent=4)
