@@ -14,7 +14,7 @@ def make_enum(name, values):
 with open("enums.json", "r") as f:
     options = json.load(f)
 
-# create the enums
+# Create the enums
 TimepointUnit = make_enum("TimepointUnit", options["timepoint_unit"])
 Replicates = make_enum("Replicates", options["replicates"])
 LibraryGenerationType = make_enum(
