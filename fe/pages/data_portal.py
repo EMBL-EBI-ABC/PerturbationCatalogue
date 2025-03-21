@@ -155,7 +155,7 @@ depmap_table = ElasticTable(
         ),
     ],
     details_button_name="View on DepMap",
-    details_button_link=lambda ModelID: f"https://depmap.org/portal/model/{ModelID}/",
+    details_button_link=lambda ModelID: f"https://depmap.org/portal/cell_line/{ModelID}",
     title="DepMap",
     description=(
         "DepMap provides CRISPR screening data identifying genes essential for the survival of specific cancer cell lines. "
