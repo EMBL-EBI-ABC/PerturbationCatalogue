@@ -439,50 +439,6 @@
             "title": "LibraryFormat",
             "type": "string"
         },
-        "LibraryGenerationMethod": {
-            "enum": [
-                "SpCas9",
-                "SaCas9",
-                "AsCas12a",
-                "LbCas12a",
-                "FnCas12a",
-                "MbCas12a",
-                "AaCas12b",
-                "RfxCas13d",
-                "dCas9",
-                "dCas9-KRAB",
-                "dCas9-VP64",
-                "dCas9-SAM",
-                "dCas9-Suntag",
-                "dCas9-VPR",
-                "Adenine Base Editing",
-                "Cytosine Base Editing",
-                "PE1",
-                "PE2",
-                "PE3",
-                "PE4",
-                "PE5",
-                "PEmax",
-                "twinPE",
-                "PE-nuclease",
-                "doped oligo synthesis",
-                "error-prone PCR",
-                "microarray synthesis",
-                "nicking mutagenesis",
-                "oligo-directed mutagenic PCR",
-                "site-directed mutagenesis"
-            ],
-            "title": "LibraryGenerationMethod",
-            "type": "string"
-        },
-        "LibraryGenerationType": {
-            "enum": [
-                "Endogenous",
-                "Exogenous"
-            ],
-            "title": "LibraryGenerationType",
-            "type": "string"
-        },
         "LibraryScope": {
             "enum": [
                 "Genome-wide",
@@ -578,9 +534,11 @@
                     "example": "Cell line"
                 },
                 "species": {
-                    "$ref": "#/$defs/Species",
+                    "const": "Homo Sapiens",
                     "description": "Species used in the experiment",
-                    "example": "Homo sapiens"
+                    "example": "Homo sapiens",
+                    "title": "Species",
+                    "type": "string"
                 },
                 "tissue": {
                     "anyOf": [
@@ -684,14 +642,20 @@
         "PerturbationDetails": {
             "properties": {
                 "library_generation_type": {
-                    "$ref": "#/$defs/LibraryGenerationType",
                     "description": "Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)",
-                    "example": "Exogenous"
+                    "enum": [
+                        "Endogenous",
+                        "Exogenous"
+                    ],
+                    "example": "Exogenous",
+                    "title": "Library Generation Type",
+                    "type": "string"
                 },
                 "library_generation_method": {
-                    "$ref": "#/$defs/LibraryGenerationMethod",
-                    "description": "Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis')",
-                    "example": "SpCas9"
+                    "description": "Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis'). Must be an EFO term in CURIE format under 'Genetic perturbation' EFO:0022867 parent",
+                    "example": "EFO:0022876",
+                    "title": "Library Generation Method",
+                    "type": "string"
                 },
                 "enzyme_delivery_method": {
                     "anyOf": [
@@ -970,13 +934,6 @@
                 "Salmon"
             ],
             "title": "SoftwareCounts",
-            "type": "string"
-        },
-        "Species": {
-            "enum": [
-                "Homo Sapiens"
-            ],
-            "title": "Species",
             "type": "string"
         },
         "StudyDetails": {

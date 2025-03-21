@@ -1,11 +1,11 @@
 {
-	"replicates": [
+	"Replicates": [
 		"Biological and Technical",
 		"Biological",
 		"Technical",
 		"None"
 	],
-	"delivery_method": [
+	"DeliveryMethod": [
 		"Lentiviral transduction",
 		"Adenoviral transduction",
 		"Adeno-associated viral transduction",
@@ -16,7 +16,7 @@
 		"Microinjection",
 		"Chemical transformation"
 	],
-	"integration_state": [
+	"IntegrationState": [
 		"Episomal expression",
 		"Random locus integration",
 		"Targeted locus integration",
@@ -24,22 +24,22 @@
 		"RNA transfection",
 		"Protein transfection"
 	],
-	"expression_control": [
+	"ExpressionControl": [
 		"Constitutive expression",
 		"Inducible expression",
 		"Native promoter-driven expression",
 		"Degradation domain-based expression control",
 		"Antisense oligo-based expression control"
 	],
-	"library_scope": [
+	"LibraryScope": [
 		"Genome-wide",
 		"Focused"
 	],
-	"library_format": [
+	"LibraryFormat": [
 		"Pooled",
 		"Arrayed"
 	],
-	"perturbation_type": [
+	"PerturbationType": [
 		"Knockout",
 		"Activation",
 		"Inhibition",
@@ -47,18 +47,18 @@
 		"Prime Editing",
 		"Saturation Mutagenesis"
 	],
-	"readout_dimensionality": [
+	"ReadoutDimensionality": [
 		"Single-dimensional assay",
 		"High-dimensional assay"
 	],
-	"readout_type": [
+	"ReadoutType": [
 		"Transcriptomic",
 		"Proteomic",
 		"Metabolomic",
 		"Epigenomic",
 		"Phenotypic"
 	],
-	"readout_technology": [
+	"ReadoutTechnology": [
 		"Flow Cytometry",
 		"Mass Cytometry",
 		"Imaging Mass Cytometry",
@@ -72,7 +72,7 @@
 		"Systematic evolution of ligands by exponential enrichment",
 		"Promoter activity by reporter gene assay"
 	],
-	"method_name": [
+	"MethodName": [
 		"RNA-seq",
 		"scRNA-seq",
 		"snRNA-seq",
@@ -136,7 +136,7 @@
 		"ONT Fiber-seq",
 		"ONT direct WGS"
 	],
-	"sequencing_platform": [
+	"SequencingPlatform": [
 		"454 GS 20 sequencer",
 		"454 GS FLX sequencer",
 		"454 GS FLX Titanium sequencer",
@@ -180,7 +180,7 @@
 		"PacBio Sequel system",
 		"Singular G4"
 	],
-	"sequencing_library_kits": [
+	"SequencingLibraryKits": [
 		"10x Genomics Single Cell 3-prime",
 		"10x Genomics Single Cell 3-prime v1",
 		"10x Genomics Single Cell 3-prime v2",
@@ -191,7 +191,17 @@
 		"10x Genomics Single Cell 5-prime v2",
 		"10x Genomics Single Cell 5-prime v3"
 	],
-	"software_counts": [
+	"SequencingStrategy": [
+		"Shotgun sequencing",
+		"Barcode sequencing",
+		"Direct sequencing"
+	],
+	"ReferenceGenome": [
+		"GRCh38",
+		"GRCh37",
+		"T2T-CHM13"
+	],
+	"SoftwareCounts": [
 		"CellRanger",
 		"HTSeq",
 		"featureCounts",
@@ -199,7 +209,7 @@
 		"Kallisto",
 		"Salmon"
 	],
-	"software_analysis": [
+	"SoftwareAnalysis": [
 		"Seurat",
 		"Scanpy",
 		"MAGeCK",
@@ -211,33 +221,20 @@
 		"CRISPRcleanR",
 		"CRISPY"
 	],
-	"sequencing_strategy": [
-		"Shotgun sequencing",
-		"Barcode sequencing",
-		"Direct sequencing"
-	],
-	"reference_genome": [
-		"GRCh38",
-		"GRCh37",
-		"T2T-CHM13"
-	],
-	"model_system": [
+	"ModelSystem": [
 		"Whole organism",
 		"Tissue sample",
 		"Cell line",
 		"Primary cell",
 		"Organoid"
 	],
-	"species": [
-		"Homo Sapiens"
-	],
-	"sex": [
+	"Sex": [
 		"Unknown",
 		"Female",
 		"Male",
 		"Other"
 	],
-	"developmental_stages": [
+	"DevelopmentalStages": [
 		"Prenatal",
 		"Child",
 		"Adolescent",
@@ -245,7 +242,7 @@
 		"Older_Adult",
 		"Unknown"
 	],
-	"sample_quantity_unit": [
+	"SampleQuantityUnit": [
 		"gram",
 		"liter",
 		"unit",

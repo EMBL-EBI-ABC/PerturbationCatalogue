@@ -6,9 +6,6 @@ from enum import Enum
 from datetime import datetime, timedelta
 
 
-# Function to make enums
-def make_enum(name, values):
-    return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
 
 # Load the options from the JSON file
 with open("enums.json", "r") as f:
@@ -18,32 +15,10 @@ with open("enums.json", "r") as f:
 with open('crispr_libraries.json', 'r') as f:
     crispr_libraries = json.load(f)
 
-# Create the enums
-Replicates = make_enum("Replicates", options["replicates"])
-DeliveryMethod = make_enum("DeliveryMethod", options["delivery_method"])
-IntegrationState = make_enum("IntegrationState", options["integration_state"])
-ExpressionControl = make_enum("ExpressionControl", options["expression_control"])
-LibraryScope = make_enum("LibraryScope", options["library_scope"])
-LibraryFormat = make_enum("LibraryFormat", options["library_format"])
-PerturbationType = make_enum("PerturbationType", options["perturbation_type"])
-ReadoutDimensionality = make_enum(
-    "ReadoutDimensionality", options["readout_dimensionality"]
-)
-ReadoutType = make_enum("ReadoutType", options["readout_type"])
-ReadoutTechnology = make_enum("ReadoutTechnology", options["readout_technology"])
-MethodName = make_enum("MethodName", options["method_name"])
-SequencingLibraryKits = make_enum("SequencingLibraryKits", options["sequencing_library_kits"])
-SequencingPlatform = make_enum("SequencingPlatform", options["sequencing_platform"])
-SequencingStrategy = make_enum("SequencingStrategy", options["sequencing_strategy"])
-SoftwareCounts = make_enum("SoftwareCounts", options["software_counts"])
-SoftwareAnalysis = make_enum("SoftwareAnalysis", options["software_analysis"])
-ReferenceGenome = make_enum("ReferenceGenome", options["reference_genome"])
-ModelSystem = make_enum("ModelSystem", options["model_system"])
-Species = make_enum("Species", options["species"])
-Sex = make_enum("Sex", options["sex"])
-DevelopmentalStages = make_enum("DevelopmentalStages", options["developmental_stages"])
-SampleQuantityUnit = make_enum("SampleQuantityUnit", options["sample_quantity_unit"])
-
+# Function to make enums
+def make_enum(name, options_dict = options):
+    values = options_dict[name]
+    return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
 
 # Define the models
 class Author(BaseModel):
@@ -59,7 +34,7 @@ class StudyDetails(BaseModel):
 
 class SampleQuantity(BaseModel):
     sample_quantity_value: float = Field(..., description="Sample quantity value", example=1.0)
-    sample_quantity_unit: SampleQuantityUnit = Field(..., description="Sample quantity unit", example="gram")
+    sample_quantity_unit: make_enum("SampleQuantityUnit") = Field(..., description="Sample quantity unit", example="gram")
 
 class Treatment(BaseModel):
     term_id: str = Field(..., description="Term ID in CURIE format of the treatment defined in ChEMBL", example="CHEBI:6904")
@@ -70,7 +45,7 @@ class ExperimentDetails(BaseModel):
     summary: str = Field(..., description="Short summary of the experiment")
     treatments: Optional[List[Treatment]] = Field(None, description="List of treatments used in the experiment, defined in ChEMBL")
     timepoints: Optional[List[timedelta]] = Field(None, description="List of timepoints captured in the experiment. Must be in the format of a timedelta object.", example="P1DT6H")
-    replicates: Replicates = Field(..., description="Types of replicates used the experiment: Biological, Technical or Biological and Technical", example="Biological")
+    replicates: make_enum("Replicates") = Field(..., description="Types of replicates used the experiment: Biological, Technical or Biological and Technical", example="Biological")
     number_of_samples: int = Field(..., ge=1, description="Number of samples in the experiment", example=3)
     number_of_perturbed_cells: int = Field(..., ge=1, description="Number of perturbed cells profiled in the experiment", example=200000)
     number_of_perturbed_genes: int = Field(..., ge=1, description="How many genes have been perturbed in the experiment", example=4)
@@ -78,9 +53,9 @@ class ExperimentDetails(BaseModel):
 class Library(BaseModel):
     library_name: str = Field(..., description="Name of the library used in the experiment", example="Bassik Human CRISPR Knockout Library")
     accession: Optional[str] = Field(None, description="Accession number of the library used in the experiment (if available)")
-    library_format: LibraryFormat = Field(..., description="Format of the library used in the experiment (Pooled or Arrayed)", example="Pooled")
-    library_scope: LibraryScope = Field(..., description="Scope of the library used in the experiment (Genome-wide or Focused)", example="Genome-wide")
-    perturbation_type: PerturbationType = Field(..., description="Type of perturbation used in the experiment (e.g. Knockout, Inhibition, Base editing)", example="Knockout")
+    library_format: make_enum("LibraryFormat") = Field(..., description="Format of the library used in the experiment (Pooled or Arrayed)", example="Pooled")
+    library_scope: make_enum("LibraryScope") = Field(..., description="Scope of the library used in the experiment (Genome-wide or Focused)", example="Genome-wide")
+    perturbation_type: make_enum("PerturbationType") = Field(..., description="Type of perturbation used in the experiment (e.g. Knockout, Inhibition, Base editing)", example="Knockout")
     manufacturer: str = Field(..., description="The lab or commercial manufacturer of the library used in the experiment", example="Bassik")
     lentiviral_generation: str = Field(..., description="Lentiviral generation of the library used in the experiment", example="3")
     grnas_per_gene: Optional[str] = Field(None, description="Number of gRNAs targeting each gene in the library. Can be a string representing a range, e.g. 3-5.", example=5)
@@ -115,26 +90,13 @@ class Library(BaseModel):
 class PerturbationDetails(BaseModel):
     library_generation_type: Literal['Endogenous', 'Exogenous'] = Field(..., description="Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)", example="Exogenous")
     library_generation_method: str = Field(..., description="Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis'). Must be an EFO term in CURIE format under 'Genetic perturbation' EFO:0022867 parent", example="EFO:0022876")
-    enzyme_delivery_method: Optional[DeliveryMethod] = Field(None, description="Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Electroporation")
-    library_delivery_method: DeliveryMethod = Field(..., description="Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Lentiviral transduction")
-    enzyme_integration_state: Optional[IntegrationState] = Field(None, description="Integration state of the enzyme used in the experiment (e.g. Episomal expression, Random locus integration)", example="Random locus integration")
-    library_integration_state: IntegrationState = Field(..., description="Integration state of the library used in the experiment (e.g. Episomal expression, Random locus integration)", example="Episomal expression")
-    enzyme_expression_control: Optional[ExpressionControl] = Field(None, description="Expression control of the enzyme used in the experiment (e.g. Native promoter-driven expression, Inducible)", example="Inducible")
-    library_expression_control: ExpressionControl = Field(..., description="Expression control of the library used in the experiment (e.g. Native promoter-driven expression, Inducible)", example="Native promoter-driven expression")
+    enzyme_delivery_method: Optional[make_enum("DeliveryMethod")] = Field(None, description="Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Electroporation")
+    library_delivery_method: make_enum("DeliveryMethod") = Field(..., description="Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)", example="Lentiviral transduction")
+    enzyme_integration_state: Optional[make_enum("IntegrationState")] = Field(None, description="Integration state of the enzyme used in the experiment (e.g. Episomal expression, Random locus integration)", example="Random locus integration")
+    library_integration_state: make_enum("IntegrationState") = Field(..., description="Integration state of the library used in the experiment (e.g. Episomal expression, Random locus integration)", example="Episomal expression")
+    enzyme_expression_control: Optional[make_enum("ExpressionControl")] = Field(None, description="Expression control of the enzyme used in the experiment (e.g. Native promoter-driven expression, Inducible)", example="Inducible")
+    library_expression_control: make_enum("ExpressionControl") = Field(..., description="Expression control of the library used in the experiment (e.g. Native promoter-driven expression, Inducible)", example="Native promoter-driven expression")
     library: Library
-    
-    @model_validator(mode="before")
-    @classmethod
-    def validate_library_generation(cls, values):
-        endogenous_methods = options["library_generation_method"]["Endogenous"]
-        exogenous_methods = options["library_generation_method"]["Exogenous"]
-        library_generation_type = values.get("library_generation_type")
-        library_generation_method = values.get("library_generation_method")
-        if library_generation_type == "Endogenous" and library_generation_method not in endogenous_methods:
-            raise ValueError(f"Library generation method {library_generation_method} is not allowed for {library_generation_type} library generation type")
-        if library_generation_type == "Exogenous" and library_generation_method not in exogenous_methods:
-            raise ValueError(f"Library generation method {library_generation_method} is not allowed for {library_generation_type} library generation type")
-        return values
     
     @model_validator(mode="before")
     @classmethod
@@ -160,26 +122,26 @@ class PerturbationDetails(BaseModel):
         
 
 class AssayDetails(BaseModel):
-    readout_dimensionality: ReadoutDimensionality = Field(..., description="Dimensionality of the readout (i.e Single-dimensional assay, High-dimensional assay)", example="Single-dimensional assay")
-    readout_type: ReadoutType = Field(..., description="Type of the readout (e.g. Transcriptomic, Phenotypic)", example="Transcriptomic")
-    readout_technology: ReadoutTechnology = Field(..., description="Technology used for the readout (e.g. Population growth assay, Flow cytometry)", example="Population growth assay")
-    method_name: MethodName = Field(..., description="Name of the method used for the readout (e.g. scRNA-seq, Proliferation CRISPR screen)", example="Proliferation CRISPR screen")
+    readout_dimensionality: make_enum("ReadoutDimensionality") = Field(..., description="Dimensionality of the readout (i.e Single-dimensional assay, High-dimensional assay)", example="Single-dimensional assay")
+    readout_type: make_enum("ReadoutType") = Field(..., description="Type of the readout (e.g. Transcriptomic, Phenotypic)", example="Transcriptomic")
+    readout_technology: make_enum("ReadoutTechnology") = Field(..., description="Technology used for the readout (e.g. Population growth assay, Flow cytometry)", example="Population growth assay")
+    method_name: make_enum("MethodName") = Field(..., description="Name of the method used for the readout (e.g. scRNA-seq, Proliferation CRISPR screen)", example="Proliferation CRISPR screen")
     method_uri: Optional[HttpUrl] = None
-    sequencing_library_kit: SequencingLibraryKits = Field(..., description="Sequencing library kit used in the experiment (e.g. 10x Genomics Single Cell 3-prime v1)", example="10x Genomics Single Cell 3-prime v1")
-    sequencing_platform: SequencingPlatform = Field(..., description="Sequencing platform used in the experiment (e.g. Illumina NovaSeq 6000, ONT MinION)", example="Illumina NovaSeq 6000")
-    sequencing_strategy: SequencingStrategy = Field(..., description="Sequencing strategy used in the experiment (e.g. Shotgun sequencing, Barcode sequencing)", example="Shotgun sequencing")
-    software_counts: List[SoftwareCounts] = Field(..., description="Software used for counting the reads (e.g. CellRanger, MAGeCK)", example="CellRanger")
-    software_analysis: List[SoftwareAnalysis] = Field(..., description="Software used for analyzing the data (e.g. Seurat, MAGeCK)", example="Seurat")
-    reference_genome: ReferenceGenome = Field(..., description="Reference genome used in the experiment (e.g. GRCh38, T2T-CHM13)", example="GRCh38")
+    sequencing_library_kit: make_enum("SequencingLibraryKits") = Field(..., description="Sequencing library kit used in the experiment (e.g. 10x Genomics Single Cell 3-prime v1)", example="10x Genomics Single Cell 3-prime v1")
+    sequencing_platform: make_enum("SequencingPlatform") = Field(..., description="Sequencing platform used in the experiment (e.g. Illumina NovaSeq 6000, ONT MinION)", example="Illumina NovaSeq 6000")
+    sequencing_strategy: make_enum("SequencingStrategy") = Field(..., description="Sequencing strategy used in the experiment (e.g. Shotgun sequencing, Barcode sequencing)", example="Shotgun sequencing")
+    software_counts: List[make_enum("SoftwareCounts")] = Field(..., description="Software used for counting the reads (e.g. CellRanger, MAGeCK)", example="CellRanger")
+    software_analysis: List[make_enum("SoftwareAnalysis")] = Field(..., description="Software used for analyzing the data (e.g. Seurat, MAGeCK)", example="Seurat")
+    reference_genome: make_enum("ReferenceGenome") = Field(..., description="Reference genome used in the experiment (e.g. GRCh38, T2T-CHM13)", example="GRCh38")
 
 class ModelSystemDetails(BaseModel):
-    model_system: ModelSystem = Field(..., description="Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)", example="Cell line")
-    species: Species = Field(..., description="Species used in the experiment", example="Homo sapiens")
+    model_system: make_enum("ModelSystem") = Field(..., description="Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)", example="Cell line")
+    species: Literal['Homo Sapiens'] = Field(..., description="Species used in the experiment", example="Homo sapiens")
     tissue: Optional[List[str]] = Field(None, description="Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON anatomical entity; child of UBERON:0001062.", example="UBERON:0002098")
     cell_type: Optional[List[str]] = Field(None, description="Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology; child of CL:0000000.", example="CL:0000235")
     cell_line: Optional[str] = Field(None, description="Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent", example="CLO:0009348")
-    sex: Sex = Field(..., description="Model system organism's sex", example='Unknown')
-    developmental_stage: Optional[List[DevelopmentalStages]] = Field(None, description="Developmental stage/age of the model system", example="Adult")
+    sex: make_enum("Sex") = Field(..., description="Model system organism's sex", example='Unknown')
+    developmental_stage: Optional[List[make_enum("DevelopmentalStages")]] = Field(None, description="Developmental stage/age of the model system", example="Adult")
     passage_number: Optional[int] = Field(None, ge=1, description="Passage number of cultured cells (if known)", example = 23)
     sample_quantity: SampleQuantity = Field(..., description="Sample quantity used in the experiment")
     
