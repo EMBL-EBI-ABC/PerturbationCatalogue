@@ -10,7 +10,7 @@ from datetime import datetime
 def make_enum(name, values):
     return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
 
-# load the options from the JSON file
+# Load the options from the JSON file
 with open("enums.json", "r") as f:
     options = json.load(f)
 
