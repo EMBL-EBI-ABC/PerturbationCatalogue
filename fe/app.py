@@ -35,7 +35,7 @@ footer = html.Footer(
         [
             html.Div(
                 "Perturbation Catalogue is funded by ",
-                style={"display": "inline", "margin-right": "5px", "color": "black"},
+                style={"display": "inline", "margin-right": "3px", "color": "black"},
             ),
             html.A(
                 href="https://www.ebi.ac.uk/",
