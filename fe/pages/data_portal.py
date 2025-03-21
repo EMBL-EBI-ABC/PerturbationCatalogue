@@ -73,7 +73,16 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
                     html.Button(
                         "Expand",
                         id={"type": "toggle-other-genes", "index": str(id(data))},
-                        style={"marginLeft": "5px", "fontSize": "12px"},
+                        className="btn btn-sm",
+                        style={
+                            "marginLeft": "5px",
+                            "backgroundColor": "#e0f2e9",
+                            "color": "#2d6a4f",
+                            "border": "1px solid #a3d8b1",
+                            "padding": "3px 8px",
+                            "fontSize": "12px",
+                            "verticalAlign": "top",
+                        },
                     ),
                 ],
                 style={"marginBottom": "0px"},
@@ -160,9 +169,9 @@ depmap_table = ElasticTable(
         Column(
             field_name="high_dependency_genes",
             display_name="High Dependency Genes",
-            display_table=functools.partial(high_dependency_genes, max_other_genes=30),
+            display_table=functools.partial(high_dependency_genes, max_other_genes=25),
             display_details=functools.partial(
-                high_dependency_genes, display_links=False, max_other_genes=30
+                high_dependency_genes, display_links=False
             ),
         ),
         # Title; displayed last in the table view.
