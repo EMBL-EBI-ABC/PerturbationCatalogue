@@ -73,15 +73,15 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
                     html.Button(
                         "Expand",
                         id={"type": "toggle-other-genes", "index": str(id(data))},
-                        className="btn btn-sm",
+                        className="btn btn-sm",  # Bootstrap small button
                         style={
                             "marginLeft": "5px",
-                            "backgroundColor": "#e0f2e9",
-                            "color": "#2d6a4f",
-                            "border": "1px solid #a3d8b1",
-                            "padding": "3px 8px",
-                            "fontSize": "12px",
-                            "verticalAlign": "top",
+                            "backgroundColor": "#f8f9fa",  # Light grey background
+                            "color": "#6c757d",  # Muted text color (matches Bootstrap's text-muted)
+                            "border": "1px solid #dee2e6",  # Light grey border
+                            "padding": "2px 8px",  # Smaller vertical padding
+                            "fontSize": "12px",  # Smaller font size
+                            "verticalAlign": "top",  # Align with preceding text
                         },
                     ),
                 ],
