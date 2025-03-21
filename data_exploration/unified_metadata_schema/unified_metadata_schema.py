@@ -14,7 +14,7 @@ def make_enum(name, values):
 with open("enums.json", "r") as f:
     options = json.load(f)
     
-# load the CRISPR libraries from the JSON file
+# Load the CRISPR libraries from the JSON file
 with open('crispr_libraries.json', 'r') as f:
     crispr_libraries = json.load(f)
 
