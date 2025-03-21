@@ -13,9 +13,12 @@ def make_enum(name, values):
 # Load the options from the JSON file
 with open("enums.json", "r") as f:
     options = json.load(f)
+    
+# load the CRISPR libraries from the JSON file
+with open('crispr_libraries.json', 'r') as f:
+    crispr_libraries = json.load(f)
 
 # Create the enums
-TimepointUnit = make_enum("TimepointUnit", options["timepoint_unit"])
 Replicates = make_enum("Replicates", options["replicates"])
 LibraryGenerationType = make_enum(
     "LibraryGenerationType", options["library_generation_method"].keys()
@@ -26,7 +29,6 @@ LibraryGenerationMethod = make_enum(
 DeliveryMethod = make_enum("DeliveryMethod", options["delivery_method"])
 IntegrationState = make_enum("IntegrationState", options["integration_state"])
 ExpressionControl = make_enum("ExpressionControl", options["expression_control"])
-LibraryName = make_enum("LibraryName", ["Other"] + list(options["libraries"]))
 LibraryScope = make_enum("LibraryScope", options["library_scope"])
 LibraryFormat = make_enum("LibraryFormat", options["library_format"])
 PerturbationType = make_enum("PerturbationType", options["perturbation_type"])
@@ -92,17 +94,16 @@ class Library(BaseModel):
     total_genes: Optional[int] = Field(None, ge=1, description="Total number of genes targeted by the library", example=18000)
     total_variants: Optional[int] = Field(None, ge=1, description="For SGE experiments, total number of variants in the library", example=500)
 
-    # Validate the Enum library. If the library name is not "Other" (i.e. one of the Enum library values),
-    # update the library parameters with the pre-defined values from the "options" dictionary
+    # update the library parameters with the pre-defined values from the "crispr_libraries" dictionary
     @model_validator(mode="before")
     @classmethod
     def validate_enum_library(cls, values):
         lib_name = values["library_name"]
-        if lib_name in options["libraries"].keys():
-            # If the library name is in the options, update the values with the pre-defined values
-            lib = options["libraries"][lib_name]
+        if lib_name in crispr_libraries["libraries"].keys():
+            # If the library name is in the crispr_libraries, update the values with the pre-defined values
+            lib = crispr_libraries["libraries"][lib_name]
             values.update(lib)
-            print("Library name is in the options, updated values with pre-defined values")
+            print("Library name is in the crispr_libraries, updated values with pre-defined values")
         return values
     
     # if perturbation_type is "Saturation mutagenesis", then total_variants is required
