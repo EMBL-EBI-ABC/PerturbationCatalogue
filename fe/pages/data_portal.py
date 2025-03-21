@@ -3,8 +3,9 @@ import json
 import os
 
 import dash
-from dash import html, Output, Input, callback
+from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
+import dash_daq as daq
 
 from .elastic_table import ElasticTable, Column
 
@@ -17,32 +18,11 @@ api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 # DepMap.
 
 
-def high_dependency_genes(
-    data, display_links=True, max_other_genes=None, component_id=None
-):
-    """
-    Dynamic layout for the list of high dependency genes with Dash callbacks for expand/collapse.
+def high_dependency_genes(data, display_links=True, max_other_genes=None):
+    """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
-    Parameters:
-    - data: List of gene dictionaries
-    - display_links: Boolean to determine if genes should be clickable
-    - max_other_genes: Maximum number of "Other genes" to display initially.
-                       If None, all genes are displayed without expand/collapse functionality.
-    - component_id: Unique identifier for this instance of the component
-                    (required when using multiple instances)
-    """
-    # Generate a random ID if none provided
-    if component_id is None:
-        import uuid
-
-        component_id = str(uuid.uuid4())[:8]
-
-    # Create elements for MaveDB genes
-    mavedb_genes = sorted(
-        (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
-    )
-
-    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
+    # Create elements for MaveDB genes.
+    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
         html.Span(
             [
                 html.B(
@@ -55,77 +35,55 @@ def high_dependency_genes(
                     if display_links
                     else g["name"]
                 ),
-                html.Span(" "),
+                html.Span(" "),
             ]
         )
-        for g in mavedb_genes
+        for g in sorted(
+            (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+        )
     ]
 
-    # Get sorted other genes
+    # Split other genes into displayed and toggled.
     other_genes = sorted(
         (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
     )
+    other_genes_always_displayed = (
+        other_genes[:max_other_genes] if max_other_genes else other_genes
+    )
+    other_genes_toggled = other_genes[max_other_genes:] if max_other_genes else []
 
-    # Create elements for other genes
-    if max_other_genes is None or len(other_genes) <= max_other_genes:
-        # Show all genes if max_other_genes is None or there are fewer genes than the limit
-        other_elements = [html.I("Other genes: ")] + [
-            html.Span(g["name"] + " ") for g in other_genes
+    # Create toggle.
+    toggle_switch = daq.ToggleSwitch(
+        id={"type": "toggle-other-genes", "index": str(id(data))},
+        value=False,
+        style={"display": "inline-block"},
+    )
+
+    # Create layout.
+    return html.Div(
+        [
+            html.P(mavedb_elements, style={"marginBottom": "5px"}),
+            html.Div(
+                [
+                    html.I("Other genes: "),
+                    html.Span(
+                        " ".join([g["name"] for g in other_genes_always_displayed])
+                        + " ",
+                        className="text-muted",
+                        style={"display": "inline"},
+                    ),
+                    html.Span(
+                        " ".join([g["name"] for g in other_genes_toggled]) + " ",
+                        className="text-muted",
+                        style={"display": "none"},
+                        id={"type": "other-genes-list", "index": str(id(data))},
+                    ),
+                    toggle_switch,
+                ],
+                style={"marginBottom": "0px"},
+            ),
         ]
-
-        return html.Div(
-            [
-                html.P(mavedb_elements, style={"marginBottom": "5px"}),
-                html.P(
-                    other_elements,
-                    style={"marginBottom": "0px"},
-                    className="text-muted",
-                ),
-            ],
-            id=f"gene-list-container-{component_id}",
-        )
-    else:
-        # Create limited view with expand/collapse functionality
-        visible_genes = [
-            html.Span(g["name"] + " ") for g in other_genes[:max_other_genes]
-        ]
-
-        # Create full list (initially hidden)
-        all_genes = [html.Span(g["name"] + " ") for g in other_genes]
-
-        # Create the expand/collapse elements with pattern-matching IDs
-        expand_link = html.A(
-            "[...]",
-            href="#",
-            id={"type": "expand-genes", "id": component_id},
-            style={"marginLeft": "5px", "cursor": "pointer"},
-        )
-
-        collapse_link = html.A(
-            "[Collapse]",
-            href="#",
-            id={"type": "collapse-genes", "id": component_id},
-            style={"marginLeft": "10px", "cursor": "pointer"},
-        )
-
-        return html.Div(
-            [
-                html.P(mavedb_elements, style={"marginBottom": "5px"}),
-                html.P(
-                    [html.I("Other genes: ")] + visible_genes + [expand_link],
-                    id={"type": "limited-genes-view", "id": component_id},
-                    style={"marginBottom": "0px", "display": "block"},
-                    className="text-muted",
-                ),
-                html.P(
-                    [html.I("Other genes: ")] + all_genes + [collapse_link],
-                    id={"type": "all-genes-view", "id": component_id},
-                    style={"marginBottom": "0px", "display": "none"},
-                    className="text-muted",
-                ),
-            ],
-            id=f"gene-list-container-{component_id}",
-        )
+    )
 
 
 depmap_table = ElasticTable(
@@ -208,7 +166,7 @@ depmap_table = ElasticTable(
             display_name="High Dependency Genes",
             display_table=functools.partial(high_dependency_genes, max_other_genes=30),
             display_details=functools.partial(
-                high_dependency_genes, display_links=False
+                high_dependency_genes, display_links=False, max_other_genes=30
             ),
         ),
         # Title; displayed last in the table view.
@@ -395,56 +353,9 @@ def register_callbacks(app):
     )
 
     @app.callback(
-        [
-            Output({"type": "limited-genes-view", "id": dash.MATCH}, "style"),
-            Output({"type": "all-genes-view", "id": dash.MATCH}, "style"),
-        ],
-        [Input({"type": "expand-genes", "id": dash.MATCH}, "n_clicks")],
-        [
-            State({"type": "limited-genes-view", "id": dash.MATCH}, "style"),
-            State({"type": "all-genes-view", "id": dash.MATCH}, "style"),
-        ],
+        Output({"type": "other-genes-list", "index": MATCH}, "style"),
+        Input({"type": "toggle-other-genes", "index": MATCH}, "value"),
     )
-    def expand_gene_list(n_clicks, limited_style, all_style):
-        if n_clicks is None:
-            raise dash.exceptions.PreventUpdate
-
-        limited_style = limited_style or {}
-        all_style = all_style or {}
-
-        limited_style.update({"display": "none"})
-        all_style.update({"display": "block"})
-
-        return limited_style, all_style
-
-    @app.callback(
-        [
-            Output(
-                {"type": "limited-genes-view", "id": dash.MATCH},
-                "style",
-                allow_duplicate=True,
-            ),
-            Output(
-                {"type": "all-genes-view", "id": dash.MATCH},
-                "style",
-                allow_duplicate=True,
-            ),
-        ],
-        [Input({"type": "collapse-genes", "id": dash.MATCH}, "n_clicks")],
-        [
-            State({"type": "limited-genes-view", "id": dash.MATCH}, "style"),
-            State({"type": "all-genes-view", "id": dash.MATCH}, "style"),
-        ],
-        prevent_initial_call=True,
-    )
-    def collapse_gene_list(n_clicks, limited_style, all_style):
-        if n_clicks is None:
-            raise dash.exceptions.PreventUpdate
-
-        limited_style = limited_style or {}
-        all_style = all_style or {}
-
-        limited_style.update({"display": "block"})
-        all_style.update({"display": "none"})
-
-        return limited_style, all_style
+    def toggle_genes(toggle_value):
+        """Toggle the visibility of hidden genes."""
+        return {"display": "inline"} if toggle_value else {"display": "none"}
