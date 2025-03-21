@@ -93,7 +93,6 @@ def main():
         "PrimaryOrMetastasis",
         "SampleCollectionSite",
         "CatalogNumber",
-        "ModelType",
         "high_dependency_genes",
     ]
     df = df[columns_to_keep]
@@ -105,6 +104,11 @@ def main():
             if any(gene["xref"] == "MaveDB" for gene in genes)
             else "Not in MaveDB"
         )
+    )
+
+    # For SampleCollectionSite, replace underscores with spaces to help with readability.
+    df["SampleCollectionSite"] = (
+        df["SampleCollectionSite"].str.replace("_", " ").str.capitalize()
     )
 
     # Replace null values with "Unknown"

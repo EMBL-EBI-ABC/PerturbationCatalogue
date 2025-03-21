@@ -152,7 +152,6 @@ depmap = DataSource(
         FieldDefinition(name="PrimaryOrMetastasis", type=str, filterable=True),
         FieldDefinition(name="SampleCollectionSite", type=str, filterable=True),
         FieldDefinition(name="CatalogNumber", type=str),
-        FieldDefinition(name="ModelType", type=str, filterable=True),
         FieldDefinition(name="high_dependency_genes", type=list[dict]),
         FieldDefinition(name="xref", type=str, filterable=True),
     ],
