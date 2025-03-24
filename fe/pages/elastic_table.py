@@ -31,6 +31,8 @@ class ElasticTable:
         details_button_name,
         details_button_link,
         title=None,
+        description=None,
+        default_page_size=20,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.dom_prefix = f"elastic-table-{id}"
@@ -39,6 +41,8 @@ class ElasticTable:
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
         self.title = title
+        self.description = description
+        self.default_page_size = default_page_size
 
     # Table view.
 
@@ -160,7 +164,7 @@ class ElasticTable:
                     ]
                 )
             )
-            for col in self._get_table_columns()
+            for col in self.columns
             if col.filterable
         ]
 
@@ -169,16 +173,22 @@ class ElasticTable:
         if self.title:
             title_block = [html.H2(self.title, className="ps-4 pt-4 mb-0")]
 
+        # Table description block
+        description_block = []
+        if self.description:
+            description_block = [html.H5(self.description, className="ps-4 pt-3 mb-0")]
+
         return html.Div(
             [
                 *title_block,
+                *description_block,
                 dbc.Row(
                     [
                         # Filters sidebar
                         dbc.Col(
                             filter_columns,
                             xs=12,
-                            md=3,
+                            md=2,
                             className="pt-4 ps-4 d-flex flex-column gap-3",
                         ),
                         # Main content area
@@ -225,7 +235,7 @@ class ElasticTable:
                                                         {"label": str(i), "value": i}
                                                         for i in [10, 20, 50, 100, 200]
                                                     ],
-                                                    value=10,
+                                                    value=self.default_page_size,
                                                     clearable=False,
                                                     style={"width": "70px"},
                                                 ),
@@ -258,7 +268,7 @@ class ElasticTable:
                     className="g-0",
                 ),
             ],
-            className="w-100",
+            className="w-100 mb-4",
         )
 
     # Details view.
@@ -318,6 +328,8 @@ class ElasticTable:
                 ],
                 className="card-text",
             )
+        else:
+            return col.display_details(data.get(col.field_name, "N/A"))
 
     def details_layout(self, record_id):
         """Returns the complete layout for the details view."""
@@ -343,7 +355,8 @@ class ElasticTable:
                                 *[
                                     self._format_item(data, col)
                                     for col in self.columns
-                                    if col.display_details in ("text", "link")
+                                    if col.display_details
+                                    and col.display_details not in ("title", "subtitle")
                                 ],
                             ]
                         )
@@ -419,7 +432,7 @@ class ElasticTable:
                 Output(f"{self.dom_prefix}-data-table", "children"),
                 *[
                     Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
-                    for col in self._get_table_columns()
+                    for col in self.columns
                     if col.filterable
                 ],
                 Output(f"{self.dom_prefix}-pagination", "max_value"),
@@ -432,7 +445,7 @@ class ElasticTable:
                 Input(f"{self.dom_prefix}-sort-store", "data"),
                 *[
                     Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                    for col in self._get_table_columns()
+                    for col in self.columns
                     if col.filterable
                 ],
             ],
@@ -444,8 +457,7 @@ class ElasticTable:
             if response.status_code != 200:
                 return (
                     html.Div("Error fetching data."),
-                    *[[]]
-                    * len([col for col in self._get_table_columns() if col.filterable]),
+                    *[[]] * len([col for col in self.columns if col.filterable]),
                     1,
                     "",
                 )
@@ -461,7 +473,7 @@ class ElasticTable:
                     .get(col.field_name, {})
                     .get("buckets", [])
                 ]
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ]
 
@@ -479,12 +491,12 @@ class ElasticTable:
         @app.callback(
             [
                 Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ],
             [
                 Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ],
         )
@@ -497,6 +509,6 @@ class ElasticTable:
                     if f"{self.dom_prefix}-clear-{col.field_name}" == triggered
                     else dash.no_update
                 )
-                for col in self._get_table_columns()
+                for col in self.columns
                 if col.filterable
             ]
