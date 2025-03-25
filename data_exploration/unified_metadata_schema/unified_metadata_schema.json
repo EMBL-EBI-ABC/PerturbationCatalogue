@@ -1,0 +1,1053 @@
+{
+    "$defs": {
+        "AssayDetails": {
+            "properties": {
+                "readout_dimensionality": {
+                    "$ref": "#/$defs/ReadoutDimensionality",
+                    "description": "Dimensionality of the readout (i.e Single-dimensional assay, High-dimensional assay)",
+                    "example": "Single-dimensional assay"
+                },
+                "readout_type": {
+                    "$ref": "#/$defs/ReadoutType",
+                    "description": "Type of the readout (e.g. Transcriptomic, Phenotypic)",
+                    "example": "Transcriptomic"
+                },
+                "readout_technology": {
+                    "$ref": "#/$defs/ReadoutTechnology",
+                    "description": "Technology used for the readout (e.g. Population growth assay, Flow cytometry)",
+                    "example": "Population growth assay"
+                },
+                "method_name": {
+                    "$ref": "#/$defs/MethodName",
+                    "description": "Name of the method used for the readout (e.g. scRNA-seq, Proliferation CRISPR screen)",
+                    "example": "Proliferation CRISPR screen"
+                },
+                "method_uri": {
+                    "anyOf": [
+                        {
+                            "format": "uri",
+                            "maxLength": 2083,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Method Uri"
+                },
+                "sequencing_library_kit": {
+                    "$ref": "#/$defs/SequencingLibraryKits",
+                    "description": "Sequencing library kit used in the experiment (e.g. 10x Genomics Single Cell 3-prime v1)",
+                    "example": "10x Genomics Single Cell 3-prime v1"
+                },
+                "sequencing_platform": {
+                    "$ref": "#/$defs/SequencingPlatform",
+                    "description": "Sequencing platform used in the experiment (e.g. Illumina NovaSeq 6000, ONT MinION)",
+                    "example": "Illumina NovaSeq 6000"
+                },
+                "sequencing_strategy": {
+                    "$ref": "#/$defs/SequencingStrategy",
+                    "description": "Sequencing strategy used in the experiment (e.g. Shotgun sequencing, Barcode sequencing)",
+                    "example": "Shotgun sequencing"
+                },
+                "software_counts": {
+                    "description": "Software used for counting the reads (e.g. CellRanger, MAGeCK)",
+                    "example": "CellRanger",
+                    "items": {
+                        "$ref": "#/$defs/SoftwareCounts"
+                    },
+                    "title": "Software Counts",
+                    "type": "array"
+                },
+                "software_analysis": {
+                    "description": "Software used for analyzing the data (e.g. Seurat, MAGeCK)",
+                    "example": "Seurat",
+                    "items": {
+                        "$ref": "#/$defs/SoftwareAnalysis"
+                    },
+                    "title": "Software Analysis",
+                    "type": "array"
+                },
+                "reference_genome": {
+                    "$ref": "#/$defs/ReferenceGenome",
+                    "description": "Reference genome used in the experiment (e.g. GRCh38, T2T-CHM13)",
+                    "example": "GRCh38"
+                }
+            },
+            "required": [
+                "readout_dimensionality",
+                "readout_type",
+                "readout_technology",
+                "method_name",
+                "sequencing_library_kit",
+                "sequencing_platform",
+                "sequencing_strategy",
+                "software_counts",
+                "software_analysis",
+                "reference_genome"
+            ],
+            "title": "AssayDetails",
+            "type": "object"
+        },
+        "AssociatedDatasets": {
+            "properties": {
+                "dataset_accession": {
+                    "description": "Accession number of the dataset (e.g. GEO, ArrayExpress)",
+                    "example": "GSE123456",
+                    "title": "Dataset Accession",
+                    "type": "string"
+                },
+                "dataset_uri": {
+                    "anyOf": [
+                        {
+                            "format": "uri",
+                            "maxLength": 2083,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Dataset Uri"
+                },
+                "dataset_description": {
+                    "description": "Short description of the dataset",
+                    "example": "RNA-seq data from a CRISPR screen",
+                    "title": "Dataset Description",
+                    "type": "string"
+                },
+                "dataset_file_name": {
+                    "description": "File name of the dataset",
+                    "example": "GSE123456_counts.txt",
+                    "title": "Dataset File Name",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "dataset_accession",
+                "dataset_description",
+                "dataset_file_name"
+            ],
+            "title": "AssociatedDatasets",
+            "type": "object"
+        },
+        "Author": {
+            "properties": {
+                "first_name": {
+                    "description": "First name of the author",
+                    "example": "John",
+                    "title": "First Name",
+                    "type": "string"
+                },
+                "last_name": {
+                    "description": "Last name of the author",
+                    "example": "Doe",
+                    "title": "Last Name",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "first_name",
+                "last_name"
+            ],
+            "title": "Author",
+            "type": "object"
+        },
+        "DeliveryMethod": {
+            "enum": [
+                "Lentiviral transduction",
+                "Adenoviral transduction",
+                "Adeno-associated viral transduction",
+                "Retroviral transduction",
+                "Electroporation",
+                "Nucleofection",
+                "Lipofection",
+                "Microinjection",
+                "Chemical transformation"
+            ],
+            "title": "DeliveryMethod",
+            "type": "string"
+        },
+        "DevelopmentalStages": {
+            "enum": [
+                "Prenatal",
+                "Child",
+                "Adolescent",
+                "Adult",
+                "Older_Adult",
+                "Unknown"
+            ],
+            "title": "DevelopmentalStages",
+            "type": "string"
+        },
+        "Disease": {
+            "properties": {
+                "term_id": {
+                    "description": "Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
+                    "example": "MONDO:0004975",
+                    "title": "Term Id",
+                    "type": "string"
+                },
+                "term_label": {
+                    "description": "Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
+                    "example": "Alzheimer disease",
+                    "title": "Term Label",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "term_id",
+                "term_label"
+            ],
+            "title": "Disease",
+            "type": "object"
+        },
+        "ExperimentDetails": {
+            "properties": {
+                "title": {
+                    "description": "Title of the experiment",
+                    "title": "Title",
+                    "type": "string"
+                },
+                "summary": {
+                    "description": "Short summary of the experiment",
+                    "title": "Summary",
+                    "type": "string"
+                },
+                "treatments": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/Treatment"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "List of treatments used in the experiment, defined in ChEMBL",
+                    "title": "Treatments"
+                },
+                "timepoints": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "format": "duration",
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "List of timepoints captured in the experiment. Must be in the format of a timedelta object.",
+                    "example": "P1DT6H",
+                    "title": "Timepoints"
+                },
+                "replicates": {
+                    "$ref": "#/$defs/Replicates",
+                    "description": "Types of replicates used the experiment: Biological, Technical or Biological and Technical",
+                    "example": "Biological"
+                },
+                "number_of_samples": {
+                    "description": "Number of samples in the experiment",
+                    "example": 3,
+                    "minimum": 1,
+                    "title": "Number Of Samples",
+                    "type": "integer"
+                },
+                "number_of_perturbed_cells": {
+                    "description": "Number of perturbed cells profiled in the experiment",
+                    "example": 200000,
+                    "minimum": 1,
+                    "title": "Number Of Perturbed Cells",
+                    "type": "integer"
+                },
+                "number_of_perturbed_genes": {
+                    "description": "How many genes have been perturbed in the experiment",
+                    "example": 4,
+                    "minimum": 1,
+                    "title": "Number Of Perturbed Genes",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "title",
+                "summary",
+                "replicates",
+                "number_of_samples",
+                "number_of_perturbed_cells",
+                "number_of_perturbed_genes"
+            ],
+            "title": "ExperimentDetails",
+            "type": "object"
+        },
+        "ExpressionControl": {
+            "enum": [
+                "Constitutive expression",
+                "Inducible expression",
+                "Native promoter-driven expression",
+                "Degradation domain-based expression control",
+                "Antisense oligo-based expression control"
+            ],
+            "title": "ExpressionControl",
+            "type": "string"
+        },
+        "IntegrationState": {
+            "enum": [
+                "Episomal expression",
+                "Random locus integration",
+                "Targeted locus integration",
+                "Native locus replacement",
+                "RNA transfection",
+                "Protein transfection"
+            ],
+            "title": "IntegrationState",
+            "type": "string"
+        },
+        "Library": {
+            "properties": {
+                "library_name": {
+                    "description": "Name of the library used in the experiment",
+                    "example": "Bassik Human CRISPR Knockout Library",
+                    "title": "Library Name",
+                    "type": "string"
+                },
+                "accession": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Accession number of the library used in the experiment (if available)",
+                    "title": "Accession"
+                },
+                "library_format": {
+                    "$ref": "#/$defs/LibraryFormat",
+                    "description": "Format of the library used in the experiment (Pooled or Arrayed)",
+                    "example": "Pooled"
+                },
+                "library_scope": {
+                    "$ref": "#/$defs/LibraryScope",
+                    "description": "Scope of the library used in the experiment (Genome-wide or Focused)",
+                    "example": "Genome-wide"
+                },
+                "perturbation_type": {
+                    "$ref": "#/$defs/PerturbationType",
+                    "description": "Type of perturbation used in the experiment (e.g. Knockout, Inhibition, Base editing)",
+                    "example": "Knockout"
+                },
+                "manufacturer": {
+                    "description": "The lab or commercial manufacturer of the library used in the experiment",
+                    "example": "Bassik",
+                    "title": "Manufacturer",
+                    "type": "string"
+                },
+                "lentiviral_generation": {
+                    "description": "Lentiviral generation of the library used in the experiment",
+                    "example": "3",
+                    "title": "Lentiviral Generation",
+                    "type": "string"
+                },
+                "grnas_per_gene": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Number of gRNAs targeting each gene in the library. Can be a string representing a range, e.g. 3-5.",
+                    "example": 5,
+                    "title": "Grnas Per Gene"
+                },
+                "total_grnas": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Total number of gRNAs in the library. Can be a string (e.g. 'Varies')",
+                    "example": "10000",
+                    "title": "Total Grnas"
+                },
+                "total_genes": {
+                    "anyOf": [
+                        {
+                            "minimum": 1,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Total number of genes targeted by the library",
+                    "example": 18000,
+                    "title": "Total Genes"
+                },
+                "total_variants": {
+                    "anyOf": [
+                        {
+                            "minimum": 1,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "For SGE experiments, total number of variants in the library",
+                    "example": 500,
+                    "title": "Total Variants"
+                }
+            },
+            "required": [
+                "library_name",
+                "library_format",
+                "library_scope",
+                "perturbation_type",
+                "manufacturer",
+                "lentiviral_generation"
+            ],
+            "title": "Library",
+            "type": "object"
+        },
+        "LibraryFormat": {
+            "enum": [
+                "Pooled",
+                "Arrayed"
+            ],
+            "title": "LibraryFormat",
+            "type": "string"
+        },
+        "LibraryScope": {
+            "enum": [
+                "Genome-wide",
+                "Focused"
+            ],
+            "title": "LibraryScope",
+            "type": "string"
+        },
+        "MethodName": {
+            "enum": [
+                "RNA-seq",
+                "scRNA-seq",
+                "snRNA-seq",
+                "scNT-seq",
+                "scNT-seq2",
+                "Parse SPLiT-seq",
+                "ATAC-seq",
+                "varACCESS",
+                "scATAC-seq",
+                "snATAC-seq",
+                "DOGMA-seq",
+                "10x multiome",
+                "10x multiome with MULTI-seq",
+                "MULTI-seq",
+                "SHARE-seq",
+                "Histone ChIP-seq",
+                "TF ChIP-seq",
+                "MPRA",
+                "MPRA (scQer)",
+                "electroporated MPRA",
+                "AAV-MPRA",
+                "lentiMPRA",
+                "STARR-seq",
+                "SUPERSTARR",
+                "Cell painting",
+                "Variant painting via fluorescence",
+                "Variant painting via immunostaining",
+                "smFISH",
+                "MERFISH",
+                "Proliferation CRISPR screen",
+                "Growth CRISPR screen",
+                "Migration CRISPR screen",
+                "CRISPR FlowFISH screen",
+                "CRISPR FACS screen",
+                "CRISPR mCherry screen",
+                "HCR-FlowFISH screen",
+                "scCRISPR screen",
+                "Perturb-seq",
+                "CRISP-seq",
+                "CROP-seq",
+                "Mosaic-seq",
+                "CERES-seq",
+                "TAP-seq",
+                "Variant-EFFECTS",
+                "SGE",
+                "MIAA",
+                "snmC-Seq2",
+                "snMCT-seq",
+                "snM3C-seq",
+                "mN2H",
+                "semi-qY2H",
+                "Y2H",
+                "yN2H",
+                "VAMP-seq",
+                "VAMP-seq (MultiSTEP)",
+                "Hi-C",
+                "HiCAR",
+                "Spatial transcriptomics",
+                "HT-recruit",
+                "ONT dRNA",
+                "ONT Fiber-seq",
+                "ONT direct WGS"
+            ],
+            "title": "MethodName",
+            "type": "string"
+        },
+        "ModelSystem": {
+            "enum": [
+                "Whole organism",
+                "Tissue sample",
+                "Cell line",
+                "Primary cell",
+                "Organoid"
+            ],
+            "title": "ModelSystem",
+            "type": "string"
+        },
+        "ModelSystemDetails": {
+            "properties": {
+                "model_system": {
+                    "$ref": "#/$defs/ModelSystem",
+                    "description": "Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)",
+                    "example": "Cell line"
+                },
+                "species": {
+                    "const": "Homo Sapiens",
+                    "description": "Species used in the experiment",
+                    "example": "Homo sapiens",
+                    "title": "Species",
+                    "type": "string"
+                },
+                "tissue": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON anatomical entity; child of UBERON:0001062.",
+                    "example": "UBERON:0002098",
+                    "title": "Tissue"
+                },
+                "cell_type": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology; child of CL:0000000.",
+                    "example": "CL:0000235",
+                    "title": "Cell Type"
+                },
+                "cell_line": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent",
+                    "example": "CLO:0009348",
+                    "title": "Cell Line"
+                },
+                "sex": {
+                    "$ref": "#/$defs/Sex",
+                    "description": "Model system organism's sex",
+                    "example": "Unknown"
+                },
+                "developmental_stage": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "$ref": "#/$defs/DevelopmentalStages"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Developmental stage/age of the model system",
+                    "example": "Adult",
+                    "title": "Developmental Stage"
+                },
+                "passage_number": {
+                    "anyOf": [
+                        {
+                            "minimum": 1,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Passage number of cultured cells (if known)",
+                    "example": 23,
+                    "title": "Passage Number"
+                },
+                "sample_quantity": {
+                    "$ref": "#/$defs/SampleQuantity",
+                    "description": "Sample quantity used in the experiment"
+                }
+            },
+            "required": [
+                "model_system",
+                "species",
+                "sex",
+                "sample_quantity"
+            ],
+            "title": "ModelSystemDetails",
+            "type": "object"
+        },
+        "PerturbationDetails": {
+            "properties": {
+                "library_generation_type": {
+                    "description": "Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)",
+                    "enum": [
+                        "Endogenous",
+                        "Exogenous"
+                    ],
+                    "example": "Exogenous",
+                    "title": "Library Generation Type",
+                    "type": "string"
+                },
+                "library_generation_method": {
+                    "description": "Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis'). Must be an EFO term in CURIE format under 'Genetic perturbation' EFO:0022867 parent",
+                    "example": "EFO:0022876",
+                    "title": "Library Generation Method",
+                    "type": "string"
+                },
+                "enzyme_delivery_method": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/DeliveryMethod"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)",
+                    "example": "Electroporation"
+                },
+                "library_delivery_method": {
+                    "$ref": "#/$defs/DeliveryMethod",
+                    "description": "Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)",
+                    "example": "Lentiviral transduction"
+                },
+                "enzyme_integration_state": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/IntegrationState"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Integration state of the enzyme used in the experiment (e.g. Episomal expression, Random locus integration)",
+                    "example": "Random locus integration"
+                },
+                "library_integration_state": {
+                    "$ref": "#/$defs/IntegrationState",
+                    "description": "Integration state of the library used in the experiment (e.g. Episomal expression, Random locus integration)",
+                    "example": "Episomal expression"
+                },
+                "enzyme_expression_control": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/ExpressionControl"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Expression control of the enzyme used in the experiment (e.g. Native promoter-driven expression, Inducible)",
+                    "example": "Inducible"
+                },
+                "library_expression_control": {
+                    "$ref": "#/$defs/ExpressionControl",
+                    "description": "Expression control of the library used in the experiment (e.g. Native promoter-driven expression, Inducible)",
+                    "example": "Native promoter-driven expression"
+                },
+                "library": {
+                    "$ref": "#/$defs/Library"
+                }
+            },
+            "required": [
+                "library_generation_type",
+                "library_generation_method",
+                "library_delivery_method",
+                "library_integration_state",
+                "library_expression_control",
+                "library"
+            ],
+            "title": "PerturbationDetails",
+            "type": "object"
+        },
+        "PerturbationType": {
+            "enum": [
+                "Knockout",
+                "Activation",
+                "Inhibition",
+                "Base Editing",
+                "Prime Editing",
+                "Saturation Mutagenesis"
+            ],
+            "title": "PerturbationType",
+            "type": "string"
+        },
+        "ReadoutDimensionality": {
+            "enum": [
+                "Single-dimensional assay",
+                "High-dimensional assay"
+            ],
+            "title": "ReadoutDimensionality",
+            "type": "string"
+        },
+        "ReadoutTechnology": {
+            "enum": [
+                "Flow Cytometry",
+                "Mass Cytometry",
+                "Imaging Mass Cytometry",
+                "Single-cell imaging",
+                "Fluorescence in situ hybridization",
+                "Multiplexed fluorecent antibody imaging",
+                "Bulk RNA-seq",
+                "Single-cell RNA-seq",
+                "Binding assay",
+                "Population growth assay",
+                "Systematic evolution of ligands by exponential enrichment",
+                "Promoter activity by reporter gene assay"
+            ],
+            "title": "ReadoutTechnology",
+            "type": "string"
+        },
+        "ReadoutType": {
+            "enum": [
+                "Transcriptomic",
+                "Proteomic",
+                "Metabolomic",
+                "Epigenomic",
+                "Phenotypic"
+            ],
+            "title": "ReadoutType",
+            "type": "string"
+        },
+        "ReferenceGenome": {
+            "enum": [
+                "GRCh38",
+                "GRCh37",
+                "T2T-CHM13"
+            ],
+            "title": "ReferenceGenome",
+            "type": "string"
+        },
+        "Replicates": {
+            "enum": [
+                "Biological and Technical",
+                "Biological",
+                "Technical",
+                "None"
+            ],
+            "title": "Replicates",
+            "type": "string"
+        },
+        "SampleQuantity": {
+            "properties": {
+                "sample_quantity_value": {
+                    "description": "Sample quantity value",
+                    "example": 1.0,
+                    "title": "Sample Quantity Value",
+                    "type": "number"
+                },
+                "sample_quantity_unit": {
+                    "$ref": "#/$defs/SampleQuantityUnit",
+                    "description": "Sample quantity unit",
+                    "example": "gram"
+                }
+            },
+            "required": [
+                "sample_quantity_value",
+                "sample_quantity_unit"
+            ],
+            "title": "SampleQuantity",
+            "type": "object"
+        },
+        "SampleQuantityUnit": {
+            "enum": [
+                "gram",
+                "liter",
+                "unit",
+                "colony-forming unit",
+                "cells"
+            ],
+            "title": "SampleQuantityUnit",
+            "type": "string"
+        },
+        "SequencingLibraryKits": {
+            "enum": [
+                "10x Genomics Single Cell 3-prime",
+                "10x Genomics Single Cell 3-prime v1",
+                "10x Genomics Single Cell 3-prime v2",
+                "10x Genomics Single Cell 3-prime v3",
+                "10x Genomics Single Cell 3-prime v4",
+                "10x Genomics Single Cell 5-prime",
+                "10x Genomics Single Cell 5-prime v1",
+                "10x Genomics Single Cell 5-prime v2",
+                "10x Genomics Single Cell 5-prime v3"
+            ],
+            "title": "SequencingLibraryKits",
+            "type": "string"
+        },
+        "SequencingPlatform": {
+            "enum": [
+                "454 GS 20 sequencer",
+                "454 GS FLX sequencer",
+                "454 GS FLX Titanium sequencer",
+                "454 GS Junior sequencer",
+                "454 GS sequencer",
+                "AB SOLiD 4 System",
+                "AB SOLiD 4hq System",
+                "AB SOLiD 5500",
+                "AB SOLiD 5500xl",
+                "AB SOLiD PI System",
+                "AB SOLiD System",
+                "AB SOLiD System 2.0",
+                "AB SOLiD System 3.0",
+                "BGI MGISEQ-2000",
+                "Illumina Genome Analyzer",
+                "Illumina Genome Analyzer II",
+                "Illumina Genome Analyzer IIx",
+                "Illumina HiSeq 1000",
+                "Illumina HiSeq 1500",
+                "Illumina HiSeq 2000",
+                "Illumina HiSeq 2500",
+                "Illumina HiSeq 3000",
+                "Illumina HiSeq 4000",
+                "Illumina HiSeq X",
+                "Illumina iSeq 100",
+                "Illumina MiniSeq",
+                "Illumina MiSeq",
+                "Illumina NextSeq 1000",
+                "Illumina NextSeq 2000",
+                "Illumina NextSeq 500",
+                "Illumina NextSeq 550",
+                "Illumina NovaSeq 6000",
+                "Illumina NovaSeq X",
+                "Illumina NovaSeq X Plus",
+                "ONT GridION X5",
+                "ONT MinION",
+                "ONT PromethION",
+                "ONT PromethION 2 Solo",
+                "PacBio RS II",
+                "PacBio Sequel II system",
+                "PacBio Sequel system",
+                "Singular G4"
+            ],
+            "title": "SequencingPlatform",
+            "type": "string"
+        },
+        "SequencingStrategy": {
+            "enum": [
+                "Shotgun sequencing",
+                "Barcode sequencing",
+                "Direct sequencing"
+            ],
+            "title": "SequencingStrategy",
+            "type": "string"
+        },
+        "Sex": {
+            "enum": [
+                "Unknown",
+                "Female",
+                "Male",
+                "Other"
+            ],
+            "title": "Sex",
+            "type": "string"
+        },
+        "SoftwareAnalysis": {
+            "enum": [
+                "Seurat",
+                "Scanpy",
+                "MAGeCK",
+                "DESeq2",
+                "limma",
+                "edgeR",
+                "CasTLE",
+                "CERES",
+                "CRISPRcleanR",
+                "CRISPY"
+            ],
+            "title": "SoftwareAnalysis",
+            "type": "string"
+        },
+        "SoftwareCounts": {
+            "enum": [
+                "CellRanger",
+                "HTSeq",
+                "featureCounts",
+                "MAGeCK",
+                "Kallisto",
+                "Salmon"
+            ],
+            "title": "SoftwareCounts",
+            "type": "string"
+        },
+        "StudyDetails": {
+            "properties": {
+                "title": {
+                    "description": "Title of the study/publication",
+                    "title": "Title",
+                    "type": "string"
+                },
+                "study_uri": {
+                    "anyOf": [
+                        {
+                            "format": "uri",
+                            "maxLength": 2083,
+                            "minLength": 1,
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "URI/link of the study/publication",
+                    "title": "Study Uri"
+                },
+                "year": {
+                    "description": "Year of the study/publication",
+                    "example": 2024,
+                    "maximum": 2025,
+                    "minimum": 1950,
+                    "title": "Year",
+                    "type": "integer"
+                },
+                "first_author": {
+                    "$ref": "#/$defs/Author",
+                    "description": "First author of the study/publication"
+                },
+                "last_author": {
+                    "$ref": "#/$defs/Author",
+                    "description": "Last author of the study/publication"
+                }
+            },
+            "required": [
+                "title",
+                "year",
+                "first_author",
+                "last_author"
+            ],
+            "title": "StudyDetails",
+            "type": "object"
+        },
+        "Treatment": {
+            "properties": {
+                "term_id": {
+                    "description": "Term ID in CURIE format of the treatment defined in ChEMBL",
+                    "example": "CHEBI:6904",
+                    "title": "Term Id",
+                    "type": "string"
+                },
+                "term_label": {
+                    "description": "Label of the treatment defined in ChEMBL",
+                    "example": "metoprolol",
+                    "title": "Term Label",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "term_id",
+                "term_label"
+            ],
+            "title": "Treatment",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "study": {
+            "$ref": "#/$defs/StudyDetails"
+        },
+        "experiment": {
+            "$ref": "#/$defs/ExperimentDetails"
+        },
+        "perturbation": {
+            "$ref": "#/$defs/PerturbationDetails"
+        },
+        "assay": {
+            "$ref": "#/$defs/AssayDetails"
+        },
+        "model_system": {
+            "$ref": "#/$defs/ModelSystemDetails"
+        },
+        "associated_diseases": {
+            "items": {
+                "$ref": "#/$defs/Disease"
+            },
+            "title": "Associated Diseases",
+            "type": "array"
+        },
+        "associated_datasets": {
+            "items": {
+                "$ref": "#/$defs/AssociatedDatasets"
+            },
+            "title": "Associated Datasets",
+            "type": "array"
+        }
+    },
+    "required": [
+        "study",
+        "experiment",
+        "perturbation",
+        "assay",
+        "model_system",
+        "associated_diseases",
+        "associated_datasets"
+    ],
+    "title": "Experiment",
+    "type": "object"
+}
