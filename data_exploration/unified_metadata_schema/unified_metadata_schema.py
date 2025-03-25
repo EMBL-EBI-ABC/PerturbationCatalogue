@@ -162,7 +162,7 @@ class Library(BaseModel):
         example=500,
     )
 
-    # update the library parameters with the pre-defined values from the "crispr_libraries" dictionary
+    # Update the library parameters with the pre-defined values from the "crispr_libraries" dictionary
     @model_validator(mode="before")
     @classmethod
     def validate_enum_library(cls, values):
