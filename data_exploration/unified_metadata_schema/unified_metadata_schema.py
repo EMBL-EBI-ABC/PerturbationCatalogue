@@ -176,7 +176,7 @@ class Library(BaseModel):
             )
         return values
 
-    # if perturbation_type is "Saturation mutagenesis", then total_variants is required
+    # If perturbation_type is "Saturation mutagenesis", then total_variants is required
     @model_validator(mode="before")
     @classmethod
     def validate_total_variants(cls, values):
