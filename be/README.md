@@ -1,6 +1,13 @@
 # Perturbation Catalogue back-end
 
-## Local set up
+## Environment variables
+
+For deploying any of the options below, set the following environmental variables:
+- ES_URL
+- ES_USERNAME
+- ES_PASSWORD
+
+## Local deployment
 
 ```bash
 python3 -m venv fastapi-env
@@ -9,11 +16,16 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-## Local Docker build
+## Docker deployment
 
 ```bash
 docker build -t perturbation-catalogue-be .
-docker run -p 8000:8000 perturbation-catalogue-be
+docker run \
+  -p 8000:8080 \
+  -e ES_URL=${ES_URL} \
+  -e ES_USERNAME=${ES_USERNAME} \
+  -e ES_PASSWORD=${ES_PASSWORD} \
+  perturbation-catalogue-be
 ```
 
 ## Google Cloud Run deployment
@@ -27,10 +39,7 @@ docker run -p 8000:8000 perturbation-catalogue-be
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
-1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
-   - ES_URL
-   - ES_USERNAME
-   - ES_PASSWORD
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables: (see the environment variables section above)
 1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
