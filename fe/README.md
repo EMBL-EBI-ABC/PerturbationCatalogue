@@ -1,6 +1,11 @@
 # Dash front-end for the Perturbation Catalogue
 
-## Local run — direct
+## Environment variables
+
+For deploying any of the options below, set the following environmental variable:
+- `PERTURBATION_CATALOGUE_BE` to point to back-end deployment base URL, starting with https:// and without the trailing slash
+
+## Local deployment
 ```bash
 python3 -m venv env
 source env/bin/activate
@@ -8,9 +13,13 @@ pip install --quiet -r requirements.txt
 python3 app.py
 ```
 
-## Local run — Docker
+## Docker deployment
 ```bash
-docker build -t dash-app . && docker run -p 80:80 dash-app
+docker build -t dash-app .
+docker run \
+  -p 80:80 \
+  -e PERTURBATION_CATALOGUE_BE=${PERTURBATION_CATALOGUE_BE} \
+  dash-app
 ```
 
 ## Google Cloud Run deployment
@@ -26,8 +35,7 @@ docker build -t dash-app . && docker run -p 80:80 dash-app
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
-1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables:
-   - `PERTURBATION_CATALOGUE_BE` to point to back-end deployment base URL, starting with https:// and without the trailing slash
+1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables: (see the environment variables section above)
 1. Container(s), volumes, networking, security → Container(s) → Container port: 80
 1. Click: Create.
 
