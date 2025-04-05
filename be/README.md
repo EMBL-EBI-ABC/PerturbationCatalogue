@@ -52,4 +52,9 @@ Set up path trigger:
 1. Set “Included files filters (glob)” to `be/**`.
 1. Click on “Save”.
 
-Then, repeat the steps above with the branch set to `.*` and service name to `perturbation-catalogue-be-live`. This will create a deployment which will automatically deploy the latest commit, not just from the main branch.
+Then, repeat the steps above with the following changes:
+* Branch: `^main$`
+* Reverse regex: checked
+* Service name: `perturbation-catalogue-be-live`
+
+This will create a deployment which will automatically deploy the latest commit.
