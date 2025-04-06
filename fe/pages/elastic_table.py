@@ -1,6 +1,7 @@
 """A reusable and configurable class for table and details views populated by the Elastic API."""
 
 from collections import namedtuple
+import math
 
 import dash
 from dash import html, dcc, Output, Input, State
@@ -50,8 +51,14 @@ class ElasticTable:
         """Returns columns that should be displayed in the table view."""
         return [col for col in self.columns if col.display_table]
 
-    def _fetch_data(self, q, size, page, sort_data, filter_values):
+    def _fetch_data(self, state):
         """Fetches data from the API endpoint with the given parameters."""
+        q = state.get("search", "")
+        size = state.get("size", self.default_page_size)
+        page = state.get("page", 1)
+        sort_data = state.get("sort", {})
+        filter_values = state.get("filters", [])
+
         params = {
             "q": q,
             "size": size,
@@ -143,6 +150,22 @@ class ElasticTable:
             (col for col in self.columns if col.default_sort), None
         )
 
+        # Initialize the state store with default values
+        initial_state = initial_state or {
+            "search": "",
+            "size": self.default_page_size,
+            "page": 1,
+            "sort": {
+                "field": (
+                    default_sort_column.field_name if default_sort_column else None
+                ),
+                "order": (
+                    default_sort_column.default_sort if default_sort_column else None
+                ),
+            },
+            "filters": [[] for _ in [col for col in self.columns if col.filterable]],
+        }
+
         # Prepare filter column components
         filter_columns = [
             dbc.Card(
@@ -182,6 +205,9 @@ class ElasticTable:
             [
                 *title_block,
                 *description_block,
+                # Central state store
+                dcc.Store(id=f"{self.dom_prefix}-state", data=initial_state),
+                dcc.Store(id=f"{self.dom_prefix}-search-input-value", data=""),
                 dbc.Row(
                     [
                         # Filters sidebar
@@ -200,18 +226,6 @@ class ElasticTable:
                                     type="text",
                                     placeholder="Search...",
                                     className="mb-3 w-100",
-                                ),
-                                # Store to track debounce state
-                                dcc.Store(
-                                    id=f"{self.dom_prefix}-search-input-value", data=""
-                                ),
-                                # Current sort direction store
-                                dcc.Store(
-                                    id=f"{self.dom_prefix}-sort-store",
-                                    data={
-                                        "field": default_sort_column.field_name,
-                                        "order": default_sort_column.default_sort,
-                                    },
                                 ),
                                 # Main table with spinner
                                 dbc.Spinner(
@@ -404,29 +418,101 @@ class ElasticTable:
             State(f"{self.dom_prefix}-search-input-value", "data"),
         )
 
+        # Callback 1: Update state when any input changes
         @app.callback(
-            Output(f"{self.dom_prefix}-sort-store", "data"),
-            Input(
-                {"type": f"{self.dom_prefix}-sort-header-container", "field": dash.ALL},
-                "n_clicks",
-            ),
-            State(f"{self.dom_prefix}-sort-store", "data"),
+            Output(f"{self.dom_prefix}-state", "data"),
+            [
+                Input(f"{self.dom_prefix}-search-input-value", "data"),
+                Input(f"{self.dom_prefix}-size", "value"),
+                Input(f"{self.dom_prefix}-pagination", "active_page"),
+                Input(
+                    {
+                        "type": f"{self.dom_prefix}-sort-header-container",
+                        "field": dash.ALL,
+                    },
+                    "n_clicks",
+                ),
+                *[
+                    Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
+                    for col in self.columns
+                    if col.filterable
+                ],
+                *[
+                    Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
+                    for col in self.columns
+                    if col.filterable
+                ],
+            ],
+            [State(f"{self.dom_prefix}-state", "data")],
         )
-        def update_sort(_, current_sort):
-            """Updates the sort direction when a column header is clicked."""
-            if not dash.callback_context.triggered:
+        def update_state(search, size, page, sort_clicks, *args):
+            """Updates the state store based on user interactions."""
+            ctx = dash.callback_context
+            if not ctx.triggered:
                 return dash.no_update
 
-            field = eval(dash.callback_context.triggered[0]["prop_id"].split(".")[0])[
-                "field"
-            ]
-            if current_sort["field"] != field:
-                return {"field": field, "order": "asc"}
-            return {
-                "field": field,
-                "order": "desc" if current_sort["order"] == "asc" else "asc",
-            }
+            # Split args into filter values and clear button clicks
+            filterable_cols = [col for col in self.columns if col.filterable]
+            filter_values = args[: len(filterable_cols)]
+            clear_clicks = args[len(filterable_cols) : len(filterable_cols) * 2]
+            current_state = args[-1]  # Last argument is the current state
 
+            triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+            # Handle sort header clicks
+            if "sort-header-container" in triggered_id:
+                field = eval(triggered_id)["field"]
+                current_sort = current_state["sort"]
+
+                if current_sort["field"] != field:
+                    current_state["sort"] = {"field": field, "order": "asc"}
+                else:
+                    current_state["sort"] = {
+                        "field": field,
+                        "order": "desc" if current_sort["order"] == "asc" else "asc",
+                    }
+                # Reset to page 1 when sorting changes
+                current_state["page"] = 1
+
+            # Handle clear filter buttons
+            elif "clear" in triggered_id:
+                for i, col in enumerate(filterable_cols):
+                    if f"{self.dom_prefix}-clear-{col.field_name}" == triggered_id:
+                        current_state["filters"][i] = []
+                        # Reset to page 1 when filter changes
+                        current_state["page"] = 1
+                        break
+
+            # Handle normal inputs
+            else:
+                # Update search
+                if f"{self.dom_prefix}-search-input-value" == triggered_id:
+                    current_state["search"] = search
+                    # Reset to page 1 when search changes
+                    current_state["page"] = 1
+
+                # Update page size
+                elif f"{self.dom_prefix}-size" == triggered_id:
+                    current_state["size"] = size
+                    # Reset to page 1 when page size changes
+                    current_state["page"] = 1
+
+                # Update page number
+                elif f"{self.dom_prefix}-pagination" == triggered_id:
+                    current_state["page"] = page
+
+                # Update filters
+                else:
+                    for i, col in enumerate(filterable_cols):
+                        if f"{self.dom_prefix}-filter-{col.field_name}" == triggered_id:
+                            current_state["filters"][i] = filter_values[i]
+                            # Reset to page 1 when filter changes
+                            current_state["page"] = 1
+                            break
+
+            return current_state
+
+        # Callback 2: Fetch data when state changes
         @app.callback(
             [
                 Output(f"{self.dom_prefix}-data-table", "children"),
@@ -438,21 +524,11 @@ class ElasticTable:
                 Output(f"{self.dom_prefix}-pagination", "max_value"),
                 Output(f"{self.dom_prefix}-pagination-info", "children"),
             ],
-            [
-                Input(f"{self.dom_prefix}-search-input-value", "data"),
-                Input(f"{self.dom_prefix}-size", "value"),
-                Input(f"{self.dom_prefix}-pagination", "active_page"),
-                Input(f"{self.dom_prefix}-sort-store", "data"),
-                *[
-                    Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                    for col in self.columns
-                    if col.filterable
-                ],
-            ],
+            [Input(f"{self.dom_prefix}-state", "data")],
         )
-        def fetch_data(q, size, page, sort_data, *filter_values):
-            """Fetches and refreshes the table data based on current filters and parameters."""
-            response, params = self._fetch_data(q, size, page, sort_data, filter_values)
+        def fetch_data_from_state(state):
+            """Fetches and refreshes the table data based on current state."""
+            response, params = self._fetch_data(state)
 
             if response.status_code != 200:
                 return (
@@ -460,10 +536,12 @@ class ElasticTable:
                     *[[]] * len([col for col in self.columns if col.filterable]),
                     1,
                     "",
+                    1,
                 )
 
             data = response.json()
             total = data.get("total", 0)
+            size = state.get("size", self.default_page_size)
             start = params["start"]
 
             filter_options = [
@@ -477,38 +555,15 @@ class ElasticTable:
                 if col.filterable
             ]
 
+            max_pages = math.ceil(total / size)
+
             return (
-                self._create_table(data.get("results", []), sort_data),
+                self._create_table(data.get("results", []), state.get("sort", {})),
                 *filter_options,
-                max(1, (total + size - 1) // size) if total > 0 else 1,
+                max_pages,
                 (
                     f"{start + 1} – {min(start + size, total)} of {total}"
                     if total > 0
                     else ""
                 ),
             )
-
-        @app.callback(
-            [
-                Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                for col in self.columns
-                if col.filterable
-            ],
-            [
-                Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
-                for col in self.columns
-                if col.filterable
-            ],
-        )
-        def clear_filters(*_):
-            """Clears the selected filter values when a clear button is clicked."""
-            triggered = dash.callback_context.triggered[0]["prop_id"].split(".")[0]
-            return [
-                (
-                    []
-                    if f"{self.dom_prefix}-clear-{col.field_name}" == triggered
-                    else dash.no_update
-                )
-                for col in self.columns
-                if col.filterable
-            ]
