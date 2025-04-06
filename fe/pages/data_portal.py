@@ -5,8 +5,9 @@ import os
 from urllib.parse import quote
 
 import dash
-from dash import html, Output, Input, callback, MATCH
+from dash import html, Output, Input, callback, MATCH, dcc
 from dash.dependencies import State
+import dash_bootstrap_components as dbc
 
 from .elastic_table import ElasticTable, Column
 
@@ -325,6 +326,9 @@ dash.register_page(
 
 
 def complete_layout(**kwargs):
+
+    print("Re-rendering")
+
     depmap_state = kwargs.get("depmap")
     mavedb_state = kwargs.get("mavedb")
 
@@ -332,8 +336,13 @@ def complete_layout(**kwargs):
     if isinstance(mavedb_state, list):
         mavedb_state = mavedb_state[0].split("?")[0]
 
+    permalink = dbc.Row(
+        dbc.Col(html.Span(id="data-portal-permalink")), className="ps-4 pt-4"
+    )
+
     return html.Div(
         [
+            permalink,
             depmap_table.table_layout(depmap_state),
             mavedb_table.table_layout(mavedb_state),
         ]
@@ -418,13 +427,12 @@ def register_callbacks(app):
             return {"display": "none"}, "Expand"
 
     @callback(
-        Output("_pages_location", "pathname"),
-        Input(f"elastic-table-depmap-state", "data"),
-        Input(f"elastic-table-mavedb-state", "data"),
-        State("_pages_location", "pathname"),
+        Output("data-portal-permalink", "children"),
+        Input("elastic-table-depmap-state", "data"),
+        Input("elastic-table-mavedb-state", "data"),
         prevent_initial_call=False,
     )
-    def update_url_with_state(depmap_data, mavedb_data, current_path):
+    def update_url_with_state(depmap_data, mavedb_data):
         serialise = (
             lambda d: base64.urlsafe_b64encode(json.dumps(d).encode())
             .decode()
@@ -434,8 +442,12 @@ def register_callbacks(app):
         base_path = "/data-portal"
         # Construct the full URL
         new_path = f"{base_path}?depmap={serialise(depmap_data)}&mavedb={serialise(mavedb_data)}"
-        # Only update if the path has actually changed
-        if new_path != current_path:
-            return new_path
-        # Return the existing path if no change is needed
-        raise dash.exceptions.PreventUpdate
+
+        print(new_path)
+
+        # Return a clickable link component
+        return dcc.Link(
+            "Copy this link to preserve page state",
+            href=new_path,
+            target="_blank",
+        )
