@@ -1,7 +1,10 @@
 """A reusable and configurable class for table and details views populated by the Elastic API."""
 
+import base64
 from collections import namedtuple
+import json
 import math
+from urllib.parse import unquote
 
 import dash
 from dash import html, dcc, Output, Input, State
@@ -151,20 +154,30 @@ class ElasticTable:
         )
 
         # Initialize the state store with default values
-        initial_state = initial_state or {
-            "search": "",
-            "size": self.default_page_size,
-            "page": 1,
-            "sort": {
-                "field": (
-                    default_sort_column.field_name if default_sort_column else None
-                ),
-                "order": (
-                    default_sort_column.default_sort if default_sort_column else None
-                ),
-            },
-            "filters": [[] for _ in [col for col in self.columns if col.filterable]],
-        }
+        if initial_state:
+            deserialise = lambda s: json.loads(
+                base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)).decode()
+            )
+            initial_state = deserialise(initial_state)
+        else:
+            initial_state = {
+                "search": "",
+                "size": self.default_page_size,
+                "page": 1,
+                "sort": {
+                    "field": (
+                        default_sort_column.field_name if default_sort_column else None
+                    ),
+                    "order": (
+                        default_sort_column.default_sort
+                        if default_sort_column
+                        else None
+                    ),
+                },
+                "filters": [
+                    [] for _ in [col for col in self.columns if col.filterable]
+                ],
+            }
 
         # Prepare filter column components
         filter_columns = [

@@ -1,6 +1,8 @@
+import base64
 import functools
 import json
 import os
+from urllib.parse import quote
 
 import dash
 from dash import html, Output, Input, callback, MATCH
@@ -323,10 +325,17 @@ dash.register_page(
 
 
 def complete_layout(**kwargs):
+    depmap_state = kwargs.get("depmap")
+    mavedb_state = kwargs.get("mavedb")
+
+    # Handle Dash bug.
+    if isinstance(mavedb_state, list):
+        mavedb_state = mavedb_state[0].split("?")[0]
+
     return html.Div(
         [
-            depmap_table.table_layout(kwargs.get("depmap")),
-            mavedb_table.table_layout(kwargs.get("mavedb")),
+            depmap_table.table_layout(depmap_state),
+            mavedb_table.table_layout(mavedb_state),
         ]
     )
 
@@ -407,3 +416,26 @@ def register_callbacks(app):
             return {"display": "inline"}, "Collapse"
         else:
             return {"display": "none"}, "Expand"
+
+    @callback(
+        Output("_pages_location", "pathname"),
+        Input(f"elastic-table-depmap-state", "data"),
+        Input(f"elastic-table-mavedb-state", "data"),
+        State("_pages_location", "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_url_with_state(depmap_data, mavedb_data, current_path):
+        serialise = (
+            lambda d: base64.urlsafe_b64encode(json.dumps(d).encode())
+            .decode()
+            .rstrip("=")
+        )
+        # Default base path
+        base_path = "/data-portal"
+        # Construct the full URL
+        new_path = f"{base_path}?depmap={serialise(depmap_data)}&mavedb={serialise(mavedb_data)}"
+        # Only update if the path has actually changed
+        if new_path != current_path:
+            return new_path
+        # Return the existing path if no change is needed
+        raise dash.exceptions.PreventUpdate
