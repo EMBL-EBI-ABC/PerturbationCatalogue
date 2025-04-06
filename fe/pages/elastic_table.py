@@ -137,7 +137,7 @@ class ElasticTable:
             responsive=True,
         )
 
-    def table_layout(self):
+    def table_layout(self, initial_state=None):
         """Returns the complete layout for the table view."""
         default_sort_column = next(
             (col for col in self.columns if col.default_sort), None

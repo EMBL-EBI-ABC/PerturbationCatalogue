@@ -322,9 +322,12 @@ dash.register_page(
 # Main data portal page.
 
 
-def complete_layout():
+def complete_layout(**kwargs):
     return html.Div(
-        [datasource.table_layout() for datasource in (depmap_table, mavedb_table)]
+        [
+            depmap_table.table_layout(kwargs.get("depmap")),
+            mavedb_table.table_layout(kwargs.get("mavedb")),
+        ]
     )
 
 
