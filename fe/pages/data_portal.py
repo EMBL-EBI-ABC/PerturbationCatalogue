@@ -433,3 +433,14 @@ def register_callbacks(app):
             return {"display": "inline"}, "Collapse"
         else:
             return {"display": "none"}, "Expand"
+
+    @callback(
+        Output("url", "search"),
+        Input("elastic-table-depmap-state", "data"),
+        Input("elastic-table-mavedb-state", "data"),
+        prevent_initial_call=False,
+    )
+    def update_url_with_state(depmap_data, mavedb_data):
+        base_path = "/data-portal"
+        query_string = f"?depmap={serialise_state(depmap_data)}&mavedb={serialise_state(mavedb_data)}"
+        return query_string
