@@ -1,6 +1,7 @@
 """A reusable and configurable class for table and details views populated by the Elastic API."""
 
 from collections import namedtuple
+import math
 
 import dash
 from dash import html, dcc, Output, Input, State
@@ -35,6 +36,7 @@ class ElasticTable:
         default_page_size=20,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
+        self.id = id
         self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
         self.columns = columns
