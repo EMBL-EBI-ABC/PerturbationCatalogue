@@ -341,9 +341,19 @@ def deserialise_state(state):
 # Main data portal page.
 
 
-def complete_layout():
+def complete_layout(**kwargs):
+    depmap_state = deserialise_state(kwargs.get("depmap"))
+    mavedb_state = deserialise_state(kwargs.get("mavedb"))
+
+    # Handle Dash bug.
+    if isinstance(mavedb_state, list):
+        mavedb_state = mavedb_state[0].split("?")[0]
+
     return html.Div(
-        [datasource.table_layout() for datasource in (depmap_table, mavedb_table)]
+        [
+            depmap_table.table_layout(depmap_state),
+            mavedb_table.table_layout(mavedb_state),
+        ]
     )
 
 
