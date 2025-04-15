@@ -182,6 +182,8 @@ class ElasticTable:
             [
                 *title_block,
                 *description_block,
+                # Central state store
+                dcc.Store(id=f"{self.dom_prefix}-state", data=initial_state),
                 dbc.Row(
                     [
                         # Filters sidebar
