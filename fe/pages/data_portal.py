@@ -342,17 +342,10 @@ def deserialise_state(state):
 
 
 def complete_layout(**kwargs):
-    depmap_state = deserialise_state(kwargs.get("depmap"))
-    mavedb_state = deserialise_state(kwargs.get("mavedb"))
-
-    # Handle Dash bug.
-    if isinstance(mavedb_state, list):
-        mavedb_state = mavedb_state[0].split("?")[0]
-
     return html.Div(
         [
-            depmap_table.table_layout(depmap_state),
-            mavedb_table.table_layout(mavedb_state),
+            depmap_table.table_layout(deserialise_state(kwargs.get("depmap"))),
+            mavedb_table.table_layout(deserialise_state(kwargs.get("mavedb"))),
         ]
     )
 
