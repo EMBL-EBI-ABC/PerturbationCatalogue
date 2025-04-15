@@ -1,9 +1,11 @@
+import base64
 import functools
 import json
 import os
+from urllib.parse import quote
 
 import dash
-from dash import html, Output, Input, callback, MATCH
+from dash import html, Output, Input, callback, MATCH, dcc
 from dash.dependencies import State
 
 from .elastic_table import ElasticTable, Column
@@ -317,6 +319,23 @@ dash.register_page(
     path_template="/data-portal/mavedb/<record_id>",
     layout=mavedb_table.details_layout,
 )
+
+
+# State serialisation and deserialisation.
+
+
+def serialise_state(state):
+    state["initial_load"] = True
+    return base64.urlsafe_b64encode(json.dumps(state).encode()).decode().rstrip("=")
+
+
+def deserialise_state(state):
+    if state:
+        return json.loads(
+            base64.urlsafe_b64decode(state + "=" * (-len(state) % 4)).decode()
+        )
+    else:
+        return None
 
 
 # Main data portal page.
