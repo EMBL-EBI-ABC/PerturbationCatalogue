@@ -268,13 +268,15 @@ class PerturbationDetails(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_delivery_method(cls, values):
-        enzyme_delivery_method = values.get("enzyme_delivery_method")
-        library_generation_type = values.get("library_generation_type")
-        if library_generation_type == "Exogenous" and enzyme_delivery_method != None:
+        
+        enzyme_delivery_method = values.get("enzyme_delivery_method")['term_label']
+        library_generation_type = values.get("library_generation_type")['term_label']
+        
+        if library_generation_type == "exogenous" and enzyme_delivery_method != None:
             raise ValueError(
                 "Enzyme delivery method is not required for exogenous library generation type"
             )
-        if library_generation_type == "Endogenous" and enzyme_delivery_method == None:
+        if library_generation_type == "endogenous" and enzyme_delivery_method == None:
             raise ValueError(
                 "Enzyme delivery method is required for endogenous library generation type"
             )
@@ -283,14 +285,16 @@ class PerturbationDetails(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_expression_control(cls, values):
-        enzyme_expression_control = values.get("enzyme_expression_control")
-        library_generation_type = values.get("library_generation_type")
-        if library_generation_type == "Exogenous" and enzyme_expression_control != None:
+        
+        enzyme_expression_control = values.get("enzyme_expression_control")['term_label']
+        library_generation_type = values.get("library_generation_type")['term_label']
+        
+        if library_generation_type == "exogenous" and enzyme_expression_control != None:
             raise ValueError(
                 "Enzyme expression control is not required for exogenous library generation type"
             )
         if (
-            library_generation_type == "Endogenous"
+            library_generation_type == "endogenous"
             and enzyme_expression_control == None
         ):
             raise ValueError(
