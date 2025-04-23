@@ -13,11 +13,6 @@ from fastapi import FastAPI, HTTPException
 from datetime import datetime
 
 
-# Load the CRISPR libraries from the JSON file
-with open(os.path.join(os.path.dirname(__file__), "crispr_libraries.json"), "r") as f:
-    crispr_libraries = json.load(f)
-
-
 # Define the models
 
 # TermOptional and TermRequired are used to define terms that are linked with ontology
@@ -193,19 +188,6 @@ class Library(BaseModel):
         example=500,
     )
 
-    # Update the library parameters with the pre-defined values from the "crispr_libraries" dictionary
-    @model_validator(mode="before")
-    @classmethod
-    def validate_enum_library(cls, values):
-        lib_name = values["library_name"]
-        if lib_name in crispr_libraries["libraries"].keys():
-            # If the library name is in the crispr_libraries, update the values with the pre-defined values
-            lib = crispr_libraries["libraries"][lib_name]
-            values.update(lib)
-            print(
-                "Library name is in the crispr_libraries, updated values with pre-defined values"
-            )
-        return values
 
     # If perturbation_type is "Saturation mutagenesis", then total_variants is required
     @model_validator(mode="before")
