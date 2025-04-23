@@ -10,8 +10,7 @@ from pydantic import (
 from pydantic_core import Url
 from typing import Optional, List, Literal
 from fastapi import FastAPI, HTTPException
-from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 # Load the CRISPR libraries from the JSON file
