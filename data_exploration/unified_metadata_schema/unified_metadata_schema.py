@@ -191,25 +191,30 @@ class Library(BaseModel):
     )
 
 
-    # If perturbation_type is "Saturation mutagenesis", then total_variants is required
+    # If library_perturbation_type is "saturation mutagenesis", then total_variants is required
     @model_validator(mode="before")
     @classmethod
     def validate_total_variants(cls, values):
+        
+        library_perturbation_type = values.get("library_perturbation_type")[0]['term_label']
+        total_variants = values.get("total_variants")
+        library_scope = values.get("library_scope")['term_label']
+        
         if (
-            values.get("perturbation_type") == "saturation mutagenesis"
-            and values.get("total_variants") is None
+            library_perturbation_type == "saturation mutagenesis"
+            and total_variants is None
         ):
             raise ValueError("Total variants is required for saturation mutagenesis")
         if (
-            values.get("perturbation_type") != "saturation mutagenesis"
-            and values.get("total_variants") is not None
+            library_perturbation_type != "saturation mutagenesis"
+            and total_variants is not None
         ):
             raise ValueError(
                 "Total variants is not required for this perturbation type"
             )
         if (
-            values.get("perturbation_type") == "saturation mutagenesis"
-            and values.get("library_scope") == "genome-wide"
+            library_perturbation_type == "saturation mutagenesis"
+            and library_scope == "genome-wide"
         ):
             raise ValueError(
                 "Saturation mutagenesis perturbation type is not allowed for Genome-wide libraries"
