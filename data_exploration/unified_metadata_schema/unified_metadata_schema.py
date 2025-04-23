@@ -20,7 +20,8 @@ from datetime import datetime
 class TermOptional(BaseModel):
     term_id: Optional[str] = Field(
         None,
-        description="Ontology term ID in CURIE format"
+        description="Ontology term ID in CURIE format",
+        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
     )
     term_label: str = Field(
         ...,
@@ -33,7 +34,8 @@ class TermOptional(BaseModel):
 class TermRequired(BaseModel):
     term_id: str = Field(
         ...,
-        description="Ontology term ID in CURIE format"
+        description="Ontology term ID in CURIE format",
+        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
     )
     term_label: str = Field(
         ...,
