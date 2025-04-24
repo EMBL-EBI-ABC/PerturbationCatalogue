@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 import cookie_banner
@@ -85,6 +85,8 @@ footer = html.Footer(
 # Overall app layout.
 app.layout = html.Div(
     [
+        # URL tracker.
+        dcc.Location(id="url", refresh=False),
         # Cookie banner.
         cookie_banner.store,
         cookie_banner.layout,
