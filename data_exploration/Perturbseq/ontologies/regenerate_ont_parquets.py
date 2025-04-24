@@ -6,6 +6,8 @@ import pandas as pd
 from datetime import datetime
 import os
 
+# this is needed for lamindb to connect
+os.environ['PGGSSENCMODE'] = 'disable'
 
 def regenerate_gene_ont() -> pd.DataFrame:
     
@@ -76,7 +78,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
                     "ensembl_gene_id": ["control"],
                     "symbol": ["control"],
                     "synonyms": [None],
-                    "biotype": [None],
+                    "biotype": ["control"],
                     "description": ["control"],
                 }
             ),
@@ -152,7 +154,7 @@ all_diseses["created_at"] = datetime.now()
 all_tissues["created_at"] = datetime.now()
 
 # save to parquet
-save_dir = "Ontologies"
+save_dir = "."
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
