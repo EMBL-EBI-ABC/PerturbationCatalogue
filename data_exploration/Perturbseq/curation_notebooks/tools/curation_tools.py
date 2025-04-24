@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from neofuzz import char_ngram_process, Process
 from typing import Optional, Literal
+from libchebipy import search
 
 
 
@@ -698,3 +699,43 @@ def get_dict_vals(term_id, term_label, adata):
         return None
 
     return dict_vals
+
+
+def search_compounds_in_chebi(compound_names):
+    """
+    Search for compound names in ChEBI and return a DataFrame with the results.
+
+    Parameters:
+        compound_names (str or list of str): A single compound name or a list of compound names.
+
+    Returns:
+        pd.DataFrame: A DataFrame with columns ['original_name', 'standardized_name', 'chebi_id'].
+    """
+    # Ensure compound_names is a list
+    if isinstance(compound_names, str):
+        compound_names = [compound_names]
+
+    # Initialize a list to store the search results
+    search_results = []
+
+    # Iterate over each compound name
+    for compound_name in compound_names:
+        # Search for the compound in ChEBI
+        chebi_results = search(compound_name)
+        
+        # Iterate over the search results
+        for chebi_entity in chebi_results:
+            for chebi_name_entry in chebi_entity.get_names():
+                standardized_name = chebi_name_entry.get_name()
+                # Check if the standardized name matches the input compound name (case-insensitive)
+                if standardized_name.lower() == compound_name.lower():
+                    # Append the result to the list
+                    search_results.append({
+                        "original_name": compound_name,  # Original input compound name
+                        "standardized_name": chebi_entity.get_name(),  # Standardized compound name
+                        "chebi_id": chebi_entity.get_id()  # ChEBI ID
+                    })
+                    break  # Stop after finding the first match for the compound
+
+    # Convert the results list into a pandas DataFrame
+    return pd.DataFrame(search_results, columns=["original_name", "standardized_name", "chebi_id"])
