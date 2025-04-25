@@ -1,0 +1,211 @@
+{
+    "study": {
+        "title": "A Multiplexed Single-Cell CRISPR Screening Platform Enables Systematic Dissection of the Unfolded Protein Response",
+        "study_uri": "https://doi.org/10.1016/j.cell.2016.11.048",
+        "year": 2016,
+        "first_author": {
+            "first_name": "Britt",
+            "last_name": "Adamson"
+        },
+        "last_author": {
+            "first_name": "Jonathan",
+            "last_name": "Weissman"
+        }
+    },
+    "experiment": {
+        "title": "14595 chronic myeloid leukemia (K562) cells transfected with a UPR sensor gene-targeting gRNAs in every combination (singly with controls, doubly with a control, or triply).",
+        "summary": " Using our final three-guide Perturb-seq vector to simultaneously deliver 3 sgRNAs, we individually transduced K562 cells expressing dCas9-KRAB (cBA010) with constructs that targeted all three UPR sensor genes in every combination (singly with controls, doubly with a control, or triply). Transduced cells were then pooled and selected. After 2 days of combined growth, the cells were treated with DMSO for 6 hr, 4 \u03bcg/mL tunicamycin (Tm) for 6 hr, or 100 nM thapsigargin (Tg) for 4 hr and were profiled by Perturb-seq (24 conditions in total).",
+        "treatments": [
+            {
+                "term_id": "CHEBI:29699",
+                "term_label": "tunicamycin"
+            },
+            {
+                "term_id": "CHEBI:28262",
+                "term_label": "dimethyl sulfoxide"
+            },
+            {
+                "term_id": "CHEBI:9516",
+                "term_label": "thapsigargin"
+            }
+        ],
+        "timepoints": [
+            "P0DT0H0M0S"
+        ],
+        "replicates": "none",
+        "number_of_samples": 1,
+        "number_of_perturbed_cells": 14595,
+        "perturbation_type": null,
+        "perturbed_target_category": [
+            "control",
+            "protein_coding|protein_coding|protein_coding",
+            "protein_coding|protein_coding",
+            "protein_coding",
+            "processed_pseudogene"
+        ],
+        "number_of_perturbed_targets": 16,
+        "perturbed_targets": [
+            "control",
+            "ENSG00000118217|ENSG00000172071|ENSG00000178607",
+            "ENSG00000118217|ENSG00000172071",
+            "ENSG00000118217",
+            "ENSG00000172071|ENSG00000178607",
+            "ENSG00000118217|ENSG00000178607",
+            "ENSG00000178607",
+            "ENSG00000172071",
+            "ENSG00000249947",
+            "ENSG00000134049",
+            "ENSG00000129084",
+            "ENSG00000197170",
+            "ENSG00000146576",
+            "ENSG00000128272",
+            "ENSG00000124216",
+            "ENSG00000145817"
+        ]
+    },
+    "perturbation": {
+        "library_generation_type": {
+            "term_id": "EFO:0022868",
+            "term_label": "endogenous"
+        },
+        "library_generation_method": {
+            "term_id": "EFO:0022895",
+            "term_label": "dCas9-KRAB"
+        },
+        "enzyme_delivery_method": {
+            "term_id": null,
+            "term_label": "retroviral transduction"
+        },
+        "library_delivery_method": {
+            "term_id": null,
+            "term_label": "lentiviral transduction"
+        },
+        "enzyme_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "library_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "enzyme_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library": {
+            "library_name": "custom",
+            "accession": null,
+            "library_format": {
+                "term_id": null,
+                "term_label": "pooled"
+            },
+            "library_scope": {
+                "term_id": null,
+                "term_label": "focused"
+            },
+            "library_perturbation_type": [
+                {
+                    "term_id": null,
+                    "term_label": "inhibition"
+                }
+            ],
+            "manufacturer": "Weissman",
+            "lentiviral_generation": "3",
+            "grnas_per_gene": "1",
+            "total_grnas": "16",
+            "total_genes": 16,
+            "total_variants": null
+        }
+    },
+    "assay": {
+        "readout_dimensionality": {
+            "term_id": null,
+            "term_label": "high-dimensional assay"
+        },
+        "readout_type": {
+            "term_id": null,
+            "term_label": "transcriptomic"
+        },
+        "readout_technology": {
+            "term_id": null,
+            "term_label": "single-cell rna-seq"
+        },
+        "method_name": {
+            "term_id": null,
+            "term_label": "Perturb-seq"
+        },
+        "method_uri": null,
+        "sequencing_library_kit": {
+            "term_id": null,
+            "term_label": "10x Genomics Single Cell 3-prime"
+        },
+        "sequencing_platform": {
+            "term_id": null,
+            "term_label": "Illumina HiSeq 4000"
+        },
+        "sequencing_strategy": {
+            "term_id": null,
+            "term_label": "barcode sequencing"
+        },
+        "software_counts": {
+            "term_id": null,
+            "term_label": "CellRanger"
+        },
+        "software_analysis": {
+            "term_id": null,
+            "term_label": "MAGeCK"
+        },
+        "reference_genome": {
+            "term_id": null,
+            "term_label": "GRCh37"
+        }
+    },
+    "model_system": {
+        "model_system": null,
+        "species": "Homo sapiens",
+        "tissue": null,
+        "cell_type": [
+            {
+                "term_id": "CL:0017005",
+                "term_label": "lymphoblast"
+            }
+        ],
+        "cell_line": [
+            {
+                "term_id": "CLO:0007050",
+                "term_label": "K 562 cell"
+            }
+        ],
+        "sex": null,
+        "developmental_stage": null,
+        "passage_number": null,
+        "sample_quantity": {
+            "sample_quantity_value": 14595.0,
+            "sample_quantity_unit": "cells"
+        }
+    },
+    "associated_diseases": [
+        {
+            "term_id": "MONDO:0011996",
+            "term_label": "chronic myelogenous leukemia, BCR-ABL1 positive"
+        }
+    ],
+    "associated_datasets": [
+        {
+            "dataset_accession": "GSM2406677",
+            "dataset_uri": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2406677",
+            "dataset_description": "Barcode, cell identities, raw gene expression matrix",
+            "dataset_file_name": "GSM2406677_10X005"
+        },
+        {
+            "dataset_accession": "GSM2406677_10X005",
+            "dataset_uri": "https://zenodo.org/records/7041849/files/AdamsonWeissman2016_GSM2406677_10X005.h5ad",
+            "dataset_description": "Processed .h5ad file",
+            "dataset_file_name": "AdamsonWeissman2016_GSM2406677_10X005.h5ad"
+        }
+    ]
+}
