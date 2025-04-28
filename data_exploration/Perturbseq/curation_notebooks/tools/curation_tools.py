@@ -3,7 +3,11 @@ import os
 from neofuzz import char_ngram_process, Process
 from typing import Optional, Literal
 from libchebipy import search
+from pathlib import Path
+import logging
 
+# Get the path to the ontologies directory relative to this file
+ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
 
 
 # function to save a new term to ctype ontology
@@ -739,3 +743,308 @@ def search_compounds_in_chebi(compound_names):
 
     # Convert the results list into a pandas DataFrame
     return pd.DataFrame(search_results, columns=["original_name", "standardized_name", "chebi_id"])
+
+
+def standardize_gene_symbols(obs_df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """
+    Standardize gene symbols using genes.parquet ontology.
+
+    Args:
+        obs_df: Input DataFrame from adata.obs or adata.var slots containing gene symbols
+        column: Name of column containing gene symbols
+
+    Returns:
+        DataFrame with standardized values and mapping info
+    """
+    try:
+        # Load gene ontology
+        gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet")
+        print(f"Loaded gene ontology with {len(gene_ont)} entries\n{'-' * 50}")
+
+        # add a column with lowercase gene symbols for matching
+        # and rename the original symbol column to standardized_symbol
+        gene_ont = gene_ont.assign(
+            lower_symbol=lambda x: x["symbol"].str.lower()
+        ).rename(columns={"symbol": "standardized_symbol"})
+
+        # Create a DataFrame with unique perturbed target symbols
+        # and their lowercase versions
+        result_df = (
+            obs_df[[column]]
+            .reset_index(drop=True)
+            .drop_duplicates()
+            .assign(lower_symbol=lambda x: x[column].str.lower())
+        )
+
+        # Left-merge with gene ontology to find direct matches with standardized symbols
+        result_df = result_df.merge(
+            gene_ont[["lower_symbol", "standardized_symbol"]],
+            how="left",
+            left_on="lower_symbol",
+            right_on="lower_symbol",
+            indicator=True,
+        ).drop_duplicates(subset="lower_symbol")
+
+        # Separate matched and unmatched gene symbols
+        result_df_matched = result_df[result_df["_merge"] == "both"].drop(
+            columns=["_merge"]
+        )
+        result_df_unmatched = result_df[result_df["_merge"] != "both"].drop(
+            columns=["_merge", "standardized_symbol"]
+        )
+
+        print(
+            f"{len(result_df_matched)} out of {len(result_df)} gene symbols mapped to standardized symbols\n{'-' * 50}"
+        )
+        print(
+            f"{len(result_df_unmatched)} gene symbols could not be mapped to standardized symbols\n{'-' * 50}"
+        )
+
+        # If there are unmatched gene symbols, try to match them against the known synonyms
+        if len(result_df_unmatched) > 0:
+
+            print(f"Trying to match the unmatched gene symbols against known synonyms\n{'-' * 50}")
+
+            # Explode the synonyms column in the gene ontology
+            # and create a DataFrame with lowercase synonyms
+            # and their corresponding standardized symbols
+            exploded_gene_ont = (
+                gene_ont.assign(synonyms=lambda x: x["synonyms"].str.split("|"))
+                .explode("synonyms")
+                .assign(lower_synonyms=lambda x: x["synonyms"].str.lower())[
+                    ["lower_synonyms", "standardized_symbol"]
+                ]
+                .drop_duplicates()
+            )
+
+            # Left-merge the unmatched gene symbols with the exploded gene ontology
+            # to find matches based on synonyms
+            result_df_synonyms = result_df_unmatched.merge(
+                exploded_gene_ont,
+                how="left",
+                left_on="lower_symbol",
+                right_on="lower_synonyms",
+                indicator=True,
+            ).drop_duplicates(subset="lower_symbol")
+
+            # Separate matched and unmatched gene symbols
+            result_df_synonyms_matched = result_df_synonyms[
+                result_df_synonyms["_merge"] == "both"
+            ].drop(columns=["_merge", "lower_synonyms"])
+
+            # update the unmatched dataframe
+            result_df_unmatched = result_df_synonyms[
+                result_df_synonyms["_merge"] != "both"
+            ].drop(columns=["_merge", "lower_synonyms"])
+
+            print(
+                f"{len(result_df_synonyms_matched)} gene symbols mapped to standardized symbols using synonyms\n{'-' * 50}"
+            )
+
+            # Add the matched synonyms to the result DataFrame
+            result_df_matched = pd.concat(
+                [result_df_matched, result_df_synonyms_matched], ignore_index=True
+            )
+
+            # If there are still unmatched gene symbols, keep them as is
+            # and assign them to the standardized_symbol column
+            if len(result_df_unmatched) > 0:
+                print(
+                    f"{len(result_df_unmatched)} gene symbols could not be mapped to standardized symbols using synonyms\n{'-' * 50}"
+                )
+                print("These genes will be kept as is in the final DataFrame")
+                print("Unmatched gene symbols:", result_df_unmatched[column].unique())
+
+                # Assign the unmatched gene symbols to the standardized_symbol column
+                result_df_unmatched = result_df_unmatched.assign(
+                    standardized_symbol=result_df_unmatched[column]
+                ).drop(columns=["lower_symbol"])
+
+                # Add the unmatched gene symbols to the result DataFrame
+                result_df_matched = pd.concat(
+                    [result_df_matched, result_df_unmatched], ignore_index=True
+                )
+            else:
+                print(
+                    f"All unmatched gene symbols have been mapped to standardized symbols using synonyms\n{'-' * 50}"
+                )
+
+        result_df_matched = result_df_matched.drop(columns=["lower_symbol"])
+
+        display(result_df_matched)
+
+        # Map the standardized symbols back to the original DataFrame
+        obs_df = (
+            obs_df.merge(
+                result_df_matched,
+                how="left",
+                left_on=column,
+                right_on=column,
+            )
+            .set_index(obs_df.index)
+            .drop(columns=[column])
+            .rename(columns={"standardized_symbol": column})
+        )
+
+        print(
+            f"Mapped the standardized symbols in column {column} back to the original DataFrame"
+        )
+
+        return obs_df
+
+    except Exception as e:
+        print(f"Error standardizing gene symbols: {str(e)}")
+        raise
+
+
+def standardize_ontology(
+    obs_df: pd.DataFrame,
+    column: str,
+    ont_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Standardize values in a DataFrame column using an ontology DataFrame.
+
+    Args:
+        obs_df: Input DataFrame containing values to be standardized
+        column: Name of column to be standardized
+        ont_df: Ontology DataFrame containing standardized values
+    Returns:
+        DataFrame with standardized values
+    """
+    
+    try:
+        # Rename the original name column to standardized_name
+        ont_df = ont_df.rename(columns={"name": "standardized_name"})
+
+        # Create a DataFrame with unique ontology labels
+        # and their lowercase versions
+        result_df = (
+            obs_df[[column]]
+            .reset_index(drop=True)
+            .drop_duplicates()
+            .assign(lower_name=lambda x: x[column].str.lower())
+        )
+
+        # Left-merge with gene ontology to find direct matches with standardized names
+        result_df = result_df.merge(
+            ont_df[["standardized_name"]],
+            how="left",
+            left_on="lower_name",
+            right_on="standardized_name",
+            indicator=True,
+        ).drop_duplicates(subset="lower_name")
+
+        # Separate matched and unmatched ontology labels
+        result_df_matched = result_df[result_df["_merge"] == "both"].drop(
+            columns=["_merge"]
+        )
+        result_df_unmatched = result_df[result_df["_merge"] != "both"].drop(
+            columns=["_merge", "standardized_name"]
+        )
+
+        print(
+            f"{len(result_df_matched)} out of {len(result_df)} ontology labels mapped to standardized names\n{'-' * 50}"
+        )
+        print(
+            f"{len(result_df_unmatched)} ontology label could not be mapped to standardized names\n{'-' * 50}"
+        )
+
+        # If there are unmatched ontology labels, try to match them against the known synonyms
+        if len(result_df_unmatched) > 0:
+
+            print(f"Trying to match the unmatched ontology labels against known synonyms\n{'-' * 50}")
+
+            # Explode the synonyms column in the gene ontology
+            # and create a DataFrame with lowercase synonyms
+            # and their corresponding standardized names
+            exploded_ont = (
+                ont_df.dropna(subset=["synonyms"])
+                .assign(synonyms=lambda x: x["synonyms"].str.split("|"))
+                .explode("synonyms")
+                .assign(lower_synonyms=lambda x: x["synonyms"].str.lower())[
+                    ["lower_synonyms", "standardized_name"]
+                ]
+                .drop_duplicates()
+            )
+
+            # Left-merge the unmatched ontology labels with the exploded gene ontology
+            # to find matches based on synonyms
+            result_df_synonyms = result_df_unmatched.merge(
+                exploded_ont,
+                how="left",
+                left_on="lower_name",
+                right_on="lower_synonyms",
+                indicator=True,
+            ).drop_duplicates(subset="lower_name")
+
+            # Separate matched and unmatched ontology labels
+            result_df_synonyms_matched = result_df_synonyms[
+                result_df_synonyms["_merge"] == "both"
+            ].drop(columns=["_merge", "lower_synonyms"])
+
+            # update the unmatched dataframe
+            result_df_unmatched = result_df_synonyms[
+                result_df_synonyms["_merge"] != "both"
+            ].drop(columns=["_merge", "lower_synonyms"])
+
+            print(
+                f"{len(result_df_synonyms_matched)} ontology label mapped to standardized names using synonyms\n{'-' * 50}"
+            )
+
+            # Add the matched synonyms to the result DataFrame
+            result_df_matched = pd.concat(
+                [result_df_matched, result_df_synonyms_matched], ignore_index=True
+            )
+
+            # If there are still unmatched ontology labels, keep them as is
+            # and assign them to the standardized_name column
+            if len(result_df_unmatched) > 0:
+                print(
+                    f"{len(result_df_unmatched)} ontology labels could not be mapped to standardized names using synonyms\n{'-' * 50}"
+                )
+                print("These ontology labels will be kept as is in the final DataFrame")
+                print(f"Unmatched ontology labels: {list(result_df_unmatched[column].unique())}")
+
+                # Assign the unmatched ontology label to the standardized_name column
+                result_df_unmatched = result_df_unmatched.assign(
+                    standardized_name=result_df_unmatched[column]
+                ).drop(columns=["lower_name"])
+
+                # Add the unmatched gene symbols to the result DataFrame
+                result_df_matched = pd.concat(
+                    [result_df_matched, result_df_unmatched], ignore_index=True
+                )
+            else:
+                print(
+                    f"All unmatched ontology labels have been mapped to standardized names using synonyms\n{'-' * 50}"
+                )
+
+        result_df_matched = result_df_matched.drop(columns=["lower_name"])
+
+        display(result_df_matched)
+
+        # Map the standardized symbols back to the original DataFrame
+        obs_df = (
+            obs_df.merge(
+                result_df_matched,
+                how="left",
+                left_on=column,
+                right_on=column,
+            )
+            .set_index(obs_df.index)
+            .drop(columns=[column])
+            .rename(columns={"standardized_name": column})
+        )
+
+        print(
+            f"Mapped the standardized ontology labels in column {column} back to the original DataFrame"
+        )
+
+        return obs_df
+
+    except Exception as e:
+        print(f"Error standardizing ontology terms: {str(e)}")
+        raise
+        logging.error(f"Error standardizing cell types: {str(e)}")
+        raise
