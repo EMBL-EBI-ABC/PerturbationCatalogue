@@ -915,7 +915,9 @@ def standardize_ontology(
     
     try:
         # Rename the original name column to standardized_name
-        ont_df = ont_df.rename(columns={"name": "standardized_name"})
+        ont_df = ont_df.rename(columns={"name": "standardized_name"}).assign(
+            lower_standardized_name=lambda x: x["standardized_name"].str.lower()
+            )
 
         # Create a DataFrame with unique ontology labels
         # and their lowercase versions
@@ -928,19 +930,19 @@ def standardize_ontology(
 
         # Left-merge with gene ontology to find direct matches with standardized names
         result_df = result_df.merge(
-            ont_df[["standardized_name"]],
+            ont_df[["lower_standardized_name", "standardized_name"]],
             how="left",
             left_on="lower_name",
-            right_on="standardized_name",
+            right_on="lower_standardized_name",
             indicator=True,
         ).drop_duplicates(subset="lower_name")
 
         # Separate matched and unmatched ontology labels
         result_df_matched = result_df[result_df["_merge"] == "both"].drop(
-            columns=["_merge"]
+            columns=["_merge", "lower_standardized_name"]
         )
         result_df_unmatched = result_df[result_df["_merge"] != "both"].drop(
-            columns=["_merge", "standardized_name"]
+            columns=["_merge", "standardized_name", "lower_standardized_name"]
         )
 
         print(
