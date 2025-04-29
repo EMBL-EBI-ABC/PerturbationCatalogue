@@ -40,8 +40,7 @@
             "control",
             "protein_coding|protein_coding|protein_coding",
             "protein_coding|protein_coding",
-            "protein_coding",
-            "processed_pseudogene"
+            "protein_coding"
         ],
         "number_of_perturbed_targets": 16,
         "perturbed_targets": [
@@ -53,7 +52,7 @@
             "ENSG00000118217|ENSG00000178607",
             "ENSG00000178607",
             "ENSG00000172071",
-            "ENSG00000249947",
+            "ENSG00000100219",
             "ENSG00000134049",
             "ENSG00000129084",
             "ENSG00000197170",

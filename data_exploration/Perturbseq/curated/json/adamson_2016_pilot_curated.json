@@ -24,7 +24,8 @@
         "number_of_perturbed_cells": 5752,
         "perturbation_type": null,
         "perturbed_target_category": [
-            "protein_coding"
+            "protein_coding",
+            "control"
         ],
         "number_of_perturbed_targets": 8,
         "perturbed_targets": [
