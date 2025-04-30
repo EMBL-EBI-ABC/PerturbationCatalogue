@@ -4,7 +4,6 @@ from neofuzz import char_ngram_process, Process
 from typing import Optional, Literal
 from libchebipy import search
 from pathlib import Path
-import logging
 
 # Get the path to the ontologies directory relative to this file
 ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
@@ -1047,6 +1046,4 @@ def standardize_ontology(
 
     except Exception as e:
         print(f"Error standardizing ontology terms: {str(e)}")
-        raise
-        logging.error(f"Error standardizing cell types: {str(e)}")
         raise
