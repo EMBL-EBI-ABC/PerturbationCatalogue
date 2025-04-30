@@ -1,32 +1,49 @@
 import json
+import os
 from pydantic import (
     BaseModel,
     model_validator,
+    field_serializer,
     HttpUrl,
     Field,
 )
+from pydantic_core import Url
 from typing import Optional, List, Literal
 from fastapi import FastAPI, HTTPException
-from enum import Enum
-from datetime import datetime, timedelta
-
-
-# Load the options from the JSON file
-with open("enums.json", "r") as f:
-    options = json.load(f)
-
-# Load the CRISPR libraries from the JSON file
-with open("crispr_libraries.json", "r") as f:
-    crispr_libraries = json.load(f)
-
-
-# Function to make enums
-def make_enum(name, options_dict=options):
-    values = options_dict[name]
-    return Enum(name, {i.replace(" ", "_").lower(): i for i in values})
+from datetime import datetime
 
 
 # Define the models
+
+# TermOptional and TermRequired are used to define terms that are linked with ontology
+# TermRequired is used when the term is already present in the ontology, hence both term_id and term_label can be defined
+class TermOptional(BaseModel):
+    term_id: Optional[str] = Field(
+        None,
+        description="Ontology term ID in CURIE format",
+        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
+    )
+    term_label: str = Field(
+        ...,
+        description="Ontology term label"
+    )
+
+
+# TermOptional is used when the term is not yet present in the ontology, hence only term_label can be defined
+# Once the necessary terms are added to the ontology, the schema should be updated to use TermRequired instead
+class TermRequired(BaseModel):
+    term_id: str = Field(
+        ...,
+        description="Ontology term ID in CURIE format",
+        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
+    )
+    term_label: str = Field(
+        ...,
+        description="Ontology term label"
+    )
+
+
+# Author first and last name
 class Author(BaseModel):
     first_name: str = Field(..., description="First name of the author", example="John")
     last_name: str = Field(..., description="Last name of the author", example="Doe")
@@ -34,7 +51,7 @@ class Author(BaseModel):
 
 class StudyDetails(BaseModel):
     title: str = Field(..., description="Title of the study/publication")
-    study_uri: Optional[HttpUrl] = Field(
+    study_uri: Optional[HttpUrl|str] = Field(
         None, description="URI/link of the study/publication"
     )
     year: int = Field(
@@ -47,45 +64,41 @@ class StudyDetails(BaseModel):
         ..., description="First author of the study/publication"
     )
     last_author: Author = Field(..., description="Last author of the study/publication")
+    
+    @field_serializer('study_uri')
+    def convert_uri_to_string(self, val):
+        if isinstance(val, Url):
+            return str(val)
+        return val
 
 
 class SampleQuantity(BaseModel):
     sample_quantity_value: float = Field(
         ..., description="Sample quantity value", example=1.0
     )
-    sample_quantity_unit: make_enum("SampleQuantityUnit") = Field(
-        ..., description="Sample quantity unit", example="gram"
-    )
-
-
-class Treatment(BaseModel):
-    term_id: str = Field(
-        ...,
-        description="Term ID in CURIE format of the treatment defined in ChEMBL",
-        example="CHEBI:6904",
-    )
-    term_label: str = Field(
-        ...,
-        description="Label of the treatment defined in ChEMBL",
-        example="metoprolol",
-    )
+    sample_quantity_unit: Literal[
+        "gram", "liter", "unit", "colony-forming unit", "cells"
+    ] = Field(..., description="Sample quantity unit", example="gram")
 
 
 class ExperimentDetails(BaseModel):
     title: str = Field(..., description="Title of the experiment")
     summary: str = Field(..., description="Short summary of the experiment")
-    treatments: Optional[List[Treatment]] = Field(
-        None, description="List of treatments used in the experiment, defined in ChEMBL"
-    )
-    timepoints: Optional[List[timedelta]] = Field(
+    treatments: Optional[List[TermRequired]] = Field(
         None,
-        description="List of timepoints captured in the experiment. Must be in the format of a timedelta object.",
-        example="P1DT6H",
+        description="List of treatments used in the experiment, defined in ChEBI under 'chemical entity' CHEBI:24431 parent",
+        example="CHEBI:28262 - dimethyl sulfoxide",
     )
-    replicates: make_enum("Replicates") = Field(
+    timepoints: Optional[List[str]] = Field(
+        None,
+        description="List of timepoints captured in the experiment. Must be in the ISO 8601 format",
+        example="P1DT6H30M0S",
+        # pattern=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$"
+    )
+    replicates: str = Field(
         ...,
-        description="Types of replicates used the experiment: Biological, Technical or Biological and Technical",
-        example="Biological",
+        description="Types of replicates used the experiment: biological, technical or biological and technical, none",
+        example="biological",
     )
     number_of_samples: int = Field(
         ..., ge=1, description="Number of samples in the experiment", example=3
@@ -96,11 +109,26 @@ class ExperimentDetails(BaseModel):
         description="Number of perturbed cells profiled in the experiment",
         example=200000,
     )
-    number_of_perturbed_genes: int = Field(
+    perturbation_type: Optional[List[TermOptional]] = Field(
+        ...,
+        escription="Type of perturbation used in the experiment (e.g. CRISPRko, CRISPRi, CRISPRa, Mutagenesis)",
+        example="CRISPRko",
+    )
+    perturbed_target_category: List[str] = Field(
+        ...,
+        description="Biotype of the perturbed target defined by ENSEMBL (e.g. protein coding, regulatory, etc.)",
+        example="protein coding",
+    )
+    number_of_perturbed_targets: int = Field(
         ...,
         ge=1,
-        description="How many genes have been perturbed in the experiment",
+        description="How many targets (genes or variants) have been perturbed in the experiment",
         example=4,
+    )
+    perturbed_targets: List[str] = Field(
+        ...,
+        description="List of ENSEMBL IDs for perturbed targets (genes or variants) in the experiment",
+        example=["ENSG00000141510", "ENSG00000146648"],
     )
 
 
@@ -114,20 +142,20 @@ class Library(BaseModel):
         None,
         description="Accession number of the library used in the experiment (if available)",
     )
-    library_format: make_enum("LibraryFormat") = Field(
+    library_format: TermOptional = Field(
         ...,
-        description="Format of the library used in the experiment (Pooled or Arrayed)",
-        example="Pooled",
+        description="Format of the library used in the experiment (pooled or arrayed)",
+        example="pooled",
     )
-    library_scope: make_enum("LibraryScope") = Field(
+    library_scope: TermOptional = Field(
         ...,
-        description="Scope of the library used in the experiment (Genome-wide or Focused)",
-        example="Genome-wide",
+        description="Scope of the library used in the experiment (genome-wide or focused)",
+        example="genome-wide",
     )
-    perturbation_type: make_enum("PerturbationType") = Field(
+    library_perturbation_type: Optional[List[TermOptional]] = Field(
         ...,
-        description="Type of perturbation used in the experiment (e.g. Knockout, Inhibition, Base editing)",
-        example="Knockout",
+        description="Type of perturbation used in the experiment (e.g. knockout, inhibition, activation, base editing, prime editing)",
+        example="knockout",
     )
     manufacturer: str = Field(
         ...,
@@ -162,39 +190,31 @@ class Library(BaseModel):
         example=500,
     )
 
-    # Update the library parameters with the pre-defined values from the "crispr_libraries" dictionary
-    @model_validator(mode="before")
-    @classmethod
-    def validate_enum_library(cls, values):
-        lib_name = values["library_name"]
-        if lib_name in crispr_libraries["libraries"].keys():
-            # If the library name is in the crispr_libraries, update the values with the pre-defined values
-            lib = crispr_libraries["libraries"][lib_name]
-            values.update(lib)
-            print(
-                "Library name is in the crispr_libraries, updated values with pre-defined values"
-            )
-        return values
 
-    # If perturbation_type is "Saturation mutagenesis", then total_variants is required
+    # If library_perturbation_type is "saturation mutagenesis", then total_variants is required
     @model_validator(mode="before")
     @classmethod
     def validate_total_variants(cls, values):
+        
+        library_perturbation_type = values.get("library_perturbation_type")[0]['term_label']
+        total_variants = values.get("total_variants")
+        library_scope = values.get("library_scope")['term_label']
+        
         if (
-            values.get("perturbation_type") == "Saturation mutagenesis"
-            and values.get("total_variants") is None
+            library_perturbation_type == "saturation mutagenesis"
+            and total_variants is None
         ):
             raise ValueError("Total variants is required for saturation mutagenesis")
         if (
-            values.get("perturbation_type") != "Saturation mutagenesis"
-            and values.get("total_variants") is not None
+            library_perturbation_type != "saturation mutagenesis"
+            and total_variants is not None
         ):
             raise ValueError(
                 "Total variants is not required for this perturbation type"
             )
         if (
-            values.get("perturbation_type") == "Saturation mutagenesis"
-            and values.get("library_scope") == "Genome-wide"
+            library_perturbation_type == "saturation mutagenesis"
+            and library_scope == "genome-wide"
         ):
             raise ValueError(
                 "Saturation mutagenesis perturbation type is not allowed for Genome-wide libraries"
@@ -203,58 +223,60 @@ class Library(BaseModel):
 
 
 class PerturbationDetails(BaseModel):
-    library_generation_type: Literal["Endogenous", "Exogenous"] = Field(
+    library_generation_type: TermRequired = Field(
         ...,
-        description="Whether the genetic modifications are primarily driven by intracellular mechanisms (Endogenous) or by external in vitro laboratory techniques (Exogenous)",
-        example="Exogenous",
+        description="Term ID in CURIE format and term label of the library generation type defined in EFO under parent term EFO:0022867 (genetic perturbation)",
+        example="EFO:0022868 - endogenous",
     )
-    library_generation_method: str = Field(
+    library_generation_method: TermRequired = Field(
         ...,
-        description="Method of library generation (can be an enzyme, such as 'SpCas9', or a methodology, such as 'doped oligo synthesis'). Must be an EFO term in CURIE format under 'Genetic perturbation' EFO:0022867 parent",
-        example="EFO:0022876",
+        description="Library generation method used in the experiment",
+        example="EFO:0022895 - dCas9-KRAB",
     )
-    enzyme_delivery_method: Optional[make_enum("DeliveryMethod")] = Field(
+    enzyme_delivery_method: TermOptional = Field(
         None,
-        description="Delivery method of the enzyme used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)",
-        example="Electroporation",
+        description="Enzyme delivery method used in the experiment",
+        example="retroviral transduction",
     )
-    library_delivery_method: make_enum("DeliveryMethod") = Field(
+    library_delivery_method: TermOptional = Field(
         ...,
-        description="Delivery method of the library used in the experiment (e.g. Lentiviral transduction, Electroporation, Lipofection)",
-        example="Lentiviral transduction",
+        description="Library delivery method used in the experiment",
+        example="lentiviral transduction",
     )
-    enzyme_integration_state: Optional[make_enum("IntegrationState")] = Field(
+    enzyme_integration_state: TermOptional = Field(
         None,
-        description="Integration state of the enzyme used in the experiment (e.g. Episomal expression, Random locus integration)",
-        example="Random locus integration",
+        description="Integration status of the enzyme used in the experiment",
+        example="random locus integration",
     )
-    library_integration_state: make_enum("IntegrationState") = Field(
+    library_integration_state: TermOptional = Field(
         ...,
-        description="Integration state of the library used in the experiment (e.g. Episomal expression, Random locus integration)",
-        example="Episomal expression",
+        description="Integration status of the library sequences used in the experiment",
+        example="episomal expression",
     )
-    enzyme_expression_control: Optional[make_enum("ExpressionControl")] = Field(
+    enzyme_expression_control: TermOptional = Field(
         None,
-        description="Expression control of the enzyme used in the experiment (e.g. Native promoter-driven expression, Inducible)",
-        example="Inducible",
+        description="Expression control of the enzyme used in the experiment",
+        example="constitutive expression",
     )
-    library_expression_control: make_enum("ExpressionControl") = Field(
+    library_expression_control: TermOptional = Field(
         ...,
-        description="Expression control of the library used in the experiment (e.g. Native promoter-driven expression, Inducible)",
-        example="Native promoter-driven expression",
+        description="Expression control of the library used in the experiment",
+        example="inducible expression",
     )
     library: Library
 
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_delivery_method(cls, values):
-        enzyme_delivery_method = values.get("enzyme_delivery_method")
-        library_generation_type = values.get("library_generation_type")
-        if library_generation_type == "Exogenous" and enzyme_delivery_method != None:
+        
+        enzyme_delivery_method = values.get("enzyme_delivery_method")['term_label']
+        library_generation_type = values.get("library_generation_type")['term_label']
+        
+        if library_generation_type == "exogenous" and enzyme_delivery_method != None:
             raise ValueError(
                 "Enzyme delivery method is not required for exogenous library generation type"
             )
-        if library_generation_type == "Endogenous" and enzyme_delivery_method == None:
+        if library_generation_type == "endogenous" and enzyme_delivery_method == None:
             raise ValueError(
                 "Enzyme delivery method is required for endogenous library generation type"
             )
@@ -263,14 +285,16 @@ class PerturbationDetails(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_expression_control(cls, values):
-        enzyme_expression_control = values.get("enzyme_expression_control")
-        library_generation_type = values.get("library_generation_type")
-        if library_generation_type == "Exogenous" and enzyme_expression_control != None:
+        
+        enzyme_expression_control = values.get("enzyme_expression_control")['term_label']
+        library_generation_type = values.get("library_generation_type")['term_label']
+        
+        if library_generation_type == "exogenous" and enzyme_expression_control != None:
             raise ValueError(
                 "Enzyme expression control is not required for exogenous library generation type"
             )
         if (
-            library_generation_type == "Endogenous"
+            library_generation_type == "endogenous"
             and enzyme_expression_control == None
         ):
             raise ValueError(
@@ -280,88 +304,95 @@ class PerturbationDetails(BaseModel):
 
 
 class AssayDetails(BaseModel):
-    readout_dimensionality: make_enum("ReadoutDimensionality") = Field(
+    readout_dimensionality: TermOptional = Field(
         ...,
-        description="Dimensionality of the readout (i.e Single-dimensional assay, High-dimensional assay)",
-        example="Single-dimensional assay",
+        description="Dimensionality of the readout (i.e single-dimensional assay, high-dimensional assay)",
+        example="single-dimensional assay",
     )
-    readout_type: make_enum("ReadoutType") = Field(
+    readout_type: TermOptional = Field(
         ...,
-        description="Type of the readout (e.g. Transcriptomic, Phenotypic)",
-        example="Transcriptomic",
+        description="Type of the readout (e.g. transcriptomic, phenotypic)",
+        example="transcriptomic",
     )
-    readout_technology: make_enum("ReadoutTechnology") = Field(
+    readout_technology: TermOptional = Field(
         ...,
-        description="Technology used for the readout (e.g. Population growth assay, Flow cytometry)",
-        example="Population growth assay",
+        description="Technology used for the readout (e.g. population growth assay, flow cytometry)",
+        example="population growth assay",
     )
-    method_name: make_enum("MethodName") = Field(
+    method_name: TermOptional = Field(
         ...,
         description="Name of the method used for the readout (e.g. scRNA-seq, Proliferation CRISPR screen)",
         example="Proliferation CRISPR screen",
     )
-    method_uri: Optional[HttpUrl] = None
-    sequencing_library_kit: make_enum("SequencingLibraryKits") = Field(
+    method_uri: Optional[HttpUrl|str] = None
+    sequencing_library_kit: TermOptional = Field(
         ...,
         description="Sequencing library kit used in the experiment (e.g. 10x Genomics Single Cell 3-prime v1)",
         example="10x Genomics Single Cell 3-prime v1",
     )
-    sequencing_platform: make_enum("SequencingPlatform") = Field(
+    sequencing_platform: TermOptional = Field(
         ...,
         description="Sequencing platform used in the experiment (e.g. Illumina NovaSeq 6000, ONT MinION)",
         example="Illumina NovaSeq 6000",
     )
-    sequencing_strategy: make_enum("SequencingStrategy") = Field(
+    sequencing_strategy: TermOptional = Field(
         ...,
-        description="Sequencing strategy used in the experiment (e.g. Shotgun sequencing, Barcode sequencing)",
-        example="Shotgun sequencing",
+        description="Sequencing strategy used in the experiment (e.g. shotgun sequencing, barcode sequencing)",
+        example="shotgun sequencing",
     )
-    software_counts: List[make_enum("SoftwareCounts")] = Field(
+    software_counts: TermOptional = Field(
         ...,
         description="Software used for counting the reads (e.g. CellRanger, MAGeCK)",
         example="CellRanger",
     )
-    software_analysis: List[make_enum("SoftwareAnalysis")] = Field(
+    software_analysis: TermOptional = Field(
         ...,
         description="Software used for analyzing the data (e.g. Seurat, MAGeCK)",
         example="Seurat",
     )
-    reference_genome: make_enum("ReferenceGenome") = Field(
+    reference_genome: TermOptional = Field(
         ...,
-        description="Reference genome used in the experiment (e.g. GRCh38, T2T-CHM13)",
+        description="Reference genome used in the experiment (e.g. GRCh38, GRCh37, T2T-CHM13)",
         example="GRCh38",
     )
+    
+    @field_serializer('method_uri')
+    def convert_uri_to_string(self, val):
+        if isinstance(val, Url):
+            return str(val)
+        return val
 
 
 class ModelSystemDetails(BaseModel):
-    model_system: make_enum("ModelSystem") = Field(
+    model_system: Optional[List[TermOptional]] = Field(
         ...,
-        description="Model system used in the experiment (e.g. Cell line, Primary cell, Tissue sample, Whole organism)",
-        example="Cell line",
+        description="Model system used in the experiment. Must be a term ID in CURIE format from EFO 'disease' EFO:0000408 parent",
     )
-    species: Literal["Homo Sapiens"] = Field(
-        ..., description="Species used in the experiment", example="Homo sapiens"
+    species: Literal["Homo sapiens"] = Field(
+        ...,
+        description="Species used in the experiment; must be 'Homo sapiens'",
+        example="Homo sapiens",
     )
-    tissue: Optional[List[str]] = Field(
+    tissue: Optional[List[TermRequired]] = Field(
         None,
-        description="Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON anatomical entity; child of UBERON:0001062.",
+        description="Specific biological tissue the sample is derived from. Must be a term ID in CURIE format from UBERON 'anatomical entity' UBERON:0001062 parent",
         example="UBERON:0002098",
     )
-    cell_type: Optional[List[str]] = Field(
+    cell_type: Optional[List[TermRequired]] = Field(
         None,
-        description="Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology; child of CL:0000000.",
+        description="Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology 'cell' CL:0000000 parent",
         example="CL:0000235",
     )
-    cell_line: Optional[str] = Field(
+    cell_line: Optional[List[TermRequired]] = Field(
         None,
         description="Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent",
         example="CLO:0009348",
     )
-    sex: make_enum("Sex") = Field(
-        ..., description="Model system organism's sex", example="Unknown"
+    sex: Optional[List[TermOptional]] = Field(
+        None, description="Model system organism's sex", example="female"
     )
-    developmental_stage: Optional[List[make_enum("DevelopmentalStages")]] = Field(
-        None, description="Developmental stage/age of the model system", example="Adult"
+    developmental_stage: Optional[List[TermOptional]] = Field(
+        None, description="Developmental stage/age of the model system", example="adult"
     )
     passage_number: Optional[int] = Field(
         None,
@@ -373,102 +404,6 @@ class ModelSystemDetails(BaseModel):
         ..., description="Sample quantity used in the experiment"
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def validate_enum_model_system(cls, values):
-        model_system = values["model_system"]
-
-        if model_system == "Tissue sample":
-            if values.get("tissue") is None:
-                raise ValueError("Tissue is required for tissue sample model system")
-            if values.get("cell_type") is not None:
-                raise ValueError(
-                    "Cell type is not required for tissue sample model system"
-                )
-            if values.get("cell_line") is not None:
-                raise ValueError(
-                    "Cell line name is not required for tissue sample model system"
-                )
-            if values.get("passage_number") is not None:
-                raise ValueError(
-                    "Passage number is not required for tissue sample model system"
-                )
-            if values.get("developmental_stage") is None:
-                raise ValueError(
-                    "Developmental stage is required for tissue sample model system"
-                )
-
-        if model_system == "Cell line":
-            if values.get("cell_type") is None:
-                raise ValueError("Cell type is required for cell line model system")
-            if values.get("passage_number") is None:
-                raise ValueError(
-                    "Passage number is required for cell line model system"
-                )
-            if values.get("cell_line") is None:
-                raise ValueError(
-                    "Cell line name is required for cell line model system"
-                )
-            if values.get("tissue") is not None:
-                raise ValueError("Tissue is not required for cell line model system")
-            # if values.get("developmental_stage") is not None:
-            #     raise ValueError("Developmental stage is not required for cell line model system")
-
-        if model_system == "Primary cell":
-            if values.get("cell_type") is None:
-                raise ValueError("Cell type is required for primary cell model system")
-            if values.get("passage_number") is None:
-                raise ValueError(
-                    "Passage number is required for primary cell model system"
-                )
-            if values.get("cell_line") is not None:
-                raise ValueError(
-                    "Cell line name is not required for primary cell model system"
-                )
-            if values.get("tissue") is not None:
-                raise ValueError("Tissue is not required for primary cell model system")
-            if values.get("developmental_stage") is None:
-                raise ValueError(
-                    "Developmental stage is required for primary cell model system"
-                )
-
-        if model_system == "Whole organism":
-            if values.get("cell_line") is not None:
-                raise ValueError(
-                    "Cell line name is not required for whole organism model system"
-                )
-            if values.get("tissue") is not None:
-                raise ValueError(
-                    "Tissue is not required for whole organism model system"
-                )
-            if values.get("cell_type") is not None:
-                raise ValueError(
-                    "Cell type is not required for whole organism model system"
-                )
-            if values.get("passage_number") is not None:
-                raise ValueError(
-                    "Passage number is not required for whole organism model system"
-                )
-            if values.get("developmental_stage") is None:
-                raise ValueError(
-                    "Developmental stage is required for whole organism model system"
-                )
-
-        return values
-
-
-class Disease(BaseModel):
-    term_id: str = Field(
-        ...,
-        description="Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
-        example="MONDO:0004975",
-    )
-    term_label: str = Field(
-        ...,
-        description="Label of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
-        example="Alzheimer disease",
-    )
-
 
 class AssociatedDatasets(BaseModel):
     dataset_accession: str = Field(
@@ -476,7 +411,7 @@ class AssociatedDatasets(BaseModel):
         description="Accession number of the dataset (e.g. GEO, ArrayExpress)",
         example="GSE123456",
     )
-    dataset_uri: Optional[HttpUrl] = None
+    dataset_uri: Optional[HttpUrl|str] = None
     dataset_description: str = Field(
         ...,
         description="Short description of the dataset",
@@ -485,17 +420,34 @@ class AssociatedDatasets(BaseModel):
     dataset_file_name: str = Field(
         ..., description="File name of the dataset", example="GSE123456_counts.txt"
     )
+    
+    @field_serializer('dataset_uri')
+    def convert_uri_to_string(self, val):
+        if isinstance(val, Url):
+            return str(val)
+        return val
 
 
 # Assemble the main Experiment model
 class Experiment(BaseModel):
-    study: StudyDetails
-    experiment: ExperimentDetails
-    perturbation: PerturbationDetails
-    assay: AssayDetails
-    model_system: ModelSystemDetails
-    associated_diseases: List[Disease]
-    associated_datasets: List[AssociatedDatasets]
+    study: StudyDetails = Field(..., description="Details of the study/publication")
+    experiment: ExperimentDetails = Field(..., description="Details of the experiment")
+    perturbation: PerturbationDetails = Field(
+        ..., description="Details of the perturbation"
+    )
+    assay: AssayDetails = Field(..., description="Details of the assay")
+    model_system: ModelSystemDetails = Field(
+        ..., description="Details of the model system"
+    )
+    associated_diseases: Optional[List[TermRequired]] = Field(
+        None,
+        description="Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
+        examples=["MONDO:000497 - Alzheimer disease"],
+    )
+    associated_datasets: List[AssociatedDatasets] = Field(
+        ...,
+        description="List of datasets associated with the experiment",
+    )
 
 
 # In-memory database for testing
