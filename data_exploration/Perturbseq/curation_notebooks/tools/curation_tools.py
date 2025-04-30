@@ -917,6 +917,14 @@ def standardize_ontology(
         ont_df = ont_df.rename(columns={"name": "standardized_name"}).assign(
             lower_standardized_name=lambda x: x["standardized_name"].str.lower()
             )
+        
+        # Make a version of the ontology DataFrame with pluralized names
+        ont_df_plural = ont_df.assign(
+            lower_standardized_name=lambda x: x["standardized_name"].str.lower()+"s"
+        )
+        
+        # Concatenate the original and pluralized DataFrames
+        ont_df = pd.concat([ont_df, ont_df_plural], ignore_index=True)
 
         # Create a DataFrame with unique ontology labels
         # and their lowercase versions
@@ -968,6 +976,14 @@ def standardize_ontology(
                 ]
                 .drop_duplicates()
             )
+            
+            # Make a version of the exploded DataFrame with pluralized names
+            exploded_ont_plural = (
+                exploded_ont.dropna(subset=["lower_synonyms"])
+                .assign(lower_synonyms=lambda x: x["lower_synonyms"].str.lower()+"s")
+            )
+            # Concatenate the original and pluralized DataFrames
+            exploded_ont = pd.concat([exploded_ont, exploded_ont_plural], ignore_index=True)
 
             # Left-merge the unmatched ontology labels with the exploded gene ontology
             # to find matches based on synonyms
