@@ -1,2 +1,3 @@
 .DS_Store
-.h5ad
+*.h5ad
+__pycache__
