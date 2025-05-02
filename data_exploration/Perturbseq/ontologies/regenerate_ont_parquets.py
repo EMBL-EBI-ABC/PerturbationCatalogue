@@ -7,10 +7,11 @@ from datetime import datetime
 import os
 
 # this is needed for lamindb to connect
-os.environ['PGGSSENCMODE'] = 'disable'
+os.environ["PGGSSENCMODE"] = "disable"
+
 
 def regenerate_gene_ont() -> pd.DataFrame:
-    
+
     server = BiomartServer("http://www.ensembl.org/biomart")
     server.verbose = True
     mart = server.datasets["hsapiens_gene_ensembl"]
@@ -23,6 +24,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
                 "gene_biotype",
                 "external_synonym",
                 "description",
+                "embl",
             ]
         }
     )
@@ -40,11 +42,25 @@ def regenerate_gene_ont() -> pd.DataFrame:
             "gene_biotype",
             "external_synonym",
             "description",
+            "embl",
         ],
     )
 
-    # dataframe is exploded on the synonyms
-    # collapse the synonyms on "|" to create a single row for each gene
+    # embl column is ENA identifiers
+    # treating these as gene symbol synonyms
+    # create a new df, drop external_synonyms and rename embl to external_synonyms
+    ena_as_synonym = all_genes.drop(columns="external_synonym").rename(
+        columns={"embl": "external_synonym"}
+    )
+    # add the external_synonym column to the new df
+    all_genes = (
+        pd.concat([all_genes.drop("embl", axis=1), ena_as_synonym])
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    # dataframe is exploded on synonyms
+    # collapse the synonyms on "|" to create a single row for each ENSG
     all_genes = (
         all_genes.groupby(["ensembl_gene_id", "gene_biotype", "description"])
         .agg(
@@ -53,6 +69,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
                 "hgnc_symbol": lambda x: "|".join(set(x)),
             }
         )
+        .str.strip("|")
         .reset_index()
     )
 
@@ -91,30 +108,29 @@ def regenerate_gene_ont() -> pd.DataFrame:
 
     # handle cases where there are two symbols mapping to the same ENSG
     # get the length of the symbol column
-    sym_len = (
-        all_genes["symbol"]
-        .str.split("|")
-        .apply(lambda x: len(x) if isinstance(x, list) else 0)
-    )
-    # get the second symbol for the genes with more than one symbol
-    # this will be moved to the synonyms column
-    second_sym = all_genes.iloc[sym_len[sym_len > 1].index]["symbol"].str.split(
-        "|", expand=True
-    )[1]
+    # sym_len = (
+    #     all_genes["symbol"]
+    #     .str.split("|")
+    #     .apply(lambda x: len(x) if isinstance(x, list) else 0)
+    # )
+    # # get the second symbol for the genes with more than one symbol
+    # # this will be moved to the synonyms column
+    # second_sym = all_genes.iloc[sym_len[sym_len > 1].index]["symbol"].str.split(
+    #     "|", expand=True
+    # )[1]
 
-    # add the second symbol to the synonyms column
-    all_genes.loc[sym_len[sym_len > 1].index, "synonyms"] = (
-        all_genes.loc[sym_len[sym_len > 1].index, "synonyms"]
-        + "|"
-        + all_genes.loc[sym_len[sym_len > 1].index, "symbol"].str.split("|", expand=True)[1]
-    )
+    # # add the second symbol to the synonyms column
+    # all_genes.loc[sym_len[sym_len > 1].index, "synonyms"] = (
+    #     all_genes.loc[sym_len[sym_len > 1].index, "synonyms"]
+    #     + "|"
+    #     + all_genes.loc[sym_len[sym_len > 1].index, "symbol"].str.split("|", expand=True)[1]
+    # )
 
-    # replace the symbol with the first symbol
-    all_genes.loc[sym_len[sym_len > 1].index, "symbol"] = all_genes.loc[
-        sym_len[sym_len > 1].index, "symbol"
-    ].str.split("|", expand=True)[0]
+    # # replace the symbol with the first symbol
+    # all_genes.loc[sym_len[sym_len > 1].index, "symbol"] = all_genes.loc[
+    #     sym_len[sym_len > 1].index, "symbol"
+    # ].str.split("|", expand=True)[0]
 
-    
     return all_genes
 
 
