@@ -1,0 +1,99 @@
+\documentclass[handout]{beamer}
+\usepackage{graphicx}
+
+\title{Thoughts on Perturb-Seq data analysis approaches and pipelines}
+\date{2025-04-29}
+\author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
+\institute{Perturbation Catalogue WP1/2/3 Technical Meeting}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
+    \hspace{15pt}\usebeamerfont{author in head/foot}Thoughts on Perturb-Seq data analysis approaches and pipelines
+    \hfill
+    \usebeamerfont{date in head/foot}\insertframenumber{} / 6
+    \hspace{15pt}
+  \end{beamercolorbox}%
+}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Perturb-Seq data in the context of the Perturbation Catalogue}
+    \begin{itemize}
+        \item For MAVE and CRISPR assays, we are lucky to have curated repositories (MaveDB, DepMap) with good quality, highly processed datasets.
+        \item Perturb-Seq experiments are more complex: repositories like scPerturb aggregate dozens of studies but provide mostly raw expression counts.
+        \item Interpretation and downstream analysis is left to the user, which can be quite complex.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Perturb-Seq data essence}
+    \begin{itemize}
+        \item Each observation is roughly: perturbing \emph{gene X} in a specific cell type/tissue under set conditions yields a given gene expression profile per cell.
+        \item Data characteristics:
+        \begin{itemize}
+            \item High noise levels;
+            \item Pronounced batch effects;
+            \item Large scale: thousands of cells per perturbation, multiple conditions;
+            \item Raw counts require normalization, filtering, summarization, enrichment/differential expression/etc.
+        \end{itemize}
+        \item Raw Perturb-Seq matrices need some systematic processing to become useful for Perturbation Catalogue users.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Possible processing approaches for Perturb-Seq data}
+    \begin{itemize}
+        \item Specialized pipelines exist for rigorous statistical analysis:
+        \begin{itemize}
+            \item \textbf{Python:} MIMOSCA, MAESTRO (with partial AnnData compatibility).
+            \item \textbf{R:} SCEPTRE, Mixscape.
+        \end{itemize}
+        \item Challenges:
+        \begin{itemize}
+            \item Tools are highly specialized, may require steep learning curves.
+            \item For many, limited maintenance past the initial publication.
+            \item Poor compatibility with the broader Python ecosystem for single cell analysis.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{scverse ecosystem}
+    \begin{itemize}
+        \item We are a small team and aim to deliver an MVP fast; diving into deep technical pipelines may slow progress.
+        \item \textbf{scverse} offers a unified, well maintained, rapidly evolving ecosystem for single-cell analysis.
+        \item Specifically, the \textbf{pertpy} tool is designed to handle single-cell perturbation workflows start to end.
+    \end{itemize}
+    \vspace{1em}
+    \begin{columns}
+        \column{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{pertpy.png}
+        \column{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{scverse.jpg}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Suggested processing approach for Perturb-Seq}
+    \begin{itemize}
+        \item \textbf{Input source:} scPerturb harmonised + curated to the common data schema (already in progress by Aleks).
+        \item \textbf{Proposed strategy:} compute pseudobulk differential expression (because simple and robust).
+        \item \textbf{Workflow:}
+        \begin{enumerate}
+            \item Group cells by control vs. perturbation within each cell type.
+            \item Aggregate counts to pseudobulk profiles.
+            \item Perform differential expression using \texttt{pertpy} facilities.
+        \end{enumerate}
+        \item \textbf{User-facing results:}
+        \begin{itemize}
+            \item ``Perturbing gene X induces significant changes in genes Y, Z...''
+            \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
+        \end{itemize}
+        \item Any other ideas?
+    \end{itemize}
+\end{frame}
+
+\end{document}
