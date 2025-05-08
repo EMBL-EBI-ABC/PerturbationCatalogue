@@ -1,0 +1,4 @@
+ipykernel
+matplotlib
+pandas
+scanpy
