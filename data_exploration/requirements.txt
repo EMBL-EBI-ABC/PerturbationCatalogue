@@ -1,5 +1,4 @@
 ipykernel
 matplotlib
-numpy
 pandas
 scanpy
