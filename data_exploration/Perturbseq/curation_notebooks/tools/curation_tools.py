@@ -917,14 +917,14 @@ def standardize_gene_symbols(obs_df: pd.DataFrame, column: str) -> pd.DataFrame:
 
         # Map the standardized symbols back to the original DataFrame
         obs_df = (
-            obs_df.reset_index(drop=True).merge(
+            obs_df.merge(
                 result_df_matched,
                 how="left",
                 left_on=column,
                 right_on=column
             )
-            .set_index(column)
-            # .drop(columns=[column])
+            .set_index(obs_df.index)
+            .drop(columns=[column])
             .rename(columns={"standardized_symbol": column})
         )
 
