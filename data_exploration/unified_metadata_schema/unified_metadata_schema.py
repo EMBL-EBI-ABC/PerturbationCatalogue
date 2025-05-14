@@ -17,11 +17,13 @@ from datetime import datetime
 
 # TermOptional and TermRequired are used to define terms that are linked with ontology
 # TermRequired is used when the term is already present in the ontology, hence both term_id and term_label can be defined
+
+ontology_termid_regex = r"^[a-zA-Z0-9_]+:[0-9]+(\|[a-zA-Z0-9_]+:[0-9]+)*$"
 class TermOptional(BaseModel):
     term_id: Optional[str] = Field(
         None,
         description="Ontology term ID in CURIE format",
-        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
+        pattern=ontology_termid_regex,
     )
     term_label: str = Field(
         ...,
@@ -35,7 +37,7 @@ class TermRequired(BaseModel):
     term_id: str = Field(
         ...,
         description="Ontology term ID in CURIE format",
-        pattern=r"^[a-zA-Z0-9_]+:[0-9]+$"
+        pattern=ontology_termid_regex,
     )
     term_label: str = Field(
         ...,
