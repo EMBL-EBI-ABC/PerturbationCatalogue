@@ -1,0 +1,221 @@
+{
+    "study": {
+        "title": "Pooled CRISPR screening with single-cell transcriptome readout",
+        "study_uri": "https://doi.org/10.1038/nmeth.4177",
+        "year": 2017,
+        "first_author": {
+            "first_name": "Paul",
+            "last_name": "Datlinger"
+        },
+        "last_author": {
+            "first_name": "Christoph",
+            "last_name": "Bock"
+        }
+    },
+    "experiment": {
+        "title": "Transcriptomics measurements of 5905 Jurkat cells induced with anti-CD3 and anti-CD28 antibodies",
+        "summary": "\n            Jurkat cells were transduced with a gRNA library targeting high-level\n            regulators of T cell receptor signaling and a set of transcription factors. After 10\n            days of antibiotic selection and expansion, cells were stimulated with anti-CD3 and\n            anti-CD28 antibodies or left untreated. Both conditions were analyzed using CROP-seq,\n            measuring TCR activation for each gene knockout. The dataset comprises 5,905 high-quality\n            single-cell transcriptomes with uniquely assigned gRNAs.\n            ",
+        "treatments": [
+            {
+                "term_id": "EFO:0003317|EFO:0003304",
+                "term_label": "anti-CD3 antibody|anti-CD28 antibody"
+            },
+            {
+                "term_id": "NCIT:C184729",
+                "term_label": "Untretaed Control"
+            }
+        ],
+        "timepoints": [
+            "P0DT0H0M0S"
+        ],
+        "replicates": "none",
+        "number_of_samples": 2,
+        "number_of_perturbed_cells": 5905,
+        "perturbation_type": null,
+        "perturbed_target_category": [
+            "control",
+            "protein_coding"
+        ],
+        "number_of_perturbed_targets": 33,
+        "perturbed_targets": [
+            "control",
+            "ENSG00000130522",
+            "ENSG00000112182",
+            "ENSG00000077150",
+            "ENSG00000177606",
+            "ENSG00000109320",
+            "ENSG00000171223",
+            "ENSG00000107485",
+            "ENSG00000131196",
+            "ENSG00000173039",
+            "ENSG00000134954",
+            "ENSG00000124813",
+            "ENSG00000159216",
+            "ENSG00000170345",
+            "ENSG00000104856",
+            "ENSG00000182866",
+            "ENSG00000291603",
+            "ENSG00000179388",
+            "ENSG00000120738",
+            "ENSG00000147443",
+            "ENSG00000179295",
+            "ENSG00000102967",
+            "ENSG00000123358",
+            "ENSG00000111679",
+            "ENSG00000122877",
+            "ENSG00000102908",
+            "ENSG00000135625",
+            "ENSG00000235067",
+            "ENSG00000162924",
+            "ENSG00000167508",
+            "ENSG00000072736",
+            "ENSG00000101096",
+            "ENSG00000213658"
+        ]
+    },
+    "perturbation": {
+        "library_generation_type": {
+            "term_id": "EFO:0022868",
+            "term_label": "endogenous"
+        },
+        "library_generation_method": {
+            "term_id": "EFO:0022876",
+            "term_label": "SpCas9"
+        },
+        "enzyme_delivery_method": {
+            "term_id": null,
+            "term_label": "lentiviral transduction"
+        },
+        "library_delivery_method": {
+            "term_id": null,
+            "term_label": "lentiviral transduction"
+        },
+        "enzyme_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "library_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "enzyme_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library": {
+            "library_name": "custom",
+            "accession": null,
+            "library_format": {
+                "term_id": null,
+                "term_label": "pooled"
+            },
+            "library_scope": {
+                "term_id": null,
+                "term_label": "focused"
+            },
+            "library_perturbation_type": [
+                {
+                    "term_id": null,
+                    "term_label": "knockout"
+                }
+            ],
+            "manufacturer": "Bock",
+            "lentiviral_generation": "3",
+            "grnas_per_gene": "3",
+            "total_grnas": "116",
+            "total_genes": 33,
+            "total_variants": null
+        }
+    },
+    "assay": {
+        "readout_dimensionality": {
+            "term_id": null,
+            "term_label": "high-dimensional assay"
+        },
+        "readout_type": {
+            "term_id": null,
+            "term_label": "transcriptomic"
+        },
+        "readout_technology": {
+            "term_id": null,
+            "term_label": "single-cell rna-seq"
+        },
+        "method_name": {
+            "term_id": null,
+            "term_label": "Perturb-seq"
+        },
+        "method_uri": null,
+        "sequencing_library_kit": {
+            "term_id": null,
+            "term_label": "Nextera XT"
+        },
+        "sequencing_platform": {
+            "term_id": null,
+            "term_label": "Illumina HiSeq 4000"
+        },
+        "sequencing_strategy": {
+            "term_id": null,
+            "term_label": "barcode sequencing"
+        },
+        "software_counts": {
+            "term_id": null,
+            "term_label": "Drop-seq Tools"
+        },
+        "software_analysis": {
+            "term_id": null,
+            "term_label": "Custom"
+        },
+        "reference_genome": {
+            "term_id": null,
+            "term_label": "GRCh38"
+        }
+    },
+    "model_system": {
+        "model_system": null,
+        "species": "Homo sapiens",
+        "tissue": null,
+        "cell_type": [
+            {
+                "term_id": "CL:0000084",
+                "term_label": "T cell"
+            }
+        ],
+        "cell_line": [
+            {
+                "term_id": "CLO:0007043",
+                "term_label": "JURKAT cell"
+            }
+        ],
+        "sex": null,
+        "developmental_stage": null,
+        "passage_number": null,
+        "sample_quantity": {
+            "sample_quantity_value": 5905.0,
+            "sample_quantity_unit": "cells"
+        }
+    },
+    "associated_diseases": [
+        {
+            "term_id": "MONDO:0004963",
+            "term_label": "T-cell acute lymphoblastic leukemia"
+        }
+    ],
+    "associated_datasets": [
+        {
+            "dataset_accession": "GSE92872",
+            "dataset_uri": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE92872",
+            "dataset_description": "Digital expression matrix",
+            "dataset_file_name": "GSE92872_CROP-seq_Jurkat_TCR.digital_expression.csv.gz"
+        },
+        {
+            "dataset_accession": "DatlingerBock2017.h5ad",
+            "dataset_uri": "https://zenodo.org/records/13350497/files/DatlingerBock2017.h5ad",
+            "dataset_description": "Processed .h5ad file",
+            "dataset_file_name": "DatlingerBock2017.h5ad"
+        }
+    ]
+}
