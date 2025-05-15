@@ -453,7 +453,6 @@ class Experiment(BaseModel):
 # In-memory database for testing
 pertcat_db: list[Experiment] = []
 
-
 # FastAPI instance
 app = FastAPI()
 
