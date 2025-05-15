@@ -19,16 +19,15 @@ from datetime import datetime
 # TermRequired is used when the term is already present in the ontology, hence both term_id and term_label can be defined
 
 ontology_termid_regex = r"^[a-zA-Z0-9_]+:[a-zA-Z0-9]+(\|[a-zA-Z0-9_]+:[a-zA-Z0-9]+)*$"
+
+
 class TermOptional(BaseModel):
     term_id: Optional[str] = Field(
         None,
         description="Ontology term ID in CURIE format",
         pattern=ontology_termid_regex,
     )
-    term_label: str = Field(
-        ...,
-        description="Ontology term label"
-    )
+    term_label: str = Field(..., description="Ontology term label")
 
 
 # TermOptional is used when the term is not yet present in the ontology, hence only term_label can be defined
@@ -39,10 +38,7 @@ class TermRequired(BaseModel):
         description="Ontology term ID in CURIE format",
         pattern=ontology_termid_regex,
     )
-    term_label: str = Field(
-        ...,
-        description="Ontology term label"
-    )
+    term_label: str = Field(..., description="Ontology term label")
 
 
 # Author first and last name
@@ -53,7 +49,7 @@ class Author(BaseModel):
 
 class StudyDetails(BaseModel):
     title: str = Field(..., description="Title of the study/publication")
-    study_uri: Optional[HttpUrl|str] = Field(
+    study_uri: Optional[HttpUrl | str] = Field(
         None, description="URI/link of the study/publication"
     )
     year: int = Field(
@@ -66,8 +62,8 @@ class StudyDetails(BaseModel):
         ..., description="First author of the study/publication"
     )
     last_author: Author = Field(..., description="Last author of the study/publication")
-    
-    @field_serializer('study_uri')
+
+    @field_serializer("study_uri")
     def convert_uri_to_string(self, val):
         if isinstance(val, Url):
             return str(val)
@@ -192,16 +188,17 @@ class Library(BaseModel):
         example=500,
     )
 
-
     # If library_perturbation_type is "saturation mutagenesis", then total_variants is required
     @model_validator(mode="before")
     @classmethod
     def validate_total_variants(cls, values):
-        
-        library_perturbation_type = values.get("library_perturbation_type")[0]['term_label']
+
+        library_perturbation_type = values.get("library_perturbation_type")[0][
+            "term_label"
+        ]
         total_variants = values.get("total_variants")
-        library_scope = values.get("library_scope")['term_label']
-        
+        library_scope = values.get("library_scope")["term_label"]
+
         if (
             library_perturbation_type == "saturation mutagenesis"
             and total_variants is None
@@ -270,10 +267,10 @@ class PerturbationDetails(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_delivery_method(cls, values):
-        
-        enzyme_delivery_method = values.get("enzyme_delivery_method")['term_label']
-        library_generation_type = values.get("library_generation_type")['term_label']
-        
+
+        enzyme_delivery_method = values.get("enzyme_delivery_method")["term_label"]
+        library_generation_type = values.get("library_generation_type")["term_label"]
+
         if library_generation_type == "exogenous" and enzyme_delivery_method != None:
             raise ValueError(
                 "Enzyme delivery method is not required for exogenous library generation type"
@@ -287,10 +284,12 @@ class PerturbationDetails(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def validate_enzyme_expression_control(cls, values):
-        
-        enzyme_expression_control = values.get("enzyme_expression_control")['term_label']
-        library_generation_type = values.get("library_generation_type")['term_label']
-        
+
+        enzyme_expression_control = values.get("enzyme_expression_control")[
+            "term_label"
+        ]
+        library_generation_type = values.get("library_generation_type")["term_label"]
+
         if library_generation_type == "exogenous" and enzyme_expression_control != None:
             raise ValueError(
                 "Enzyme expression control is not required for exogenous library generation type"
@@ -326,7 +325,7 @@ class AssayDetails(BaseModel):
         description="Name of the method used for the readout (e.g. scRNA-seq, Proliferation CRISPR screen)",
         example="Proliferation CRISPR screen",
     )
-    method_uri: Optional[HttpUrl|str] = None
+    method_uri: Optional[HttpUrl | str] = None
     sequencing_library_kit: TermOptional = Field(
         ...,
         description="Sequencing library kit used in the experiment (e.g. 10x Genomics Single Cell 3-prime v1)",
@@ -357,8 +356,8 @@ class AssayDetails(BaseModel):
         description="Reference genome used in the experiment (e.g. GRCh38, GRCh37, T2T-CHM13)",
         example="GRCh38",
     )
-    
-    @field_serializer('method_uri')
+
+    @field_serializer("method_uri")
     def convert_uri_to_string(self, val):
         if isinstance(val, Url):
             return str(val)
@@ -413,7 +412,7 @@ class AssociatedDatasets(BaseModel):
         description="Accession number of the dataset (e.g. GEO, ArrayExpress)",
         example="GSE123456",
     )
-    dataset_uri: Optional[HttpUrl|str] = None
+    dataset_uri: Optional[HttpUrl | str] = None
     dataset_description: str = Field(
         ...,
         description="Short description of the dataset",
@@ -422,8 +421,8 @@ class AssociatedDatasets(BaseModel):
     dataset_file_name: str = Field(
         ..., description="File name of the dataset", example="GSE123456_counts.txt"
     )
-    
-    @field_serializer('dataset_uri')
+
+    @field_serializer("dataset_uri")
     def convert_uri_to_string(self, val):
         if isinstance(val, Url):
             return str(val)
