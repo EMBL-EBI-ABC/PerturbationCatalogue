@@ -1142,8 +1142,8 @@ def standardize_var_genes(df, column = Literal['gene_symbol', 'ensembl_gene_id']
         DataFrame with standardized gene symbols and ENSG IDs
         
     Example:
-        df = standardize_genes(df, 'gene_symbol', remove_version=True, sep = '.')
-        df = standardize_genes(df, 'ensembl_gene_id')
+        df = standardize_var_genes(df, 'gene_symbol', remove_version=True, sep = '.')
+        df = standardize_var_genes(df, 'ensembl_gene_id')
     """
 
     # Check if the column is gene symbol or ENSG
