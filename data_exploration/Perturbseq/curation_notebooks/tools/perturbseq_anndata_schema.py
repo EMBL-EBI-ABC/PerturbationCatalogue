@@ -91,8 +91,8 @@ class VarSchema(DataFrameModel):
         coerce=True,
         # isin=gene_ont.symbol.values
     )
-    original_gene_symbol: Optional[Series[str]] = Field(nullable=False)
-    original_ensembl_gene_id: Optional[Series[str]] = Field(nullable=False)
+    original_gene_symbol: Optional[Series[str]] = Field(nullable=True)
+    original_ensembl_gene_id: Optional[Series[str]] = Field(nullable=True)
 
     @pa.dataframe_check
     def validate_gene_identifier_columns(cls, df):
