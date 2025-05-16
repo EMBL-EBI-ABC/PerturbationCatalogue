@@ -91,7 +91,6 @@ class ExperimentDetails(BaseModel):
         None,
         description="List of timepoints captured in the experiment. Must be in the ISO 8601 format",
         example="P1DT6H30M0S",
-        # pattern=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$"
     )
     replicates: str = Field(
         ...,
