@@ -479,9 +479,6 @@ class ElasticTable:
         )
         def update_state(search, size, page, sort_clicks, *args):
             """Updates the state store based on user interactions."""
-            ctx = dash.callback_context
-            if not ctx.triggered:
-                return dash.no_update
 
             # Split args into filter values and clear button clicks
             filterable_cols = [col for col in self.columns if col.filterable]
@@ -489,6 +486,10 @@ class ElasticTable:
             filter_values = args[:num_filterable]
             clear_clicks = args[num_filterable : num_filterable * 2]
             current_state = args[-1]  # Last argument is the current state
+
+            ctx = dash.callback_context
+            if not ctx.triggered and current_state["initial_load"] == False:
+                return dash.no_update
 
             triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
@@ -552,6 +553,9 @@ class ElasticTable:
             # If we need to update the page, update it also in the state.
             if pagination_page_update == 1:
                 current_state["page"] = pagination_page_update
+
+            # If this was initial load, reset it so that subsequently it is not treated as initial load.
+            current_state["initial_load"] = False
 
             return [current_state, *updated_filter_values, pagination_page_update]
 
