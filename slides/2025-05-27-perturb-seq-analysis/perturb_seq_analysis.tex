@@ -4,16 +4,16 @@
 \usepackage{array}
 
 \title{Thoughts on Perturb-Seq data analysis approaches and pipelines}
-\date{2025-05-25}
+\date{2025-05-27}
 \author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
-\institute{Perturbation Catalogue WP1/2/3 Technical Meeting}
+\institute{Perturbation Catalogue All-Hands Meeting}
 
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{footline}{%
   \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
     \hspace{15pt}\usebeamerfont{author in head/foot}Thoughts on Perturb-Seq data analysis approaches and pipelines
     \hfill
-    \usebeamerfont{date in head/foot}\insertframenumber{} / 9
+    \usebeamerfont{date in head/foot}\insertframenumber{} / 10
     \hspace{15pt}
   \end{beamercolorbox}%
 }
@@ -67,6 +67,7 @@
         \item We are a small team and aim to deliver an MVP fast; diving into deep technical pipelines may slow progress.
         \item \textbf{scverse} offers a unified, well maintained, rapidly evolving ecosystem for single-cell analysis.
         \item Specifically, the \textbf{pertpy} tool is designed to handle single-cell perturbation workflows start to end.
+        \item \textbf{Current status:} We are not currently using scverse approach because they are making rapid changes and several of the tools are not compatible, but we will use them in the future once they stabilise.
     \end{itemize}
     \vspace{1em}
     \begin{columns}
@@ -87,8 +88,8 @@
     \end{itemize}
     
     \vspace{1em}
-    \small
-    \begin{tabular}{@{}p{3.5cm}p{1cm}p{1.2cm}p{1.5cm}p{1.5cm}@{}}
+    \footnotesize
+    \begin{tabular}{@{}p{2.8cm}p{0.8cm}p{1cm}p{1.2cm}p{1.2cm}@{}}
         \toprule
         \textbf{Study} & \textbf{Size} & \textbf{Genes} & \textbf{Cells/Gene} & \textbf{Cell Type} \\
         \midrule
@@ -115,29 +116,29 @@
     \end{itemize}
 \end{frame}
 
+\begin{frame}{Example Volcano Plot}
+    \begin{center}
+        \includegraphics[width=0.8\linewidth]{volcano.png}
+        
+        \vspace{1em}
+        Example volcano plot showing differential expression results for one perturbation.
+    \end{center}
+\end{frame}
+
 \begin{frame}{Analysis Results and Filtering}
-    \begin{columns}
-        \column{0.6\textwidth}
+    \begin{itemize}
+        \item \textbf{User-facing results:}
         \begin{itemize}
-            \item \textbf{User-facing results:}
-            \begin{itemize}
-                \item ``Perturbing gene X induces significant changes in genes Y, Z...''
-                \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
-            \end{itemize}
-            \item \textbf{Filtering statistics:}
-            \begin{itemize}
-                \item Records written: 29,476
-                \item Records skipped: 2,803,366
-                \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
-            \end{itemize}
+            \item ``Perturbing gene X induces significant changes in genes Y, Z...''
+            \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
         \end{itemize}
-        
-        \column{0.4\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{volcano.png}
-        
-        \small Example volcano plot showing differential expression results for one perturbation.
-    \end{columns}
+        \item \textbf{Filtering statistics:}
+        \begin{itemize}
+            \item Records written: 29,476
+            \item Records skipped: 2,803,366
+            \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
+        \end{itemize}
+    \end{itemize}
 \end{frame}
 
 \begin{frame}{Next Steps and Future Directions}
