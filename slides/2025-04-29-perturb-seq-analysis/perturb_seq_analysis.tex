@@ -1,8 +1,10 @@
 \documentclass[handout]{beamer}
 \usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
 
 \title{Thoughts on Perturb-Seq data analysis approaches and pipelines}
-\date{2025-04-29}
+\date{2025-05-25}
 \author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
 \institute{Perturbation Catalogue WP1/2/3 Technical Meeting}
 
@@ -11,7 +13,7 @@
   \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
     \hspace{15pt}\usebeamerfont{author in head/foot}Thoughts on Perturb-Seq data analysis approaches and pipelines
     \hfill
-    \usebeamerfont{date in head/foot}\insertframenumber{} / 6
+    \usebeamerfont{date in head/foot}\insertframenumber{} / 9
     \hspace{15pt}
   \end{beamercolorbox}%
 }
@@ -77,22 +79,87 @@
     \end{columns}
 \end{frame}
 
-\begin{frame}{Suggested processing approach for Perturb-Seq}
+\begin{frame}{Implementation Update: Curated Studies}
     \begin{itemize}
-        \item \textbf{Input source:} scPerturb harmonised + curated to the common data schema (already in progress by Aleks).
-        \item \textbf{Proposed strategy:} compute pseudobulk differential expression (because simple and robust).
+        \item \textbf{Progress:} 4 studies from scPerturb curated by Aleks - huge thanks!
+        \item Curation process is now well established, unified, and will proceed even quicker in the future.
+        \item Currently all studies have 1 cell type per study; in the future we'll curate more and larger studies.
+    \end{itemize}
+    
+    \vspace{1em}
+    \small
+    \begin{tabular}{@{}p{3.5cm}p{1cm}p{1.2cm}p{1.5cm}p{1.5cm}@{}}
+        \toprule
+        \textbf{Study} & \textbf{Size} & \textbf{Genes} & \textbf{Cells/Gene} & \textbf{Cell Type} \\
+        \midrule
+        adamson\_2016\_pilot & 117M & 7 & ~500 & lymphoblast \\
+        adamson\_2016\_upr\_epistasis & 479M & 15 & 8-1500 & lymphoblast \\
+        adamson\_2016\_upr\_perturb\_seq & 1.8G & 90 & 250-750+ & lymphoblast \\
+        datlinger\_2017 & 132M & 32 & 50-250 & T cell \\
+        \bottomrule
+    \end{tabular}
+\end{frame}
+
+\begin{frame}{Processing approach: Pseudobulk Differential Expression}
+    \begin{itemize}
+        \item \textbf{Input source:} scPerturb harmonised + curated to the common data schema (already implemented).
+        \item \textbf{Strategy:} compute pseudobulk differential expression (simple and robust).
         \item \textbf{Workflow:}
         \begin{enumerate}
             \item Group cells by control vs. perturbation within each cell type.
-            \item Aggregate counts to pseudobulk profiles.
-            \item Perform differential expression using \texttt{pertpy} facilities.
+            \item Aggregate counts to pseudobulk profiles (mean expression per perturbation).
+            \item Perform differential expression using t-tests with multiple testing correction.
+            \item Apply filtering: adjusted p-value $<$ 0.05, |log2FC| $>$ 1.
         \end{enumerate}
-        \item \textbf{User-facing results:}
+        \item \textbf{Implementation:} Parallel processing with expression thresholding and robust statistical testing.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Analysis Results and Filtering}
+    \begin{columns}
+        \column{0.6\textwidth}
         \begin{itemize}
-            \item ``Perturbing gene X induces significant changes in genes Y, Z...''
-            \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
+            \item \textbf{User-facing results:}
+            \begin{itemize}
+                \item ``Perturbing gene X induces significant changes in genes Y, Z...''
+                \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
+            \end{itemize}
+            \item \textbf{Filtering statistics:}
+            \begin{itemize}
+                \item Records written: 29,476
+                \item Records skipped: 2,803,366
+                \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
+            \end{itemize}
         \end{itemize}
-        \item Any other ideas?
+        
+        \column{0.4\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{volcano.png}
+        
+        \small Example volcano plot showing differential expression results for one perturbation.
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Next Steps and Future Directions}
+    \begin{itemize}
+        \item \textbf{Immediate:}
+        \begin{itemize}
+            \item Continue curating additional studies from scPerturb.
+            \item Optimize processing pipeline for larger datasets.
+            \item Implement user interface for browsing results.
+        \end{itemize}
+        \item \textbf{Future enhancements:}
+        \begin{itemize}
+            \item Support for multi-cell-type studies.
+            \item Integration with pathway enrichment analysis.
+            \item Advanced visualization tools.
+            \item Cell-type-specific perturbation effects.
+        \end{itemize}
+        \item \textbf{Questions/Discussion:}
+        \begin{itemize}
+            \item Alternative analysis approaches?
+            \item Priority datasets for curation?
+        \end{itemize}
     \end{itemize}
 \end{frame}
 
