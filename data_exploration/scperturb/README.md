@@ -23,3 +23,15 @@
 * Total perturbed genes: 32
 * Number of cells per perturbed gene: 50-250ish
 * Number of cell types: 1, T cell
+
+# Data generation
+
+Once the individual *.csv files have been produced by the Jupyter notebook, unite them into one:
+
+```bash
+# 1. Create the header with 'study_id' added
+(head -n 1 $(ls *.csv | head -n 1) | sed 's/^/study_id,/' > /tmp/perturb-seq.csv)
+
+# 2. Process all files, skipping their headers and adding basename
+for f in *.csv; do bn=$(basename "$f" .csv); tail -n +2 "$f" | sed "s/^/$bn,/"; done >> /tmp/perturb-seq.csv
+```
