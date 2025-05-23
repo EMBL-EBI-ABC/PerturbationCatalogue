@@ -29,8 +29,8 @@ class ElasticTable:
         id,
         api_endpoint,
         columns,
-        details_button_name,
-        details_button_link,
+        details_button_name=None,
+        details_button_link=None,
         title=None,
         description=None,
         default_page_size=20,
@@ -330,11 +330,14 @@ class ElasticTable:
 
     def _format_button(self, urn):
         """Creates a button for the details view."""
-        return html.A(
-            self.details_button_name,
-            href=self.details_button_link(urn),
-            className="btn btn-primary mb-3",
-        )
+        if self.details_button_name:
+            return html.A(
+                self.details_button_name,
+                href=self.details_button_link(urn),
+                className="btn btn-primary mb-3",
+            )
+        else:
+            return html.Span()
 
     def _format_item(self, data, col):
         """Formats a single item in the details view."""
