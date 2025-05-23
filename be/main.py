@@ -18,6 +18,9 @@ from models import (
     DepMapData,
     DepMapSearchParams,
     DepMapAggregationResponse,
+    PerturbSeqData,
+    PerturbSeqSearchParams,
+    PerturbSeqAggregationResponse,
 )
 
 
@@ -189,4 +192,30 @@ async def depmap_details(
         index_name="depmap",
         record_id=record_id,
         data_class=DepMapData,
+    )
+
+
+# Perturb-Seq.
+
+
+@app.get("/perturb-seq/search")
+async def perturb_seq_search(
+    params: Annotated[PerturbSeqSearchParams, Query()],
+) -> ElasticResponse[PerturbSeqData, PerturbSeqAggregationResponse]:
+    return await elastic_search(
+        index_name="perturb-seq",
+        params=params,
+        data_class=PerturbSeqData,
+        aggregation_class=PerturbSeqAggregationResponse,
+    )
+
+
+@app.get("/perturb-seq/search/{record_id}")
+async def perturb_seq_details(
+    record_id: Annotated[str, Path(description="Record ID")],
+) -> ElasticDetailsResponse[PerturbSeqData]:
+    return await elastic_details(
+        index_name="perturb-seq",
+        record_id=record_id,
+        data_class=PerturbSeqData,
     )
