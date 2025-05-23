@@ -160,3 +160,26 @@ depmap = DataSource(
 )
 
 DepMapData, DepMapAggregationResponse, DepMapSearchParams = depmap.generate_classes()
+
+
+# Perturb-Seq.
+perturb_seq = DataSource(
+    name="Perturb-Seq",
+    fields=[
+        FieldDefinition(name="record_id", type=str),
+        FieldDefinition(name="study_id", type=str, filterable=True),
+        FieldDefinition(name="perturbation", type=str, filterable=True),
+        FieldDefinition(name="gene", type=str, filterable=True),
+        FieldDefinition(name="log2fc", type=float),
+        FieldDefinition(name="pvalue", type=float),
+        FieldDefinition(name="padj", type=float),
+        FieldDefinition(name="mean_control", type=float),
+        FieldDefinition(name="mean_perturbed", type=float),
+    ],
+    default_sort_field="padj",
+    default_sort_order="asc",
+)
+
+PerturbSeqData, PerturbSeqAggregationResponse, PerturbSeqSearchParams = (
+    perturb_seq.generate_classes()
+)
