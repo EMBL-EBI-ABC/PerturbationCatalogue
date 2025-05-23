@@ -3,3 +3,4 @@ matplotlib
 pandas
 pertpy
 scanpy
+scipy<1.15.0
