@@ -37,3 +37,16 @@ python3 ../elastic_load.py \
     }
   }'
 ```
+
+## Stats for the four files
+
+These are the four studies curated and currently used:
+
+```
+Processing complete:
+  Records written: 29476
+  Records skipped: 2803366
+  Filter criteria:
+    padj <= 0.05
+    log2fc < -1.0 or > 1.0
+```
