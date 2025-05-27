@@ -13,7 +13,7 @@
   \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
     \hspace{15pt}\usebeamerfont{author in head/foot}Thoughts on Perturb-Seq data analysis approaches and pipelines
     \hfill
-    \usebeamerfont{date in head/foot}\insertframenumber{} / 10
+    \usebeamerfont{date in head/foot}\insertframenumber{} / 9
     \hspace{15pt}
   \end{beamercolorbox}%
 }
@@ -115,24 +115,18 @@
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Example volcano plot}
-    \begin{center}
-        \includegraphics[width=0.8\linewidth]{volcano.png}
-        
-        \vspace{1em}
-        Example volcano plot showing differential expression results for one perturbation.
-    \end{center}
-\end{frame}
-
-\begin{frame}{Analysis results and filtering}
+\begin{frame}{Analysis results and volcano plot}
+    \textbf{Filtering statistics:}
     \begin{itemize}
-        \item \textbf{Filtering statistics:}
-        \begin{itemize}
-            \item Records written: 29,476
-            \item Records skipped: 2,803,366
-            \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
-        \end{itemize}
+        \item Records written: 29,476
+        \item Records skipped: 2,803,366
+        \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
     \end{itemize}
+
+    \vspace{1em}
+    \begin{center}
+        \includegraphics[width=0.65\linewidth]{volcano.png}
+    \end{center}
 \end{frame}
 
 \begin{frame}{Next Steps and Future Directions}
