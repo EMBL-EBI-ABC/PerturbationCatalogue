@@ -27,7 +27,7 @@ class TermOptional(BaseModel):
         description="Ontology term ID in CURIE format",
         pattern=ontology_termid_regex,
     )
-    term_label: str = Field(..., description="Ontology term label")
+    term_label: Optional[str] = Field(None, description="Ontology term label")
 
 
 # TermOptional is used when the term is not yet present in the ontology, hence only term_label can be defined
@@ -70,19 +70,10 @@ class StudyDetails(BaseModel):
         return val
 
 
-class SampleQuantity(BaseModel):
-    sample_quantity_value: float = Field(
-        ..., description="Sample quantity value", example=1.0
-    )
-    sample_quantity_unit: Literal[
-        "gram", "liter", "unit", "colony-forming unit", "cells"
-    ] = Field(..., description="Sample quantity unit", example="gram")
-
-
 class ExperimentDetails(BaseModel):
     title: str = Field(..., description="Title of the experiment")
     summary: str = Field(..., description="Short summary of the experiment")
-    treatments: Optional[List[TermRequired]] = Field(
+    treatments: Optional[List[TermOptional]] = Field(
         None,
         description="List of treatments used in the experiment, defined in ChEBI under 'chemical entity' CHEBI:24431 parent",
         example="CHEBI:28262 - dimethyl sulfoxide",
@@ -111,7 +102,7 @@ class ExperimentDetails(BaseModel):
         escription="Type of perturbation used in the experiment (e.g. CRISPRko, CRISPRi, CRISPRa, Mutagenesis)",
         example="CRISPRko",
     )
-    perturbed_target_category: List[str] = Field(
+    perturbed_target_biotype: List[str] = Field(
         ...,
         description="Biotype of the perturbed target defined by ENSEMBL (e.g. protein coding, regulatory, etc.)",
         example="protein coding",
@@ -173,12 +164,6 @@ class Library(BaseModel):
         None,
         description="Total number of gRNAs in the library. Can be a string (e.g. 'Varies')",
         example="10000",
-    )
-    total_genes: Optional[int] = Field(
-        None,
-        ge=1,
-        description="Total number of genes targeted by the library",
-        example=18000,
     )
     total_variants: Optional[int] = Field(
         None,
@@ -399,9 +384,6 @@ class ModelSystemDetails(BaseModel):
         ge=1,
         description="Passage number of cultured cells (if known)",
         example=23,
-    )
-    sample_quantity: SampleQuantity = Field(
-        ..., description="Sample quantity used in the experiment"
     )
 
 
