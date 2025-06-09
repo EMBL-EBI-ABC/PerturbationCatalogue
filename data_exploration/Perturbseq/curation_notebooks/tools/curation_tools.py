@@ -14,17 +14,16 @@ import scanpy as sc
 from gprofiler import GProfiler
 
 
-# Get the path to the ontologies directory relative to this file
-ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
-
-
 class CuratedDataset:
 
-    gene_ont = pd.read_parquet("../ontologies/genes.parquet").drop_duplicates()
-    ctype_ont = pd.read_parquet("../ontologies/cell_types.parquet").drop_duplicates()
-    cline_ont = pd.read_parquet("../ontologies/cell_lines.parquet").drop_duplicates()
-    tis_ont = pd.read_parquet("../ontologies/tissues.parquet").drop_duplicates()
-    dis_ont = pd.read_parquet("../ontologies/diseases.parquet").drop_duplicates()
+    # Get the path to the ontologies directory relative to this file
+    ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
+    
+    gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet").drop_duplicates()
+    ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
+    cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
+    tis_ont = pd.read_parquet(ONTOLOGIES_DIR / "tissues.parquet").drop_duplicates()
+    dis_ont = pd.read_parquet(ONTOLOGIES_DIR / "diseases.parquet").drop_duplicates()
 
     def __init__(
         self,
