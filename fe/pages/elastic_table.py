@@ -33,7 +33,7 @@ class ElasticTable:
         details_button_link=None,
         title=None,
         description=None,
-        default_page_size=10,
+        default_page_size=20,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.id = id
@@ -189,6 +189,12 @@ class ElasticTable:
                                 else []
                             ),
                             className="w-100 elastic-table-filter-checklist",
+                            label_style={
+                                "maxWidth": "100%",
+                                # "overflow": "hidden",
+                                # "whiteSpace": "nowrap",
+                                # "textOverflow": "ellipsis",
+                            },
                         ),
                         dbc.Button(
                             "Clear",
