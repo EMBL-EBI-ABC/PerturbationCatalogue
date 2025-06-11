@@ -33,7 +33,7 @@ class ElasticTable:
         details_button_link=None,
         title=None,
         description=None,
-        default_page_size=20,
+        default_page_size=10,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
         self.id = id
