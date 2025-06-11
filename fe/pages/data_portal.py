@@ -227,6 +227,7 @@ depmap_table = ElasticTable(
             ),
         ]
     ),
+    default_page_size=10
 )
 
 dash.register_page(
@@ -380,12 +381,14 @@ perturb_seq_table = ElasticTable(
         Column(
             field_name="record_id",
             display_name="Record ID",
-            display_details="title",
-            display_table=lambda record_id: html.A(
-                record_id,
-                href=f"/data-portal/perturb-seq/{record_id}",
-                className="text-decoration-none text-nowrap",
-            ),
+            # display_details="title",
+            # display_table=lambda record_id: html.A(
+            #     record_id,
+            #     href=f"/data-portal/perturb-seq/{record_id}",
+            #     className="text-decoration-none text-nowrap",
+            # ),
+            display_table=False,
+            display_details=False,
         ),
     ],
     title="Perturb-Seq",
