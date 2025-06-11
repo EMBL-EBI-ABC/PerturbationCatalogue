@@ -19,7 +19,19 @@ Column = namedtuple(
         "sortable",
         "default_sort",
     ],
-    defaults=[None, None, lambda x: x, None, False, False, False],
+    defaults=[
+        None,
+        None,        
+        lambda x: (
+            f"{x:.2e}" if isinstance(x, float) and not x.is_integer() and abs(x) < 0.01 # Use scientific notation for small floats
+            else f"{x:.3f}" if isinstance(x, float) and not x.is_integer() # Use fixed-point notation for larger floats
+            else x # Keep other types as is
+        ),
+        None,
+        False,
+        False,
+        False,
+    ],
 )
 
 
