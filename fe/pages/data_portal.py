@@ -23,7 +23,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
     # Create elements for MaveDB genes.
-    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
+    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
         html.Span(
             [
                 html.B(
@@ -36,7 +36,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
                     if display_links
                     else g["name"]
                 ),
-                html.Span(" "),
+                html.Span(" "),
             ]
         )
         for g in sorted(
@@ -59,15 +59,15 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
             html.P(mavedb_elements, style={"marginBottom": "5px"}),
             html.Div(
                 [
-                    html.I("Other genes: "),
+                    html.I("Other genes: "),
                     html.Span(
-                        " ".join([g["name"] for g in other_genes_always_displayed])
-                        + " ",
+                        " ".join([g["name"] for g in other_genes_always_displayed])
+                        + " ",
                         className="text-muted",
                         style={"display": "inline"},
                     ),
                     html.Span(
-                        " ".join([g["name"] for g in other_genes_toggled]) + " ",
+                        " ".join([g["name"] for g in other_genes_toggled]) + " ",
                         className="text-muted",
                         style={"display": "none"},
                         id={"type": "other-genes-list", "index": str(id(data))},
@@ -321,6 +321,84 @@ dash.register_page(
 )
 
 
+# Perturb-Seq.
+
+perturb_seq_table = ElasticTable(
+    id="perturb-seq",
+    api_endpoint=f"{api_base_url}/perturb-seq/search",
+    columns=[
+        Column(
+            field_name="study_id",
+            display_name="Study ID",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="perturbation",
+            display_name="Perturbation",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="gene",
+            display_name="Gene",
+            display_details="text",
+            filterable=True,
+        ),
+        Column(
+            field_name="log2fc",
+            display_name="Log2 Fold Change",
+            display_details="text",
+            sortable=True,
+        ),
+        Column(
+            field_name="pvalue",
+            display_name="P-value",
+            display_details="text",
+            sortable=True,
+        ),
+        Column(
+            field_name="padj",
+            display_name="Adjusted P-value",
+            display_details="text",
+            sortable=True,
+            default_sort="asc",
+        ),
+        Column(
+            field_name="mean_control",
+            display_name="Mean Control",
+            display_details="text",
+            sortable=True,
+        ),
+        Column(
+            field_name="mean_perturbed",
+            display_name="Mean Perturbed",
+            display_details="text",
+            sortable=True,
+        ),
+        # Special column: record_id, to serve as the primary key and link construction.
+        Column(
+            field_name="record_id",
+            display_name="Record ID",
+            display_details="title",
+            display_table=lambda record_id: html.A(
+                record_id,
+                href=f"/data-portal/perturb-seq/{record_id}",
+                className="text-decoration-none text-nowrap",
+            ),
+        ),
+    ],
+    title="Perturb-Seq",
+    description="Perturb-Seq studies are curated and pseudobulk differential expression is computed against controls. Only genes with a significant change are displayed: adjusted p-value <= 0.05 and log2fc is either <= -1 or >= 1",
+)
+
+dash.register_page(
+    "data-portal-details-perturb-seq",
+    path_template="/data-portal/perturb-seq/<record_id>",
+    layout=perturb_seq_table.details_layout,
+)
+
+
 # State serialisation and deserialisation.
 
 
@@ -346,6 +424,9 @@ def complete_layout(**kwargs):
         [
             depmap_table.table_layout(deserialise_state(kwargs.get("depmap"))),
             mavedb_table.table_layout(deserialise_state(kwargs.get("mavedb"))),
+            perturb_seq_table.table_layout(
+                deserialise_state(kwargs.get("perturb_seq"))
+            ),
         ]
     )
 
@@ -367,6 +448,7 @@ dash.register_page(
 def register_callbacks(app):
     mavedb_table.register_callbacks(app)
     depmap_table.register_callbacks(app)
+    perturb_seq_table.register_callbacks(app)
 
     @callback(
         Output("elastic-table-mavedb-search", "value", allow_duplicate=True),
@@ -431,9 +513,10 @@ def register_callbacks(app):
         Output("url", "search"),
         Input("elastic-table-depmap-state", "data"),
         Input("elastic-table-mavedb-state", "data"),
+        Input("elastic-table-perturb-seq-state", "data"),
         prevent_initial_call=False,
     )
-    def update_url_with_state(depmap_data, mavedb_data):
+    def update_url_with_state(depmap_data, mavedb_data, perturb_seq_data):
         base_path = "/data-portal"
-        query_string = f"?depmap={serialise_state(depmap_data)}&mavedb={serialise_state(mavedb_data)}"
+        query_string = f"?depmap={serialise_state(depmap_data)}&mavedb={serialise_state(mavedb_data)}&perturb_seq={serialise_state(perturb_seq_data)}"
         return query_string

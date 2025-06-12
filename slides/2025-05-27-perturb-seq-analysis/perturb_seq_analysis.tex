@@ -1,17 +1,19 @@
 \documentclass[handout]{beamer}
 \usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
 
-\title{Thoughts on Perturb-Seq data analysis approaches and pipelines}
-\date{2025-04-29}
+\title{Update on Perturb-Seq data analysis and implementation}
+\date{2025-05-27}
 \author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
-\institute{Perturbation Catalogue WP1/2/3 Technical Meeting}
+\institute{Perturbation Catalogue All-Hands Meeting}
 
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{footline}{%
   \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
     \hspace{15pt}\usebeamerfont{author in head/foot}Thoughts on Perturb-Seq data analysis approaches and pipelines
     \hfill
-    \usebeamerfont{date in head/foot}\insertframenumber{} / 6
+    \usebeamerfont{date in head/foot}\insertframenumber{} / 9
     \hspace{15pt}
   \end{beamercolorbox}%
 }
@@ -25,8 +27,8 @@
 \begin{frame}{Perturb-Seq data in the context of the Perturbation Catalogue}
     \begin{itemize}
         \item For MAVE and CRISPR assays, we are lucky to have curated repositories (MaveDB, DepMap) with good quality, highly processed datasets.
-        \item Perturb-Seq experiments are more complex: repositories like scPerturb aggregate dozens of studies but provide mostly raw expression counts.
-        \item Interpretation and downstream analysis is left to the user, which can be quite complex.
+        \item Perturb-Seq experiments are more complex: repositories like scPerturb aggregate dozens of studies but provide mostly raw data (expression counts).
+        \item Interpretation and downstream analysis can be quite complex.
     \end{itemize}
 \end{frame}
 
@@ -65,6 +67,7 @@
         \item We are a small team and aim to deliver an MVP fast; diving into deep technical pipelines may slow progress.
         \item \textbf{scverse} offers a unified, well maintained, rapidly evolving ecosystem for single-cell analysis.
         \item Specifically, the \textbf{pertpy} tool is designed to handle single-cell perturbation workflows start to end.
+        \item \textbf{Note:} We are not currently using scverse approach because they are making rapid changes and several of the tools are not compatible, but we will use them in the future once they stabilise.
     \end{itemize}
     \vspace{1em}
     \begin{columns}
@@ -77,22 +80,75 @@
     \end{columns}
 \end{frame}
 
-\begin{frame}{Suggested processing approach for Perturb-Seq}
+\begin{frame}{Implementation update: curated studies}
     \begin{itemize}
-        \item \textbf{Input source:} scPerturb harmonised + curated to the common data schema (already in progress by Aleks).
-        \item \textbf{Proposed strategy:} compute pseudobulk differential expression (because simple and robust).
+        \item \textbf{Progress:} 4 studies from scPerturb curated by Aleks (huge thanks!)
+        \item Curation process is now well established, unified, and will proceed even quicker in the future.
+        \item All currently processed studies have 1 cell type per study; in the future we'll curate more and larger studies.
+    \end{itemize}
+    
+    \vspace{0.5em}
+    \fontsize{8}{9}\selectfont
+    \begin{tabular}{@{}p{4.0cm}p{1cm}p{1.0cm}p{1.5cm}p{1.5cm}@{}}
+        \toprule
+        \textbf{Study} & \textbf{Size} & \textbf{Genes} & \textbf{Cells/Gene} & \textbf{Cell Type} \\
+        \midrule
+        adamson\_2016\_pilot & 117M & 7 & 500 & lymphoblast \\
+        adamson\_2016\_upr\_epistasis & 479M & 15 & 8-1500 & lymphoblast \\
+        adamson\_2016\_upr\_perturb\_seq & 1.8G & 90 & 250-750 & lymphoblast \\
+        datlinger\_2017 & 132M & 32 & 50-250 & T cell \\
+        \bottomrule
+    \end{tabular}
+\end{frame}
+
+\begin{frame}{Processing approach: pseudobulk differential expression}
+    \begin{itemize}
+        \item \textbf{Input source:} scPerturb harmonised + curated to the common data schema.
+        \item \textbf{Strategy:} simple pseudobulk differential expression.
         \item \textbf{Workflow:}
         \begin{enumerate}
             \item Group cells by control vs. perturbation within each cell type.
-            \item Aggregate counts to pseudobulk profiles.
-            \item Perform differential expression using \texttt{pertpy} facilities.
+            \item Compute log$_2$FC using mean expressions.
+            \item Perform differential expression using t-tests with multiple testing correction on normalised count distributions.
+            \item Apply filtering: adjusted $p$-value $<$ 0.05, $\lvert$log$_2$FC$\rvert > 1$.
         \end{enumerate}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Analysis results and volcano plot}
+    \textbf{Filtering statistics:}
+    \begin{itemize}
+        \item Records written: 29,476
+        \item Records skipped: 2,803,366
+        \item Filter criteria: padj $\leq$ 0.05, |log2FC| $\geq$ 1.0
+    \end{itemize}
+
+    \vspace{1em}
+    \begin{center}
+        \includegraphics[width=0.65\linewidth]{volcano.png}
+    \end{center}
+\end{frame}
+
+\begin{frame}{Next Steps and Future Directions}
+    \begin{itemize}
+        \item \textbf{Immediate:}
+        \begin{itemize}
+            \item Continue curating additional studies from scPerturb.
+            \item Optimize processing pipeline for larger datasets.
+            \item Implement user interface for browsing results.
+        \end{itemize}
         \item \textbf{User-facing results:}
         \begin{itemize}
             \item ``Perturbing gene X induces significant changes in genes Y, Z...''
             \item ``Expression of gene A is most strongly altered by perturbations in genes B, C...''
         \end{itemize}
-        \item Any other ideas?
+        \item \textbf{Future enhancements:}
+        \begin{itemize}
+            \item Support for multi-cell-type studies.
+            \item Integration with pathway enrichment analysis.
+            \item Advanced visualisation tools.
+            \item Cell-type-specific perturbation effects.
+        \end{itemize}
     \end{itemize}
 \end{frame}
 
