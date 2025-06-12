@@ -8,6 +8,15 @@ from dash import html, dcc, Output, Input, State
 import dash_bootstrap_components as dbc
 import requests
 
+def format_float(value):
+    """Formats a float value for display in the table."""
+    if isinstance(value, float) and not value.is_integer():
+        if abs(value) < 0.01:
+            return f"{value:.2e}"  # Use scientific notation for small floats
+        else:
+            return f"{value:.3f}"  # Use fixed-point notation for larger floats
+    return value  # Keep other types as is
+
 Column = namedtuple(
     "ColumnDefinition",
     [
@@ -19,7 +28,15 @@ Column = namedtuple(
         "sortable",
         "default_sort",
     ],
-    defaults=[None, None, lambda x: x, None, False, False, False],
+    defaults=[
+        None,
+        None,        
+        format_float,
+        None,
+        False,
+        False,
+        False,
+    ],
 )
 
 
@@ -189,6 +206,9 @@ class ElasticTable:
                                 else []
                             ),
                             className="w-100 elastic-table-filter-checklist",
+                            label_style={
+                                "maxWidth": "100%",
+                            },
                         ),
                         dbc.Button(
                             "Clear",
