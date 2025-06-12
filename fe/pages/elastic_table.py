@@ -203,9 +203,6 @@ class ElasticTable:
                             className="w-100 elastic-table-filter-checklist",
                             label_style={
                                 "maxWidth": "100%",
-                                # "overflow": "hidden",
-                                # "whiteSpace": "nowrap",
-                                # "textOverflow": "ellipsis",
                             },
                         ),
                         dbc.Button(
