@@ -106,31 +106,6 @@ def regenerate_gene_ont() -> pd.DataFrame:
     # replace empty strings with None
     all_genes = all_genes.replace("", None)
 
-    # handle cases where there are two symbols mapping to the same ENSG
-    # get the length of the symbol column
-    # sym_len = (
-    #     all_genes["symbol"]
-    #     .str.split("|")
-    #     .apply(lambda x: len(x) if isinstance(x, list) else 0)
-    # )
-    # # get the second symbol for the genes with more than one symbol
-    # # this will be moved to the synonyms column
-    # second_sym = all_genes.iloc[sym_len[sym_len > 1].index]["symbol"].str.split(
-    #     "|", expand=True
-    # )[1]
-
-    # # add the second symbol to the synonyms column
-    # all_genes.loc[sym_len[sym_len > 1].index, "synonyms"] = (
-    #     all_genes.loc[sym_len[sym_len > 1].index, "synonyms"]
-    #     + "|"
-    #     + all_genes.loc[sym_len[sym_len > 1].index, "symbol"].str.split("|", expand=True)[1]
-    # )
-
-    # # replace the symbol with the first symbol
-    # all_genes.loc[sym_len[sym_len > 1].index, "symbol"] = all_genes.loc[
-    #     sym_len[sym_len > 1].index, "symbol"
-    # ].str.split("|", expand=True)[0]
-
     return all_genes
 
 
