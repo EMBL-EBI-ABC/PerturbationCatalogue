@@ -1,10 +1,13 @@
 import pandas as pd
 import os
-from neofuzz import char_ngram_process, Process
+import requests
 from typing import Optional, Literal
 from libchebipy import search
 from pathlib import Path
-import logging
+import scanpy as sc
+from Bio import SeqIO
+from io import StringIO
+from gprofiler import GProfiler
 
 # Get the path to the ontologies directory relative to this file
 ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
@@ -846,28 +849,67 @@ def standardize_gene_symbols(obs_df: pd.DataFrame, column: str) -> pd.DataFrame:
                 [result_df_matched, result_df_synonyms_matched], ignore_index=True
             )
 
-            # If there are still unmatched gene symbols, keep them as is
-            # and assign them to the standardized_symbol column
-            if len(result_df_unmatched) > 0:
-                print(
-                    f"{len(result_df_unmatched)} gene symbols could not be mapped to standardized symbols using synonyms\n{'-' * 50}"
-                )
-                print("These genes will be kept as is in the final DataFrame")
-                print("Unmatched gene symbols:", result_df_unmatched[column].unique())
+        # If there are still unmatched gene symbols, try to match them against the ENA identifiers using gprofiler
+        if len(result_df_unmatched) > 0:
+            print(f"Trying to match the unmatched gene symbols against ENA identifiers\n{'-' * 50}")
 
-                # Assign the unmatched gene symbols to the standardized_symbol column
-                result_df_unmatched = result_df_unmatched.assign(
-                    standardized_symbol=result_df_unmatched[column]
-                ).drop(columns=["lower_symbol"])
+            gp = GProfiler(return_dataframe=True)
+            converted = gp.convert(organism='hsapiens',
+                        query=result_df_unmatched['gene_symbol'].to_list(),
+                        target_namespace='ENSG')
 
-                # Add the unmatched gene symbols to the result DataFrame
-                result_df_matched = pd.concat(
-                    [result_df_matched, result_df_unmatched], ignore_index=True
-                )
-            else:
-                print(
-                    f"All unmatched gene symbols have been mapped to standardized symbols using synonyms\n{'-' * 50}"
-                )
+            converted = converted[converted['n_converted'] == 1]
+            converted = converted[converted['name'] != 'None']
+            converted = converted[["incoming", "name"]].rename(
+                columns={"incoming": "gene_symbol", "name": "standardized_symbol"}
+            )
+            
+            result_df_converted = result_df_unmatched.drop(columns=['standardized_symbol']).merge(
+                converted,
+                how="left",
+                left_on="gene_symbol",
+                right_on="gene_symbol",
+                indicator=True,
+            ).drop_duplicates(subset="lower_symbol")#.drop(columns=['lower_symbol'])
+            
+            # Separate matched and unmatched gene symbols
+            result_df_converted_matched = result_df_converted[
+                result_df_converted["_merge"] == "both"
+            ].drop(columns=["_merge"])
+            # update the unmatched dataframe
+            result_df_unmatched = result_df_converted[
+                result_df_converted["_merge"] != "both"
+            ].drop(columns=["_merge"])
+            print(
+                f"{len(result_df_converted_matched)} gene symbols mapped to standardized symbols using ENA identifiers\n{'-' * 50}"
+            )
+            # Add the matched synonyms to the result DataFrame
+            result_df_matched = pd.concat(
+                [result_df_matched, result_df_converted_matched], ignore_index=True
+            )
+
+        # If there are still unmatched gene symbols, keep them as is
+        # and assign them to the standardized_symbol column
+        if len(result_df_unmatched) > 0:
+            print(
+                f"{len(result_df_unmatched)} gene symbols could not be mapped to standardized symbols using ENA identifiers\n{'-' * 50}"
+            )
+            print("Unmatched genes will be kept as is in the final DataFrame")
+            print("Unmatched gene symbols:", result_df_unmatched[column].unique())
+
+            # Assign the unmatched gene symbols to the standardized_symbol column
+            result_df_unmatched = result_df_unmatched.assign(
+                standardized_symbol=result_df_unmatched[column]
+            )
+
+            # Add the unmatched gene symbols to the result DataFrame
+            result_df_matched = pd.concat(
+                [result_df_matched, result_df_unmatched], ignore_index=True
+            )
+        else:
+            print(
+                f"All unmatched gene symbols have been mapped to standardized symbols using synonyms\n{'-' * 50}"
+            )
 
         result_df_matched = result_df_matched.drop(columns=["lower_symbol"])
 
@@ -879,7 +921,7 @@ def standardize_gene_symbols(obs_df: pd.DataFrame, column: str) -> pd.DataFrame:
                 result_df_matched,
                 how="left",
                 left_on=column,
-                right_on=column,
+                right_on=column
             )
             .set_index(obs_df.index)
             .drop(columns=[column])
@@ -915,7 +957,17 @@ def standardize_ontology(
     
     try:
         # Rename the original name column to standardized_name
-        ont_df = ont_df.rename(columns={"name": "standardized_name"})
+        ont_df = ont_df.rename(columns={"name": "standardized_name"}).assign(
+            lower_standardized_name=lambda x: x["standardized_name"].str.lower()
+            )
+        
+        # Make a version of the ontology DataFrame with pluralized names
+        ont_df_plural = ont_df.assign(
+            lower_standardized_name=lambda x: x["standardized_name"].str.lower()+"s"
+        )
+        
+        # Concatenate the original and pluralized DataFrames
+        ont_df = pd.concat([ont_df, ont_df_plural], ignore_index=True)
 
         # Create a DataFrame with unique ontology labels
         # and their lowercase versions
@@ -928,19 +980,19 @@ def standardize_ontology(
 
         # Left-merge with gene ontology to find direct matches with standardized names
         result_df = result_df.merge(
-            ont_df[["standardized_name"]],
+            ont_df[["lower_standardized_name", "standardized_name"]],
             how="left",
             left_on="lower_name",
-            right_on="standardized_name",
+            right_on="lower_standardized_name",
             indicator=True,
         ).drop_duplicates(subset="lower_name")
 
         # Separate matched and unmatched ontology labels
         result_df_matched = result_df[result_df["_merge"] == "both"].drop(
-            columns=["_merge"]
+            columns=["_merge", "lower_standardized_name"]
         )
         result_df_unmatched = result_df[result_df["_merge"] != "both"].drop(
-            columns=["_merge", "standardized_name"]
+            columns=["_merge", "standardized_name", "lower_standardized_name"]
         )
 
         print(
@@ -967,6 +1019,14 @@ def standardize_ontology(
                 ]
                 .drop_duplicates()
             )
+            
+            # Make a version of the exploded DataFrame with pluralized names
+            exploded_ont_plural = (
+                exploded_ont.dropna(subset=["lower_synonyms"])
+                .assign(lower_synonyms=lambda x: x["lower_synonyms"].str.lower()+"s")
+            )
+            # Concatenate the original and pluralized DataFrames
+            exploded_ont = pd.concat([exploded_ont, exploded_ont_plural], ignore_index=True)
 
             # Left-merge the unmatched ontology labels with the exploded gene ontology
             # to find matches based on synonyms
@@ -1046,5 +1106,111 @@ def standardize_ontology(
     except Exception as e:
         print(f"Error standardizing ontology terms: {str(e)}")
         raise
-        logging.error(f"Error standardizing cell types: {str(e)}")
-        raise
+
+def remove_version_from_genes(df, column, sep = "."):
+    """
+    Remove version numbers from gene symbols or ENSG IDs in a DataFrame column.
+    Args:
+        df: Input DataFrame containing gene symbols/ENSG IDs
+        column: Name of column containing gene symbols/ENSG IDs
+        sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
+    Returns:
+        DataFrame with version numbers removed from gene symbols/ENSG IDs
+    """
+    # Check if the column exists in the DataFrame
+    if column not in df.columns:
+        raise ValueError(f"Column {column} not found in DataFrame")
+    # Check if the column is empty
+    if df[column].empty:
+        raise ValueError(f"Column {column} is empty")
+
+    # Remove version numbers from gene symbols/ENSG IDs
+    df[column] = df[column].str.split(sep).str[0]
+
+    return df
+
+
+def standardize_var_genes(df, column = Literal['gene_symbol', 'ensembl_gene_id'], remove_version = False, sep = '.'):
+    """
+    Standardize gene symbols or ENSG in a DataFrame column using gprofiler.
+    Args:
+        obs_df: Input DataFrame containing gene symbol/ENSG IDs
+        column: Name of column containing gene symbols/ENSG IDs
+        remove_version: Boolean indicating whether to remove version numbers from gene symbols/ENSG IDs (default is False)
+        sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
+    Returns:
+        DataFrame with standardized gene symbols and ENSG IDs
+        
+    Example:
+        df = standardize_var_genes(df, 'gene_symbol', remove_version=True, sep = '.')
+        df = standardize_var_genes(df, 'ensembl_gene_id')
+    """
+
+    # Check if the column is gene symbol or ENSG
+    if column not in ["gene_symbol", "ensembl_gene_id"]:
+        raise ValueError("Column must be either 'gene_symbol' or 'ensembl_gene_id'")
+    # Check if the column exists in the DataFrame
+    if column not in df.columns:
+        raise ValueError(f"Column {column} not found in DataFrame")
+    # Check if the column is empty
+    if df[column].empty:
+        raise ValueError(f"Column {column} is empty")
+
+    # keep original query column (will be added back at the end of the processing)
+    orig_column = df[column]
+    orig_column_name = f"original_{column}"
+    # rename df index to avoid naming conflicts
+    df.index = df.index.rename('index')
+
+    # Remove version numbers from gene symbols/ENSG IDs
+    if remove_version:
+        df = remove_version_from_genes(df, column, sep)
+
+    # Convert the gene symbols/ENSG IDs to the target namespace (ENSG)
+    gp = GProfiler(return_dataframe=True)
+    converted = gp.convert(organism='hsapiens',
+                            query=df[column].to_list(),
+                            target_namespace='ENSG')
+
+    # Filter the converted DataFrame to keep only the rows with a single conversion
+    converted = (
+        converted[converted["n_converted"] == 1]
+        .drop(columns=["n_incoming", "n_converted"])
+    )
+
+    matched = converted[converted['converted'] != 'None']
+
+    print(f"Converted {len(matched)}/{len(converted)} gene symbols/ENSG IDs to standardized gene symbols/ENSG IDs\n{'-' * 50}")
+    
+    df[f"original_{column}"] = orig_column
+
+    # merge the converted DataFrame with the original DataFrame
+    converted = (
+        df.merge(
+            converted[["incoming", "converted", "name"]],
+            how="left",
+            left_on=column,
+            right_on="incoming",
+            indicator=True,
+        ).drop(columns=[column])
+        .drop_duplicates(subset=[orig_column_name])
+    )
+
+    # ensure the length of the converted DataFrame is the same as the original DataFrame
+    if len(converted) != len(df):
+        raise ValueError(f"Length of converted DataFrame ({len(converted)}) does not match length of original DataFrame ({len(df)})")
+
+    # add the original index
+    converted.index = df.index
+
+    # rename the columns
+    new_colnames_map = {"converted": "ensembl_gene_id", "name": "gene_symbol"}
+    converted = converted.rename(columns=new_colnames_map)
+
+    # keep only the relevant columns
+    converted = converted[list(new_colnames_map.values()) + [orig_column_name]]
+    
+    # replace "None" with None
+    converted = converted.replace("None", None)
+
+    return converted

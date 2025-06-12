@@ -1,4 +1,5 @@
 import pandas as pd
+import pandera as pa
 from pandera import Field, DataFrameModel
 from pandera.typing import Series, Index
 from typing import Optional
@@ -73,24 +74,36 @@ class ObsSchema(DataFrameModel):
 
 # adata.var schema
 class VarSchema(DataFrameModel):
-    ensembl_gene_id: Index[str] = Field(
+    index: Index[str] = Field(
         nullable=False,
         unique=True,
-        str_startswith=("ENSG", "control"),
+        # str_startswith=("ENSG", "control"),
         # isin=gene_ont.ensembl_gene_id.values,
         check_name=True,
     )
     ensembl_gene_id: Series[str] = Field(
-        nullable=False,
-        unique=True,
+        nullable=True,
         str_startswith=("ENSG", "control"),
         # isin=gene_ont.ensembl_gene_id.values
     )
-    symbol: Series[str] = Field(
+    gene_symbol: Series[str] = Field(
         nullable=True,
         coerce=True,
         # isin=gene_ont.symbol.values
     )
+    original_gene_symbol: Optional[Series[str]] = Field(nullable=True)
+    original_ensembl_gene_id: Optional[Series[str]] = Field(nullable=True)
+
+    @pa.dataframe_check
+    def validate_gene_identifier_columns(cls, df):
+        """
+        Validates the presence of gene identifier columns in the DataFrame.
+        Exactly one of 'original_ensembl_gene_id' or 'original_gene_symbol' must be present.
+        """
+        columns = set(df.columns)
+        has_ensembl = "original_ensembl_gene_id" in columns
+        has_symbol = "original_gene_symbol" in columns
+        return (has_ensembl != has_symbol)  # True if exactly one is present
 
     class Config:
         strict = "filter"
