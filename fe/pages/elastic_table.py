@@ -222,6 +222,32 @@ class ElasticTable:
             )
             for i, col in enumerate([col for col in self.columns if col.filterable])
         ]
+        
+        # Prepare displayed columns for the table component
+        displayed_columns = [
+            dbc.Card(
+                dbc.CardBody(
+                    [
+                        html.H5('Displayed Columns'),
+                        dbc.Checklist(
+                            id=f"{self.dom_prefix}-displayed-columns",
+                            options=[
+                                {"label": col.display_name, "value": col.field_name}
+                                for col in self._get_table_columns()
+                            ],
+                            value=[
+                                col.field_name
+                                for col in self._get_table_columns()
+                                if col.display_table
+                            ],
+                            className="w-100 elastic-table-display-checklist",
+                            inline=True,
+                            switch=True
+                        ),
+                    ]
+                )
+            )
+        ]
 
         # Table title block
         title_block = []
@@ -259,6 +285,13 @@ class ElasticTable:
                                     value=initial_state["search"],
                                     className="mb-3 w-100",
                                 ),
+                                # Displayed columns selection
+                                dbc.Row([
+                                    dbc.Col(
+                                        displayed_columns
+                                    )
+                                ]),
+  
                                 # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
