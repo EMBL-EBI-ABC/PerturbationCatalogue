@@ -225,30 +225,6 @@ class ElasticTable:
         
         # Prepare displayed columns for the table component
         displayed_columns = [
-            dbc.Card(
-                dbc.CardBody(
-                    [
-                        html.H5('Displayed Columns'),
-                        dbc.Checklist(
-                            id=f"{self.dom_prefix}-displayed-columns",
-                            options=[
-                                {"label": col.display_name, "value": col.field_name}
-                                for col in self._get_table_columns()
-                            ],
-                            value=[
-                                col.field_name
-                                for col in self._get_table_columns()
-                                if col.display_table
-                            ],
-                            className="w-100 elastic-table-display-checklist",
-                            inline=True,
-                            switch=True
-                        ),
-                    ]
-                )
-            )
-        ]
-        displayed_columns = [
             dbc.Accordion(
                 dbc.AccordionItem(
                     [
@@ -268,7 +244,7 @@ class ElasticTable:
                             switch=True
                         ),
                     ],
-                    title="Column selection"
+                    title=html.H5("Select columns", className="mb-0"),
                 ),
                 start_collapsed=True
             )
