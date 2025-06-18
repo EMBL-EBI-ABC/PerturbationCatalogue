@@ -128,7 +128,7 @@ class ElasticTable:
             },
         )
 
-    def _create_table(self, data, sort_data):
+    def _create_table(self, data, sort_data, displayed_columns):
         """Creates a Dash Bootstrap table from the provided data."""
         if not data:
             return html.Div("No data found.")
@@ -140,6 +140,7 @@ class ElasticTable:
                         [
                             self._create_table_header(col, sort_data)
                             for col in self._get_table_columns()
+                            if col.field_name in displayed_columns
                         ]
                     )
                 ),
@@ -151,6 +152,7 @@ class ElasticTable:
                                     col.display_table(row.get(col.field_name, "N/A"))
                                 )
                                 for col in self._get_table_columns()
+                                if col.field_name in displayed_columns
                             ]
                         )
                         for row in data
@@ -187,6 +189,11 @@ class ElasticTable:
                 "filters": [
                     [] for _ in [col for col in self.columns if col.filterable]
                 ],
+                "displayed_columns": {
+                    col.field_name: col.display_name
+                    for col in self._get_table_columns()
+                    if col.display_table
+                },
                 "initial_load": True,
             }
 
@@ -222,7 +229,7 @@ class ElasticTable:
             )
             for i, col in enumerate([col for col in self.columns if col.filterable])
         ]
-        
+
         # Prepare displayed columns for the table component
         displayed_columns = [
             dbc.Accordion(
@@ -231,13 +238,11 @@ class ElasticTable:
                         dbc.Checklist(
                             id=f"{self.dom_prefix}-displayed-columns",
                             options=[
-                                {"label": col.display_name, "value": col.field_name}
-                                for col in self._get_table_columns()
+                                {"value": k, "label": v}
+                                for k,v in initial_state["displayed_columns"].items()
                             ],
                             value=[
-                                col.field_name
-                                for col in self._get_table_columns()
-                                if col.display_table
+                                k for k in initial_state["displayed_columns"].keys()
                             ],
                             className="w-100 elastic-table-display-checklist",
                             inline=True,
@@ -514,6 +519,7 @@ class ElasticTable:
                 Input(f"{self.dom_prefix}-search", "value"),
                 Input(f"{self.dom_prefix}-size", "value"),
                 Input(f"{self.dom_prefix}-pagination", "active_page"),
+                Input(f"{self.dom_prefix}-displayed-columns", "value"),
                 Input(
                     {
                         "type": f"{self.dom_prefix}-sort-header-container",
@@ -534,7 +540,7 @@ class ElasticTable:
             ],
             [State(f"{self.dom_prefix}-state", "data")],
         )
-        def update_state(search, size, page, sort_clicks, *args):
+        def update_state(search, size, page, disp_columns, sort_clicks, *args):
             """Updates the state store based on user interactions."""
 
             # Split args into filter values and clear button clicks
@@ -543,7 +549,6 @@ class ElasticTable:
             filter_values = args[:num_filterable]
             clear_clicks = args[num_filterable : num_filterable * 2]
             current_state = args[-1]  # Last argument is the current state
-
             ctx = dash.callback_context
             if not ctx.triggered and current_state["initial_load"] == False:
                 return dash.no_update
@@ -599,6 +604,14 @@ class ElasticTable:
                 elif f"{self.dom_prefix}-pagination" == triggered_id:
                     current_state["page"] = page
 
+                # Update displayed columns
+                elif f"{self.dom_prefix}-displayed-columns" == triggered_id:
+                    current_state["displayed_columns"] = {
+                        col.field_name: col.display_name
+                        for col in self.columns
+                        if col.field_name in disp_columns
+                    }
+                    
                 # Update filters
                 else:
                     for i, col in enumerate(filterable_cols):
@@ -661,7 +674,8 @@ class ElasticTable:
             max_pages = math.ceil(total / size)
 
             return (
-                self._create_table(data.get("results", []), state.get("sort", {})),
+                self._create_table(data.get("results", []), state.get("sort", {}), 
+                                   state.get("displayed_columns", {})),
                 *filter_options,
                 max_pages,
                 (
