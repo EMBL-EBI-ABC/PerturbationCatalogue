@@ -239,29 +239,29 @@ class ElasticTable:
         ]
 
         # Prepare displayed columns for the table component
-        displayed_columns = [
-            dbc.Accordion(
-                dbc.AccordionItem(
-                    [
-                        dbc.Checklist(
-                            id=f"{self.dom_prefix}-displayed-columns",
-                            options=[
-                                {"value": k, "label": v}
-                                for k, v in initial_state["displayed_columns"].items()
-                            ],
-                            value=[
-                                k for k in initial_state["displayed_columns"].keys()
-                            ],
-                            className="w-100 elastic-table-display-checklist",
-                            inline=True,
-                            switch=True,
-                        ),
+        columns_button = dbc.Button(
+            "Select columns",
+            id=f"{self.dom_prefix}-columns-popover-button",
+            color="secondary",
+        )
+        columns_popover = dbc.Popover(
+            dbc.PopoverBody(
+                dbc.Checklist(
+                    id=f"{self.dom_prefix}-displayed-columns",
+                    options=[
+                        {"value": k, "label": v}
+                        for k, v in initial_state["displayed_columns"].items()
                     ],
-                    title=html.H5("Select columns", className="mb-0"),
-                ),
-                start_collapsed=True,
-            )
-        ]
+                    value=[k for k in initial_state["displayed_columns"].keys()],
+                    className="w-100",
+                    inline=True,
+                    switch=True,
+                )
+            ),
+            target=f"{self.dom_prefix}-columns-popover-button",
+            trigger="legacy",
+            placement="bottom-end",
+        )
 
         # Table title block
         title_block = []
