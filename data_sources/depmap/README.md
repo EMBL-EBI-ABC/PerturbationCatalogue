@@ -27,7 +27,7 @@ mirror_depmap https://ndownloader.figshare.com/files/51065297 Model.csv
 
 # Process.
 gsutil cp gs://${LAKE_BUCKET}/depmap/* /tmp
-gsutil cp  gs://$WAREHOUSE_BUCKET/mavedb/metadata.jsonl /tmp/mavedb_metadata.jsonl
+gsutil cp gs://$WAREHOUSE_BUCKET/mavedb/metadata.jsonl /tmp/mavedb_metadata.jsonl
 python3 process.py \
   --gene-dependency /tmp/CRISPRGeneDependency.csv \
   --common-essentials /tmp/CRISPRInferredCommonEssentials.csv \
