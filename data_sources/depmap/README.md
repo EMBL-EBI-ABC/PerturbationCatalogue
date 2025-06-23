@@ -65,6 +65,9 @@ python3 ../elastic_load.py \
     },
     "xref": {
       "type": "keyword"
+    },
+    "high_dependency_genes.name": {
+      "type": "keyword"
     }
   }'
 ```
