@@ -17,9 +17,15 @@ from .elastic_table import ElasticTable, Column
 api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 
 # Prefetch gene lists for cross-references.
-response = requests.get(f"{api_base_url}/mavedb/genes")
-response.raise_for_status()
-mavedb_genes_set = set(response.json())
+response_mavedb = requests.get(f"{api_base_url}/mavedb/genes")
+response_mavedb.raise_for_status()
+mavedb_genes_set = set(response_mavedb.json())
+
+response_perturb = requests.get(f"{api_base_url}/perturb-seq/genes")
+response_perturb.raise_for_status()
+perturb_seq_genes_set = set(response_perturb.json())
+
+cross_referenced_genes_set = mavedb_genes_set.union(perturb_seq_genes_set)
 
 
 # DepMap.
@@ -28,29 +34,46 @@ mavedb_genes_set = set(response.json())
 def high_dependency_genes(data, display_links=True, max_other_genes=None):
     """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
-    # Create elements for MaveDB genes.
-    mavedb_elements = [html.I("Genes in MaveDB: ")]
+    # Create elements for genes with cross-references.
+    cross_ref_elements = [html.I("Genes in other data sources: ")]
     for g in sorted(
-        (g for g in data if g["name"] in mavedb_genes_set), key=lambda x: x["name"]
+        (g for g in data if g["name"] in cross_referenced_genes_set),
+        key=lambda x: x["name"],
     ):
         if display_links:
-            # Create a state where the MaveDB search is pre-filled with the gene name.
-            state = mavedb_table.default_state.copy()
-            state["search"] = g["name"]
-            query = serialise_state(state, mavedb_table.default_state)
+            gene_name = g["name"]
+
+            # Create a state where the search is pre-filled for all tables.
+            depmap_state = depmap_table.default_state.copy()
+            depmap_state["search"] = gene_name
+            depmap_query = serialise_state(depmap_state, depmap_table.default_state)
+
+            mavedb_state = mavedb_table.default_state.copy()
+            mavedb_state["search"] = gene_name
+            mavedb_query = serialise_state(mavedb_state, mavedb_table.default_state)
+
+            perturb_seq_state = perturb_seq_table.default_state.copy()
+            perturb_seq_state["search"] = gene_name
+            perturb_seq_query = serialise_state(
+                perturb_seq_state, perturb_seq_table.default_state
+            )
+
+            href = f"/data-portal?depmap={depmap_query}&mavedb={mavedb_query}&perturb_seq={perturb_seq_query}"
+
             link = html.A(
-                g["name"],
-                href=f"/data-portal?mavedb={query}",
+                gene_name,
+                href=href,
                 style={"textDecoration": "none"},
                 target="_blank",
             )
         else:
             link = g["name"]
-        mavedb_elements.append(html.Span([html.B(link), html.Span(" ")]))
+        cross_ref_elements.append(html.Span([html.B(link), html.Span(" ")]))
 
     # Split other genes into displayed and toggled.
     other_genes = sorted(
-        (g for g in data if g["name"] not in mavedb_genes_set), key=lambda x: x["name"]
+        (g for g in data if g["name"] not in cross_referenced_genes_set),
+        key=lambda x: x["name"],
     )
     other_genes_always_displayed = (
         other_genes[:max_other_genes] if max_other_genes else other_genes
@@ -60,7 +83,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     # Create layout.
     return html.Div(
         [
-            html.P(mavedb_elements, style={"marginBottom": "5px"}),
+            html.P(cross_ref_elements, style={"marginBottom": "5px"}),
             html.Div(
                 [
                     html.I("Other genes: "),
