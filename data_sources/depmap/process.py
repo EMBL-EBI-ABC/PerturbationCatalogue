@@ -97,15 +97,6 @@ def main():
     ]
     df = df[columns_to_keep]
 
-    # Add the "xref" column
-    df["xref"] = df["high_dependency_genes"].apply(
-        lambda genes: (
-            "In MaveDB"
-            if any(gene["xref"] == "MaveDB" for gene in genes)
-            else "Not in MaveDB"
-        )
-    )
-
     # For SampleCollectionSite, replace underscores with spaces to help with readability.
     df["SampleCollectionSite"] = (
         df["SampleCollectionSite"].str.replace("_", " ").str.capitalize()

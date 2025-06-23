@@ -153,7 +153,6 @@ depmap = DataSource(
         FieldDefinition(name="SampleCollectionSite", type=str, filterable=True),
         FieldDefinition(name="CatalogNumber", type=str),
         FieldDefinition(name="high_dependency_genes", type=list[dict]),
-        FieldDefinition(name="xref", type=str, filterable=True),
     ],
     default_sort_field="OncotreePrimaryDisease",
     default_sort_order="asc",
