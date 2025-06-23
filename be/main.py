@@ -101,7 +101,7 @@ async def elastic_search(index_name, params, data_class, aggregation_class):
     if aggregation_fields:
         for aggregation_field in aggregation_fields:
             search_body["aggs"][aggregation_field] = {
-                "terms": {"field": aggregation_field}
+                "terms": {"field": aggregation_field, "size": 1000000}
             }
 
     # Adding sort field and sort order
