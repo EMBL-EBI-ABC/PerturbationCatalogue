@@ -31,7 +31,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     # Create elements for MaveDB genes.
     mavedb_elements = [html.I("Genes in MaveDB: ")]
     for g in sorted(
-        (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+        (g for g in data if g["name"] in mavedb_genes_set), key=lambda x: x["name"]
     ):
         if display_links:
             # Create a state where the MaveDB search is pre-filled with the gene name.
@@ -50,7 +50,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
 
     # Split other genes into displayed and toggled.
     other_genes = sorted(
-        (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
+        (g for g in data if g["name"] not in mavedb_genes_set), key=lambda x: x["name"]
     )
     other_genes_always_displayed = (
         other_genes[:max_other_genes] if max_other_genes else other_genes
