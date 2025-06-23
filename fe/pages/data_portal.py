@@ -54,6 +54,18 @@ def create_cross_reference_link(gene_name):
     )
 
 
+def format_gene_with_cross_reference(gene_name, current_source_id):
+    """Formats a gene name as a cross-reference link if it exists in other data sources.
+    Otherwise, returns the plain gene name."""
+    other_source_ids = set(genes_sets.keys()) - {current_source_id}
+    is_cross_referenced = any(
+        gene_name in genes_sets[other_id] for other_id in other_source_ids
+    )
+
+    if is_cross_referenced:
+        return create_cross_reference_link(gene_name)
+    else:
+        return gene_name
 
 
 # DepMap.
