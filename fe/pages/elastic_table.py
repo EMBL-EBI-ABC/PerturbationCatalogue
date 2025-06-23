@@ -309,11 +309,21 @@ class ElasticTable:
                                     [
                                         # Search field
                                         dbc.Col(
-                                            dbc.Input(
-                                                id=f"{self.dom_prefix}-search",
-                                                type="text",
-                                                placeholder="Search...",
-                                                value=initial_state["search"],
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(
+                                                        id=f"{self.dom_prefix}-search",
+                                                        type="text",
+                                                        placeholder="Search...",
+                                                        value=initial_state["search"],
+                                                    ),
+                                                    dbc.Button(
+                                                        "Clear",
+                                                        id=f"{self.dom_prefix}-clear-search",
+                                                        color="success",
+                                                        size="sm",
+                                                    ),
+                                                ],
                                                 className="w-100",
                                             )
                                         ),
