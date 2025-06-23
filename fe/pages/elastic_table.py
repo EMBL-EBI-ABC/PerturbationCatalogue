@@ -291,17 +291,26 @@ class ElasticTable:
                         # Main content area
                         dbc.Col(
                             [
-                                # Search field
-                                dcc.Input(
-                                    id=f"{self.dom_prefix}-search",
-                                    type="text",
-                                    placeholder="Search...",
-                                    value=initial_state["search"],
-                                    className="mb-3 w-100",
-                                ),
-                                # Displayed columns selection
                                 dbc.Row(
-                                    [dbc.Col(displayed_columns, className="mb-1 w-100")]
+                                    [
+                                        # Search field
+                                        dbc.Col(
+                                            dbc.Input(
+                                                id=f"{self.dom_prefix}-search",
+                                                type="text",
+                                                placeholder="Search...",
+                                                value=initial_state["search"],
+                                                className="w-100",
+                                            )
+                                        ),
+                                        # Column selection component
+                                        dbc.Col(
+                                            [columns_button, columns_popover],
+                                            width="auto",
+                                        ),
+                                    ],
+                                    className="mb-3",
+                                    align="center",
                                 ),
                                 # Main table with spinner
                                 dbc.Spinner(
