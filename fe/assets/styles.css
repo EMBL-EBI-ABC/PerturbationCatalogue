@@ -34,6 +34,6 @@
     display: none;  /* By default, hide the Clear button. */
 }
 
-.elastic-table-filter-checklist:has(input:checked) ~ .elastic-table-filter-clear  {
-    display: block;  /* If any options are selected, show the Clear button. */
+div:has(> .elastic-table-filter-checklist input:checked) ~ .elastic-table-filter-clear {
+    display: block;
 }
