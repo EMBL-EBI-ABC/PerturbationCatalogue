@@ -1,6 +1,7 @@
 """A reusable and configurable class for table and details views populated by the Elastic API."""
 
 from collections import namedtuple
+import copy
 import re
 import math
 
@@ -172,38 +173,39 @@ class ElasticTable:
             responsive=True,
         )
 
-    def table_layout(self, initial_state=None):
+    def table_layout(self, init_params=None):
         """Returns the complete layout for the table view."""
         default_sort_column = next(
             (col for col in self.columns if col.default_sort), None
         )
 
         # Initialize the state store with default values
-        if not initial_state:
-            initial_state = {
-                "search": "",
-                "size": self.default_page_size,
-                "page": 1,
-                "sort": {
-                    "field": (
-                        default_sort_column.field_name if default_sort_column else None
-                    ),
-                    "order": (
-                        default_sort_column.default_sort
-                        if default_sort_column
-                        else None
-                    ),
-                },
-                "filters": [
-                    [] for _ in [col for col in self.columns if col.filterable]
-                ],
-                "displayed_columns": {
-                    col.field_name: col.display_name
-                    for col in self._get_table_columns()
-                    if col.display_table
-                },
-                "initial_load": True,
-            }
+        initial_state = {
+            "search": "",
+            "size": self.default_page_size,
+            "page": 1,
+            "sort": {
+                "field": (
+                    default_sort_column.field_name if default_sort_column else None
+                ),
+                "order": (
+                    default_sort_column.default_sort if default_sort_column else None
+                ),
+            },
+            "filters": [[] for _ in [col for col in self.columns if col.filterable]],
+            "displayed_columns": {
+                col.field_name: col.display_name
+                for col in self._get_table_columns()
+                if col.display_table
+            },
+            "initial_load": True,
+        }
+        # Keep the empty (default) state for computing diffs for deserialisation.
+        self.default_state = copy.deepcopy(initial_state)
+        # If any init params are provided, adjust the initial state accordingly.
+        if init_params:
+            for k, v in init_params.items():
+                initial_state[k] = v
 
         # Prepare filter column components
         filter_columns = [
