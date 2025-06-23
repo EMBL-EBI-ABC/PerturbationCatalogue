@@ -74,47 +74,28 @@ def format_gene_with_cross_reference(gene_name, current_source_id):
 def high_dependency_genes(data, display_links=True, max_other_genes=None):
     """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
+    cross_ref_genes = []
+    other_genes_list = []
+    for g in data:
+        # For DepMap, a cross-reference is to MaveDB or Perturb-Seq.
+        if any(
+            g["name"] in genes_sets[other_id] for other_id in ["mavedb", "perturb-seq"]
+        ):
+            cross_ref_genes.append(g)
+        else:
+            other_genes_list.append(g)
+
     # Create elements for genes with cross-references.
     cross_ref_elements = [html.I("Genes in other data sources: ")]
-    for g in sorted(
-        (g for g in data if g["name"] in cross_referenced_genes_set),
-        key=lambda x: x["name"],
-    ):
+    for g in sorted(cross_ref_genes, key=lambda x: x["name"]):
         if display_links:
-            gene_name = g["name"]
-
-            # Create a state where the search is pre-filled for all tables.
-            depmap_state = depmap_table.default_state.copy()
-            depmap_state["search"] = gene_name
-            depmap_query = serialise_state(depmap_state, depmap_table.default_state)
-
-            mavedb_state = mavedb_table.default_state.copy()
-            mavedb_state["search"] = gene_name
-            mavedb_query = serialise_state(mavedb_state, mavedb_table.default_state)
-
-            perturb_seq_state = perturb_seq_table.default_state.copy()
-            perturb_seq_state["search"] = gene_name
-            perturb_seq_query = serialise_state(
-                perturb_seq_state, perturb_seq_table.default_state
-            )
-
-            href = f"/data-portal?depmap={depmap_query}&mavedb={mavedb_query}&perturb_seq={perturb_seq_query}"
-
-            link = html.A(
-                gene_name,
-                href=href,
-                style={"textDecoration": "none"},
-                target="_blank",
-            )
+            link = create_cross_reference_link(g["name"])
         else:
-            link = g["name"]
-        cross_ref_elements.append(html.Span([html.B(link), html.Span(" ")]))
+            link = html.B(g["name"])
+        cross_ref_elements.append(html.Span([link, html.Span(" ")]))
 
     # Split other genes into displayed and toggled.
-    other_genes = sorted(
-        (g for g in data if g["name"] not in cross_referenced_genes_set),
-        key=lambda x: x["name"],
-    )
+    other_genes = sorted(other_genes_list, key=lambda x: x["name"])
     other_genes_always_displayed = (
         other_genes[:max_other_genes] if max_other_genes else other_genes
     )
@@ -281,7 +262,7 @@ depmap_table = ElasticTable(
                 className="mb-2",
             ),
             html.P(
-                "Click on a highlighted gene to view relevant functional data in MaveDB.",
+                "Click on a highlighted gene to view relevant functional data in other sources.",
                 className="mb-0",
             ),
         ]
@@ -298,6 +279,10 @@ dash.register_page(
 
 # MaveDB.
 
+display_gene_mavedb = functools.partial(
+    format_gene_with_cross_reference, current_source_id="mavedb"
+)
+
 mavedb_table = ElasticTable(
     id="mavedb",
     api_endpoint=f"{api_base_url}/mavedb/search",
@@ -305,7 +290,8 @@ mavedb_table = ElasticTable(
         Column(
             field_name="normalisedGeneName",
             display_name="Gene",
-            display_details="text",
+            display_table=display_gene_mavedb,
+            display_details=display_gene_mavedb,
         ),
         Column(
             field_name="geneName",
@@ -383,6 +369,10 @@ dash.register_page(
 
 # Perturb-Seq.
 
+display_gene_perturb_seq = functools.partial(
+    format_gene_with_cross_reference, current_source_id="perturb-seq"
+)
+
 perturb_seq_table = ElasticTable(
     id="perturb_seq",
     api_endpoint=f"{api_base_url}/perturb-seq/search",
@@ -396,13 +386,15 @@ perturb_seq_table = ElasticTable(
         Column(
             field_name="perturbation",
             display_name="Perturbation",
-            display_details="text",
+            display_details=display_gene_perturb_seq,
+            display_table=display_gene_perturb_seq,
             filterable=True,
         ),
         Column(
             field_name="gene",
             display_name="Gene",
-            display_details="text",
+            display_details=display_gene_perturb_seq,
+            display_table=display_gene_perturb_seq,
             filterable=True,
         ),
         Column(
