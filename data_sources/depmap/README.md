@@ -63,9 +63,6 @@ python3 ../elastic_load.py \
     "Sex": {
       "type": "keyword"
     },
-    "xref": {
-      "type": "keyword"
-    },
     "high_dependency_genes": {
       "type": "nested",
       "properties": {
