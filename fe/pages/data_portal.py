@@ -459,21 +459,6 @@ def register_callbacks(app):
     depmap_table.register_callbacks(app)
     perturb_seq_table.register_callbacks(app)
 
-    # Simple clientside callback for scrolling
-    app.clientside_callback(
-        """
-        function(value) {
-            if (value) {
-                document.getElementById('elastic-table-mavedb-search').scrollIntoView({behavior: 'smooth'});
-            }
-            return null;
-        }
-        """,
-        Output("elastic-table-mavedb-search", "_", allow_duplicate=True),
-        Input("elastic-table-mavedb-search", "value"),
-        prevent_initial_call=True,
-    )
-
     @callback(
         [
             Output({"type": "other-genes-list", "index": MATCH}, "style"),
