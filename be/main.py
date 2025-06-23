@@ -201,6 +201,13 @@ async def mavedb_details(
     )
 
 
+@app.get("/mavedb/genes", response_model=list[str])
+async def mavedb_genes():
+    """Returns the complete set of all genes which have any information for MaveDB."""
+    aggs = {"genes": {"terms": {"field": "normalisedGeneName", "size": 1000000}}}
+    return await get_unique_terms(index_name="mavedb", aggs_body=aggs)
+
+
 # DepMap.
 
 
