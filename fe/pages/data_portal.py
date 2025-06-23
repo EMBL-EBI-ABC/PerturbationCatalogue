@@ -516,7 +516,7 @@ def register_callbacks(app):
         Output("url", "search"),
         Input("elastic-table-depmap-state", "data"),
         Input("elastic-table-mavedb-state", "data"),
-        Input("elastic-table-perturb-seq-state", "data"),
+        Input("elastic-table-perturb_seq-state", "data"),
         prevent_initial_call=False,
     )
     def update_url_with_state(depmap_data, mavedb_data, perturb_seq_data):
