@@ -234,6 +234,22 @@ async def depmap_details(
     )
 
 
+@app.get("/depmap/genes", response_model=list[str])
+async def depmap_genes():
+    """Returns the complete set of all genes which have any information for DepMap."""
+    aggs = {
+        "nested_genes": {
+            "nested": {"path": "high_dependency_genes"},
+            "aggs": {
+                "gene_names": {
+                    "terms": {"field": "high_dependency_genes.name", "size": 1000000}
+                }
+            },
+        }
+    }
+    return await get_unique_terms(index_name="depmap", aggs_body=aggs)
+
+
 # Perturb-Seq.
 
 
