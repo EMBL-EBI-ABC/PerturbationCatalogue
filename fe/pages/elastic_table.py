@@ -228,7 +228,14 @@ class ElasticTable:
                                     },
                                 ),
                             ],
-                            style={"maxHeight": "260px", "overflowY": "auto"},
+                            style={
+                                "maxHeight": "260px",
+                                "overflowY": "auto",
+                                # A combination of left padding and negative left margin is required
+                                # for the bootstrap-styled checkboxes to not be cut off by the parent div.
+                                "paddingLeft": "5px",
+                                "marginLeft": "-5px",
+                            },
                         ),
                         dbc.Button(
                             "Clear",
