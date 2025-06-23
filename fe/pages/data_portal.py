@@ -17,15 +17,13 @@ from .elastic_table import ElasticTable, Column
 api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
 
 # Prefetch gene lists for cross-references.
-response_mavedb = requests.get(f"{api_base_url}/mavedb/genes")
-response_mavedb.raise_for_status()
-mavedb_genes_set = set(response_mavedb.json())
+genes_sets = {}
+for source_id in ["depmap", "mavedb", "perturb-seq"]:
+    response = requests.get(f"{api_base_url}/{source_id}/genes")
+    response.raise_for_status()
+    genes_sets[source_id] = set(response.json())
 
-response_perturb = requests.get(f"{api_base_url}/perturb-seq/genes")
-response_perturb.raise_for_status()
-perturb_seq_genes_set = set(response_perturb.json())
 
-cross_referenced_genes_set = mavedb_genes_set.union(perturb_seq_genes_set)
 
 
 # DepMap.
