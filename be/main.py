@@ -110,7 +110,9 @@ async def elastic_search(index_name, params, data_class, aggregation_class):
     # Performing the search.
     try:
         # Execute the async search request.
-        response = await app.state.es_client.search(index=index_name, body=search_body)
+        response = await app.state.es_client.search(
+            index=index_name, body=search_body, track_total_hits=True
+        )
         # Extract total count and hits.
         total = response["hits"]["total"]["value"]
         hits = [r["_source"] for r in response["hits"]["hits"]]
