@@ -24,26 +24,24 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
     # Create elements for MaveDB genes.
-    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
-        html.Span(
-            [
-                html.B(
-                    html.A(
-                        g["name"],
-                        href="#",
-                        id={"type": "gene-link", "index": g["name"]},
-                        style={"textDecoration": "none"},
-                    )
-                    if display_links
-                    else g["name"]
-                ),
-                html.Span(" "),
-            ]
-        )
-        for g in sorted(
-            (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
-        )
-    ]
+    mavedb_elements = [html.I("Genes in MaveDB: ")]
+    for g in sorted(
+        (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+    ):
+        if display_links:
+            # Create a state where the MaveDB search is pre-filled with the gene name.
+            state = mavedb_table.default_state.copy()
+            state["search"] = g["name"]
+            query = serialise_state(state, mavedb_table.default_state)
+            link = html.A(
+                g["name"],
+                href=f"/data-portal?mavedb={query}",
+                style={"textDecoration": "none"},
+                target="_blank",
+            )
+        else:
+            link = g["name"]
+        mavedb_elements.append(html.Span([html.B(link), html.Span(" ")]))
 
     # Split other genes into displayed and toggled.
     other_genes = sorted(
