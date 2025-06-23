@@ -504,41 +504,60 @@ class ElasticTable:
     def register_callbacks(self, app):
         """Registers all necessary Dash callbacks for the table functionality."""
 
-        # Clientside callback for text input debounce.
+        # Clientside callback for text input debounce and clear button.
         app.clientside_callback(
             """
-            function(value, state) {
-                // Special case for initial load - check if this is the first callback execution
-                if (!window.initialLoadComplete<id>) {
-                    window.initialLoadComplete<id> = true;
-                    return value;  // Allow the value through on first load
-                }
-
-                if (value === state.search) {
+            function(value, n_clicks, state) {
+                const ctx = window.dash_clientside.callback_context;
+                // On initial load, ctx.triggered is empty, so we don't update
+                if (!ctx.triggered || ctx.triggered.length === 0) {
                     return window.dash_clientside.no_update;
                 }
 
-                // If search is empty or being cleared, update immediately without debounce
-                if (!value || value === '') {
-                    return value;
+                const triggered_id = ctx.triggered[0].prop_id;
+
+                // Handle the clear button click
+                if (triggered_id.includes('-clear-search.n_clicks')) {
+                    return ''; // Return an empty string to clear the input
                 }
 
-                // Clear any existing timeouts
-                if (window.searchDebounceTimeout) {
-                    clearTimeout(window.searchDebounceTimeout);
+                // Handle the debounce
+                if (triggered_id.includes('-search.value')) {
+                    // Special case for initial load - check if this is the first callback execution
+                    if (!window.initialLoadComplete<id>) {
+                        window.initialLoadComplete<id> = true;
+                        return value;  // Allow the value through on first load
+                    }
+
+                    if (value === state.search) {
+                        return window.dash_clientside.no_update;
+                    }
+
+                    // If search is empty or being cleared by typing, update immediately without debounce
+                    if (!value || value === '') {
+                        return value;
+                    }
+
+                    // Clear any existing timeouts
+                    if (window.searchDebounceTimeout) {
+                        clearTimeout(window.searchDebounceTimeout);
+                    }
+
+                    return new Promise((resolve) => {
+                        window.searchDebounceTimeout = setTimeout(() => {
+                            resolve(value);
+                        }, 750); // Debounce in ms
+                    });
                 }
 
-                return new Promise((resolve) => {
-                    window.searchDebounceTimeout = setTimeout(() => {
-                        resolve(value);
-                    }, 750); // Debounce in ms
-                });
+                return window.dash_clientside.no_update; // Fallback for other cases
             }
             """.replace(
                 "<id>", self.id
             ),
             Output(f"{self.dom_prefix}-search", "value"),
             Input(f"{self.dom_prefix}-search", "value"),
+            Input(f"{self.dom_prefix}-clear-search", "n_clicks"),
             State(f"{self.dom_prefix}-state", "data"),
         )
 
