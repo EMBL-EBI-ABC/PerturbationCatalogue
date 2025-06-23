@@ -325,7 +325,7 @@ dash.register_page(
 # Perturb-Seq.
 
 perturb_seq_table = ElasticTable(
-    id="perturb-seq",
+    id="perturb_seq",
     api_endpoint=f"{api_base_url}/perturb-seq/search",
     columns=[
         Column(
