@@ -255,7 +255,6 @@ class ElasticTable:
                     ],
                     value=[k for k in initial_state["displayed_columns"].keys()],
                     className="w-100",
-                    inline=True,
                     switch=True,
                 )
             ),
