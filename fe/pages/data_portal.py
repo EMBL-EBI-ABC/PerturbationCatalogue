@@ -523,5 +523,9 @@ def register_callbacks(app):
     )
     def update_url_with_state(depmap_data, mavedb_data, perturb_seq_data):
         base_path = "/data-portal"
-        query_string = f"?depmap={serialise_state(depmap_data)}&mavedb={serialise_state(mavedb_data)}&perturb_seq={serialise_state(perturb_seq_data)}"
+        query_string = (
+            f"?depmap={serialise_state(depmap_data, depmap_table.default_state)}"
+            f"&mavedb={serialise_state(mavedb_data, mavedb_table.default_state)}"
+            f"&perturb_seq={serialise_state(perturb_seq_data, perturb_seq_table.default_state)}"
+        )
         return query_string
