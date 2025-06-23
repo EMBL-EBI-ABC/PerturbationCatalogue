@@ -1,9 +1,9 @@
 import base64
-import gzip
 import functools
 import json
 import os
 
+import brotli
 import dash
 from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
@@ -408,7 +408,7 @@ dash.register_page(
 def serialise_state(state):
     state["initial_load"] = True
     return (
-        base64.urlsafe_b64encode(gzip.compress(json.dumps(state).encode()))
+        base64.urlsafe_b64encode(brotli.compress(json.dumps(state).encode()))
         .decode()
         .rstrip("=")
     )
@@ -417,7 +417,7 @@ def serialise_state(state):
 def deserialise_state(state):
     if state:
         padded_state = state + "=" * (-len(state) % 4)
-        return json.loads(gzip.decompress(base64.urlsafe_b64decode(padded_state)))
+        return json.loads(brotli.decompress(base64.urlsafe_b64decode(padded_state)))
     else:
         return None
 
