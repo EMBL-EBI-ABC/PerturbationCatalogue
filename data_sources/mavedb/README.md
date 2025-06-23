@@ -46,6 +46,9 @@ python3 ../elastic_load.py \
     },
     "sequenceType": {
       "type": "keyword"
+    },
+    "normalisedGeneName": {
+      "type": "keyword"
     }
   }'
 ```
