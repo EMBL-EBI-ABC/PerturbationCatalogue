@@ -307,10 +307,10 @@ class ElasticTable:
                                         dbc.Col(
                                             [columns_button, columns_popover],
                                             width="auto",
+                                            className="ps-1",
                                         ),
                                     ],
                                     className="mb-3",
-                                    align="center",
                                 ),
                                 # Main table with spinner
                                 dbc.Spinner(
