@@ -274,3 +274,13 @@ async def perturb_seq_details(
         record_id=record_id,
         data_class=PerturbSeqData,
     )
+
+
+@app.get("/perturb-seq/genes", response_model=list[str])
+async def perturb_seq_genes():
+    """Returns the complete set of all genes which have any information for Perturb-Seq."""
+    aggs = {
+        "perturbations": {"terms": {"field": "perturbation", "size": 1000000}},
+        "genes": {"terms": {"field": "gene", "size": 1000000}},
+    }
+    return await get_unique_terms(index_name="perturb-seq", aggs_body=aggs)
