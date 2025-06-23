@@ -406,9 +406,15 @@ dash.register_page(
 # State serialisation and deserialisation.
 
 
-def serialise_state(state):
-    state["initial_load"] = True
-    packed_data = msgpack.packb(state)
+def serialise_state(state, default_state):
+    # Only record the values which are different from the defaults.
+    state_diff = {}
+    for k, v in state.items():
+        if v != default_state[k]:
+            state_diff[k] = v
+    # Make sure the state is treated as initial load on deserialisation.
+    state_diff["initial_load"] = True
+    packed_data = msgpack.packb(state_diff)
     return base64.urlsafe_b64encode(brotli.compress(packed_data)).decode().rstrip("=")
 
 
