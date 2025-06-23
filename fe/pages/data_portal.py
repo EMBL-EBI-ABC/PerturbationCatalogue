@@ -459,32 +459,6 @@ def register_callbacks(app):
     depmap_table.register_callbacks(app)
     perturb_seq_table.register_callbacks(app)
 
-    @callback(
-        Output("elastic-table-mavedb-search", "value", allow_duplicate=True),
-        Input({"type": "gene-link", "index": dash.dependencies.ALL}, "n_clicks"),
-        State({"type": "gene-link", "index": dash.dependencies.ALL}, "id"),
-        prevent_initial_call=True,
-    )
-    def gene_link_clicked(n_clicks, ids):
-        if not any(n_clicks):
-            return dash.no_update
-
-        # Get the context of the callback to determine which input triggered it
-        ctx = dash.callback_context
-        if not ctx.triggered:
-            return dash.no_update
-
-        # Get the id of the component that triggered the callback
-        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-        # Extract the index from the triggered component's id
-        try:
-            triggered_dict = json.loads(triggered_id)
-            gene_name = triggered_dict["index"]
-            return gene_name
-        except:
-            return dash.no_update
-
     # Simple clientside callback for scrolling
     app.clientside_callback(
         """
