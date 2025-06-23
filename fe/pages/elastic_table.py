@@ -1,6 +1,7 @@
 """A reusable and configurable class for table and details views populated by the Elastic API."""
 
 from collections import namedtuple
+import re
 import math
 
 import dash
@@ -55,6 +56,11 @@ class ElasticTable:
         default_page_size=20,
     ):
         # A globally unique DOM prefix, based on the ID, to distinguish this table from all other ElasticTable instances.
+        # The prefix will be used as part of a JavaScript variable name in a client-side callback, so must conform to
+        # JavaScript variable naming conventions.
+        assert re.fullmatch(
+            r"\w+", id
+        ), "The `id` field must only contain letters, numbers and underscores."
         self.id = id
         self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
