@@ -24,6 +24,36 @@ for source_id in ["depmap", "mavedb", "perturb-seq"]:
     genes_sets[source_id] = set(response.json())
 
 
+# Cross-referencing helpers.
+
+
+def create_cross_reference_link(gene_name):
+    """Creates a styled link that pre-fills the search for a gene across all tables."""
+    # Create a state where the search is pre-filled for all tables.
+    depmap_state = depmap_table.default_state.copy()
+    depmap_state["search"] = gene_name
+    depmap_query = serialise_state(depmap_state, depmap_table.default_state)
+
+    mavedb_state = mavedb_table.default_state.copy()
+    mavedb_state["search"] = gene_name
+    mavedb_query = serialise_state(mavedb_state, mavedb_table.default_state)
+
+    perturb_seq_state = perturb_seq_table.default_state.copy()
+    perturb_seq_state["search"] = gene_name
+    perturb_seq_query = serialise_state(
+        perturb_seq_state, perturb_seq_table.default_state
+    )
+
+    href = f"/data-portal?depmap={depmap_query}&mavedb={mavedb_query}&perturb_seq={perturb_seq_query}"
+
+    return html.A(
+        html.B(gene_name),
+        href=href,
+        style={"textDecoration": "none", "color": "#198754"},  # Bootstrap success green
+        target="_blank",
+    )
+
+
 
 
 # DepMap.
