@@ -227,7 +227,7 @@ depmap_table = ElasticTable(
             ),
         ]
     ),
-    default_page_size=10
+    default_page_size=10,
 )
 
 dash.register_page(
