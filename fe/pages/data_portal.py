@@ -5,6 +5,7 @@ import os
 
 import brotli
 import dash
+import requests
 from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
 import msgpack
@@ -13,8 +14,12 @@ from .elastic_table import ElasticTable, Column
 
 
 # Common parameters.
-
 api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
+
+# Prefetch gene lists for cross-references.
+response = requests.get(f"{api_base_url}/mavedb/genes")
+response.raise_for_status()
+mavedb_genes_set = set(response.json())
 
 
 # DepMap.
