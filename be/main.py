@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Query, Path
 from elasticsearch import AsyncElasticsearch
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
-from typing import Annotated
+from typing import Annotated, List
 
 from models import (
     get_list_of_aggregations,
@@ -143,6 +143,36 @@ async def elastic_details(index_name, record_id, data_class):
     except Exception as e:
         # Handle Elasticsearch errors.
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+
+async def get_unique_terms(index_name: str, aggs_body: dict) -> list[str]:
+    """Performs an Elasticsearch aggregation to get unique terms from one or more fields."""
+    search_body = {"size": 0, "aggs": aggs_body}
+    try:
+        response = await app.state.es_client.search(
+            index=index_name, body=search_body, track_total_hits=False
+        )
+
+        unique_terms = set()
+        aggregations = response["aggregations"]
+
+        def extract_keys_from_buckets(agg_result):
+            """Recursively traverses aggregation results to find and extract keys from buckets."""
+            if "buckets" in agg_result:
+                for bucket in agg_result["buckets"]:
+                    unique_terms.add(bucket["key"])
+
+            # Recurse into nested aggregations or sub-aggregations
+            for value in agg_result.values():
+                if isinstance(value, dict):
+                    extract_keys_from_buckets(value)
+
+        extract_keys_from_buckets(aggregations)
+
+        return sorted(list(unique_terms))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
 
 
 # MaveDB.
