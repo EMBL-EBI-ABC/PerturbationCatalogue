@@ -243,6 +243,7 @@ class ElasticTable:
             "Select columns",
             id=f"{self.dom_prefix}-columns-popover-button",
             color="secondary",
+            outline=True,
         )
         columns_popover = dbc.Popover(
             dbc.PopoverBody(
