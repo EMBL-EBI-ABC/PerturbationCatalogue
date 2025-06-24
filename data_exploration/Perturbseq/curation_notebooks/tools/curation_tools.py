@@ -436,7 +436,10 @@ class CuratedDataset:
         df[count_column_name] = [
             len(set(x.split(sep))) if x is not None else 1 for x in df[input_column]
         ]
-
+        
+        # if the entry contains "untreated", set the count to 0
+        df.loc[df[input_column].str.contains("untreated", na=False), count_column_name] = 0
+        
         setattr(self.adata, slot, df)
         print(
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
