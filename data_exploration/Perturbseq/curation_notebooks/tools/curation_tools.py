@@ -285,6 +285,39 @@ class CuratedDataset:
             f"Replaced entries {to_replace} -> {replace_value} in column {column} of adata.{slot}"
         )
 
+    def map_values_from_column(self, ref_col, target_col, ref_value, target_value):
+        """
+        Replace values in target_col based on corresponding values in ref_col using ref_value and target_value.
+        """
+        
+        df = self.adata.obs
+        
+        if ref_col not in df.columns:
+            raise ValueError(f"Column {ref_col} not found in adata.obs")
+        if target_col not in df.columns:
+            raise ValueError(f"Column {target_col} not found in adata.obs")
+
+        if df[ref_col].empty:
+            raise ValueError(f"Column {ref_col} is empty in adata.obs")
+        if df[target_col].empty:
+            raise ValueError(f"Column {target_col} is empty in adata.obs")
+        
+        # Check if the ref_value exists in the ref_col
+        if not (df[ref_col] == ref_value).any():
+            raise ValueError(
+                f"Value {ref_value} not found in column {ref_col} of adata.obs"
+            )
+        
+        # convert the target_col to string if it is not already
+        df[target_col] = df[target_col].astype(str)
+            
+        # Replace the ref_value with target_value in target_col where ref_col matches ref_value
+        df.loc[df[ref_col] == ref_value, target_col] = target_value
+        print(
+            f"Replaced '{ref_value}' -> '{target_value}' in column '{target_col}' based on values in '{ref_col}'"
+        )
+        
+    
     def remove_entries(self, slot=Literal["var", "obs"], column=None, to_remove=None):
         """
         Remove entries in a column of the named slot of adata object.
