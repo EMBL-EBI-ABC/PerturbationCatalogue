@@ -351,7 +351,7 @@ class AssayDetails(BaseModel):
 class ModelSystemDetails(BaseModel):
     model_system: Optional[List[TermOptional]] = Field(
         ...,
-        description="Model system used in the experiment. Must be a term ID in CURIE format from EFO 'disease' EFO:0000408 parent",
+        description="Model system used in the experiment. Must be a term ID in CURIE format",
     )
     species: Literal["Homo sapiens"] = Field(
         ...,
