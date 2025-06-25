@@ -853,9 +853,11 @@ class CuratedDataset:
             )
             self.print_data(mapped_df.iloc[:, :4])
         else:
-            raise ValueError(
-                f"No {ontology_type} ontology terms could be mapped from `{input_column}` column to ontology terms. Map the terms manually or check the input column for errors."
+            print(
+                f"Warning: No {ontology_type} ontology terms could be mapped from `{input_column}` column to ontology terms. Map the terms manually or check the input column for errors."
             )
+            return
+            
 
         if not unmapped_df.empty:
             print(
