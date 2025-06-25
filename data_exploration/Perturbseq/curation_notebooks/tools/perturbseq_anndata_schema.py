@@ -21,7 +21,7 @@ dis_ont = pd.read_parquet(ont_dir / "diseases.parquet").drop_duplicates()
 # adata.obs schema
 class ObsSchema(DataFrameModel):
     perturbation_name: Series[str] = Field(nullable=False)
-    perturbed_target_number: Series[int] = Field(nullable=False, ge=1)
+    perturbed_target_number: Series[int] = Field(nullable=False, ge=0)
     perturbed_target_ensg: Series[str] = Field(nullable=True)
     perturbed_target_symbol: Optional[Series[str]] = Field(nullable=True)
     perturbed_target_biotype: Optional[Series[str]] = Field(nullable=True)
@@ -35,36 +35,20 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[str] = Field(nullable=False)
     model_system_id: Series[str] = Field(nullable=True, str_contains=":")
     species: Series[str] = Field(nullable=False, isin=["Homo sapiens"])
-    tissue_label: Optional[Series[str]] = Field(nullable=True, isin=tis_ont.name.values)
-    tissue_id: Optional[Series[str]] = Field(
-        nullable=True,
-        isin=tis_ont.ontology_id.values,
-    )
-    cell_type_label: Series[str] = Field(nullable=False, isin=ctype_ont.name.values)
-    cell_type_id: Series[str] = Field(
-        nullable=False,
-        isin=ctype_ont.ontology_id.values,
-    )
-    cell_line_label: Optional[Series[str]] = Field(
-        nullable=True, isin=cline_ont.name.values
-    )
-    cell_line_id: Optional[Series[str]] = Field(
-        nullable=True,
-        isin=cline_ont.ontology_id.values,
-    )
+    tissue_label: Optional[Series[str]] = Field(nullable=True)
+    tissue_id: Optional[Series[str]] = Field(nullable=True)
+    cell_type_label: Series[str] = Field(nullable=False)
+    cell_type_id: Series[str] = Field(nullable=False)
+    cell_line_label: Optional[Series[str]] = Field(nullable=True)
+    cell_line_id: Optional[Series[str]] = Field(nullable=True)
     sex_label: Optional[Series[str]] = Field(nullable=True)
     sex_id: Optional[Series[str]] = Field(nullable=True, str_contains=":")
     developmental_stage_label: Optional[Series[str]] = Field(nullable=True)
     developmental_stage_id: Optional[Series[str]] = Field(
         nullable=True, str_contains=":"
     )
-    disease_label: Optional[Series[str]] = Field(
-        nullable=True, isin=dis_ont.name.values
-    )
-    disease_id: Optional[Series[str]] = Field(
-        nullable=True,
-        isin=dis_ont.ontology_id.values,
-    )
+    disease_label: Optional[Series[str]] = Field(nullable=True)
+    disease_id: Optional[Series[str]] = Field(nullable=True)
 
     class Config:
         strict = True
