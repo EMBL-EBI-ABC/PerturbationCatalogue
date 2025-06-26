@@ -26,6 +26,11 @@ class ObsSchema(DataFrameModel):
     perturbed_target_ensg: Series[str] = Field(nullable=True)
     perturbed_target_symbol: Optional[Series[str]] = Field(nullable=True)
     perturbed_target_biotype: Optional[Series[str]] = Field(nullable=True)
+    guide_sequence: Series[str] = Field(
+        nullable=True,
+        regex=r"^[ACGTN]+$",
+        coerce=True,
+    )
     perturbation_type_label: Series[str] = Field(nullable=False)
     perturbation_type_id: Series[str] = Field(nullable=True, str_contains=":")
     timepoint: Optional[Series[str]] = Field(
