@@ -658,10 +658,10 @@ class CuratedDataset:
             .set_index(conv_df_idx)
         )
 
-        # add the biotype column
+        # add the biotype and gene_coord columns
         conv_df = (
             conv_df.merge(
-                self.gene_ont[["ensembl_gene_id", "biotype"]]
+                self.gene_ont[["ensembl_gene_id", "biotype", "gene_coord"]]
                 .drop_duplicates()
                 .dropna(subset=["ensembl_gene_id"]),
                 how="left",
@@ -697,6 +697,7 @@ class CuratedDataset:
                 "converted": "perturbed_target_ensg",
                 "name": "perturbed_target_symbol",
                 "biotype": "perturbed_target_biotype",
+                "gene_coord": "perturbed_target_coord",
             }
         elif slot == "var":
             new_colnames_map = {"converted": "ensembl_gene_id", "name": "gene_symbol"}
@@ -1250,7 +1251,7 @@ class CuratedDataset:
         if df[unique_val_column].empty:
             raise ValueError(f"Column {unique_val_column} is empty")
 
-        exploded_cols = ["incoming", "converted", "name", "biotype"]
+        exploded_cols = ["incoming", "converted", "name", "biotype", "gene_coord"]
 
         df = df.groupby([unique_val_column]).agg(
             {
