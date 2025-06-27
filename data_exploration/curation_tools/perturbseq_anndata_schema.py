@@ -9,7 +9,7 @@ from pathlib import Path
 module_path = Path(__file__).resolve()
 
 # Navigate up to the project root and then to 'ontologies'
-ont_dir = module_path.parent.parent.parent / "ontologies"
+ont_dir = module_path.parent / "ontologies"
 
 gene_ont = pd.read_parquet(ont_dir / "genes.parquet").drop_duplicates()
 ctype_ont = pd.read_parquet(ont_dir / "cell_types.parquet").drop_duplicates()

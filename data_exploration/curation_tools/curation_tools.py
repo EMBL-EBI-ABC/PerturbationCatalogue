@@ -17,8 +17,8 @@ from gprofiler import GProfiler
 class CuratedDataset:
 
     # Get the path to the ontologies directory relative to this file
-    ONTOLOGIES_DIR = Path(__file__).parent.parent.parent / "ontologies"
-
+    ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
+    
     gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet").drop_duplicates()
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
