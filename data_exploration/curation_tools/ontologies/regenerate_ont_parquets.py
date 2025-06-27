@@ -24,7 +24,11 @@ def regenerate_gene_ont() -> pd.DataFrame:
                 "gene_biotype",
                 "external_synonym",
                 "description",
-                "embl",
+                "chromosome_name",
+                "start_position",
+                "end_position",
+                "strand",
+                "transcription_start_site"
             ]
         }
     )
@@ -42,35 +46,44 @@ def regenerate_gene_ont() -> pd.DataFrame:
             "gene_biotype",
             "external_synonym",
             "description",
-            "embl",
+            "chromosome_name",
+            "start_position",
+            "end_position",
+            "strand",
+            "transcription_start_site"
         ],
-    )
-
-    # embl column is ENA identifiers
-    # treating these as gene symbol synonyms
-    # create a new df, drop external_synonyms and rename embl to external_synonyms
-    ena_as_synonym = all_genes.drop(columns="external_synonym").rename(
-        columns={"embl": "external_synonym"}
-    )
-    # add the external_synonym column to the new df
-    all_genes = (
-        pd.concat([all_genes.drop("embl", axis=1), ena_as_synonym])
-        .drop_duplicates()
-        .reset_index(drop=True)
     )
 
     # dataframe is exploded on synonyms
     # collapse the synonyms on "|" to create a single row for each ENSG
     all_genes = (
-        all_genes.groupby(["ensembl_gene_id", "gene_biotype", "description"])
+        all_genes.groupby(
+            [
+                "ensembl_gene_id",
+                "gene_biotype",
+                "description",
+                "chromosome_name",
+                "start_position",
+                "end_position",
+                "strand",
+                "transcription_start_site",
+            ]
+        )
         .agg(
             {
                 "external_synonym": lambda x: "|".join(set(x)),
                 "hgnc_symbol": lambda x: "|".join(set(x)),
             }
-        )
-        .str.strip("|")
-        .reset_index()
+        ).reset_index()
+    )
+    
+    all_genes['external_synonym'] = all_genes['external_synonym'].str.strip("|")
+    all_genes['hgnc_symbol'] = all_genes['hgnc_symbol'].str.strip("|")
+
+    # create a new column for condensed gene coordinates
+    all_genes["gene_coord"] = all_genes.apply(
+        lambda x: f"chr{x['chromosome_name']}:{x['start_position']}-{x['end_position']};{x['strand']}",
+        axis=1,
     )
 
     # rename columns
@@ -83,7 +96,19 @@ def regenerate_gene_ont() -> pd.DataFrame:
     )
     # reorder columns
     all_genes = all_genes[
-        ["ensembl_gene_id", "symbol", "synonyms", "biotype", "description"]
+        [
+            "ensembl_gene_id",
+            "symbol",
+            "synonyms",
+            "biotype",
+            "description",
+            "chromosome_name",
+            "start_position",
+            "end_position",
+            "strand",
+            "gene_coord",
+            "transcription_start_site",
+        ]
     ]
 
     # add control gene as a new row
