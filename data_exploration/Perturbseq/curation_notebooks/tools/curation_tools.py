@@ -285,7 +285,7 @@ class CuratedDataset:
             f"Replaced entries {to_replace} -> {replace_value} in column {column} of adata.{slot}"
         )
 
-    def map_values_from_column(self, ref_col, target_col, ref_value, target_value):
+    def map_values_from_column(self, ref_col, target_col, map_dict):
         """
         Replace values in target_col based on corresponding values in ref_col using ref_value and target_value.
         """
@@ -299,23 +299,23 @@ class CuratedDataset:
 
         if df[ref_col].empty:
             raise ValueError(f"Column {ref_col} is empty in adata.obs")
-        if df[target_col].empty:
-            raise ValueError(f"Column {target_col} is empty in adata.obs")
         
-        # Check if the ref_value exists in the ref_col
-        if not (df[ref_col] == ref_value).any():
-            raise ValueError(
-                f"Value {ref_value} not found in column {ref_col} of adata.obs"
-            )
-        
-        # convert the target_col to string if it is not already
+        # Ensure target_col is string type
         df[target_col] = df[target_col].astype(str)
+        
+        for ref_value, target_value in map_dict.items():
+            if ref_value not in df[ref_col].values:
+                print(
+                    f"Value {ref_value} not found in column {ref_col} of adata.obs. Skipping this entry."
+                )
+
+            df.loc[df[ref_col] == ref_value, target_col] = target_value
+            print(
+                f"Mapped value {ref_value} in column {ref_col} to {target_value} in column {target_col} of adata.obs"
+            )
             
-        # Replace the ref_value with target_value in target_col where ref_col matches ref_value
-        df.loc[df[ref_col] == ref_value, target_col] = target_value
-        print(
-            f"Replaced '{ref_value}' -> '{target_value}' in column '{target_col}' based on values in '{ref_col}'"
-        )
+        # Update the adata.obs with the modified DataFrame
+        setattr(self.adata, "obs", df)
         
     
     def remove_entries(self, slot=Literal["var", "obs"], column=None, to_remove=None):
@@ -940,10 +940,10 @@ class CuratedDataset:
                 ),
                 "perturbed_target_biotype": self._get_vals("perturbed_target_biotype"),
                 "number_of_perturbed_targets": len(
-                    self._get_vals("perturbed_target_ensg")
+                    self._get_vals("perturbed_target_coord")
                 ),
                 "perturbed_targets": self._get_vals("perturbed_target_ensg"),
-                "number_of_perturbed_cells": self.adata.obs.shape[0],
+                "number_of_perturbed_entities": self.adata.obs.shape[0],
             },
             "model_system": {
                 "model_system": self._get_dict_vals(
