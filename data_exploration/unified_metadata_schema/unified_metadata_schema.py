@@ -91,10 +91,10 @@ class ExperimentDetails(BaseModel):
     number_of_samples: int = Field(
         ..., ge=1, description="Number of samples in the experiment", example=3
     )
-    number_of_perturbed_cells: int = Field(
+    number_of_perturbed_entities: int = Field(
         ...,
         ge=1,
-        description="Number of perturbed cells profiled in the experiment",
+        description="Number of perturbed samples/cells profiled in the experiment",
         example=200000,
     )
     perturbation_type: Optional[List[TermOptional]] = Field(
@@ -104,7 +104,7 @@ class ExperimentDetails(BaseModel):
     )
     perturbed_target_biotype: List[str] = Field(
         ...,
-        description="Biotype of the perturbed target defined by ENSEMBL (e.g. protein coding, regulatory, etc.)",
+        description="Biotype of the perturbed target defined by ENSEMBL + custom (e.g. protein coding, regulatory, etc.)",
         example="protein coding",
     )
     number_of_perturbed_targets: int = Field(
@@ -113,8 +113,8 @@ class ExperimentDetails(BaseModel):
         description="How many targets (genes or variants) have been perturbed in the experiment",
         example=4,
     )
-    perturbed_targets: List[str] = Field(
-        ...,
+    perturbed_targets: Optional[List[str]] = Field(
+        None,
         description="List of ENSEMBL IDs for perturbed targets (genes or variants) in the experiment",
         example=["ENSG00000141510", "ENSG00000146648"],
     )
@@ -155,9 +155,9 @@ class Library(BaseModel):
         description="Lentiviral generation of the library used in the experiment",
         example="3",
     )
-    grnas_per_gene: Optional[str] = Field(
+    grnas_per_target: Optional[str] = Field(
         None,
-        description="Number of gRNAs targeting each gene in the library. Can be a string representing a range, e.g. 3-5.",
+        description="Number of gRNAs targeting each target region/gene in the library. Can be a string representing a range, e.g. 3-5.",
         example=5,
     )
     total_grnas: Optional[str] = Field(
@@ -368,7 +368,7 @@ class ModelSystemDetails(BaseModel):
         description="Cell type/types profiled in the experiment. Must be a term ID in CURIE format from Cell Ontology 'cell' CL:0000000 parent",
         example="CL:0000235",
     )
-    cell_line: Optional[List[TermRequired]] = Field(
+    cell_line: Optional[List[TermOptional]] = Field(
         None,
         description="Cell line name used in the experiment. Must be a term ID in CURIE format from Cell Line Ontology 'cultured cell' CL:0000010 parent",
         example="CLO:0009348",
@@ -421,7 +421,7 @@ class Experiment(BaseModel):
     model_system: ModelSystemDetails = Field(
         ..., description="Details of the model system"
     )
-    associated_diseases: Optional[List[TermRequired]] = Field(
+    associated_diseases: Optional[List[TermOptional]] = Field(
         None,
         description="Term ID in CURIE format of the phenotype defined in EFO under parent term EFO:0000408 (disease)",
         examples=["MONDO:000497 - Alzheimer disease"],
