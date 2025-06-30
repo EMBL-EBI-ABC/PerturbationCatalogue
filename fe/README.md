@@ -27,7 +27,7 @@ docker run \
 ### Continuous deployment
 
 1. Go to https://console.cloud.google.com/run.
-1. Deploy container → Service → Continuously deploy from a repository (source or function).
+1. Deploy container → Continuously deploy from a repository (source or function).
 1. Set up cloud build.
 1. Choose this repository → Next.
 1. Branch: `^main$`; Build type: Dockerfile; Source location: `/fe/Dockerfile` → Save.
@@ -35,8 +35,8 @@ docker run \
 1. Choose region.
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
-1. Container(s), volumes, networking, security → Container(s) → Variables and Secrets → fill in environment variables: (see the environment variables section above)
-1. Container(s), volumes, networking, security → Container(s) → Container port: 80
+1. Container(s), volumes, networking, security → Container → Variables and Secrets → fill in environment variables: (see the environment variables section above)
+1. Container(s), volumes, networking, security → Container → Container port: 80
 1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
@@ -52,7 +52,11 @@ This ensures that the deployment is only updated when something in `fe` is modif
 1. Click on “Save”.
 
 Then, repeat the steps above with the following changes:
-* Branch: `^main$`
+* Branch: `^dev$`
+* Service name: `perturbation-catalogue-dash-dev`
+
+Then, repeat the steps above with the following changes:
+* Branch: `^main$|^dev$`
 * Reverse regex: checked
 * Service name: `perturbation-catalogue-dash-live`
 
