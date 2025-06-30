@@ -42,6 +42,10 @@ div.card:has(.elastic-table-filter-checklist:empty) {
     display: none;  /* If a particular filter has no available values, hide it entirely. */
 }
 
+div:has(> .elastic-table-data .no-data-message) + .elastic-table-pagination-controls {
+    display: none;  /* If no data is found, hide pagination controls. */
+}
+
 /*
   Fix for the dbc.Popover reflow/blink issue. This ensures that the element is initialised
   with absolute position from the start, to avoid triggering grid reflow.
