@@ -332,7 +332,7 @@ mavedb_table = ElasticTable(
             field_name="publicationYear",
             display_name="Publication Year",
             display_details="text",
-            filterable=True,
+            filterable="range",
             sortable=True,
             default_sort="desc",
         ),
