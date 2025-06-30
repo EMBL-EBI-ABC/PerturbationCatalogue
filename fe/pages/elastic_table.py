@@ -65,12 +65,28 @@ class ElasticTable:
         self.id = id
         self.dom_prefix = f"elastic-table-{id}"
         self.api_endpoint = api_endpoint
-        self.columns = columns
+
+        # Process columns for backward compatibility (filterable=True -> filterable="list")
+        self.columns = []
+        for c in columns:
+            if c.filterable is True:
+                c = c._replace(filterable="list")
+            self.columns.append(c)
+
         self.details_button_name = details_button_name
         self.details_button_link = details_button_link
         self.title = title
         self.description = description
         self.default_page_size = default_page_size
+
+        # Pre-calculate lists of filterable columns for easier use in callbacks
+        self.filterable_columns = [col for col in self.columns if col.filterable]
+        self.list_filterable_columns = [
+            col for col in self.columns if col.filterable == "list"
+        ]
+        self.range_filterable_columns = [
+            col for col in self.columns if col.filterable == "range"
+        ]
 
     # Table view.
 
@@ -90,17 +106,20 @@ class ElasticTable:
             "q": q,
             "size": size,
             "start": (page - 1) * size if page else 0,
-            **{
-                field_name: value
-                for field_name, value in zip(
-                    [col.field_name for col in self.columns if col.filterable],
-                    filter_values,
-                )
-                if value
-            },
             "sort_field": sort_data.get("field"),
             "sort_order": sort_data.get("order"),
         }
+
+        # Add filter parameters, formatting them correctly based on type
+        for col, value in zip(self.filterable_columns, filter_values):
+            if not value:
+                continue
+
+            param_value = value
+            if col.filterable == "range" and isinstance(value, list):
+                param_value = f"{value[0]}-{value[1]}"
+
+            params[col.field_name] = param_value
 
         response = requests.get(
             self.api_endpoint,
@@ -192,7 +211,7 @@ class ElasticTable:
                     default_sort_column.default_sort if default_sort_column else None
                 ),
             },
-            "filters": [[] for _ in [col for col in self.columns if col.filterable]],
+            "filters": [None for _ in self.filterable_columns],
             "displayed_columns": {
                 col.field_name: col.display_name
                 for col in self._get_table_columns()
@@ -208,37 +227,58 @@ class ElasticTable:
                 initial_state[k] = v
 
         # Prepare filter column components
-        filter_columns = [
-            dbc.Card(
+        filter_columns = []
+        for i, col in enumerate(self.filterable_columns):
+            filter_control = None
+            initial_value = (
+                initial_state["filters"][i] if initial_state.get("filters") else None
+            )
+
+            if col.filterable == "list":
+                filter_control = html.Div(
+                    [
+                        dbc.Checklist(
+                            id=f"{self.dom_prefix}-filter-{col.field_name}",
+                            options=[],
+                            value=initial_value or [],
+                            className="w-100 elastic-table-filter-checklist",
+                            label_style={
+                                "maxWidth": "100%",
+                            },
+                        ),
+                    ],
+                    style={
+                        "maxHeight": "260px",
+                        "overflowY": "auto",
+                        "paddingLeft": "5px",
+                        "marginLeft": "-5px",
+                    },
+                )
+            elif col.filterable == "range":
+                filter_control = html.Div(
+                    [
+                        dcc.RangeSlider(
+                            id=f"{self.dom_prefix}-filter-{col.field_name}",
+                            min=0,
+                            max=1,
+                            step=1,
+                            value=initial_value or [0, 1],
+                            disabled=True,
+                            allowCross=False,
+                            className="w-100",
+                        ),
+                        html.Div(
+                            id=f"{self.dom_prefix}-range-display-{col.field_name}",
+                            className="text-center small mt-2 text-muted",
+                        ),
+                    ]
+                )
+
+            card = dbc.Card(
                 dbc.CardBody(
                     [
                         html.H5(col.display_name),
-                        html.Div(
-                            [
-                                dbc.Checklist(
-                                    id=f"{self.dom_prefix}-filter-{col.field_name}",
-                                    options=[],
-                                    value=(
-                                        initial_state["filters"][i]
-                                        if initial_state.get("filters")
-                                        and i < len(initial_state["filters"])
-                                        else []
-                                    ),
-                                    className="w-100 elastic-table-filter-checklist",
-                                    label_style={
-                                        "maxWidth": "100%",
-                                    },
-                                ),
-                            ],
-                            style={
-                                "maxHeight": "260px",
-                                "overflowY": "auto",
-                                # A combination of left padding and negative left margin is required
-                                # for the bootstrap-styled checkboxes to not be cut off by the parent div.
-                                "paddingLeft": "5px",
-                                "marginLeft": "-5px",
-                            },
-                        ),
+                        filter_control,
                         dbc.Button(
                             "Clear",
                             id=f"{self.dom_prefix}-clear-{col.field_name}",
@@ -249,8 +289,7 @@ class ElasticTable:
                     ]
                 )
             )
-            for i, col in enumerate([col for col in self.columns if col.filterable])
-        ]
+            filter_columns.append(card)
 
         # Prepare displayed columns for the table component
         columns_button = dbc.Button(
@@ -561,174 +600,236 @@ class ElasticTable:
             State(f"{self.dom_prefix}-state", "data"),
         )
 
+        # Build Input/State/Output lists for the main callbacks to handle dynamic filters
+        update_state_outputs = [
+            Output(f"{self.dom_prefix}-state", "data"),
+            *[
+                Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
+                for col in self.filterable_columns
+            ],
+            Output(f"{self.dom_prefix}-pagination", "active_page"),
+        ]
+        update_state_inputs = [
+            Input(f"{self.dom_prefix}-search", "value"),
+            Input(f"{self.dom_prefix}-size", "value"),
+            Input(f"{self.dom_prefix}-pagination", "active_page"),
+            Input(f"{self.dom_prefix}-displayed-columns", "value"),
+            Input(
+                {"type": f"{self.dom_prefix}-sort-header-container", "field": dash.ALL},
+                "n_clicks",
+            ),
+            *[
+                Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
+                for col in self.filterable_columns
+            ],
+            *[
+                Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
+                for col in self.filterable_columns
+            ],
+        ]
+        update_state_states = [
+            State(f"{self.dom_prefix}-state", "data"),
+            *[
+                State(f"{self.dom_prefix}-filter-{col.field_name}", "min")
+                for col in self.range_filterable_columns
+            ],
+            *[
+                State(f"{self.dom_prefix}-filter-{col.field_name}", "max")
+                for col in self.range_filterable_columns
+            ],
+        ]
+
         # Callback 1: Update state when any input changes
-        @app.callback(
-            [
-                Output(f"{self.dom_prefix}-state", "data"),
-                *[
-                    Output(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                    for col in self.columns
-                    if col.filterable
-                ],
-                Output(f"{self.dom_prefix}-pagination", "active_page"),
-            ],
-            [
-                Input(f"{self.dom_prefix}-search", "value"),
-                Input(f"{self.dom_prefix}-size", "value"),
-                Input(f"{self.dom_prefix}-pagination", "active_page"),
-                Input(f"{self.dom_prefix}-displayed-columns", "value"),
-                Input(
-                    {
-                        "type": f"{self.dom_prefix}-sort-header-container",
-                        "field": dash.ALL,
-                    },
-                    "n_clicks",
-                ),
-                *[
-                    Input(f"{self.dom_prefix}-filter-{col.field_name}", "value")
-                    for col in self.columns
-                    if col.filterable
-                ],
-                *[
-                    Input(f"{self.dom_prefix}-clear-{col.field_name}", "n_clicks")
-                    for col in self.columns
-                    if col.filterable
-                ],
-            ],
-            [State(f"{self.dom_prefix}-state", "data")],
-        )
+        @app.callback(update_state_outputs, update_state_inputs, update_state_states)
         def update_state(search, size, page, disp_columns, sort_clicks, *args):
             """Updates the state store based on user interactions."""
+            # Parse the variable-length arguments first to access current_state
+            num_filterable = len(self.filterable_columns)
+            num_range_filterable = len(self.range_filterable_columns)
 
-            # Split args into filter values and clear button clicks
-            filterable_cols = [col for col in self.columns if col.filterable]
-            num_filterable = len(filterable_cols)
             filter_values = args[:num_filterable]
             clear_clicks = args[num_filterable : num_filterable * 2]
-            current_state = args[-1]  # Last argument is the current state
+            current_state = args[num_filterable * 2]
+            range_mins = args[
+                num_filterable * 2 + 1 : num_filterable * 2 + 1 + num_range_filterable
+            ]
+            range_maxs = args[num_filterable * 2 + 1 + num_range_filterable :]
+
             ctx = dash.callback_context
-            if not ctx.triggered and current_state["initial_load"] == False:
+            # On first load, ctx.triggered is empty. The initial_load flag allows the callback to proceed.
+            # On subsequent loads, this prevents the callback from running unnecessarily if ctx.triggered is empty.
+            if not ctx.triggered and not current_state.get("initial_load"):
                 return dash.no_update
 
             triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-            # By default, no pagination reset is required.
             pagination_page_update = dash.no_update
-
-            # Initialize updated filter values to current values
             updated_filter_values = list(filter_values)
 
             # Handle sort header clicks
             if "sort-header-container" in triggered_id:
                 field = eval(triggered_id)["field"]
                 current_sort = current_state["sort"]
-
                 if current_sort["field"] != field:
                     current_state["sort"] = {"field": field, "order": "asc"}
                 else:
-                    current_state["sort"] = {
-                        "field": field,
-                        "order": "desc" if current_sort["order"] == "asc" else "asc",
-                    }
+                    current_state["sort"]["order"] = (
+                        "desc" if current_sort["order"] == "asc" else "asc"
+                    )
                 pagination_page_update = 1
 
             # Handle clear filter buttons
-            elif "clear" in triggered_id:
-                for i, col in enumerate(filterable_cols):
+            elif "clear" in triggered_id and "clear-search" not in triggered_id:
+                range_col_idx = 0
+                for i, col in enumerate(self.filterable_columns):
                     if f"{self.dom_prefix}-clear-{col.field_name}" == triggered_id:
-                        current_state["filters"][i] = []
-                        updated_filter_values[i] = []  # Update the filter value
+                        current_state["filters"][i] = None  # Remove from API query
+                        if col.filterable == "list":
+                            updated_filter_values[i] = []
+                        elif col.filterable == "range":
+                            # Reset slider to its full range using min/max from State
+                            updated_filter_values[i] = [
+                                range_mins[range_col_idx],
+                                range_maxs[range_col_idx],
+                            ]
                         pagination_page_update = 1
                         break
-
+                    if col.filterable == "range":
+                        range_col_idx += 1
             # Handle normal inputs
             else:
-                # Update search
                 if f"{self.dom_prefix}-search" == triggered_id:
                     current_state["search"] = search
-                    # Reset to page 1 when search changes, except when this is initial load.
                     if not current_state["initial_load"]:
                         pagination_page_update = 1
-                    else:
-                        current_state["initial_load"] = False
-
-                # Update page size
                 elif f"{self.dom_prefix}-size" == triggered_id:
                     current_state["size"] = size
                     pagination_page_update = 1
-
-                # Update page number
                 elif f"{self.dom_prefix}-pagination" == triggered_id:
                     current_state["page"] = page
-
-                # Update displayed columns
                 elif f"{self.dom_prefix}-displayed-columns" == triggered_id:
                     current_state["displayed_columns"] = {
                         col.field_name: col.display_name
                         for col in self.columns
                         if col.field_name in disp_columns
                     }
-
-                # Update filters
-                else:
-                    for i, col in enumerate(filterable_cols):
+                else:  # Handle filter inputs
+                    for i, col in enumerate(self.filterable_columns):
                         if f"{self.dom_prefix}-filter-{col.field_name}" == triggered_id:
-                            current_state["filters"][i] = filter_values[i]
+                            # For range sliders, if value is the same as full range, treat as no filter
+                            is_range = col.filterable == "range"
+                            is_full_range = False
+                            if is_range:
+                                range_idx = self.range_filterable_columns.index(col)
+                                min_val, max_val = (
+                                    range_mins[range_idx],
+                                    range_maxs[range_idx],
+                                )
+                                if list(filter_values[i]) == [min_val, max_val]:
+                                    is_full_range = True
+
+                            if is_full_range:
+                                current_state["filters"][i] = None
+                            else:
+                                current_state["filters"][i] = filter_values[i]
                             pagination_page_update = 1
                             break
 
-            # If we need to update the page, update it also in the state.
             if pagination_page_update == 1:
-                current_state["page"] = pagination_page_update
+                current_state["page"] = 1
 
-            # If this was initial load, reset it so that subsequently it is not treated as initial load.
             current_state["initial_load"] = False
-
             return [current_state, *updated_filter_values, pagination_page_update]
 
-        # Callback 2: Fetch data when state changes
-        @app.callback(
-            [
-                Output(f"{self.dom_prefix}-data-table", "children"),
-                *[
-                    Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
-                    for col in self.columns
-                    if col.filterable
-                ],
-                Output(f"{self.dom_prefix}-pagination", "max_value"),
-                Output(f"{self.dom_prefix}-pagination-info", "children"),
+        # Build Output list for the data fetch callback
+        fetch_data_outputs = [
+            Output(f"{self.dom_prefix}-data-table", "children"),
+            *[
+                Output(f"{self.dom_prefix}-filter-{col.field_name}", "options")
+                for col in self.list_filterable_columns
             ],
-            [Input(f"{self.dom_prefix}-state", "data")],
-        )
+            *[
+                Output(f"{self.dom_prefix}-filter-{col.field_name}", prop)
+                for col in self.range_filterable_columns
+                for prop in ["min", "max", "marks", "disabled"]
+            ],
+            *[
+                Output(f"{self.dom_prefix}-range-display-{col.field_name}", "children")
+                for col in self.range_filterable_columns
+            ],
+            Output(f"{self.dom_prefix}-pagination", "max_value"),
+            Output(f"{self.dom_prefix}-pagination-info", "children"),
+        ]
+
+        # Callback 2: Fetch data when state changes
+        @app.callback(fetch_data_outputs, [Input(f"{self.dom_prefix}-state", "data")])
         def fetch_data_from_state(state):
-            """Fetches and refreshes the table data based on current state."""
+            """Fetches and refreshes the table data and filter controls based on current state."""
             response, params = self._fetch_data(state)
+            num_list_filters = len(self.list_filterable_columns)
+            num_range_filters = len(self.range_filterable_columns)
 
             if response.status_code != 200:
-                return (
-                    html.Div("Error fetching data."),
-                    *[[]] * len([col for col in self.columns if col.filterable]),
-                    1,
-                    "",
-                )
+                error_result = [html.Div("Error fetching data.")]
+                error_result.extend([[]] * num_list_filters)  # Empty options
+                error_result.extend(
+                    [dash.no_update] * (num_range_filters * 5)
+                )  # No update for range filters
+                error_result.extend([1, ""])  # Pagination
+                return tuple(error_result)
 
             data = response.json()
             total = data.get("total", 0)
             size = state.get("size", self.default_page_size)
-            start = params["start"]
+            start = params.get("start", 0)
+            aggs = data.get("aggregations", {})
 
-            filter_options = [
+            # Prepare outputs for list filters (Checklists)
+            list_filter_options = [
                 [
                     {"label": f"{b['key']} ({b['doc_count']})", "value": b["key"]}
-                    for b in data.get("aggregations", {})
-                    .get(col.field_name, {})
-                    .get("buckets", [])
+                    for b in aggs.get(col.field_name, {}).get("buckets", [])
                 ]
-                for col in self.columns
-                if col.filterable
+                for col in self.list_filterable_columns
             ]
 
-            max_pages = math.ceil(total / size)
+            # Prepare outputs for range filters (RangeSliders)
+            range_filter_outputs = []
+            state_filters = {
+                col.field_name: val
+                for col, val in zip(self.filterable_columns, state.get("filters", []))
+            }
+            for col in self.range_filterable_columns:
+                agg = aggs.get(col.field_name, {})
+                min_val, max_val = agg.get("min"), agg.get("max")
+
+                if min_val is not None and max_val is not None and min_val < max_val:
+                    # Create marks for the slider, e.g., 5 evenly spaced labels
+                    step = max(1, math.ceil((max_val - min_val) / 4))
+                    marks = {
+                        i: str(i)
+                        for i in range(
+                            math.ceil(min_val), math.floor(max_val) + 1, step
+                        )
+                    }
+                    disabled = False
+                    current_filter_val = state_filters.get(col.field_name) or [
+                        min_val,
+                        max_val,
+                    ]
+                    display_text = f"{current_filter_val[0]} – {current_filter_val[1]}"
+                    range_filter_outputs.extend(
+                        [min_val, max_val, marks, disabled, display_text]
+                    )
+                else:
+                    # Keep slider disabled if no valid range data
+                    range_filter_outputs.extend([0, 1, {}, True, "Range not available"])
+
+            max_pages = math.ceil(total / size) if size > 0 else 1
+            pagination_info = (
+                f"{start + 1} – {min(start + size, total)} of {total}"
+                if total > 0
+                else ""
+            )
 
             return (
                 self._create_table(
@@ -736,11 +837,8 @@ class ElasticTable:
                     state.get("sort", {}),
                     state.get("displayed_columns", {}),
                 ),
-                *filter_options,
+                *list_filter_options,
+                *range_filter_outputs,
                 max_pages,
-                (
-                    f"{start + 1} – {min(start + size, total)} of {total}"
-                    if total > 0
-                    else ""
-                ),
+                pagination_info,
             )
