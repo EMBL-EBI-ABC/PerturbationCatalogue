@@ -140,7 +140,7 @@ class ElasticTable:
     def _create_table(self, data, sort_data, displayed_columns):
         """Creates a Dash Bootstrap table from the provided data."""
         if not data:
-            return html.Div("No data found.")
+            return html.Div("No data found", className="no-data-message")
 
         return dbc.Table(
             [
@@ -340,7 +340,7 @@ class ElasticTable:
                                 dbc.Spinner(
                                     html.Div(
                                         id=f"{self.dom_prefix}-data-table",
-                                        className="w-100 overflow-auto",
+                                        className="elastic-table-data w-100 overflow-auto",
                                         style={"minHeight": "100px"},
                                     ),
                                     color="primary",
@@ -386,7 +386,7 @@ class ElasticTable:
                                             width="auto",
                                         ),
                                     ],
-                                    className="justify-content-end g-0 mt-0",
+                                    className="elastic-table-pagination-controls justify-content-end g-0 mt-0",
                                 ),
                             ],
                             className="pt-4 pe-4 ps-3",
