@@ -265,7 +265,7 @@ class ElasticTable:
                             value=initial_value or [0, 1],
                             disabled=True,
                             allowCross=False,
-                            className="w-100",
+                            className="w-100 elastic-table-filter-range-slider",
                         ),
                         html.Div(
                             id=f"{self.dom_prefix}-range-display-{col.field_name}",
