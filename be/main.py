@@ -236,11 +236,13 @@ async def mavedb_genes():
 async def depmap_search(
     params: Annotated[DepMapSearchParams, Query()],
 ) -> ElasticResponse[DepMapData, DepMapAggregationResponse]:
+    nested_query_config = {"path": "high_dependency_genes", "field": "name"}
     return await elastic_search(
         index_name="depmap",
         params=params,
         data_class=DepMapData,
         aggregation_class=DepMapAggregationResponse,
+        nested_query=nested_query_config,
     )
 
 
