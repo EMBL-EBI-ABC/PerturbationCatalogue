@@ -266,11 +266,7 @@ class ElasticTable:
                             disabled=True,
                             allowCross=False,
                             className="w-100 elastic-table-filter-range-slider",
-                        ),
-                        html.Div(
-                            id=f"{self.dom_prefix}-range-display-{col.field_name}",
-                            className="text-center small mt-2 text-muted",
-                        ),
+                        )
                     ]
                 )
 
@@ -752,10 +748,6 @@ class ElasticTable:
                 for col in self.range_filterable_columns
                 for prop in ["min", "max", "marks", "disabled"]
             ],
-            *[
-                Output(f"{self.dom_prefix}-range-display-{col.field_name}", "children")
-                for col in self.range_filterable_columns
-            ],
             Output(f"{self.dom_prefix}-pagination", "max_value"),
             Output(f"{self.dom_prefix}-pagination-info", "children"),
         ]
@@ -772,7 +764,7 @@ class ElasticTable:
                 error_result = [html.Div("Error fetching data.")]
                 error_result.extend([[]] * num_list_filters)  # Empty options
                 error_result.extend(
-                    [dash.no_update] * (num_range_filters * 5)
+                    [dash.no_update] * (num_range_filters * 4)
                 )  # No update for range filters
                 error_result.extend([1, ""])  # Pagination
                 return tuple(error_result)
@@ -794,10 +786,6 @@ class ElasticTable:
 
             # Prepare outputs for range filters (RangeSliders)
             range_filter_outputs = []
-            state_filters = {
-                col.field_name: val
-                for col, val in zip(self.filterable_columns, state.get("filters", []))
-            }
             for col in self.range_filterable_columns:
                 agg = aggs.get(col.field_name, {})
                 min_val, max_val = agg.get("min"), agg.get("max")
@@ -812,17 +800,10 @@ class ElasticTable:
                         )
                     }
                     disabled = False
-                    current_filter_val = state_filters.get(col.field_name) or [
-                        min_val,
-                        max_val,
-                    ]
-                    display_text = f"{current_filter_val[0]} – {current_filter_val[1]}"
-                    range_filter_outputs.extend(
-                        [min_val, max_val, marks, disabled, display_text]
-                    )
+                    range_filter_outputs.extend([min_val, max_val, marks, disabled])
                 else:
                     # Keep slider disabled if no valid range data
-                    range_filter_outputs.extend([0, 1, {}, True, "Range not available"])
+                    range_filter_outputs.extend([0, 1, {}, True])
 
             max_pages = math.ceil(total / size) if size > 0 else 1
             pagination_info = (
