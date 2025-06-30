@@ -8,6 +8,11 @@ A = TypeVar("A")  # Datasource aggregation type
 # Generic aggregation classes.
 
 
+class RangeAggregation(BaseModel):
+    min: int | float | None
+    max: int | float | None
+
+
 class AggregationBucket(BaseModel):
     key: int | str
     doc_count: int
@@ -20,7 +25,7 @@ class Aggregation(BaseModel):
 
 
 def get_list_of_aggregations(aggregation_class):
-    return sorted(aggregation_class.schema()["properties"].keys())
+    return sorted(aggregation_class.model_json_schema()["properties"].keys())
 
 
 # Generic Elastic response classes.
@@ -59,7 +64,12 @@ class SearchParams(BaseModel):
 
 
 class FieldDefinition:
-    def __init__(self, name: str, type: type, filterable: bool = False):
+    def __init__(
+        self,
+        name: str,
+        type: type,
+        filterable: Literal["list", "range"] | None = None,
+    ):
         self.name = name
         self.type = type
         self.filterable = filterable
@@ -85,8 +95,9 @@ class DataSource:
             __annotations__ = {name: type for name, (type, _) in fields.items()}
 
         class AggregationResponse(BaseModel):
+            # Dynamically set annotations based on filterable type
             __annotations__ = {
-                name: Aggregation
+                name: Aggregation if filterable == "list" else RangeAggregation
                 for name, (_, filterable) in fields.items()
                 if filterable
             }
