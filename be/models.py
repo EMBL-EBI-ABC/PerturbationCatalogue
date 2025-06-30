@@ -139,7 +139,7 @@ mavedb = DataSource(
         FieldDefinition(name="normalisedGeneName", type=str),
         FieldDefinition(name="geneCategory", type=str, filterable="list"),
         FieldDefinition(name="publicationUrl", type=str),
-        FieldDefinition(name="publicationYear", type=int | str, filterable="list"),
+        FieldDefinition(name="publicationYear", type=int | str, filterable="range"),
         FieldDefinition(name="numVariants", type=int),
     ],
     default_sort_field="publicationYear",
