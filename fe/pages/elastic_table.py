@@ -211,18 +211,30 @@ class ElasticTable:
                 dbc.CardBody(
                     [
                         html.H5(col.display_name),
-                        dbc.Checklist(
-                            id=f"{self.dom_prefix}-filter-{col.field_name}",
-                            options=[],
-                            value=(
-                                initial_state["filters"][i]
-                                if initial_state.get("filters")
-                                and i < len(initial_state["filters"])
-                                else []
-                            ),
-                            className="w-100 elastic-table-filter-checklist",
-                            label_style={
-                                "maxWidth": "100%",
+                        html.Div(
+                            [
+                                dbc.Checklist(
+                                    id=f"{self.dom_prefix}-filter-{col.field_name}",
+                                    options=[],
+                                    value=(
+                                        initial_state["filters"][i]
+                                        if initial_state.get("filters")
+                                        and i < len(initial_state["filters"])
+                                        else []
+                                    ),
+                                    className="w-100 elastic-table-filter-checklist",
+                                    label_style={
+                                        "maxWidth": "100%",
+                                    },
+                                ),
+                            ],
+                            style={
+                                "maxHeight": "260px",
+                                "overflowY": "auto",
+                                # A combination of left padding and negative left margin is required
+                                # for the bootstrap-styled checkboxes to not be cut off by the parent div.
+                                "paddingLeft": "5px",
+                                "marginLeft": "-5px",
                             },
                         ),
                         dbc.Button(
