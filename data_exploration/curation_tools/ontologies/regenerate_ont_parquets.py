@@ -117,11 +117,11 @@ def regenerate_gene_ont() -> pd.DataFrame:
             all_genes,
             pd.DataFrame(
                 {
-                    "ensembl_gene_id": ["control"],
-                    "symbol": ["control"],
-                    "synonyms": [None],
-                    "biotype": ["control"],
-                    "description": ["control"],
+                    "ensembl_gene_id": ["control_untreated", "control_nontargeted"],
+                    "symbol": ["control_untreated", "control_nontargeted"],
+                    "synonyms": [None, None],
+                    "biotype": ["control_untreated", "control_nontargeted"],
+                    "description": ["control_untreated", "control_nontargeted"],
                 }
             ),
         ],
