@@ -8,6 +8,7 @@ from dash import html, dcc, Output, Input, State
 import dash_bootstrap_components as dbc
 import requests
 
+
 def format_float(value):
     """Formats a float value for display in the table."""
     if isinstance(value, float) and not value.is_integer():
@@ -16,6 +17,7 @@ def format_float(value):
         else:
             return f"{value:.3f}"  # Use fixed-point notation for larger floats
     return value  # Keep other types as is
+
 
 Column = namedtuple(
     "ColumnDefinition",
@@ -30,7 +32,7 @@ Column = namedtuple(
     ],
     defaults=[
         None,
-        None,        
+        None,
         format_float,
         None,
         False,
@@ -239,19 +241,19 @@ class ElasticTable:
                             id=f"{self.dom_prefix}-displayed-columns",
                             options=[
                                 {"value": k, "label": v}
-                                for k,v in initial_state["displayed_columns"].items()
+                                for k, v in initial_state["displayed_columns"].items()
                             ],
                             value=[
                                 k for k in initial_state["displayed_columns"].keys()
                             ],
                             className="w-100 elastic-table-display-checklist",
                             inline=True,
-                            switch=True
+                            switch=True,
                         ),
                     ],
                     title=html.H5("Select columns", className="mb-0"),
                 ),
-                start_collapsed=True
+                start_collapsed=True,
             )
         ]
 
@@ -292,12 +294,9 @@ class ElasticTable:
                                     className="mb-3 w-100",
                                 ),
                                 # Displayed columns selection
-                                dbc.Row([
-                                    dbc.Col(
-                                        displayed_columns,
-                                        className="mb-1 w-100"
-                                    )
-                                ]),
+                                dbc.Row(
+                                    [dbc.Col(displayed_columns, className="mb-1 w-100")]
+                                ),
                                 # Main table with spinner
                                 dbc.Spinner(
                                     html.Div(
@@ -611,7 +610,7 @@ class ElasticTable:
                         for col in self.columns
                         if col.field_name in disp_columns
                     }
-                    
+
                 # Update filters
                 else:
                     for i, col in enumerate(filterable_cols):
@@ -674,8 +673,11 @@ class ElasticTable:
             max_pages = math.ceil(total / size)
 
             return (
-                self._create_table(data.get("results", []), state.get("sort", {}), 
-                                   state.get("displayed_columns", {})),
+                self._create_table(
+                    data.get("results", []),
+                    state.get("sort", {}),
+                    state.get("displayed_columns", {}),
+                ),
                 *filter_options,
                 max_pages,
                 (
