@@ -637,8 +637,9 @@ class CuratedDataset:
             columns=["n_incoming", "n_converted"]
         )
 
-        gp_result.loc[gp_result["incoming"] == "control", "converted"] = "control"
-        gp_result.loc[gp_result["incoming"] == "control", "name"] = "control"
+        # Replace "None" with control entries
+        gp_result.loc[gp_result["incoming"].str.contains("control"), "converted"] = gp_result.loc[gp_result["incoming"].str.contains("control"), "incoming"]
+        gp_result.loc[gp_result["incoming"].str.contains("control"), "name"] = gp_result.loc[gp_result["incoming"].str.contains("control"), "incoming"]
 
         print(
             f"Converted {len(gp_result[gp_result['converted'] != 'None'])}/{len(gp_result)} gene symbols/ENSG IDs to standardized gene symbols/ENSG IDs\n{'-' * 50}"
