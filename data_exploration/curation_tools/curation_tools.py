@@ -294,11 +294,12 @@ class CuratedDataset:
         
         if ref_col not in df.columns:
             raise ValueError(f"Column {ref_col} not found in adata.obs")
-        if target_col not in df.columns:
-            raise ValueError(f"Column {target_col} not found in adata.obs")
-
         if df[ref_col].empty:
             raise ValueError(f"Column {ref_col} is empty in adata.obs")
+        
+        if target_col not in df.columns:
+            df[target_col] = np.nan  # Create target_col if it doesn't exist
+            print(f"Column {target_col} created in adata.obs")
         
         # Ensure target_col is string type
         df[target_col] = df[target_col].astype(str)
