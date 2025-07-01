@@ -253,21 +253,18 @@ class CuratedDataset:
         self,
         slot=Literal["var", "obs"],
         column=None,
-        to_replace=None,
-        replace_value=None,
+        map_dict=None
     ):
         """
-        Replace entries in a column of the named slot of adata object.
+        Replace entries in a column of the named slot of adata object. Note that values are replaced in the defined order.
         Parameters
         ----------
         slot : str
             The slot to replace entries in. Can be either "obs" or "var".
         column : str
             The name of the column to replace entries in.
-        to_replace : str
-            The value to replace. Must be a regex-like string.
-        replace_value : str
-            The value to replace with.
+        map_dict : dict
+            A dictionary mapping old values to new values.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
@@ -276,14 +273,23 @@ class CuratedDataset:
             raise ValueError(f"Column {column} not found in adata.{slot}")
         if df[column].empty:
             raise ValueError(f"Column {column} is empty in adata.{slot}")
-
-        df[column] = df[column].str.replace(to_replace, replace_value, regex=True)
-
+        if map_dict is None:
+            raise ValueError("map_dict must be provided")
+        if not isinstance(map_dict, dict):
+            raise ValueError("map_dict must be a dictionary")
+        
+        for old_val, new_val in map_dict.items():
+            if df[column].str.contains(old_val).any():
+                df[column] = df[column].str.replace(old_val, new_val, regex=True)
+                print(
+                    f"Replaced '{old_val}' with '{new_val}' in column {column} of adata.{slot}"
+                )
+            else:
+                raise ValueError(
+                    f"Column {column} has no entries matching {old_val} in adata.{slot}. Check the map_dict."
+                )
+                
         setattr(self.adata, slot, df)
-
-        print(
-            f"Replaced entries {to_replace} -> {replace_value} in column {column} of adata.{slot}"
-        )
 
     def map_values_from_column(self, ref_col, target_col, map_dict):
         """
