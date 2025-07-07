@@ -399,8 +399,10 @@ async def perturb_seq_details(
 @app.get("/perturb-seq/genes", response_model=list[str])
 async def perturb_seq_genes():
     """Returns the complete set of all genes which have any information for Perturb-Seq."""
-    aggs = {
-        "perturbations": {"terms": {"field": "perturbation", "size": 1000000}},
-        "genes": {"terms": {"field": "gene", "size": 1000000}},
-    }
-    return await get_unique_terms(index_name="perturb-seq", aggs_body=aggs)
+    perturbation_task = get_all_unique_terms_paginated(
+        index_name="perturb-seq", field="perturbation"
+    )
+    gene_task = get_all_unique_terms_paginated(index_name="perturb-seq", field="gene")
+    perturbation_terms, gene_terms = await asyncio.gather(perturbation_task, gene_task)
+    all_terms = perturbation_terms.union(gene_terms)
+    return sorted(list(all_terms))
