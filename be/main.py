@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Query, Path
 from elasticsearch import AsyncElasticsearch
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
-from typing import Annotated
+from typing import Annotated, List
 
 from models import (
     get_list_of_aggregations,
@@ -145,6 +145,36 @@ async def elastic_details(index_name, record_id, data_class):
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
+async def get_unique_terms(index_name: str, aggs_body: dict) -> list[str]:
+    """Performs an Elasticsearch aggregation to get unique terms from one or more fields."""
+    search_body = {"size": 0, "aggs": aggs_body}
+    try:
+        response = await app.state.es_client.search(
+            index=index_name, body=search_body, track_total_hits=False
+        )
+
+        unique_terms = set()
+        aggregations = response["aggregations"]
+
+        def extract_keys_from_buckets(agg_result):
+            """Recursively traverses aggregation results to find and extract keys from buckets."""
+            if "buckets" in agg_result:
+                for bucket in agg_result["buckets"]:
+                    unique_terms.add(bucket["key"])
+
+            # Recurse into nested aggregations or sub-aggregations
+            for value in agg_result.values():
+                if isinstance(value, dict):
+                    extract_keys_from_buckets(value)
+
+        extract_keys_from_buckets(aggregations)
+
+        return sorted(list(unique_terms))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
+
+
 # MaveDB.
 
 
@@ -169,6 +199,13 @@ async def mavedb_details(
         record_id=record_id,
         data_class=MaveDBData,
     )
+
+
+@app.get("/mavedb/genes", response_model=list[str])
+async def mavedb_genes():
+    """Returns the complete set of all genes which have any information for MaveDB."""
+    aggs = {"genes": {"terms": {"field": "normalisedGeneName", "size": 1000000}}}
+    return await get_unique_terms(index_name="mavedb", aggs_body=aggs)
 
 
 # DepMap.
@@ -197,6 +234,22 @@ async def depmap_details(
     )
 
 
+@app.get("/depmap/genes", response_model=list[str])
+async def depmap_genes():
+    """Returns the complete set of all genes which have any information for DepMap."""
+    aggs = {
+        "nested_genes": {
+            "nested": {"path": "high_dependency_genes"},
+            "aggs": {
+                "gene_names": {
+                    "terms": {"field": "high_dependency_genes.name", "size": 1000000}
+                }
+            },
+        }
+    }
+    return await get_unique_terms(index_name="depmap", aggs_body=aggs)
+
+
 # Perturb-Seq.
 
 
@@ -221,3 +274,13 @@ async def perturb_seq_details(
         record_id=record_id,
         data_class=PerturbSeqData,
     )
+
+
+@app.get("/perturb-seq/genes", response_model=list[str])
+async def perturb_seq_genes():
+    """Returns the complete set of all genes which have any information for Perturb-Seq."""
+    aggs = {
+        "perturbations": {"terms": {"field": "perturbation", "size": 1000000}},
+        "genes": {"terms": {"field": "gene", "size": 1000000}},
+    }
+    return await get_unique_terms(index_name="perturb-seq", aggs_body=aggs)
