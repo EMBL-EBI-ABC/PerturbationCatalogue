@@ -2,11 +2,12 @@ import base64
 import functools
 import json
 import os
-from urllib.parse import quote
 
+import brotli
 import dash
-from dash import html, Output, Input, callback, MATCH, dcc
+from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
+import msgpack
 
 from .elastic_table import ElasticTable, Column
 
@@ -405,16 +406,23 @@ dash.register_page(
 # State serialisation and deserialisation.
 
 
-def serialise_state(state):
-    state["initial_load"] = True
-    return base64.urlsafe_b64encode(json.dumps(state).encode()).decode().rstrip("=")
+def serialise_state(state, default_state):
+    # Only record the values which are different from the defaults.
+    state_diff = {}
+    for k, v in state.items():
+        if v != default_state[k]:
+            state_diff[k] = v
+    # Make sure the state is treated as initial load on deserialisation.
+    state_diff["initial_load"] = True
+    packed_data = msgpack.packb(state_diff)
+    return base64.urlsafe_b64encode(brotli.compress(packed_data)).decode().rstrip("=")
 
 
 def deserialise_state(state):
     if state:
-        return json.loads(
-            base64.urlsafe_b64decode(state + "=" * (-len(state) % 4)).decode()
-        )
+        padded_state = state + "=" * (-len(state) % 4)
+        decoded_data = base64.urlsafe_b64decode(padded_state)
+        return msgpack.unpackb(brotli.decompress(decoded_data), raw=False)
     else:
         return None
 
@@ -521,5 +529,9 @@ def register_callbacks(app):
     )
     def update_url_with_state(depmap_data, mavedb_data, perturb_seq_data):
         base_path = "/data-portal"
-        query_string = f"?depmap={serialise_state(depmap_data)}&mavedb={serialise_state(mavedb_data)}&perturb_seq={serialise_state(perturb_seq_data)}"
+        query_string = (
+            f"?depmap={serialise_state(depmap_data, depmap_table.default_state)}"
+            f"&mavedb={serialise_state(mavedb_data, mavedb_table.default_state)}"
+            f"&perturb_seq={serialise_state(perturb_seq_data, perturb_seq_table.default_state)}"
+        )
         return query_string
