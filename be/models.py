@@ -8,6 +8,11 @@ A = TypeVar("A")  # Datasource aggregation type
 # Generic aggregation classes.
 
 
+class RangeAggregation(BaseModel):
+    min: int | float | None
+    max: int | float | None
+
+
 class AggregationBucket(BaseModel):
     key: int | str
     doc_count: int
@@ -20,7 +25,7 @@ class Aggregation(BaseModel):
 
 
 def get_list_of_aggregations(aggregation_class):
-    return sorted(aggregation_class.schema()["properties"].keys())
+    return sorted(aggregation_class.model_json_schema()["properties"].keys())
 
 
 # Generic Elastic response classes.
@@ -59,7 +64,12 @@ class SearchParams(BaseModel):
 
 
 class FieldDefinition:
-    def __init__(self, name: str, type: type, filterable: bool = False):
+    def __init__(
+        self,
+        name: str,
+        type: type,
+        filterable: Literal["list", "range"] | None = None,
+    ):
         self.name = name
         self.type = type
         self.filterable = filterable
@@ -85,8 +95,9 @@ class DataSource:
             __annotations__ = {name: type for name, (type, _) in fields.items()}
 
         class AggregationResponse(BaseModel):
+            # Dynamically set annotations based on filterable type
             __annotations__ = {
-                name: Aggregation
+                name: Aggregation if filterable == "list" else RangeAggregation
                 for name, (_, filterable) in fields.items()
                 if filterable
             }
@@ -123,12 +134,12 @@ mavedb = DataSource(
         FieldDefinition(name="urn", type=str),
         FieldDefinition(name="title", type=str),
         FieldDefinition(name="shortDescription", type=str),
-        FieldDefinition(name="sequenceType", type=str, filterable=True),
+        FieldDefinition(name="sequenceType", type=str, filterable="list"),
         FieldDefinition(name="geneName", type=str),
         FieldDefinition(name="normalisedGeneName", type=str),
-        FieldDefinition(name="geneCategory", type=str, filterable=True),
+        FieldDefinition(name="geneCategory", type=str, filterable="list"),
         FieldDefinition(name="publicationUrl", type=str),
-        FieldDefinition(name="publicationYear", type=int | str, filterable=True),
+        FieldDefinition(name="publicationYear", type=int | str, filterable="list"),
         FieldDefinition(name="numVariants", type=int),
     ],
     default_sort_field="publicationYear",
@@ -143,14 +154,14 @@ depmap = DataSource(
     fields=[
         FieldDefinition(name="ModelID", type=str),
         FieldDefinition(name="CellLineName", type=str),
-        FieldDefinition(name="OncotreeLineage", type=str, filterable=True),
+        FieldDefinition(name="OncotreeLineage", type=str, filterable="list"),
         FieldDefinition(name="OncotreePrimaryDisease", type=str),
         FieldDefinition(name="OncotreeSubtype", type=str),
         FieldDefinition(name="Age", type=float | None),
-        FieldDefinition(name="AgeCategory", type=str, filterable=True),
-        FieldDefinition(name="Sex", type=str, filterable=True),
-        FieldDefinition(name="PrimaryOrMetastasis", type=str, filterable=True),
-        FieldDefinition(name="SampleCollectionSite", type=str, filterable=True),
+        FieldDefinition(name="AgeCategory", type=str, filterable="list"),
+        FieldDefinition(name="Sex", type=str, filterable="list"),
+        FieldDefinition(name="PrimaryOrMetastasis", type=str, filterable="list"),
+        FieldDefinition(name="SampleCollectionSite", type=str, filterable="list"),
         FieldDefinition(name="CatalogNumber", type=str),
         FieldDefinition(name="high_dependency_genes", type=list[dict]),
     ],
@@ -166,9 +177,9 @@ perturb_seq = DataSource(
     name="Perturb-Seq",
     fields=[
         FieldDefinition(name="record_id", type=str),
-        FieldDefinition(name="study_id", type=str, filterable=True),
-        FieldDefinition(name="perturbation", type=str, filterable=True),
-        FieldDefinition(name="gene", type=str, filterable=True),
+        FieldDefinition(name="study_id", type=str, filterable="list"),
+        FieldDefinition(name="perturbation", type=str, filterable="list"),
+        FieldDefinition(name="gene", type=str, filterable="list"),
         FieldDefinition(name="log2fc", type=float),
         FieldDefinition(name="pvalue", type=float),
         FieldDefinition(name="padj", type=float),

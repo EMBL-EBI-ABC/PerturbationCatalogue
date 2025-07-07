@@ -21,6 +21,8 @@ from models import (
     PerturbSeqData,
     PerturbSeqSearchParams,
     PerturbSeqAggregationResponse,
+    Aggregation,
+    RangeAggregation,
 )
 
 
@@ -98,12 +100,25 @@ async def elastic_search(
 
     # Adding filters.
     filters = []
-    aggregation_fields = get_list_of_aggregations(aggregation_class)
-    if aggregation_fields:
-        for aggregation_field in aggregation_fields:
-            filter_value = getattr(params, aggregation_field)
-            if filter_value:
-                filters.append({"terms": {aggregation_field: [filter_value]}})
+    for field_name, model_field in aggregation_class.model_fields.items():
+        filter_value = getattr(params, field_name, None)
+        if not filter_value:
+            continue
+
+        # Check the type of aggregation to determine the filter logic.
+        # The annotation will be either the Aggregation or RangeAggregation class.
+        if model_field.annotation is Aggregation:  # List filter
+            filters.append({"terms": {field_name: [filter_value]}})
+        elif model_field.annotation is RangeAggregation:  # Slider/range filter
+            try:
+                min_val, max_val = filter_value.split("-", 1)
+                range_query = {"gte": float(min_val), "lte": float(max_val)}
+                filters.append({"range": {field_name: range_query}})
+            except:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid range format for '{field_name}'. Expected 'min-max' with numbers.",
+                )
 
     # Combine query with filters.
     search_body = {
@@ -119,11 +134,14 @@ async def elastic_search(
     }
 
     # Adding aggregation fields.
-    if aggregation_fields:
-        for aggregation_field in aggregation_fields:
-            search_body["aggs"][aggregation_field] = {
-                "terms": {"field": aggregation_field, "size": 1000000}
+    for field_name, model_field in aggregation_class.model_fields.items():
+        if model_field.annotation is Aggregation:
+            search_body["aggs"][field_name] = {
+                "terms": {"field": field_name, "size": 1000000}
             }
+        elif model_field.annotation is RangeAggregation:
+            # Use a stats aggregation to get min and max for the range.
+            search_body["aggs"][field_name] = {"stats": {"field": field_name}}
 
     # Adding sort field and sort order
     search_body["sort"] = [{params.sort_field: {"order": params.sort_order}}]
