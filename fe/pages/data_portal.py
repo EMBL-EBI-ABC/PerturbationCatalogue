@@ -5,6 +5,7 @@ import os
 
 import brotli
 import dash
+import requests
 from dash import html, Output, Input, callback, MATCH
 from dash.dependencies import State
 import msgpack
@@ -13,8 +14,12 @@ from .elastic_table import ElasticTable, Column
 
 
 # Common parameters.
-
 api_base_url = os.getenv("PERTURBATION_CATALOGUE_BE")
+
+# Prefetch gene lists for cross-references.
+response = requests.get(f"{api_base_url}/mavedb/genes")
+response.raise_for_status()
+mavedb_genes_set = set(response.json())
 
 
 # DepMap.
@@ -26,7 +31,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     # Create elements for MaveDB genes.
     mavedb_elements = [html.I("Genes in MaveDB: ")]
     for g in sorted(
-        (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+        (g for g in data if g["name"] in mavedb_genes_set), key=lambda x: x["name"]
     ):
         if display_links:
             # Create a state where the MaveDB search is pre-filled with the gene name.
@@ -45,7 +50,7 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
 
     # Split other genes into displayed and toggled.
     other_genes = sorted(
-        (g for g in data if g.get("xref") != "MaveDB"), key=lambda x: x["name"]
+        (g for g in data if g["name"] not in mavedb_genes_set), key=lambda x: x["name"]
     )
     other_genes_always_displayed = (
         other_genes[:max_other_genes] if max_other_genes else other_genes
@@ -105,14 +110,6 @@ depmap_table = ElasticTable(
     id="depmap",
     api_endpoint=f"{api_base_url}/depmap/search",
     columns=[
-        # Special field, not displayed anywhere and only used for filtering.
-        Column(
-            field_name="xref",
-            display_name="Cross-references",
-            display_table=False,
-            display_details=False,
-            filterable=True,
-        ),
         # Subtitle.
         Column(
             field_name="OncotreePrimaryDisease",
