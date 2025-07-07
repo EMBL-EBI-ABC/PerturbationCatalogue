@@ -24,26 +24,24 @@ def high_dependency_genes(data, display_links=True, max_other_genes=None):
     """Dynamic layout for the list of high dependency genes with toggle for other genes."""
 
     # Create elements for MaveDB genes.
-    mavedb_elements = [html.I("Genes in MaveDB: ")] + [
-        html.Span(
-            [
-                html.B(
-                    html.A(
-                        g["name"],
-                        href="#",
-                        id={"type": "gene-link", "index": g["name"]},
-                        style={"textDecoration": "none"},
-                    )
-                    if display_links
-                    else g["name"]
-                ),
-                html.Span(" "),
-            ]
-        )
-        for g in sorted(
-            (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
-        )
-    ]
+    mavedb_elements = [html.I("Genes in MaveDB: ")]
+    for g in sorted(
+        (g for g in data if g.get("xref") == "MaveDB"), key=lambda x: x["name"]
+    ):
+        if display_links:
+            # Create a state where the MaveDB search is pre-filled with the gene name.
+            state = mavedb_table.default_state.copy()
+            state["search"] = g["name"]
+            query = serialise_state(state, mavedb_table.default_state)
+            link = html.A(
+                g["name"],
+                href=f"/data-portal?mavedb={query}",
+                style={"textDecoration": "none"},
+                target="_blank",
+            )
+        else:
+            link = g["name"]
+        mavedb_elements.append(html.Span([html.B(link), html.Span(" ")]))
 
     # Split other genes into displayed and toggled.
     other_genes = sorted(
@@ -460,47 +458,6 @@ def register_callbacks(app):
     mavedb_table.register_callbacks(app)
     depmap_table.register_callbacks(app)
     perturb_seq_table.register_callbacks(app)
-
-    @callback(
-        Output("elastic-table-mavedb-search", "value", allow_duplicate=True),
-        Input({"type": "gene-link", "index": dash.dependencies.ALL}, "n_clicks"),
-        State({"type": "gene-link", "index": dash.dependencies.ALL}, "id"),
-        prevent_initial_call=True,
-    )
-    def gene_link_clicked(n_clicks, ids):
-        if not any(n_clicks):
-            return dash.no_update
-
-        # Get the context of the callback to determine which input triggered it
-        ctx = dash.callback_context
-        if not ctx.triggered:
-            return dash.no_update
-
-        # Get the id of the component that triggered the callback
-        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-        # Extract the index from the triggered component's id
-        try:
-            triggered_dict = json.loads(triggered_id)
-            gene_name = triggered_dict["index"]
-            return gene_name
-        except:
-            return dash.no_update
-
-    # Simple clientside callback for scrolling
-    app.clientside_callback(
-        """
-        function(value) {
-            if (value) {
-                document.getElementById('elastic-table-mavedb-search').scrollIntoView({behavior: 'smooth'});
-            }
-            return null;
-        }
-        """,
-        Output("elastic-table-mavedb-search", "_", allow_duplicate=True),
-        Input("elastic-table-mavedb-search", "value"),
-        prevent_initial_call=True,
-    )
 
     @callback(
         [
