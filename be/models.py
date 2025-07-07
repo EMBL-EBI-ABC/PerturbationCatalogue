@@ -55,6 +55,9 @@ class SearchParams(BaseModel):
     q: str | None = Field(None, description="Search query string")
     start: int = Field(0, description="Starting point of the results")
     size: int = Field(10, gt=0, description="Number of results per page")
+    search_after: str | None = Field(
+        None, description="Token for 'search_after' pagination"
+    )
     # No sorting by default, child classes can override this.
     sort_field: str | None = None
     sort_order: Literal["desc", "asc"] = "asc"
