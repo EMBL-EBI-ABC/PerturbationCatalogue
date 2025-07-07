@@ -67,11 +67,32 @@ app.add_middleware(
 # Generic search methods.
 
 
-async def elastic_search(index_name, params, data_class, aggregation_class):
-
+async def elastic_search(
+    index_name, params, data_class, aggregation_class, nested_query=None
+):
     # Build the query body based on whether there is full text search.
     if params.q:
-        query_body = {"multi_match": {"query": params.q, "fields": ["*"]}}
+        # The base query will always search top-level fields.
+        should_clauses = [{"multi_match": {"query": params.q, "fields": ["*"]}}]
+        # If nested query info is provided, add a nested search clause.
+        if nested_query and nested_query.get("path") and nested_query.get("field"):
+            nested_path = nested_query["path"]
+            nested_field = nested_query["field"]
+            should_clauses.append(
+                {
+                    "nested": {
+                        "path": nested_path,
+                        "query": {
+                            "match": {
+                                # Construct the full field path: path.field
+                                f"{nested_path}.{nested_field}": params.q
+                            }
+                        },
+                    }
+                }
+            )
+        # Combine clauses: a document matches if the term is in the top level OR the nested field.
+        query_body = {"bool": {"should": should_clauses, "minimum_should_match": 1}}
     else:
         query_body = {"match_all": {}}
 
@@ -215,11 +236,13 @@ async def mavedb_genes():
 async def depmap_search(
     params: Annotated[DepMapSearchParams, Query()],
 ) -> ElasticResponse[DepMapData, DepMapAggregationResponse]:
+    nested_query_config = {"path": "high_dependency_genes", "field": "name"}
     return await elastic_search(
         index_name="depmap",
         params=params,
         data_class=DepMapData,
         aggregation_class=DepMapAggregationResponse,
+        nested_query=nested_query_config,
     )
 
 
