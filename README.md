@@ -4,16 +4,16 @@
 
 This monorepo contains data processing, back-end, and front-end facilities for the Perturbation Catalogue project. Try it out:
 
-## Main branch deployment
-* **API** → https://perturbation-catalogue-be-959149465821.europe-west2.run.app/mavedb/search
-* **Website** → https://perturbation-catalogue-dash-959149465821.europe-west2.run.app
+## Production deployment (`main` branch)
+* **API** → https://perturbation-catalogue-be-328296435987.europe-west2.run.app/mavedb/search
+* **Website** → https://perturbation-catalogue-dash-328296435987.europe-west2.run.app/
 
-## Dev branch deployment
+## Devevelopment deployment (`dev` branch)
 * **API** → https://perturbation-catalogue-be-dev-959149465821.europe-west2.run.app/mavedb/search
 * **Website** → https://perturbation-catalogue-dash-dev-959149465821.europe-west2.run.app
 
 
-## Live deployment from the latest commit (unstable)
+## Live deployment (latest commit)
 * **API** → https://perturbation-catalogue-be-live-959149465821.europe-west2.run.app/mavedb/search
 * **Website** → https://perturbation-catalogue-dash-live-959149465821.europe-west2.run.app
 
