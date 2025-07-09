@@ -36,15 +36,6 @@ python3 ../elastic_load.py \
       "type": "keyword"
     }
   }'
-
-# Modify the maximum number of results that can be returned.
-curl -X PUT "${ELASTIC_ENDPOINT}/perturb-seq/_settings" -H 'Content-Type: application/json' -d'
-{
-  "index": {
-    "max_result_window": 1000000
-  }
-}
-'
 ```
 
 ## Stats for the four files
