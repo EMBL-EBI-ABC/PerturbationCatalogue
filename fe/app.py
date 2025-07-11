@@ -14,7 +14,7 @@ app = dash.Dash(
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
-    url_base_pathname="/perturbation-catalogue",
+    url_base_pathname="/perturbation-catalogue/",
 )
 
 # Initialise callbacks for external components. This ensures that interactivity defined
