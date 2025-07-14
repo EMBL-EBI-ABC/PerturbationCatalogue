@@ -27,8 +27,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
                 "chromosome_name",
                 "start_position",
                 "end_position",
-                "strand",
-                "transcription_start_site"
+                "strand"
             ]
         }
     )
@@ -49,8 +48,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
             "chromosome_name",
             "start_position",
             "end_position",
-            "strand",
-            "transcription_start_site"
+            "strand"
         ],
     )
 
@@ -65,8 +63,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
                 "chromosome_name",
                 "start_position",
                 "end_position",
-                "strand",
-                "transcription_start_site",
+                "strand"
             ]
         )
         .agg(
@@ -106,8 +103,7 @@ def regenerate_gene_ont() -> pd.DataFrame:
             "start_position",
             "end_position",
             "strand",
-            "gene_coord",
-            "transcription_start_site",
+            "gene_coord"
         ]
     ]
 
