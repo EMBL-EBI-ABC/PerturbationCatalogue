@@ -5,8 +5,8 @@
 This monorepo contains data processing, back-end, and front-end facilities for the Perturbation Catalogue project. Try it out:
 
 ## Production deployment (`main` branch)
-* **API** → https://perturbation-catalogue-be-328296435987.europe-west2.run.app/mavedb/search
-* **Website** → https://perturbation-catalogue-dash-328296435987.europe-west2.run.app/
+* **API** → [https://www.ebi.ac.uk/perturbation-catalogue/mavedb/search](https://www.ebi.ac.uk/perturbation-catalogue/mavedb/search)
+* **Website** → [https://www.ebi.ac.uk/perturbation-catalogue](https://www.ebi.ac.uk/perturbation-catalogue)
 
 ## Development deployment (`dev` branch)
 * **API** → https://perturbation-catalogue-be-dev-959149465821.europe-west2.run.app/mavedb/search
