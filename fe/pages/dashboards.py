@@ -8,6 +8,7 @@ from pathlib import Path
 dash.register_page(
     __name__,
     path="/dashboards",
+    relative_path="/dashboards",
     name="Dashboards",
     button="Explore Dashboards",
     description="The Dashboards tab provides a visual overview of the existing data.",

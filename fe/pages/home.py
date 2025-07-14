@@ -7,6 +7,7 @@ from ._order import get_pages
 dash.register_page(
     __name__,
     path="/",
+    relative_path="/",
     name="Home",
     button=None,
     description=None,
@@ -57,7 +58,7 @@ def layout():
                                                 html.P(page["description"]),
                                                 dbc.Button(
                                                     page["button"],
-                                                    href=page["supplied_path"],
+                                                    href=page["relative_path"],
                                                     color="success",
                                                 ),
                                             ]

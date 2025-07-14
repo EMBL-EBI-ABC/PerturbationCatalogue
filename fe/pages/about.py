@@ -5,6 +5,7 @@ import dash_bootstrap_components as dbc
 dash.register_page(
     __name__,
     path="/about",
+    relative_path="/about",
     name="About",
     button="Contact Us",
     description="Here you can find more information about how to get help or propose new features.",
@@ -62,7 +63,10 @@ layout = dbc.Container(
                             ),
                         ]
                     ),
-                    dbc.CardImg(src="/assets/pc_architecture.png", bottom=True),
+                    dbc.CardImg(
+                        src="/perturbation-catalogue/assets/pc_architecture.png",
+                        bottom=True,
+                    ),
                 ]
             ),
             md=12,

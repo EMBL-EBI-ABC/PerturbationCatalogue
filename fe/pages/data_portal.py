@@ -44,7 +44,7 @@ def create_cross_reference_link(gene_name):
         perturb_seq_state, perturb_seq_table.default_state
     )
 
-    href = f"/data-portal?depmap={depmap_query}&mavedb={mavedb_query}&perturb_seq={perturb_seq_query}"
+    href = f"/perturbation-catalogue/data-portal?depmap={depmap_query}&mavedb={mavedb_query}&perturb_seq={perturb_seq_query}"
 
     return html.A(
         html.B(gene_name),
@@ -232,7 +232,7 @@ depmap_table = ElasticTable(
             display_details="title",
             display_table=lambda model_id: html.A(
                 model_id,
-                href=f"/data-portal/depmap/{model_id}",
+                href=f"/perturbation-catalogue/data-portal/depmap/{model_id}",
                 className="text-decoration-none text-nowrap",
             ),
         ),
@@ -349,7 +349,7 @@ mavedb_table = ElasticTable(
             display_details="text",
             display_table=lambda urn: html.A(
                 urn,
-                href=f"/data-portal/mavedb/{urn}",
+                href=f"/perturbation-catalogue/data-portal/mavedb/{urn}",
                 className="text-decoration-none text-nowrap",
             ),
         ),
@@ -448,7 +448,7 @@ perturb_seq_table = ElasticTable(
 
 dash.register_page(
     "data-portal-details-perturb-seq",
-    path_template="/data-portal/perturb-seq/<record_id>",
+    path_template="/perturbation-catalogue/data-portal/perturb-seq/<record_id>",
     layout=perturb_seq_table.details_layout,
 )
 
@@ -495,6 +495,7 @@ def complete_layout(**kwargs):
 dash.register_page(
     __name__,
     path="/data-portal",
+    relative_path="/data-portal",
     name="Data Portal",
     button="Open Data Portal",
     description="The Data Portal allows users to sort and filter metadata using a set of predefined filters, and it also has free-text search capabilities.",
@@ -537,7 +538,7 @@ def register_callbacks(app):
         prevent_initial_call=False,
     )
     def update_url_with_state(depmap_data, mavedb_data, perturb_seq_data):
-        base_path = "/data-portal"
+        base_path = "/perturbation-catalogue/data-portal"
         query_string = (
             f"?depmap={serialise_state(depmap_data, depmap_table.default_state)}"
             f"&mavedb={serialise_state(mavedb_data, mavedb_table.default_state)}"

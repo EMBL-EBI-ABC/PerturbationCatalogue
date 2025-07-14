@@ -12,8 +12,8 @@ def nav_item(page):
                 html.I(className=f"bi {page['icon']} me-2"),
                 page["name"],
             ],
-            href=page["supplied_path"],
-            id=f"nav-{page['supplied_path'][1:]}",
+            href=page["relative_path"],
+            id=f"nav-{page['relative_path'][1:]}",
             className="nav-link-custom text-white",
         )
     )
@@ -24,7 +24,7 @@ layout = dbc.NavbarSimple(
         nav_item(page) for page in get_pages(include_home=False, require_icon=True)
     ],
     brand=nav_item(get_home_page()),
-    brand_href=get_home_page()["supplied_path"],
+    brand_href=get_home_page()["relative_path"],
     color=None,
     className="sticky-top",
     style={"backgroundColor": "var(--custom-color)"},
@@ -47,7 +47,7 @@ def register_callbacks(app):
     @callback(
         [
             # Current navbar element styles.
-            dash.Output(f"nav-{page['supplied_path'][1:]}", "style")
+            dash.Output(f"nav-{page['relative_path'][1:]}", "style")
             for page in get_pages(require_icon=True)
         ],
         [dash.Input("_pages_location", "pathname")],
@@ -63,10 +63,10 @@ def register_callbacks(app):
         styles = [
             (
                 active_style
-                if (pathname == page["supplied_path"] == "/")
+                if (pathname == page["relative_path"] == "/")
                 or (
-                    page["supplied_path"] != "/"
-                    and pathname.startswith(page["supplied_path"])
+                    page["relative_path"] != "/"
+                    and pathname.startswith(page["relative_path"])
                 )
                 else default_style
             )
