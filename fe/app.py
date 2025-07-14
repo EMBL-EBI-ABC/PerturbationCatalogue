@@ -14,6 +14,7 @@ app = dash.Dash(
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
+    url_base_pathname="/perturbation-catalogue/",
 )
 
 # Initialise callbacks for external components. This ensures that interactivity defined
@@ -42,7 +43,7 @@ footer = html.Footer(
                 target="_blank",
                 children=[
                     html.Img(
-                        src="/assets/embl-ebi-logo.png",
+                        src="/perturbation-catalogue/assets/embl-ebi-logo.png",
                         height="30px",
                         style={
                             "display": "inline",
@@ -62,7 +63,7 @@ footer = html.Footer(
                 target="_blank",
                 children=[
                     html.Img(
-                        src="/assets/open-targets-logo.png",
+                        src="/perturbation-catalogue/assets/open-targets-logo.png",
                         height="32px",
                         style={
                             "display": "inline",

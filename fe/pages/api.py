@@ -5,6 +5,7 @@ from . import _iframe
 dash.register_page(
     __name__,
     path="/api",
+    relative_path="/api",
     name="API documentation",
     button="API documentation",
     description="Here you can find API documentation",
