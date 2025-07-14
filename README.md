@@ -8,7 +8,7 @@ This monorepo contains data processing, back-end, and front-end facilities for t
 * **API** → https://perturbation-catalogue-be-328296435987.europe-west2.run.app/mavedb/search
 * **Website** → https://perturbation-catalogue-dash-328296435987.europe-west2.run.app/
 
-## Devevelopment deployment (`dev` branch)
+## Development deployment (`dev` branch)
 * **API** → https://perturbation-catalogue-be-dev-959149465821.europe-west2.run.app/mavedb/search
 * **Website** → https://perturbation-catalogue-dash-dev-959149465821.europe-west2.run.app
 
