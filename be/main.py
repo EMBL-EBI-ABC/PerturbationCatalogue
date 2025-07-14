@@ -54,6 +54,7 @@ app = FastAPI(
         "name": "Apache 2.0",
         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
     },
+    root_path="/perturbation-catalogue",
 )
 
 # Allow all origins.
@@ -217,7 +218,7 @@ async def get_unique_terms(index_name: str, aggs_body: dict) -> list[str]:
 # MaveDB.
 
 
-@app.get("/perturbation-catalogue/mavedb/search")
+@app.get("/mavedb/search")
 async def mavedb_search(
     params: Annotated[MaveDBSearchParams, Query()],
 ) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
@@ -229,7 +230,7 @@ async def mavedb_search(
     )
 
 
-@app.get("/perturbation-catalogue/mavedb/search/{record_id}")
+@app.get("/mavedb/search/{record_id}")
 async def mavedb_details(
     record_id: Annotated[str, Path(description="Record ID")],
 ) -> ElasticDetailsResponse[MaveDBData]:
@@ -240,7 +241,7 @@ async def mavedb_details(
     )
 
 
-@app.get("/perturbation-catalogue/mavedb/genes", response_model=list[str])
+@app.get("/mavedb/genes", response_model=list[str])
 async def mavedb_genes():
     """Returns the complete set of all genes which have any information for MaveDB."""
     aggs = {"genes": {"terms": {"field": "normalisedGeneName", "size": 1000000}}}
@@ -250,7 +251,7 @@ async def mavedb_genes():
 # DepMap.
 
 
-@app.get("/perturbation-catalogue/depmap/search")
+@app.get("/depmap/search")
 async def depmap_search(
     params: Annotated[DepMapSearchParams, Query()],
 ) -> ElasticResponse[DepMapData, DepMapAggregationResponse]:
@@ -264,7 +265,7 @@ async def depmap_search(
     )
 
 
-@app.get("/perturbation-catalogue/depmap/search/{record_id}")
+@app.get("/depmap/search/{record_id}")
 async def depmap_details(
     record_id: Annotated[str, Path(description="Record ID")],
 ) -> ElasticDetailsResponse[DepMapData]:
@@ -275,7 +276,7 @@ async def depmap_details(
     )
 
 
-@app.get("/perturbation-catalogue/depmap/genes", response_model=list[str])
+@app.get("/depmap/genes", response_model=list[str])
 async def depmap_genes():
     """Returns the complete set of all genes which have any information for DepMap."""
     aggs = {
@@ -294,7 +295,7 @@ async def depmap_genes():
 # Perturb-Seq.
 
 
-@app.get("/perturbation-catalogue/perturb-seq/search")
+@app.get("/perturb-seq/search")
 async def perturb_seq_search(
     params: Annotated[PerturbSeqSearchParams, Query()],
 ) -> ElasticResponse[PerturbSeqData, PerturbSeqAggregationResponse]:
@@ -306,7 +307,7 @@ async def perturb_seq_search(
     )
 
 
-@app.get("/perturbation-catalogue/perturb-seq/search/{record_id}")
+@app.get("/perturb-seq/search/{record_id}")
 async def perturb_seq_details(
     record_id: Annotated[str, Path(description="Record ID")],
 ) -> ElasticDetailsResponse[PerturbSeqData]:
@@ -317,7 +318,7 @@ async def perturb_seq_details(
     )
 
 
-@app.get("/perturbation-catalogue/perturb-seq/genes", response_model=list[str])
+@app.get("/perturb-seq/genes", response_model=list[str])
 async def perturb_seq_genes():
     """Returns the complete set of all genes which have any information for Perturb-Seq."""
     aggs = {
