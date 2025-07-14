@@ -13,6 +13,61 @@ from libchebipy import search
 import scanpy as sc
 from gprofiler import GProfiler
 
+# function to add a new synonym to the ontology
+def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"], ref_column=str, syn_column=str, syn_map=dict, save=True):
+    """
+    Add a new synonym to the specified ontology term.
+    
+    Parameters
+    ----------
+    ontology_type : str
+        The name of the ontology type (e.g.,"genes", "cell_types", "cell_lines", "tissues", "diseases").
+    ref_column : str
+        The name of the column in the ontology DataFrame to use for matching terms.
+    syn_column : str
+        The name of the column in the ontology DataFrame to add synonyms to.
+    syn_map : dict
+        A dictionary mapping the ontology term to the new synonyms.
+    save : bool
+        Whether to save the updated ontology DataFrame to a parquet file. Default is True.
+    """
+    
+    if ontology_type not in ["genes", "cell_types", "cell_lines", "tissues", "diseases"]:
+        raise ValueError("ontology_type must be one of 'genes', 'cell_types', 'cell_lines', 'tissues', 'diseases'")
+    
+    # Get the path to the ontologies directory relative to this file
+    ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
+    
+    ont = pd.read_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet").drop_duplicates()
+    
+    if ref_column not in ont.columns:
+        raise ValueError(f"Column `{ref_column}` not found in `{ontology_type}` ontology")
+    if syn_column not in ont.columns:
+        raise ValueError(f"Column `{syn_column}` not found in `{ontology_type}` ontology")
+    
+    # map the synonyms to the ontology terms
+    for term, synonyms in syn_map.items():
+        if term not in ont[ref_column].values:
+            raise ValueError(f"Term `{term}` not found in `{ontology_type}` ontology")
+        if not isinstance(synonyms, list):
+            raise ValueError("`syn_map` values must be a list of synonyms")
+        
+        # add the synonyms to the ontology
+        for synonym in synonyms:
+            if synonym not in ont[syn_column].values:
+                ont.loc[ont[ref_column] == term, syn_column] += f"|{synonym}"
+                
+    # Display the updated terms
+    print(f"Updated terms in `{ontology_type}` ontology:")
+    display(ont.loc[ont[ref_column].isin(syn_map.keys()),:])
+                
+    # Save the updated ontology
+    if save:
+        ont.to_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet", index=False)
+
+    
+    
+
 
 class CuratedDataset:
 
@@ -635,7 +690,7 @@ class CuratedDataset:
         gp = GProfiler(return_dataframe=True)
         gp_result = gp.convert(
             organism="hsapiens",
-            query=conv_df[input_column].to_list(),
+            query=list(set(conv_df[input_column])),
             target_namespace="ENSG",
         )
 
