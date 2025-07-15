@@ -1,5 +1,6 @@
 import pandas as pd
 import dash
+import dash_bio
 import dash_bootstrap_components as dbc
 import plotly.express as px
 from dash import html, dcc, callback, Output, Input
@@ -26,10 +27,17 @@ MAVEDB_DATA = pd.read_parquet(
 GENE_CATEGORY_VALUES = MAVEDB_DATA["geneCategory"].unique()
 SEQUENCE_TYPE_VALUES = MAVEDB_DATA["sequenceType"].unique()
 
+PERTURB_SEQ_DATA = pd.read_parquet(
+    Path(".") / "parquet_data_sources" / "perturb-seq.parquet"
+)
+STUDIES_VALUES = list(PERTURB_SEQ_DATA["study_id"].unique())
+STUDIES_VALUES.append("All")
+PERTURBED_GENES = sorted(list(PERTURB_SEQ_DATA["perturbation"].unique()))
+
 layout = dbc.Container(
     [
         dbc.Row(
-            dbc.Col(html.H1("Patients information"), md=4),
+            dbc.Col(html.H1("Patients information"), md=12),
             style={"marginTop": "2em"},
         ),
         dbc.Row(
@@ -58,7 +66,7 @@ layout = dbc.Container(
         ),
         dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="age-barchart")), md=12)),
         dbc.Row(
-            dbc.Col(html.H1("Samples information"), md=4),
+            dbc.Col(html.H1("Samples information"), md=12),
         ),
         dbc.Row(
             dbc.Col(
@@ -80,7 +88,7 @@ layout = dbc.Container(
             ]
         ),
         dbc.Row(
-            dbc.Col(html.H1("Genes/Variants information"), md=8),
+            dbc.Col(html.H1("Genes/Variants information"), md=12),
         ),
         dbc.Row(
             [
@@ -109,6 +117,25 @@ layout = dbc.Container(
             ]
         ),
         dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="num-variants-histogram")), md=12)),
+        dbc.Row(
+            dbc.Col(html.H1("Perturb-seq information"), md=12),
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.Label("Choose Perturbed Gene"),
+                        dcc.Dropdown(
+                            PERTURBED_GENES,
+                            PERTURBED_GENES[0],
+                            id="perturbed-gene-dropdown",
+                        ),
+                    ],
+                    md=3,
+                ),
+            ]
+        ),
+        dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="volcano-plot")), md=12)),
     ]
 )
 
@@ -180,4 +207,22 @@ def build_num_variants_histogram(gene_category_value, sequence_type_value):
         labels={"numVariants": "Number of Variants"},
         log_y=True,
         title="Log(count) Number of Variants",
+    )
+
+
+@callback(
+    Output("volcano-plot", "figure"),
+    Input("perturbed-gene-dropdown", "value"),
+)
+def build_volcano_plot(perturbed_gene_value):
+    return dash_bio.VolcanoPlot(
+        PERTURB_SEQ_DATA[
+            PERTURB_SEQ_DATA["perturbation"] == perturbed_gene_value
+        ].reset_index(),
+        effect_size="log2fc",
+        p="padj",
+        snp="record_id",
+        gene="gene",
+        xlabel="log(FC)",
+        ylabel="log(p_adj)",
     )
