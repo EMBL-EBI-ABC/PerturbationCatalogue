@@ -29,10 +29,16 @@ SEQUENCE_TYPE_VALUES = [
     for value in MAVEDB_DATA["sequenceType"].unique()
 ]
 
+PERTURB_SEQ_DATA = pd.read_parquet(
+    Path(".") / "parquet_data_sources" / "perturb-seq.parquet"
+)
+STUDIES_VALUES = list(PERTURB_SEQ_DATA["study_id"].unique())
+STUDIES_VALUES.append("All")
+
 layout = dbc.Container(
     [
         dbc.Row(
-            dbc.Col(html.H1("Individuals information"), md=4),
+            dbc.Col(html.H1("Individuals information"), md=12),
             style={"marginTop": "2em"},
         ),
         dbc.Row(
@@ -61,7 +67,7 @@ layout = dbc.Container(
         ),
         dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="age-barchart")), md=12)),
         dbc.Row(
-            dbc.Col(html.H1("Samples information"), md=4),
+            dbc.Col(html.H1("Samples information"), md=12),
         ),
         dbc.Row(
             dbc.Col(
@@ -83,7 +89,7 @@ layout = dbc.Container(
             ]
         ),
         dbc.Row(
-            dbc.Col(html.H1("Genes/Variants information"), md=8),
+            dbc.Col(html.H1("Genes/Variants information"), md=12),
         ),
         dbc.Row(
             [
@@ -135,8 +141,36 @@ layout = dbc.Container(
                     ),
                 ],
                 md=12,
-            ),
+            )
         ),
+        dbc.Row(
+            dbc.Col(html.H1("Perturb-seq information"), md=12),
+        ),
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        html.Label("Choose Study"),
+                        dcc.Dropdown(
+                            STUDIES_VALUES,
+                            STUDIES_VALUES[-1],
+                            id="study-dropdown",
+                        ),
+                    ],
+                    md=3,
+                ),
+                dbc.Col(
+                    [
+                        html.Label("Choose Perturbed Gene"),
+                        dcc.Dropdown(
+                            id="perturbed-gene-dropdown",
+                        ),
+                    ],
+                    md=3,
+                ),
+            ]
+        ),
+        dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="volcano-plot")), md=12)),
     ]
 )
 
@@ -214,3 +248,49 @@ def build_num_variants_histogram(
         labels={"numVariants": "Number of Variants", "count": "Count"},
         range_x=[0, x_axis_range_value],
     )
+
+
+@callback(
+    Output("perturbed-gene-dropdown", "options"),
+    Output("perturbed-gene-dropdown", "value"),
+    Output("volcano-plot", "figure"),
+    Input("study-dropdown", "value"),
+    Input("perturbed-gene-dropdown", "value"),
+)
+def build_volcano_plot(study_value, perturbed_gene_value):
+    if study_value == "All":
+        perturbed_genes = sorted(list(PERTURB_SEQ_DATA["perturbation"].unique()))
+        if perturbed_gene_value not in perturbed_genes:
+            perturbed_gene = perturbed_genes[0]
+        else:
+            perturbed_gene = perturbed_gene_value
+        fig = px.scatter(
+            PERTURB_SEQ_DATA[PERTURB_SEQ_DATA["perturbation"] == perturbed_gene],
+            x="log2fc",
+            y="-log_padj",
+            hover_data=["gene", "perturbation", "log2fc", "-log_padj", "study_id"],
+            labels={"log2fc": "Log(FC)", "-log_padj": "-Log(p-value adjusted)"},
+        )
+    else:
+        perturbed_genes = sorted(
+            list(
+                PERTURB_SEQ_DATA[PERTURB_SEQ_DATA["study_id"] == study_value][
+                    "perturbation"
+                ].unique()
+            )
+        )
+        if perturbed_gene_value not in perturbed_genes:
+            perturbed_gene = perturbed_genes[0]
+        else:
+            perturbed_gene = perturbed_gene_value
+        fig = px.scatter(
+            PERTURB_SEQ_DATA[
+                (PERTURB_SEQ_DATA["study_id"] == study_value)
+                & (PERTURB_SEQ_DATA["perturbation"] == perturbed_gene)
+            ],
+            x="log2fc",
+            y="-log_padj",
+            hover_data=["gene", "perturbation", "log2fc", "-log_padj", "study_id"],
+            labels={"log2fc": "Log(FC)", "-log_padj": "-Log(p-value adjusted)"},
+        )
+    return perturbed_genes, perturbed_gene, fig
