@@ -31,15 +31,13 @@ def layout():
                             "height": "clamp(200px, 25vw, 400px)",
                         },
                     ),
-                    html.H1(
-                        "Perturbation Catalogue",
+                    html.Img(
+                        src="/perturbation-catalogue/assets/Perturbation-Catalogue-text-logo-white.png",
                         style={
-                            "font-size": "clamp(200%, 8vw, 300%)",
                             "position": "absolute",
+                            "transform": "translate(-50%, -50%)",
                             "top": "50%",
                             "left": "50%",
-                            "transform": "translate(-50%, -50%)",
-                            "color": "white",
                         },
                     ),
                 ],
