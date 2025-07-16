@@ -118,7 +118,8 @@ layout = dbc.Container(
             ]
         ),
         dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="num-variants-histogram")), md=12)),
-        dbc.Row(dbc.Col(
+        dbc.Row(
+            dbc.Col(
                 [
                     html.Label("Choose x-axis range"),
                     dcc.Slider(
@@ -140,8 +141,8 @@ layout = dbc.Container(
                     ),
                 ],
                 md=12,
-            ),
-        ))
+            )
+        ),
         dbc.Row(
             dbc.Col(html.H1("Perturb-seq information"), md=12),
         ),
