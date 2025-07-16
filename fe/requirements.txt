@@ -4,4 +4,3 @@ dash_bootstrap_components[pandas]>=2.0.0
 gunicorn>=23.0.0
 msgpack>=1.1.1
 pyarrow>=19.0.1
-dash-bio>=1.0.1
