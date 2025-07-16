@@ -24,7 +24,10 @@ MAVEDB_DATA = pd.read_parquet(
     Path(".") / "parquet_data_sources" / "mavedb_metadata.parquet"
 )
 GENE_CATEGORY_VALUES = MAVEDB_DATA["geneCategory"].unique()
-SEQUENCE_TYPE_VALUES = MAVEDB_DATA["sequenceType"].unique()
+SEQUENCE_TYPE_VALUES = [
+    value.upper() if value == "dna" else value.capitalize()
+    for value in MAVEDB_DATA["sequenceType"].unique()
+]
 
 PERTURB_SEQ_DATA = pd.read_parquet(
     Path(".") / "parquet_data_sources" / "perturb-seq.parquet"
@@ -35,7 +38,7 @@ STUDIES_VALUES.append("All")
 layout = dbc.Container(
     [
         dbc.Row(
-            dbc.Col(html.H1("Patients information"), md=12),
+            dbc.Col(html.H1("Individuals information"), md=12),
             style={"marginTop": "2em"},
         ),
         dbc.Row(
@@ -44,7 +47,7 @@ layout = dbc.Container(
                     [
                         html.Label("Choose Y-axis category"),
                         dcc.Dropdown(
-                            ["Sex", "Ethnicity", "Primary Or Metastasis"],
+                            ["Sex", "Genetic Ancestry Group", "Primary Or Metastasis"],
                             "Sex",
                             id="y-axis-dropdown",
                         ),
@@ -115,6 +118,30 @@ layout = dbc.Container(
             ]
         ),
         dbc.Row(dbc.Col(dbc.Spinner(dcc.Graph(id="num-variants-histogram")), md=12)),
+        dbc.Row(dbc.Col(
+                [
+                    html.Label("Choose x-axis range"),
+                    dcc.Slider(
+                        0,
+                        700000,
+                        value=50000,
+                        marks={
+                            0: {"label": "0"},
+                            50000: {"label": "50k"},
+                            100000: {"label": "100k"},
+                            200000: {"label": "200k"},
+                            300000: {"label": "300k"},
+                            400000: {"label": "400k"},
+                            500000: {"label": "500k"},
+                            600000: {"label": "600k"},
+                            700000: {"label": "700k"},
+                        },
+                        id="x-axis-range-slider",
+                    ),
+                ],
+                md=12,
+            ),
+        ))
         dbc.Row(
             dbc.Col(html.H1("Perturb-seq information"), md=12),
         ),
@@ -154,7 +181,7 @@ layout = dbc.Container(
 )
 def build_patients_dashboards(y_axis_value, x_axis_value):
     formatted_y_axis_value = y_axis_value.replace(" ", "")
-    if formatted_y_axis_value == "Ethnicity":
+    if formatted_y_axis_value == "GeneticAncestryGroup":
         formatted_y_axis_value = "PatientRace"
     formatted_x_axis_value = x_axis_value.replace(" ", "")
     return px.bar(
@@ -167,6 +194,7 @@ def build_patients_dashboards(y_axis_value, x_axis_value):
         labels={
             formatted_x_axis_value: x_axis_value,
             formatted_y_axis_value: y_axis_value,
+            "size": "Count",
         },
     )
 
@@ -194,7 +222,7 @@ def build_samples_dashboards(oncotree_lineage_value):
         y="SampleCollectionSite",
         title="Samples Collection Site",
         orientation="h",
-        labels={"SampleCollectionSite": "Samples Collectoin Site"},
+        labels={"SampleCollectionSite": "Samples Collectoin Site", "size": "Count"},
     )
     return primary_disease_piechart, collection_site_barchart
 
@@ -203,17 +231,21 @@ def build_samples_dashboards(oncotree_lineage_value):
     Output("num-variants-histogram", "figure"),
     Input("gene-category-dropdown", "value"),
     Input("sequence-type-dropdown", "value"),
+    Input("x-axis-range-slider", "value"),
 )
-def build_num_variants_histogram(gene_category_value, sequence_type_value):
+def build_num_variants_histogram(
+    gene_category_value, sequence_type_value, x_axis_range_value
+):
+    sequence_type_value = sequence_type_value.lower()
     return px.histogram(
         MAVEDB_DATA[
             (MAVEDB_DATA["geneCategory"] == gene_category_value)
             & (MAVEDB_DATA["sequenceType"] == sequence_type_value)
         ],
         x="numVariants",
-        labels={"numVariants": "Number of Variants"},
-        log_y=True,
-        title="Log(count) Number of Variants",
+        nbins=1000,
+        labels={"numVariants": "Number of Variants", "count": "Count"},
+        range_x=[0, x_axis_range_value],
     )
 
 
