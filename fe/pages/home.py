@@ -32,12 +32,13 @@ def layout():
                         },
                     ),
                     html.Img(
-                        src="/perturbation-catalogue/assets/Perturbation-Catalogue-text-logo-white.png",
+                        src="/perturbation-catalogue/assets/Perturbation-Catalogue-text-logo-white.svg",
                         style={
                             "position": "absolute",
                             "transform": "translate(-50%, -50%)",
                             "top": "50%",
                             "left": "50%",
+                            "height": "60%",
                         },
                     ),
                 ],
