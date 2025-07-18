@@ -31,15 +31,15 @@ def create_cross_reference_link(gene_name):
     """Creates a styled link that pre-fills the search for a gene across all tables."""
     # Create a state where the search is pre-filled for all tables.
     depmap_state = depmap_table.default_state.copy()
-    depmap_state["search"] = gene_name
+    depmap_state["search"] = f"high_dependency_genes.name:{gene_name}"
     depmap_query = serialise_state(depmap_state, depmap_table.default_state)
 
     mavedb_state = mavedb_table.default_state.copy()
-    mavedb_state["search"] = gene_name
+    mavedb_state["search"] = f"normalisedGeneName:{gene_name}"
     mavedb_query = serialise_state(mavedb_state, mavedb_table.default_state)
 
     perturb_seq_state = perturb_seq_table.default_state.copy()
-    perturb_seq_state["search"] = gene_name
+    perturb_seq_state["search"] = gene_name  # Full text search for Perturb-Seq
     perturb_seq_query = serialise_state(
         perturb_seq_state, perturb_seq_table.default_state
     )
