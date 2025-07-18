@@ -3,6 +3,7 @@ import urllib.parse
 from contextlib import asynccontextmanager
 import base64
 import json
+import asyncio
 
 from fastapi import FastAPI, HTTPException, Query, Path
 from elasticsearch import AsyncElasticsearch
@@ -243,34 +244,57 @@ async def elastic_details(index_name, record_id, data_class):
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
-async def get_unique_terms(index_name: str, aggs_body: dict) -> list[str]:
-    """Performs an Elasticsearch aggregation to get unique terms from one or more fields."""
-    search_body = {"size": 0, "aggs": aggs_body}
-    try:
-        response = await app.state.es_client.search(
-            index=index_name, body=search_body, track_total_hits=False
-        )
-
-        unique_terms = set()
-        aggregations = response["aggregations"]
-
-        def extract_keys_from_buckets(agg_result):
-            """Recursively traverses aggregation results to find and extract keys from buckets."""
-            if "buckets" in agg_result:
-                for bucket in agg_result["buckets"]:
-                    unique_terms.add(bucket["key"])
-
-            # Recurse into nested aggregations or sub-aggregations
-            for value in agg_result.values():
-                if isinstance(value, dict):
-                    extract_keys_from_buckets(value)
-
-        extract_keys_from_buckets(aggregations)
-
-        return sorted(list(unique_terms))
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
+async def get_all_unique_terms_paginated(
+    index_name: str,
+    field: str,
+    nested_path: str | None = None,
+) -> set[str]:
+    """Performs a paginated composite aggregation to retrieve all unique terms from a field.
+    Can handle a single top-level or a single nested field."""
+    unique_terms = set()
+    after_key = None
+    es_client = app.state.es_client
+    sources = [{"term": {"terms": {"field": field}}}]
+    while True:
+        composite_agg = {"sources": sources, "size": 1000}
+        if after_key:
+            composite_agg["after"] = after_key
+        agg_name = "paginated_terms"
+        aggs_query = {agg_name: {"composite": composite_agg}}
+        if nested_path:
+            nested_agg_name = "nested_agg"
+            aggs_query = {
+                nested_agg_name: {
+                    "nested": {"path": nested_path},
+                    "aggs": aggs_query,
+                }
+            }
+        search_body = {"size": 0, "aggs": aggs_query}
+        try:
+            response = await es_client.search(
+                index=index_name, body=search_body, track_total_hits=False
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
+        agg_result = response["aggregations"]
+        if nested_path:
+            agg_result = agg_result.get(nested_agg_name, {})
+        agg_result = agg_result.get(agg_name, {})
+        buckets = agg_result.get("buckets", [])
+        if not buckets:
+            break
+        for bucket in buckets:
+            # The key in a composite agg is a dictionary of values.
+            # Since we have one source, it will have one value.
+            for value in bucket["key"].values():
+                if value is not None:
+                    unique_terms.add(str(value))
+        if "after_key" in agg_result and agg_result["buckets"]:
+            after_key = agg_result["after_key"]
+        else:
+            # No more pages
+            break
+    return unique_terms
 
 
 # MaveDB.
@@ -302,8 +326,10 @@ async def mavedb_details(
 @app.get("/mavedb/genes", response_model=list[str])
 async def mavedb_genes():
     """Returns the complete set of all genes which have any information for MaveDB."""
-    aggs = {"genes": {"terms": {"field": "normalisedGeneName", "size": 1000000}}}
-    return await get_unique_terms(index_name="mavedb", aggs_body=aggs)
+    terms = await get_all_unique_terms_paginated(
+        index_name="mavedb", field="normalisedGeneName"
+    )
+    return sorted(list(terms))
 
 
 # DepMap.
@@ -337,17 +363,12 @@ async def depmap_details(
 @app.get("/depmap/genes", response_model=list[str])
 async def depmap_genes():
     """Returns the complete set of all genes which have any information for DepMap."""
-    aggs = {
-        "nested_genes": {
-            "nested": {"path": "high_dependency_genes"},
-            "aggs": {
-                "gene_names": {
-                    "terms": {"field": "high_dependency_genes.name", "size": 1000000}
-                }
-            },
-        }
-    }
-    return await get_unique_terms(index_name="depmap", aggs_body=aggs)
+    terms = await get_all_unique_terms_paginated(
+        index_name="depmap",
+        field="high_dependency_genes.name",
+        nested_path="high_dependency_genes",
+    )
+    return sorted(list(terms))
 
 
 # Perturb-Seq.
@@ -379,8 +400,10 @@ async def perturb_seq_details(
 @app.get("/perturb-seq/genes", response_model=list[str])
 async def perturb_seq_genes():
     """Returns the complete set of all genes which have any information for Perturb-Seq."""
-    aggs = {
-        "perturbations": {"terms": {"field": "perturbation", "size": 1000000}},
-        "genes": {"terms": {"field": "gene", "size": 1000000}},
-    }
-    return await get_unique_terms(index_name="perturb-seq", aggs_body=aggs)
+    perturbation_task = get_all_unique_terms_paginated(
+        index_name="perturb-seq", field="perturbation"
+    )
+    gene_task = get_all_unique_terms_paginated(index_name="perturb-seq", field="gene")
+    perturbation_terms, gene_terms = await asyncio.gather(perturbation_task, gene_task)
+    all_terms = perturbation_terms.union(gene_terms)
+    return sorted(list(all_terms))
