@@ -1,6 +1,8 @@
 import os
 import urllib.parse
 from contextlib import asynccontextmanager
+import base64
+import json
 
 from fastapi import FastAPI, HTTPException, Query, Path
 from elasticsearch import AsyncElasticsearch
@@ -121,16 +123,9 @@ async def elastic_search(
                     detail=f"Invalid range format for '{field_name}'. Expected 'min-max' with numbers.",
                 )
 
-    # Combine query with filters.
+    # Base search body, without pagination fields yet.
     search_body = {
-        "from": params.start,
-        "size": params.size,
-        "query": {
-            "bool": {
-                "must": query_body,
-                "filter": filters,
-            }
-        },
+        "query": {"bool": {"must": query_body, "filter": filters}},
         "aggs": defaultdict(dict),
     }
 
@@ -144,8 +139,70 @@ async def elastic_search(
             # Use a stats aggregation to get min and max for the range.
             search_body["aggs"][field_name] = {"stats": {"field": field_name}}
 
-    # Adding sort field and sort order
-    search_body["sort"] = [{params.sort_field: {"order": params.sort_order}}]
+    # Adding sort field and sort order. This must be deterministic for search_after.
+    sort_config = [{params.sort_field: {"order": params.sort_order}}]
+    # Add a tie-breaker for consistent sorting, required for search_after.
+    if params.sort_field != "_id":
+        sort_config.append({"_id": "asc"})
+    search_body["sort"] = sort_config
+
+    # Pagination Logic
+    MAX_WINDOW = 10000
+
+    if params.start + params.size <= MAX_WINDOW:
+        # Use efficient 'from' for shallow pages
+        search_body["from"] = params.start
+    else:
+        # Deep pagination using search_after.
+        docs_to_skip = params.start
+        last_hit_sort_values = None
+        while docs_to_skip > 0:
+            batch_size = min(docs_to_skip, MAX_WINDOW)
+            preflight_body = {
+                "query": search_body["query"],
+                "sort": search_body["sort"],
+                "size": batch_size,
+                "_source": False,
+                "track_total_hits": False,
+            }
+            if last_hit_sort_values:
+                preflight_body["search_after"] = last_hit_sort_values
+            try:
+                preflight_response = await app.state.es_client.search(
+                    index=index_name, body=preflight_body
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Search error during deep pagination: {str(e)}",
+                )
+
+            preflight_hits = preflight_response["hits"]["hits"]
+            if not preflight_hits:
+                # The requested page is out of bounds. To return a valid response,
+                # we run one final query to get total count and aggregations.
+                agg_query_body = {
+                    "query": search_body["query"],
+                    "aggs": search_body["aggs"],
+                    "size": 0,
+                    "track_total_hits": True,
+                }
+                final_response = await app.state.es_client.search(
+                    index=index_name, body=agg_query_body
+                )
+                return ElasticResponse[data_class, aggregation_class](
+                    total=final_response["hits"]["total"]["value"],
+                    start=params.start,
+                    size=params.size,
+                    results=[],
+                    aggregations=final_response["aggregations"],
+                )
+            last_hit_sort_values = preflight_hits[-1].get("sort")
+            docs_to_skip -= len(preflight_hits)
+        if last_hit_sort_values:
+            search_body["search_after"] = last_hit_sort_values
+
+    search_body["size"] = params.size
 
     # Performing the search.
     try:
@@ -155,14 +212,15 @@ async def elastic_search(
         )
         # Extract total count and hits.
         total = response["hits"]["total"]["value"]
-        hits = [r["_source"] for r in response["hits"]["hits"]]
+        hits = response["hits"]["hits"]
         aggregations = response["aggregations"]
+
         # Return the results.
         return ElasticResponse[data_class, aggregation_class](
             total=total,
             start=params.start,
             size=params.size,
-            results=hits,
+            results=[r["_source"] for r in hits],
             aggregations=aggregations,
         )
 
