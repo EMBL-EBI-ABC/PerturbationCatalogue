@@ -76,9 +76,24 @@ app.add_middleware(
 async def elastic_search(
     index_name, params, data_class, aggregation_class, nested_query=None
 ):
-    # Build the query body based on whether there is full text search.
-    if params.q:
-        # The base query will always search top-level fields.
+    # Build the query body based on the search query.
+    if params.q and ":" in params.q:
+        # Syntax for specific field search: "field:value"
+        field, value = params.q.split(":", 1)
+        # Check if the search is on a configured nested field.
+        if nested_query and field.startswith(nested_query["path"]):
+            # This is a targeted search within a nested object.
+            query_body = {
+                "nested": {
+                    "path": nested_query["path"],
+                    "query": {"match": {field: value}},
+                }
+            }
+        else:
+            # This is a targeted search on a top-level field.
+            query_body = {"match": {field: value}}
+    elif params.q:
+        # Full-text search logic.
         should_clauses = [{"multi_match": {"query": params.q, "fields": ["*"]}}]
         # If nested query info is provided, add a nested search clause.
         if nested_query and nested_query.get("path") and nested_query.get("field"):
@@ -97,9 +112,10 @@ async def elastic_search(
                     }
                 }
             )
-        # Combine clauses: a document matches if the term is in the top level OR the nested field.
+        # A document matches if the term is in the top level OR the nested field.
         query_body = {"bool": {"should": should_clauses, "minimum_should_match": 1}}
     else:
+        # No search query, match all documents.
         query_body = {"match_all": {}}
 
     # Adding filters.
@@ -249,8 +265,7 @@ async def get_all_unique_terms_paginated(
     field: str,
     nested_path: str | None = None,
 ) -> set[str]:
-    """Performs a paginated composite aggregation to retrieve all unique terms from a field.
-    Can handle a single top-level or a single nested field."""
+    """Performs a paginated composite aggregation to retrieve all unique terms from a field."""
     unique_terms = set()
     after_key = None
     es_client = app.state.es_client
