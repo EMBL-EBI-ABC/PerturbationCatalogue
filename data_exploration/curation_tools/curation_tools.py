@@ -334,8 +334,8 @@ class CuratedDataset:
             raise ValueError("map_dict must be a dictionary")
         
         for old_val, new_val in map_dict.items():
-            if df[column].str.contains(old_val).any():
-                df[column] = df[column].str.replace(old_val, new_val, regex=True)
+            if df[column].str.upper().str.contains(old_val.upper()).any():
+                df[column] = df[column].str.upper().str.replace(old_val.upper(), new_val, regex=True)
                 print(
                     f"Replaced '{old_val}' with '{new_val}' in column {column} of adata.{slot}"
                 )
