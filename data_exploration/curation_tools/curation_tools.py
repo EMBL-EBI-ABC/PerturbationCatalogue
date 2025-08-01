@@ -128,9 +128,11 @@ class CuratedDataset:
 
         self.data_source_link = data_source_link
         self.noncurated_path = noncurated_path
-        self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
-            ".h5ad", "_curated.h5ad"
-        )
+        
+        if self.noncurated_path:
+            self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
+                ".h5ad", "_curated.h5ad"
+            )
 
         # Initialise adata object
         self.adata = None
@@ -204,22 +206,44 @@ class CuratedDataset:
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
-    def load_data(self):
+    def load_data(self, path, curated=False):
         """
         Load the adata from the specified source.
         """
-        if os.path.exists(self.noncurated_path):
-            print(f"Loading data from {self.noncurated_path}")
-            self.adata = sc.read_h5ad(self.noncurated_path)
+        if curated:
+            self.curated_path = path
+            if os.path.exists(self.curated_path):
+                print(f"Loading data from {self.curated_path}")
+                self.adata = sc.read_h5ad(self.curated_path)
+            else:
+                raise ValueError(f"File {self.curated_path} does not exist. Check the path.")
+        else:
+            self.noncurated_path = path
+            if os.path.exists(self.noncurated_path):
+                print(f"Loading data from {self.noncurated_path}")
+                self.adata = sc.read_h5ad(self.noncurated_path)
+            else:
+                raise ValueError(
+                    f"File {self.noncurated_path} does not exist. Run download_data() first."
+                )
             for col in self.adata.obs.columns:
                 if self.adata.obs[col].dtype == "object":
                     self.adata.obs[col] = self.adata.obs[col].astype(
                         "str"
                     )  # .astype("category")
-        else:
-            print(
-                f"File {self.noncurated_path} does not exist. Run download_data() first."
-            )
+                    
+    def add_exp_metadata_as_uns(self):
+        """
+        Add the experiment metadata to the adata.uns dictionary.
+        """
+        if self.adata is None:
+            raise ValueError("adata is not loaded. Please load the data first.")    
+
+        # Add the experiment metadata to the adata.uns dictionary
+        
+        self.adata.uns['experiment_metadata'] = json.dumps(self.exp_metadata)
+        
+        print("Experiment metadata added to adata.uns")
 
     def save_curated_data(self):
         """Save the curated data to a h5ad file."""
