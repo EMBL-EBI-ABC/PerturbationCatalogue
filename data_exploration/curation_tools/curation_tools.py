@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import polars as pl
 import json
 from pprint import pprint
 
@@ -87,6 +88,7 @@ class CuratedDataset:
         exp_metadata_schema,
         data_source_link=None,
         noncurated_path=None,
+        curated_path=None
     ):
         """Initialize the CuratedDataset class.
         Parameters
@@ -140,6 +142,17 @@ class CuratedDataset:
         self.exp_metadata = {
             k: {} for k in self.exp_metadata_schema.model_fields.keys()
         }
+        # Initialise a dataset ID
+        if self.noncurated_path:
+            self.dataset_id = self.noncurated_path.split("/")[-1].replace(".h5ad", "")
+        elif self.curated_path:
+            self.dataset_id = self.curated_path.split("/")[-1].replace(
+                "_curated.h5ad", ""
+            )
+        else:
+            raise ValueError(
+                "Either noncurated_path or curated_path must be provided to initialize the dataset ID."
+            )
 
     def show_obs(self, obs_columns=None):
         """
@@ -245,7 +258,7 @@ class CuratedDataset:
         
         print("Experiment metadata added to adata.uns")
 
-    def save_curated_data(self):
+    def save_curated_data_h5ad(self):
         """Save the curated data to a h5ad file."""
 
         adata = self.adata
@@ -262,6 +275,100 @@ class CuratedDataset:
 
         adata.write_h5ad(self.curated_path)
         print(f"Curated data saved to {self.curated_path}")
+        
+    def save_curated_data_parquet(self):
+        """Save the curated data to a parquet file ready for BigQuery ingestion."""
+        
+        adata = self.adata
+
+        if adata is None:
+            raise ValueError("adata is not loaded. Please load the data first.")
+        
+        print("Starting the conversion of adata to a long format DataFrame...")
+        # check if the base directory exists, if not create it
+        if not os.path.exists(os.path.dirname(self.curated_path)):
+            os.makedirs(os.path.dirname(self.curated_path))
+
+        # Get the experiment metadata from adata.uns
+        uns_dict = json.loads(adata.uns['experiment_metadata'])
+        # Extract columns and their corresponding values from the uns_dict
+        # First, get the primary keys
+        uns_primary_keys = list(uns_dict.keys())
+        # Initialize a dictionary to hold the column data
+        col_dict = {}
+        # Iterate through the primary keys and their values
+        for primary_key in uns_primary_keys:
+            primary_value = uns_dict[primary_key]
+            # If the value is a dictionary, iterate through its keys
+            if isinstance(primary_value, dict):
+                for secondary_key, secondary_value in primary_value.items():
+                    col_dict[secondary_key] = [secondary_value]
+            # If the value is a list, add it directly
+            elif isinstance(primary_value, list):
+                col_dict[primary_key] = [primary_value]
+            # If the value is None, add it as None
+            elif primary_value is None:
+                col_dict[primary_key] = [None]
+                
+        # Create a DataFrame from the column dictionary
+        uns_df = pd.DataFrame(col_dict)
+        # Keep only the columns that are not duplicated in adata.obs
+        uns_df = uns_df.loc[:, list(set(uns_df.columns) - set(adata.obs.columns))]
+        # Duplicate the rows to match the number of rows in adata.obs
+        uns_df = pd.concat([uns_df] * len(adata.obs), ignore_index=True)
+        # Concatenate the adata.obs and uns_df DataFrames
+        full_metadata_df = pd.concat([adata.obs.reset_index(drop=True), uns_df.reset_index(drop=True)], axis=1, ignore_index=False)
+        # Drop the 'perturbed_targets' column, as it is duplicated in the obs
+        full_metadata_df = full_metadata_df.drop(columns=['perturbed_targets'])
+        
+        # Get the count matrix from adata.X
+        X_df = adata.to_df()
+        # Add dataset_id and cell_id columns
+        X_df['cell_id'] = X_df.index
+        X_df['dataset_id'] = self.dataset_id
+        
+        # Concatenate the count matrix and the full metadata DataFrame
+        full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
+        # Reorder the columns to have dataset_id and cell_id first
+        full_data_df = full_data_df[['dataset_id', 'cell_id'] + [col for col in full_data_df.columns if col not in ['cell_id', 'dataset_id']]]
+        # Convert to Polars DataFrame for better efficiency and performance
+        full_data_df = pl.from_pandas(full_data_df)
+        
+        # Create a long Polars DataFrame
+        print("Starting the conversion to long format...")
+        # define the variables for converting to long format
+        id_vars = ['dataset_id', 'cell_id'] + full_metadata_df.columns.tolist()
+        gene_colnames = [col for col in full_data_df.columns if col not in id_vars]
+        chunk_size = 200
+        num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
+        print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
+        
+        # Process the genes in chunks to avoid memory issues
+        # initialize an empty Polars DataFrame to store the results
+        long_full_data_df = pl.DataFrame()
+        # process each chunk of gene columns
+        for i in range(num_chunks):
+            print(f"Processing chunk {i + 1}/{num_chunks}...")
+            start_col = i * chunk_size
+            end_col = min((i + 1) * chunk_size, len(gene_colnames))
+            gene_colnames_chunk = gene_colnames[start_col:end_col]
+            # Convert the chunk to long format
+            chunk_df = full_data_df.unpivot(
+                on=gene_colnames_chunk,
+                index=id_vars,
+                variable_name="score_name",
+                value_name="score_value"
+            )
+            # Filter out rows with score_value == 0
+            chunk_df = chunk_df.filter(pl.col("score_value") != 0)
+
+            # Concatenate the chunk DataFrame with the long_full_data_df
+            long_full_data_df = pl.concat([long_full_data_df, chunk_df], how="vertical")
+        
+        # Save the long DataFrame to a parquet file
+        print(f"Saving the long DataFrame to {self.curated_path.replace('.h5ad', '_long.parquet')}")
+        long_full_data_df.write_parquet(self.curated_path.replace(".h5ad", "_long.parquet"))
+
 
     def create_columns(self, col_dict, slot=Literal["var", "obs"], overwrite=False):
         """
