@@ -66,15 +66,12 @@ def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tiss
     if save:
         ont.to_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet", index=False)
 
-    
-    
-
 
 class CuratedDataset:
 
     # Get the path to the ontologies directory relative to this file
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
-    
+
     gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet").drop_duplicates()
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
@@ -130,7 +127,7 @@ class CuratedDataset:
 
         self.data_source_link = data_source_link
         self.noncurated_path = noncurated_path
-        
+
         if self.noncurated_path:
             self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
                 ".h5ad", "_curated.h5ad"
@@ -244,7 +241,7 @@ class CuratedDataset:
                     self.adata.obs[col] = self.adata.obs[col].astype(
                         "str"
                     )  # .astype("category")
-                    
+
     def add_exp_metadata_as_uns(self):
         """
         Add the experiment metadata to the adata.uns dictionary.
@@ -253,9 +250,9 @@ class CuratedDataset:
             raise ValueError("adata is not loaded. Please load the data first.")    
 
         # Add the experiment metadata to the adata.uns dictionary
-        
+
         self.adata.uns['experiment_metadata'] = json.dumps(self.exp_metadata)
-        
+
         print("Experiment metadata added to adata.uns")
 
     def save_curated_data_h5ad(self):
@@ -275,15 +272,21 @@ class CuratedDataset:
 
         adata.write_h5ad(self.curated_path)
         print(f"Curated data saved to {self.curated_path}")
-        
-    def save_curated_data_parquet(self):
-        """Save the curated data to a parquet file ready for BigQuery ingestion."""
-        
+
+    def save_curated_data_parquet(self, split_metadata=False):
+        """Save the curated data to a parquet file ready for BigQuery ingestion.
+
+        Parameters
+        ----------
+        split_metadata : bool, optional
+            Whether to split the data and metadata into two separate files (default is False).
+        """
+
         adata = self.adata
 
         if adata is None:
             raise ValueError("adata is not loaded. Please load the data first.")
-        
+
         print("Starting the conversion of adata to a long format DataFrame...")
         # check if the base directory exists, if not create it
         if not os.path.exists(os.path.dirname(self.curated_path)):
@@ -309,7 +312,7 @@ class CuratedDataset:
             # If the value is None, add it as None
             elif primary_value is None:
                 col_dict[primary_key] = [None]
-                
+
         # Create a DataFrame from the column dictionary
         uns_df = pd.DataFrame(col_dict)
         # Keep only the columns that are not duplicated in adata.obs
@@ -320,20 +323,20 @@ class CuratedDataset:
         full_metadata_df = pd.concat([adata.obs.reset_index(drop=True), uns_df.reset_index(drop=True)], axis=1, ignore_index=False)
         # Drop the 'perturbed_targets' column, as it is duplicated in the obs
         full_metadata_df = full_metadata_df.drop(columns=['perturbed_targets'])
-        
+
         # Get the count matrix from adata.X
         X_df = adata.to_df()
         # Add dataset_id and cell_id columns
         X_df['cell_id'] = X_df.index
         X_df['dataset_id'] = self.dataset_id
-        
+
         # Concatenate the count matrix and the full metadata DataFrame
         full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
         # Reorder the columns to have dataset_id and cell_id first
         full_data_df = full_data_df[['dataset_id', 'cell_id'] + [col for col in full_data_df.columns if col not in ['cell_id', 'dataset_id']]]
         # Convert to Polars DataFrame for better efficiency and performance
         full_data_df = pl.from_pandas(full_data_df)
-        
+
         # Create a long Polars DataFrame
         print("Starting the conversion to long format...")
         # define the variables for converting to long format
@@ -342,7 +345,7 @@ class CuratedDataset:
         chunk_size = 200
         num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
         print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
-        
+
         # Process the genes in chunks to avoid memory issues
         # initialize an empty Polars DataFrame to store the results
         long_full_data_df = pl.DataFrame()
@@ -364,11 +367,33 @@ class CuratedDataset:
 
             # Concatenate the chunk DataFrame with the long_full_data_df
             long_full_data_df = pl.concat([long_full_data_df, chunk_df], how="vertical")
-        
-        # Save the long DataFrame to a parquet file
-        print(f"Saving the long DataFrame to {self.curated_path.replace('.h5ad', '_long.parquet')}")
-        long_full_data_df.write_parquet(self.curated_path.replace(".h5ad", "_long.parquet"))
 
+        if not split_metadata:
+            # Save the long DataFrame to a parquet file
+            print(f"Saving the long DataFrame to {self.curated_path.replace('.h5ad', '_long.parquet')}")
+            long_full_data_df.write_parquet(self.curated_path.replace(".h5ad", "_long.parquet"))
+        else:
+            data_only = full_data_df.select(
+                pl.col("dataset_id"),
+                pl.col("cell_id"),
+                *[pl.col(col) for col in gene_colnames],
+            ).unpivot(
+                on=gene_colnames,
+                index=["dataset_id", "cell_id"],
+                variable_name="score_name",
+                value_name="score_value",
+            )
+            metadata_only = full_data_df.select(
+                pl.col("dataset_id"),
+                pl.col("cell_id"),
+                *[pl.col(col) for col in full_metadata_df.columns.tolist()],
+            )
+
+            print(f"Saving the data-only DataFrame to {self.curated_path.replace('.h5ad', '_data.parquet')}")
+            data_only.write_parquet(self.curated_path.replace(".h5ad", "_long_data.parquet"))
+            print(f"Saving the metadata-only DataFrame to {self.curated_path.replace('.h5ad', '_metadata.parquet')}")
+            metadata_only.write_parquet(self.curated_path.replace(".h5ad", "_metadata.parquet"))
+    
 
     def create_columns(self, col_dict, slot=Literal["var", "obs"], overwrite=False):
         """
@@ -463,7 +488,7 @@ class CuratedDataset:
             raise ValueError("map_dict must be provided")
         if not isinstance(map_dict, dict):
             raise ValueError("map_dict must be a dictionary")
-        
+
         for old_val, new_val in map_dict.items():
             if df[column].str.upper().str.contains(old_val.upper()).any():
                 df[column] = df[column].str.upper().str.replace(old_val.upper(), new_val, regex=True)
@@ -474,28 +499,28 @@ class CuratedDataset:
                 raise ValueError(
                     f"Column {column} has no entries matching {old_val} in adata.{slot}. Check the map_dict."
                 )
-                
+
         setattr(self.adata, slot, df)
 
     def map_values_from_column(self, ref_col, target_col, map_dict):
         """
         Replace values in target_col based on corresponding values in ref_col using ref_value and target_value.
         """
-        
+
         df = self.adata.obs
-        
+
         if ref_col not in df.columns:
             raise ValueError(f"Column {ref_col} not found in adata.obs")
         if df[ref_col].empty:
             raise ValueError(f"Column {ref_col} is empty in adata.obs")
-        
+
         if target_col not in df.columns:
             df[target_col] = np.nan  # Create target_col if it doesn't exist
             print(f"Column {target_col} created in adata.obs")
-        
+
         # Ensure target_col is string type
         df[target_col] = df[target_col].astype(str)
-        
+
         for ref_value, target_value in map_dict.items():
             if ref_value not in df[ref_col].values:
                 print(
@@ -506,11 +531,10 @@ class CuratedDataset:
             print(
                 f"Mapped value {ref_value} in column {ref_col} to {target_value} in column {target_col} of adata.obs"
             )
-            
+
         # Update the adata.obs with the modified DataFrame
         setattr(self.adata, "obs", df)
-        
-    
+
     def remove_entries(self, slot=Literal["var", "obs"], column=None, to_remove=None):
         """
         Remove entries in a column of the named slot of adata object.
@@ -662,10 +686,10 @@ class CuratedDataset:
         df[count_column_name] = [
             len(set(x.split(sep))) if x is not None else 1 for x in df[input_column]
         ]
-        
+
         # if the entry contains "untreated", set the count to 0
         df.loc[df[input_column].str.contains("untreated", na=False), count_column_name] = 0
-        
+
         setattr(self.adata, slot, df)
         print(
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
@@ -1052,7 +1076,6 @@ class CuratedDataset:
                 f"Warning: No {ontology_type} ontology terms could be mapped from `{input_column}` column to ontology terms. Map the terms manually or check the input column for errors."
             )
             return
-            
 
         if not unmapped_df.empty:
             print(
