@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import polars as pl
+import pyarrow.parquet as pq
 import json
 from pprint import pprint
 
@@ -83,6 +84,7 @@ class CuratedDataset:
         obs_schema,
         var_schema,
         exp_metadata_schema,
+        pa_schema,
         data_source_link=None,
         noncurated_path=None,
         curated_path=None
@@ -96,6 +98,8 @@ class CuratedDataset:
             The schema for the var data.
         exp_metadata_schema : Experiment
             The schema for the experimental metadata.
+        pa_schema : pa_schema
+            The pyarrow schema for the Parquet file.
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
@@ -107,6 +111,7 @@ class CuratedDataset:
 
         # Initialise the experiment metadata schema and its sub-schemas
         self.exp_metadata_schema = exp_metadata_schema
+        self.pa_schema = pa_schema
         self.study_schema = exp_metadata_schema.model_fields["study"].annotation
         self.experiment_schema = exp_metadata_schema.model_fields[
             "experiment"
@@ -127,10 +132,15 @@ class CuratedDataset:
 
         self.data_source_link = data_source_link
         self.noncurated_path = noncurated_path
+        self.curated_path = curated_path
 
         if self.noncurated_path:
             self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
                 ".h5ad", "_curated.h5ad"
+            )
+        elif self.curated_path:
+            self.noncurated_path = curated_path.replace("curated", "non_curated").replace(
+                "_curated.h5ad", ".h5ad"
             )
 
         # Initialise adata object
@@ -316,14 +326,29 @@ class CuratedDataset:
         # Create a DataFrame from the column dictionary
         uns_df = pd.DataFrame(col_dict)
         # Keep only the columns that are not duplicated in adata.obs
-        uns_df = uns_df.loc[:, list(set(uns_df.columns) - set(adata.obs.columns))]
+        duplicated_cols = [
+            "treatments",
+            "timepoints",
+            "perturbation_type",
+            "perturbed_target_biotype",
+            "number_of_perturbed_targets",
+            "perturbed_targets",
+            "number_of_perturbed_entities",
+            "model_system",
+            "tissue",
+            "cell_type",
+            "cell_line",
+            "sex",
+            "species",
+            "developmental_stage",
+            "associated_diseases",
+        ]
+        uns_df = uns_df.drop(columns=duplicated_cols)
         # Duplicate the rows to match the number of rows in adata.obs
         uns_df = pd.concat([uns_df] * len(adata.obs), ignore_index=True)
         # Concatenate the adata.obs and uns_df DataFrames
         full_metadata_df = pd.concat([adata.obs.reset_index(drop=True), uns_df.reset_index(drop=True)], axis=1, ignore_index=False)
-        # Drop the 'perturbed_targets' column, as it is duplicated in the obs
-        full_metadata_df = full_metadata_df.drop(columns=['perturbed_targets'])
-
+        
         # Get the count matrix from adata.X
         X_df = adata.to_df()
         # Add dataset_id and cell_id columns
@@ -348,52 +373,81 @@ class CuratedDataset:
 
         # Process the genes in chunks to avoid memory issues
         # initialize an empty Polars DataFrame to store the results
-        long_full_data_df = pl.DataFrame()
-        # process each chunk of gene columns
-        for i in range(num_chunks):
-            print(f"Processing chunk {i + 1}/{num_chunks}...")
-            start_col = i * chunk_size
-            end_col = min((i + 1) * chunk_size, len(gene_colnames))
-            gene_colnames_chunk = gene_colnames[start_col:end_col]
-            # Convert the chunk to long format
-            chunk_df = full_data_df.unpivot(
-                on=gene_colnames_chunk,
-                index=id_vars,
-                variable_name="score_name",
-                value_name="score_value"
-            )
-            # Filter out rows with score_value == 0
-            chunk_df = chunk_df.filter(pl.col("score_value") != 0)
-
-            # Concatenate the chunk DataFrame with the long_full_data_df
-            long_full_data_df = pl.concat([long_full_data_df, chunk_df], how="vertical")
 
         if not split_metadata:
-            # Save the long DataFrame to a parquet file
-            print(f"Saving the long DataFrame to {self.curated_path.replace('.h5ad', '_long.parquet')}")
-            long_full_data_df.write_parquet(self.curated_path.replace(".h5ad", "_long.parquet"))
-        else:
-            data_only = full_data_df.select(
-                pl.col("dataset_id"),
-                pl.col("cell_id"),
-                *[pl.col(col) for col in gene_colnames],
-            ).unpivot(
-                on=gene_colnames,
-                index=["dataset_id", "cell_id"],
-                variable_name="score_name",
-                value_name="score_value",
-            )
-            metadata_only = full_data_df.select(
-                pl.col("dataset_id"),
-                pl.col("cell_id"),
-                *[pl.col(col) for col in full_metadata_df.columns.tolist()],
-            )
+            parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet")
+            if os.path.exists(parquet_path):
+                print(f"File {parquet_path} already exists. Skipping write.")
+            else:
+                for i in range(num_chunks):
+                    start_col = i * chunk_size
+                    end_col = min((i + 1) * chunk_size, len(gene_colnames))
+                    gene_colnames_chunk = gene_colnames[start_col:end_col]
 
-            print(f"Saving the data-only DataFrame to {self.curated_path.replace('.h5ad', '_data.parquet')}")
-            data_only.write_parquet(self.curated_path.replace(".h5ad", "_long_data.parquet"))
-            print(f"Saving the metadata-only DataFrame to {self.curated_path.replace('.h5ad', '_metadata.parquet')}")
-            metadata_only.write_parquet(self.curated_path.replace(".h5ad", "_metadata.parquet"))
-    
+                    # melt the current chunk of genes
+                    chunk_data = full_data_df.unpivot(
+                        on=gene_colnames_chunk,
+                        index=id_vars,
+                        variable_name="score_name",
+                        value_name="score_value"
+                    ).filter(pl.col("score_value") != 0).to_arrow()
+
+                    if i == 0:
+                        # Open ParquetWriter once for the first chunk
+                        writer = pq.ParquetWriter(parquet_path, chunk_data.schema)
+                        print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+                    writer.write_table(chunk_data)
+                    if i > 0:
+                        print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+
+                    del chunk_data
+
+                if 'writer' in locals():
+                    writer.close()
+                    print("All chunks written and ParquetWriter closed.")
+        else:
+            parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet")
+            parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet")
+
+            if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
+                print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
+                return
+            else:                
+                for i in range(num_chunks):
+                    start_col = i * chunk_size
+                    end_col = min((i + 1) * chunk_size, len(gene_colnames))
+                    gene_colnames_chunk = gene_colnames[start_col:end_col]
+                    # melt the current chunk of genes
+                    chunk_data = full_data_df.unpivot(
+                        on=gene_colnames_chunk,
+                        index=['dataset_id', 'cell_id'],
+                        variable_name="score_name",
+                        value_name="score_value"
+                    ).filter(pl.col("score_value") != 0).to_arrow()
+
+                    if i == 0:
+                        # Open ParquetWriter once for the first chunk
+                        writer_data = pq.ParquetWriter(parquet_data_path, chunk_data.schema)
+                        print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+                    writer_data.write_table(chunk_data)
+                    if i > 0:
+                        print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+                    del chunk_data
+
+                if 'writer_data' in locals():
+                    writer_data.close()
+                    print("All chunks written and ParquetWriter closed.")
+
+                # Now, we will process the metadata separately
+                metadata_only_df = full_data_df.select(
+                    ['dataset_id', 'cell_id'] + full_metadata_df.columns.tolist()
+                ).to_arrow()
+
+                # write the metadata to a parquet file
+                writer_metadata = pq.ParquetWriter(parquet_metadata_path, metadata_only_df.schema)
+                writer_metadata.write_table(metadata_only_df)
+                writer_metadata.close()
+                print(f"Metadata written to {parquet_metadata_path}")
 
     def create_columns(self, col_dict, slot=Literal["var", "obs"], overwrite=False):
         """
