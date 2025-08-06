@@ -439,7 +439,22 @@ class CuratedDataset:
                         index=['dataset_id', 'cell_id'],
                         variable_name="score_name",
                         value_name="score_value"
-                    ).filter(pl.col("score_value") != 0).to_arrow()
+                    ).filter(pl.col("score_value") != 0)
+                    
+                     # Cast column dtypes as defined in the polars_schema
+                    # Collect all necessary cast expressions for columns that exist in the DataFrame
+                    cast_exprs = [
+                        pl.col(col).cast(dtype)
+                        for col, dtype in self.polars_schema.items()
+                        if col in chunk_data.columns
+                    ]
+                    
+                    # Apply all casts
+                    if cast_exprs:
+                        chunk_data = chunk_data.with_columns(cast_exprs)
+                    
+                    # convert to pyarrow for efficient streaming to parquet
+                    chunk_data = chunk_data.to_arrow()
 
                     if i == 0:
                         # Open ParquetWriter once for the first chunk
@@ -457,7 +472,22 @@ class CuratedDataset:
                 # Now, we will process the metadata separately
                 metadata_only_df = full_data_df.select(
                     ['dataset_id', 'cell_id'] + full_metadata_df.columns.tolist()
-                ).to_arrow()
+                )
+                
+                # Cast column dtypes as defined in the polars_schema
+                # Collect all necessary cast expressions for columns that exist in the DataFrame
+                cast_exprs = [
+                    pl.col(col).cast(dtype)
+                    for col, dtype in self.polars_schema.items()
+                    if col in metadata_only_df.columns
+                ]
+                
+                # Apply all casts
+                if cast_exprs:
+                    metadata_only_df = metadata_only_df.with_columns(cast_exprs)
+                
+                # convert to pyarrow for efficient streaming to parquet
+                metadata_only_df = metadata_only_df.to_arrow()
 
                 # write the metadata to a parquet file
                 writer_metadata = pq.ParquetWriter(parquet_metadata_path, metadata_only_df.schema)
