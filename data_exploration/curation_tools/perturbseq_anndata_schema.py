@@ -22,6 +22,7 @@ dis_ont = pd.read_parquet(ont_dir / "diseases.parquet").drop_duplicates()
 class ObsSchema(DataFrameModel):
     perturbation_name: Series[str] = Field(nullable=False)
     perturbed_target_coord: Series[str] = Field(nullable=True)
+    perturbed_target_chromosome: Series[str] = Field(nullable=True)
     perturbed_target_number: Series[int] = Field(nullable=False, ge=0)
     perturbed_target_ensg: Series[str] = Field(nullable=True)
     perturbed_target_symbol: Optional[Series[str]] = Field(nullable=True)
