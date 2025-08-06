@@ -5,6 +5,7 @@ polars_schema = {
     "cell_id": pl.String,
     "perturbation_name": pl.Categorical(ordering="physical"),
     "perturbed_target_coord": pl.Categorical(ordering="physical"),
+    "perturbed_target_chromosome": pl.Categorical(ordering="physical"),
     "perturbed_target_number": pl.Int64,
     "perturbed_target_ensg": pl.Categorical(ordering="physical"),
     "perturbed_target_symbol": pl.Categorical(ordering="physical"),
