@@ -84,7 +84,7 @@ class CuratedDataset:
         obs_schema,
         var_schema,
         exp_metadata_schema,
-        pa_schema,
+        polars_schema,
         data_source_link=None,
         noncurated_path=None,
         curated_path=None
@@ -98,8 +98,8 @@ class CuratedDataset:
             The schema for the var data.
         exp_metadata_schema : Experiment
             The schema for the experimental metadata.
-        pa_schema : pa_schema
-            The pyarrow schema for the Parquet file.
+        polars_schema : polars_schema
+            The polars schema for the Parquet file.
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
@@ -111,7 +111,7 @@ class CuratedDataset:
 
         # Initialise the experiment metadata schema and its sub-schemas
         self.exp_metadata_schema = exp_metadata_schema
-        self.pa_schema = pa_schema
+        self.polars_schema = polars_schema
         self.study_schema = exp_metadata_schema.model_fields["study"].annotation
         self.experiment_schema = exp_metadata_schema.model_fields[
             "experiment"
@@ -369,6 +369,7 @@ class CuratedDataset:
         gene_colnames = [col for col in full_data_df.columns if col not in id_vars]
         chunk_size = 200
         num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
+        
         print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
 
         # Process the genes in chunks to avoid memory issues
@@ -390,7 +391,22 @@ class CuratedDataset:
                         index=id_vars,
                         variable_name="score_name",
                         value_name="score_value"
-                    ).filter(pl.col("score_value") != 0).to_arrow()
+                    ).filter(pl.col("score_value") != 0)
+                    
+                    # Cast column dtypes as defined in the polars_schema
+                    # Collect all necessary cast expressions for columns that exist in the DataFrame
+                    cast_exprs = [
+                        pl.col(col).cast(dtype)
+                        for col, dtype in self.polars_schema.items()
+                        if col in chunk_data.columns
+                    ]
+                    
+                    # Apply all casts
+                    if cast_exprs:
+                        chunk_data = chunk_data.with_columns(cast_exprs)
+                    
+                    # convert to pyarrow for efficient streaming to parquet
+                    chunk_data = chunk_data.to_arrow()
 
                     if i == 0:
                         # Open ParquetWriter once for the first chunk
@@ -412,7 +428,7 @@ class CuratedDataset:
             if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
                 print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
                 return
-            else:                
+            else:
                 for i in range(num_chunks):
                     start_col = i * chunk_size
                     end_col = min((i + 1) * chunk_size, len(gene_colnames))
