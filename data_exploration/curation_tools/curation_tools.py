@@ -284,6 +284,33 @@ class CuratedDataset:
 
         adata.write_h5ad(self.curated_path)
         print(f"Curated data saved to {self.curated_path}")
+    
+    def polars_schema_from_pandera_model(self):
+            """
+            Extract a Polars schema dictionary from a Pandera Polars DataFrameModel.
+            The dictionary maps column names to Polars data types.
+            Uses isinstance() to check column dtype properly.
+            """
+            pandera_model = self.obs_schema
+            schema_dict = {}
+            for col_name, column in pandera_model.to_schema().columns.items():
+                pandera_dtype = column.dtype
+                
+                if isinstance(pandera_dtype, String):
+                    polars_dtype = pl.String
+                elif isinstance(pandera_dtype, Int64):
+                    polars_dtype = pl.Int64
+                elif isinstance(pandera_dtype, float):
+                    polars_dtype = pl.Float64
+                elif isinstance(pandera_dtype, bool):
+                    polars_dtype = pl.Boolean
+                else:
+                    # Default to Utf8 for unknown or unhandled dtypes
+                    polars_dtype = pl.Utf8
+                
+                schema_dict[col_name] = polars_dtype
+
+            return schema_dict
 
     def save_curated_data_parquet(self, split_metadata=False):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
