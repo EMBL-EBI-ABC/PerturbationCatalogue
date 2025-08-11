@@ -464,9 +464,7 @@ class CuratedDataset:
         }
         
         # Apply the mapping to the chromosome column
-        self.adata.obs["perturbed_target_chromosome_encoding"] = self.adata.obs[chromosome_col].replace(
-            chromosome_encoding_dict
-        ).fillna(0)  # Fill missing values with 0
+        self.adata.obs["perturbed_target_chromosome_encoding"] = [chromosome_encoding_dict[x] if x in chromosome_encoding_dict else 0 for x in self.adata.obs[chromosome_col]]
         
         print(f"Chromosome encoding applied to {chromosome_col} in adata.obs and stored as 'perturbed_target_chromosome_encoding'.")
     
