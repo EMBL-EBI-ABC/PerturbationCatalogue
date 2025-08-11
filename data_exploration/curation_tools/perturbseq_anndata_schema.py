@@ -1,6 +1,6 @@
 import pandas as pd
 from pandera import Field, DataFrameModel
-from pandera.typing import Series, Index, String, Int64, Bool
+from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
 # Get the absolute path to the current module file
@@ -138,7 +138,7 @@ class ObsSchema(DataFrameModel):
         description="Cell line ontology term ID of the investigated sample. Must be part of the Cell Line Ontology (CLO).",
     )
     sex_label: Series[String] = Field(
-        nullable=True, 
+        nullable=True,
         description="Sex ontology term label of the investigated sample.",
         isin=["female", "male", "mixed", "unknown"]
     )
@@ -153,10 +153,18 @@ class ObsSchema(DataFrameModel):
         isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
-        nullable=True, str_contains=":"
+        nullable=True,
+        str_contains=":",
+        description="Developmental stage ontology term ID of the investigated sample.",
     )
-    disease_label: Series[String] = Field(nullable=True)
-    disease_id: Series[String] = Field(nullable=True)
+    disease_label: Series[String] = Field(
+        nullable=True,
+        description="Disease ontology term label of the investigated sample. Must be part of the MONDO ontology.",
+    )
+    disease_id: Series[String] = Field(
+        nullable=True,
+        description="Disease ontology term ID of the investigated sample. Must be part of the MONDO ontology.",
+    )
     # study details
     study_title: Series[String] = Field(
         nullable=False, description="Title of the study/publication."
@@ -433,17 +441,18 @@ class VarSchema(DataFrameModel):
     index: Index[str] = Field(
         nullable=False,
         unique=True,
-        # str_startswith=("ENSG", "control"),
-        # isin=gene_ont.ensembl_gene_id.values,
         check_name=True,
+        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with"
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
         str_startswith=("ENSG", "control"),
+        description="Ensembl gene ID"
     )
     gene_symbol: Series[str] = Field(
         nullable=True,
         coerce=True,
+        description="Gene symbol"
     )
 
     class Config:
