@@ -2,4 +2,6 @@
 .vscode
 .env
 *.h5ad
+*.parquet
 __pycache__
+data_exploration/CRISPR/supplementary/temp
