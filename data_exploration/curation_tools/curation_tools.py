@@ -84,7 +84,6 @@ class CuratedDataset:
         obs_schema,
         var_schema,
         exp_metadata_schema,
-        polars_schema,
         data_source_link=None,
         noncurated_path=None,
         curated_path=None
@@ -98,8 +97,6 @@ class CuratedDataset:
             The schema for the var data.
         exp_metadata_schema : Experiment
             The schema for the experimental metadata.
-        polars_schema : polars_schema
-            The polars schema for the Parquet file.
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
@@ -111,7 +108,6 @@ class CuratedDataset:
 
         # Initialise the experiment metadata schema and its sub-schemas
         self.exp_metadata_schema = exp_metadata_schema
-        self.polars_schema = polars_schema
         self.study_schema = exp_metadata_schema.model_fields["study"].annotation
         self.experiment_schema = exp_metadata_schema.model_fields[
             "experiment"
@@ -331,83 +327,40 @@ class CuratedDataset:
         if not os.path.exists(os.path.dirname(self.curated_path)):
             os.makedirs(os.path.dirname(self.curated_path))
 
-        # Get the experiment metadata from adata.uns
-        uns_dict = json.loads(adata.uns['experiment_metadata'])
-        # Extract columns and their corresponding values from the uns_dict
-        # First, get the primary keys
-        uns_primary_keys = list(uns_dict.keys())
-        # Initialize a dictionary to hold the column data
-        col_dict = {}
-        # Iterate through the primary keys and their values
-        for primary_key in uns_primary_keys:
-            primary_value = uns_dict[primary_key]
-            # If the value is a dictionary, iterate through its keys
-            if isinstance(primary_value, dict):
-                for secondary_key, secondary_value in primary_value.items():
-                    col_dict[secondary_key] = [secondary_value]
-            # If the value is a list, add it directly
-            elif isinstance(primary_value, list):
-                col_dict[primary_key] = [primary_value]
-            # If the value is None, add it as None
-            elif primary_value is None:
-                col_dict[primary_key] = [None]
+        polars_schema = self.polars_schema_from_pandera_model()
 
-        # Create a DataFrame from the column dictionary
-        uns_df = pd.DataFrame(col_dict)
-        # Keep only the columns that are not duplicated in adata.obs
-        duplicated_cols = [
-            "treatments",
-            "timepoints",
-            "perturbation_type",
-            "perturbed_target_biotype",
-            "number_of_perturbed_targets",
-            "perturbed_targets",
-            "number_of_perturbed_entities",
-            "model_system",
-            "tissue",
-            "cell_type",
-            "cell_line",
-            "sex",
-            "species",
-            "developmental_stage",
-            "associated_diseases",
-        ]
-        uns_df = uns_df.drop(columns=duplicated_cols)
-        # Duplicate the rows to match the number of rows in adata.obs
-        uns_df = pd.concat([uns_df] * len(adata.obs), ignore_index=True)
         # Concatenate the adata.obs and uns_df DataFrames
-        full_metadata_df = pd.concat([adata.obs.reset_index(drop=True), uns_df.reset_index(drop=True)], axis=1, ignore_index=False)
+        full_metadata_df = adata.obs
         
         # Get the count matrix from adata.X
         X_df = adata.to_df()
-        # Add dataset_id and cell_id columns
-        X_df['cell_id'] = X_df.index
-        X_df['dataset_id'] = self.dataset_id
 
         # Concatenate the count matrix and the full metadata DataFrame
         full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
-        # Reorder the columns to have dataset_id and cell_id first
-        full_data_df = full_data_df[['dataset_id', 'cell_id'] + [col for col in full_data_df.columns if col not in ['cell_id', 'dataset_id']]]
         # Convert to Polars DataFrame for better efficiency and performance
-        full_data_df = pl.from_pandas(full_data_df)
+        full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
 
         # Create a long Polars DataFrame
         print("Starting the conversion to long format...")
         # define the variables for converting to long format
-        id_vars = ['dataset_id', 'cell_id'] + full_metadata_df.columns.tolist()
-        gene_colnames = [col for col in full_data_df.columns if col not in id_vars]
+        all_columns = full_data_df.columns
+        metadata_columns = full_metadata_df.columns
+        id_columns = metadata_columns[0:2]
+        # Exclude metadata columns from all columns to get the gene columns
+        gene_colnames = list(set(all_columns) - set(metadata_columns))
         chunk_size = 200
         num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
         
         print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
 
         # Process the genes in chunks to avoid memory issues
-        # initialize an empty Polars DataFrame to store the results
 
         if not split_metadata:
-            parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet")
+            parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet").replace('h5ad', 'parquet')
             if os.path.exists(parquet_path):
-                print(f"File {parquet_path} already exists. Skipping write.")
+                raise FileExistsError(f"File {parquet_path} already exists. Skipping write.")
+            if not os.path.exists(os.path.dirname(parquet_path)):
+                os.makedirs(os.path.dirname(parquet_path))
             else:
                 for i in range(num_chunks):
                     start_col = i * chunk_size
@@ -417,22 +370,10 @@ class CuratedDataset:
                     # melt the current chunk of genes
                     chunk_data = full_data_df.unpivot(
                         on=gene_colnames_chunk,
-                        index=id_vars,
+                        index=metadata_columns,
                         variable_name="score_name",
                         value_name="score_value"
                     ).filter(pl.col("score_value") != 0)
-                    
-                    # Cast column dtypes as defined in the polars_schema
-                    # Collect all necessary cast expressions for columns that exist in the DataFrame
-                    cast_exprs = [
-                        pl.col(col).cast(dtype)
-                        for col, dtype in self.polars_schema.items()
-                        if col in chunk_data.columns
-                    ]
-                    
-                    # Apply all casts
-                    if cast_exprs:
-                        chunk_data = chunk_data.with_columns(cast_exprs)
                     
                     # convert to pyarrow for efficient streaming to parquet
                     chunk_data = chunk_data.to_arrow()
@@ -449,10 +390,14 @@ class CuratedDataset:
 
                 if 'writer' in locals():
                     writer.close()
-                    print("All chunks written and ParquetWriter closed.")
+                    print("All chunks written and ParquetWriter closed.")  
         else:
-            parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet")
-            parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet")
+            parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet").replace('h5ad', 'parquet')
+            parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet").replace('h5ad', 'parquet')
+            if not os.path.exists(os.path.dirname(parquet_data_path)):
+                os.makedirs(os.path.dirname(parquet_data_path))
+            if not os.path.exists(os.path.dirname(parquet_metadata_path)):
+                os.makedirs(os.path.dirname(parquet_metadata_path))
 
             if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
                 print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
@@ -465,22 +410,10 @@ class CuratedDataset:
                     # melt the current chunk of genes
                     chunk_data = full_data_df.unpivot(
                         on=gene_colnames_chunk,
-                        index=['dataset_id', 'cell_id'],
+                        index=id_columns,
                         variable_name="score_name",
                         value_name="score_value"
                     ).filter(pl.col("score_value") != 0)
-                    
-                     # Cast column dtypes as defined in the polars_schema
-                    # Collect all necessary cast expressions for columns that exist in the DataFrame
-                    cast_exprs = [
-                        pl.col(col).cast(dtype)
-                        for col, dtype in self.polars_schema.items()
-                        if col in chunk_data.columns
-                    ]
-                    
-                    # Apply all casts
-                    if cast_exprs:
-                        chunk_data = chunk_data.with_columns(cast_exprs)
                     
                     # convert to pyarrow for efficient streaming to parquet
                     chunk_data = chunk_data.to_arrow()
@@ -499,21 +432,7 @@ class CuratedDataset:
                     print("All chunks written and ParquetWriter closed.")
 
                 # Now, we will process the metadata separately
-                metadata_only_df = full_data_df.select(
-                    ['dataset_id', 'cell_id'] + full_metadata_df.columns.tolist()
-                )
-                
-                # Cast column dtypes as defined in the polars_schema
-                # Collect all necessary cast expressions for columns that exist in the DataFrame
-                cast_exprs = [
-                    pl.col(col).cast(dtype)
-                    for col, dtype in self.polars_schema.items()
-                    if col in metadata_only_df.columns
-                ]
-                
-                # Apply all casts
-                if cast_exprs:
-                    metadata_only_df = metadata_only_df.with_columns(cast_exprs)
+                metadata_only_df = full_data_df.select(metadata_columns)
                 
                 # convert to pyarrow for efficient streaming to parquet
                 metadata_only_df = metadata_only_df.to_arrow()
