@@ -83,19 +83,10 @@ class ObsSchema(DataFrameModel):
         description="Perturbation type ontology term ID of the investigated sample.",
     )
     timepoint: Series[String] = Field(
-        nullable=True,
-        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
-        description="Timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+        nullable=True, regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$"
     )
-    treatment_label: Series[String] = Field(
-        nullable=True,
-        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label.",
-    )
-    treatment_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
-    )
+    treatment_label: Series[String] = Field(nullable=True)
+    treatment_id: Series[String] = Field(nullable=True, str_contains=":")
     # model system details
     model_system_label: Series[String] = Field(
         nullable=False,
@@ -152,18 +143,10 @@ class ObsSchema(DataFrameModel):
         isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Developmental stage ontology term ID of the investigated sample.",
+        nullable=True, str_contains=":"
     )
-    disease_label: Series[String] = Field(
-        nullable=True,
-        description="Disease ontology term label of the investigated sample. Must be part of the MONDO ontology.",
-    )
-    disease_id: Series[String] = Field(
-        nullable=True,
-        description="Disease ontology term ID of the investigated sample. Must be part of the MONDO ontology.",
-    )
+    disease_label: Series[String] = Field(nullable=True)
+    disease_id: Series[String] = Field(nullable=True)
     # study details
     study_title: Series[String] = Field(
         nullable=False, description="Title of the study/publication."
