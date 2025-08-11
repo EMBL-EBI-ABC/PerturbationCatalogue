@@ -20,391 +20,118 @@ dis_ont = pd.read_parquet(ont_dir / "diseases.parquet").drop_duplicates()
 
 # adata.obs schema
 class ObsSchema(DataFrameModel):
-    dataset_id: Series[String] = Field(
-        nullable=False,
-        description="Unique identifier for the dataset, follows the format <firstauthor_year>",
-    )
-    sample_id: Series[Int64] = Field(
-        nullable=False, description="Unique identifier for the sample."
-    )
-    perturbation_name: Series[String] = Field(
-        nullable=False,
-        description="Name of the perturbation, often a name of the targeted gene or genomic coordinate.",
-    )
-    perturbed_target_coord: Series[String] = Field(
-        nullable=True,
-        description="Genomic coordinates of the perturbed target. Format: chr:start-end;strand",
-    )
-    perturbed_target_chromosome: Series[String] = Field(
-        nullable=True, description="Chromosome of the perturbed target."
-    )
-    perturbed_target_chromosome_encoding: Int64 = Field(
-        nullable=True,
-        ge=0,
-        description="Numeric encoding of the chromosome of the perturbed target. Required for data partitioning in BigQuery.",
-    )
-    perturbed_target_number: Series[Int64] = Field(
-        nullable=False, ge=0, description="Number of perturbed targets in the samples."
-    )
-    perturbed_target_ensg: Series[String] = Field(
-        nullable=True, description="Ensembl gene ID(s) of the perturbed target."
-    )
-    perturbed_target_symbol: Series[String] = Field(
-        nullable=True, description="Gene symbol(s) of the perturbed target."
-    )
-    perturbed_target_biotype: Series[String] = Field(
-        nullable=True, description="Biotype(s) of the perturbed target."
-    )
+    dataset_id: Series[String] = Field(nullable=False)
+    sample_id: Series[Int64] = Field(nullable=False)
+    perturbation_name: Series[String] = Field(nullable=False)
+    perturbed_target_coord: Series[String] = Field(nullable=True)
+    perturbed_target_chromosome: Series[String] = Field(nullable=True)
+    perturbed_target_chromosome_encoding: Int64 = Field(nullable=True, ge=0)
+    perturbed_target_number: Series[Int64] = Field(nullable=False, ge=0)
+    perturbed_target_ensg: Series[String] = Field(nullable=True)
+    perturbed_target_symbol: Series[String] = Field(nullable=True)
+    perturbed_target_biotype: Series[String] = Field(nullable=True)
     guide_sequence: Series[String] = Field(
         nullable=True,
         regex=r"^[ACGTN]+$",
         coerce=True,
         description="Guide RNA sequence in 5' to 3' direction consisting of A, C, G, T, N characters only.",
     )
-    perturbation_type_label: Series[String] = Field(
-        nullable=False,
-        description="Perturbation type ontology term label of the investigated sample.",
-        isin=["CRISPRn", "CRISPRi", "CRISPRa"],
-    )
-    perturbation_type_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Perturbation type ontology term ID of the investigated sample.",
-    )
+    perturbation_type_label: Series[String] = Field(nullable=False)
+    perturbation_type_id: Series[String] = Field(nullable=True, str_contains=":")
     timepoint: Series[String] = Field(
-        nullable=True,
-        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
-        description="Timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+        nullable=True, regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$"
     )
-    treatment_label: Series[String] = Field(
-        nullable=True,
-        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label.",
-    )
-    treatment_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
-    )
+    treatment_label: Series[String] = Field(nullable=True)
+    treatment_id: Series[String] = Field(nullable=True, str_contains=":")
     # model system details
-    model_system_label: Series[String] = Field(
-        nullable=False,
-        description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid"],
-    )
-    model_system_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Model system ontology term ID of the investigated sample.",
-    )
-    species: Series[String] = Field(
-        nullable=False,
-        description="Species name of the investigated sample.",
-        isin=["Homo sapiens"],
-    )
-    tissue_label: Series[String] = Field(
-        nullable=True,
-        description="Tissue ontology term label of the investigated sample. Must be part of the UBERON ontology.",
-    )
-    tissue_id: Series[String] = Field(
-        nullable=True,
-        description="Tissue ontology term ID of the investigated sample. Must be part of the UBERON ontology.",
-    )
-    cell_type_label: Series[String] = Field(
-        nullable=False,
-        description="Cell type ontology term label of the investigated sample. Must be part of the Cell Ontology (CL).",
-    )
-    cell_type_id: Series[String] = Field(
-        nullable=False,
-        description="Cell type ontology term ID of the investigated sample. Must be part of the Cell Ontology (CL).",
-    )
-    cell_line_label: Series[String] = Field(
-        nullable=True,
-        description="Cell line ontology term label of the investigated sample. Must be part of the Cell Line Ontology (CLO).",
-    )
-    cell_line_id: Series[String] = Field(
-        nullable=True,
-        description="Cell line ontology term ID of the investigated sample. Must be part of the Cell Line Ontology (CLO).",
-    )
-    sex_label: Series[String] = Field(
-        nullable=True, description="Sex ontology term label of the investigated sample."
-    )
-    sex_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Sex ontology term ID of the investigated sample.",
-    )
-    developmental_stage_label: Series[String] = Field(
-        nullable=True,
-        description="Developmental stage ontology term label of the investigated sample.",
-        isin=["embryonic", "fetal", "neonatal", "adolescent", "adult", "senior adult"],
-    )
+    model_system_label: Series[String] = Field(nullable=False)
+    model_system_id: Series[String] = Field(nullable=True, str_contains=":")
+    species: Series[String] = Field(nullable=False, isin=["Homo sapiens"])
+    tissue_label: Series[String] = Field(nullable=True)
+    tissue_id: Series[String] = Field(nullable=True)
+    cell_type_label: Series[String] = Field(nullable=False)
+    cell_type_id: Series[String] = Field(nullable=False)
+    cell_line_label: Series[String] = Field(nullable=True)
+    cell_line_id: Series[String] = Field(nullable=True)
+    sex_label: Series[String] = Field(nullable=True)
+    sex_id: Series[String] = Field(nullable=True, str_contains=":")
+    developmental_stage_label: Series[String] = Field(nullable=True)
     developmental_stage_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Developmental stage ontology term ID of the investigated sample.",
+        nullable=True, str_contains=":"
     )
-    disease_label: Series[String] = Field(
-        nullable=True,
-        description="Disease ontology term label of the investigated sample. Must be part of the MONDO ontology.",
-    )
-    disease_id: Series[String] = Field(
-        nullable=True,
-        description="Disease ontology term ID of the investigated sample. Must be part of the MONDO ontology.",
-    )
+    disease_label: Series[String] = Field(nullable=True)
+    disease_id: Series[String] = Field(nullable=True)
     # study details
-    study_title: Series[String] = Field(
-        nullable=False, description="Title of the study/publication."
-    )
-    study_uri: Series[String] = Field(
-        nullable=False, description="URI/DOI of the study/publication."
-    )
-    study_year: Series[Int64] = Field(
-        nullable=False,
-        ge=1900,
-        le=2100,
-        description="Publication year of the study/publication.",
-    )
-    first_author: Series[String] = Field(
-        nullable=False,
-        description="Full name of the first author of the study/publication.",
-    )
-    last_author: Series[String] = Field(
-        nullable=False,
-        description="Full name of the last author of the study/publication.",
-    )
+    study_title: Series[String] = Field(nullable=False)
+    study_uri: Series[String] = Field(nullable=False)
+    study_year: Series[Int64] = Field(nullable=False, ge=1900, le=2100)
+    first_author: Series[String] = Field(nullable=False)
+    last_author: Series[String] = Field(nullable=False)
     # experiment details
-    experiment_title: Series[String] = Field(
-        nullable=False, description="Title of the experiment."
-    )
-    experiment_summary: Series[String] = Field(
-        nullable=True, description="Summary of the experiment."
-    )
+    experiment_title: Series[String] = Field(nullable=False)
+    experiment_summary: Series[String] = Field(nullable=True)
     number_of_perturbed_targets: Series[Int64] = Field(
         nullable=False,
         ge=1,
-        description="Total number of perturbed targets in the experiment.",
+        description="Total number of perturbed targets in the experiment."
     )
     number_of_perturbed_samples: Series[Int64] = Field(
         nullable=False,
         ge=1,
-        description="Total number of perturbed samples/cells in the experiment.",
-    )  # perturbation details
-    library_generation_type_id: Series[String] = Field(
-        nullable=True,
-        description="Library generation type ontology term ID, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
-    )
-    library_generation_type_label: Series[String] = Field(
-        nullable=True,
-        description="Library generation type ontology term label, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
-    )
-    library_generation_method_id: Series[String] = Field(
-        nullable=True,
-        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868 (Endogenous genetic perturbation method)",
-    )
-    library_generation_method_label: Series[String] = Field(
-        nullable=True,
-        description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868 (Endogenous genetic perturbation method)",
-    )
-    enzyme_delivery_method_id: Series[String] = Field(
-        nullable=True,
-        description="Enzyme delivery method ontology term ID.",
-    )
-    enzyme_delivery_method_label: Series[String] = Field(
-        nullable=True,
-        description="Enzyme delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction"]
-    )
-    library_delivery_method_id: Series[String] = Field(
-        nullable=True, description="Library delivery method ontology term ID."
-    )
-    library_delivery_method_label: Series[String] = Field(
-        nullable=True,
-        description="Library delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction"]
-    )
-    enzyme_integration_state_id: Series[String] = Field(
-        nullable=True, description="Enzyme integration state ontology term ID."
-    )
-    enzyme_integration_state_label: Series[String] = Field(
-        nullable=True,
-        description="Enzyme integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
-    )
-    library_integration_state_id: Series[String] = Field(
-        nullable=True, description="Library integration state ontology term ID."
-    )
-    library_integration_state_label: Series[String] = Field(
-        nullable=True,
-        description="Library integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
-    )
-    enzyme_expression_control_id: Series[String] = Field(
-        nullable=True, description="Enzyme expression control ontology term ID."
-    )
-    enzyme_expression_control_label: Series[String] = Field(
-        nullable=True,
-        description="Enzyme expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
-    )
+        description="Total number of perturbed samples/cells in the experiment."
+    )    # perturbation details
+    library_generation_type_id: Series[String] = Field(nullable=True)
+    library_generation_type_label: Series[String] = Field(nullable=True)
+    library_generation_method_id: Series[String] = Field(nullable=True)
+    library_generation_method_label: Series[String] = Field(nullable=True)
+    enzyme_delivery_method_id: Series[String] = Field(nullable=True)
+    enzyme_delivery_method_label: Series[String] = Field(nullable=True)
+    library_delivery_method_id: Series[String] = Field(nullable=True)
+    library_delivery_method_label: Series[String] = Field(nullable=True)
+    enzyme_integration_state_id: Series[String] = Field(nullable=True)
+    enzyme_integration_state_label: Series[String] = Field(nullable=True)
+    library_integration_state_id: Series[String] = Field(nullable=True)
+    library_integration_state_label: Series[String] = Field(nullable=True)
+    enzyme_expression_control_id: Series[String] = Field(nullable=True)
+    enzyme_expression_control_label: Series[String] = Field(nullable=True)
     # library details
-    library_expression_control_id: Series[String] = Field(
-        nullable=True, description="Library expression control ontology term ID."
-    )
-    library_expression_control_label: Series[String] = Field(
-        nullable=True,
-        description="Library expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
-    )
-    library_name: Series[String] = Field(
-        nullable=True,
-        description="Name of the perturbation library. Example: Bassik Human CRISPR Knockout Library",
-    )
-    library_uri: Series[String] = Field(
-        nullable=True, description="URI/accession of the perturbation library."
-    )
-    library_format_id: Series[String] = Field(
-        nullable=True, description="Perturbation library format ontology term ID."
-    )
-    library_format_label: Series[String] = Field(
-        nullable=True,
-        description="Perturbation library format ontology term label.",
-        isin=["pooled", "arrayed", "in vivo"],
-    )
-    library_scope_id: Series[String] = Field(
-        nullable=True, description="Perturbation library scope ontology term ID."
-    )
-    library_scope_label: Series[String] = Field(
-        nullable=True,
-        description="Perturbation library scope ontology term label.",
-        isin=["focused", "genome-wide"],
-    )
-    library_perturbation_type_id: Series[String] = Field(
-        nullable=True, description="Ontology term ID for the library perturbation type."
-    )
-    library_perturbation_type_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label for the library perturbation type.",
-        isin=["knockout", "inhibition", "activation", "base editing", "prime editing"],
-    )
-    library_manufacturer: Series[String] = Field(
-        nullable=True,
-        description="Name of the library manufacturer/vendor/origin lab. Example: Bassik",
-    )
-    library_lentiviral_generation: Series[String] = Field(
-        nullable=True,
-        description="Generation number of the lentiviral library. Example: 3",
-    )
-    library_grnas_per_target: Series[String] = Field(
-        nullable=True, description="Number of gRNAs per target. Example: 4, 5-7"
-    )
-    library_total_grnas: Series[Int64] = Field(
-        nullable=True,
-        ge=0,
-        description="Total number of gRNAs in the library. Example: 20,000",
-    )
-    library_total_variants: Int64 = Field(
-        nullable=True,
-        ge=0,
-        description="Only for MAVE studies; Total number of variants in the library. Example: 5,000",
-    )
+    library_expression_control_id: Series[String] = Field(nullable=True)
+    library_expression_control_label: Series[String] = Field(nullable=True)
+    library_name: Series[String] = Field(nullable=True)
+    library_uri: Series[String] = Field(nullable=True)
+    library_format_id: Series[String] = Field(nullable=True)
+    library_format_label: Series[String] = Field(nullable=True)
+    library_scope_id: Series[String] = Field(nullable=True)
+    library_scope_label: Series[String] = Field(nullable=True)
+    library_perturbation_type_id: Series[String] = Field(nullable=True)
+    library_perturbation_type_label: Series[String] = Field(nullable=True)
+    library_manufacturer: Series[String] = Field(nullable=True)
+    library_lentiviral_generation: Series[String] = Field(nullable=True)
+    library_grnas_per_target: Series[String] = Field(nullable=True)
+    library_total_grnas: Series[Int64] = Field(nullable=True, ge=0)
+    library_total_variants: Int64 = Field(nullable=True, ge=0)
     # assay details
-    readout_dimensionality_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the dimensionality of the readout assay.",
-    )
-    readout_dimensionality_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the dimensionality of the readout assay.",
-        isin=["single-dimensional assay", "high-dimensional assay"],
-    )
-    readout_type_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the type of the readout assay.",
-    )
-    readout_type_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the type of the readout assay.",
-        isin=["transcriptomic", "proteomic", "phenotypic"],
-    )
-    readout_technology_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the technology used in the readout assay.",
-    )
-    readout_technology_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the technology used in the readout assay.",
-        isin=["single-cell rna-seq", "population growth assay", "flow cytometry"],
-    )
-    method_name_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the method name used in the readout assay.",
-    )
-    method_name_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the method name used in the readout assay.",
-        isin=["Perturb-seq", "scRNA-seq", "proliferation CRISPR screen"],
-    )
-    method_uri: Series[String] = Field(
-        nullable=True,
-        description="URI associated with the method used in the readout assay.",
-    )
-    sequencing_library_kit_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the sequencing library kit.",
-    )
-    sequencing_library_kit_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the sequencing library kit.",
-        isin=[
-            "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
-            "10x Genomics Single Cell 3-prime",
-            "Nextera XT",
-        ],
-    )
-    sequencing_platform_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the sequencing platform.",
-    )
-    sequencing_platform_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the sequencing platform.",
-        isin=["Illumina NovaSeq X Plus", "Illumina HiSeq 4000", "Illumina HiSeq 2500"],
-    )
-    sequencing_strategy_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the sequencing strategy.",
-    )
-    sequencing_strategy_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the sequencing strategy.",
-        isin=["barcode sequencing"],
-    )
-    software_counts_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID for the software used for generating counts.",
-    )
-    software_counts_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label for the software used for generating counts.",
-        isin=["CellRanger", "Drop-seq Tools"],
-    )
-    software_analysis_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID for the software used for analysis.",
-    )
-    software_analysis_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK"],
-    )
-    reference_genome_id: Series[String] = Field(
-        nullable=True, description="Ontology term ID for the reference genome."
-    )
-    reference_genome_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label for the reference genome.",
-        isin=["GRCh38", "GRCh37"],
-    )
+    readout_dimensionality_id: Series[String] = Field(nullable=True)
+    readout_dimensionality_label: Series[String] = Field(nullable=True)
+    readout_type_id: Series[String] = Field(nullable=True)
+    readout_type_label: Series[String] = Field(nullable=True)
+    readout_technology_id: Series[String] = Field(nullable=True)
+    readout_technology_label: Series[String] = Field(nullable=True)
+    method_name_id: Series[String] = Field(nullable=True)
+    method_name_label: Series[String] = Field(nullable=True)
+    method_uri: Series[String] = Field(nullable=True)
+    sequencing_library_kit_id: Series[String] = Field(nullable=True)
+    sequencing_library_kit_label: Series[String] = Field(nullable=True)
+    sequencing_platform_id: Series[String] = Field(nullable=True)
+    sequencing_platform_label: Series[String] = Field(nullable=True)
+    sequencing_strategy_id: Series[String] = Field(nullable=True)
+    sequencing_strategy_label: Series[String] = Field(nullable=True)
+    software_counts_id: Series[String] = Field(nullable=True)
+    software_counts_label: Series[String] = Field(nullable=True)
+    software_analysis_id: Series[String] = Field(nullable=True)
+    software_analysis_label: Series[String] = Field(nullable=True)
+    reference_genome_id: Series[String] = Field(nullable=True)
+    reference_genome_label: Series[String] = Field(nullable=True)
     # associated datasets
     associated_datasets: Series[String] = Field(
         nullable=True,
