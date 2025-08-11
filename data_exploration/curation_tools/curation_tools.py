@@ -10,9 +10,11 @@ from pprint import pprint
 from pydantic import ValidationError
 from typing import Literal
 import pandera as pa
+from pandera.typing import Series, Int64, String
 
 from libchebipy import search
 import scanpy as sc
+import anndata as ad
 from gprofiler import GProfiler
 
 # function to add a new synonym to the ontology
