@@ -268,6 +268,8 @@ class CuratedDataset:
     def save_curated_data_h5ad(self):
         """Save the curated data to a h5ad file."""
 
+        ad.settings.allow_write_nullable_strings = True  # Allow nullable strings in adata
+        
         adata = self.adata
 
         if adata is None:
@@ -1417,7 +1419,7 @@ class CuratedDataset:
             self.print_data(validated.model_dump())
         except ValidationError as e:
             print(f"Validation error: {e}")
-
+        
     def validate_data(
         self,
         slot=Literal["var", "obs"],
