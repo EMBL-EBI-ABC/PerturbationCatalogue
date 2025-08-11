@@ -1434,9 +1434,16 @@ class CuratedDataset:
 
         df = getattr(self.adata, slot)
         if df.empty:
-            raise ValueError(f"adata.{slot} is empty")
-
-        schema = self.obs_schema if slot == "obs" else self.var_schema
+            raise ValueError(f"adata.{slot} is empty")        
+        
+        if slot == "obs":
+            schema = self.obs_schema
+            dtype_map = self.get_schema_dtype_map(schema_cls = schema)
+            # Only cast columns present in the dataframe
+            dtype_map = {col: dtype for col, dtype in dtype_map.items() if col in df.columns}
+            df = df.astype(dtype_map)
+        else:
+            schema = self.var_schema            
 
         try:
             validated_obs = schema.validate(df, lazy=True)
@@ -1449,7 +1456,7 @@ class CuratedDataset:
 
         except pa.errors.SchemaErrors as e:
             print(json.dumps(e.message, indent=2))
-
+        
     def _get_vals(self, column):
         """
         Get the unique values of a column and convert them to a list.
@@ -1608,3 +1615,32 @@ class CuratedDataset:
         print(f"Collapsed column {unique_val_column} using separator {sep}")
 
         return df
+
+    @staticmethod
+    def get_schema_dtype_map(schema_cls):
+            """
+            Create a mapping from pandera schema field names to pandas dtypes.
+            Args:
+                schema_cls: The schema class to extract annotations from.
+            """
+            dtype_map = {}
+            for attr, annotation in schema_cls.__annotations__.items():
+                # Get type info: Series[String], Series[Int64], Int64, etc.
+                t = annotation
+                # Handle Series[...] (pandera.typing.Series)
+                if hasattr(t, "__origin__") and t.__origin__ == Series:
+                    dtype = t.__args__[0]
+                else:
+                    dtype = t
+                ## Map to pandas-accepted strings
+                if dtype in [pa.String, str]:
+                    dtype_map[attr] = "string"
+                elif dtype in [pa.Int64, Int64, int]:
+                    dtype_map[attr] = "Int64"
+                elif dtype in [pa.Float64, float]:
+                    dtype_map[attr] = "float"
+                elif dtype in [pa.Bool, bool]:
+                    dtype_map[attr] = "boolean"
+                else:
+                    dtype_map[attr] = "object"
+            return dtype_map
