@@ -8,7 +8,6 @@ pandas
 
 # scverse
 decoupler==2.0.1
-pertpy==0.11.4
 scanpy==1.11.1
 snapatac2
 
