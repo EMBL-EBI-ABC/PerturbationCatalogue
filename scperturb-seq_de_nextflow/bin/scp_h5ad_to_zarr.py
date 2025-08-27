@@ -54,6 +54,34 @@ try:
 except Exception as e:
     sys.exit(f"[H5AD->ZARR] Failed to read {in_path}: {e}")
 
+# Ensure required obs fields
+obs = A.obs.copy()
+if "perturbation" not in obs.columns:
+    for alt in ("perturbed_target_symbol",):
+        if alt in obs.columns:
+            obs["perturbation"] = obs[alt].astype(str)
+            break
+if "perturbation" not in obs.columns:
+    raise SystemExit(
+        "Missing obs['perturbation']; tried perturbed_target_symbol as fallbacks."
+    )
+
+obs["perturbation"] = obs["perturbation"].str.replace(
+    r"^control.*", "control", regex=True
+)
+
+if "sample_id" not in obs.columns:
+    obs["sample_id"] = "S1"
+
+A.obs = obs
+
+# FIX: adata.var index structure.
+A.var.drop(columns=["gene_symbol"], inplace=True)
+A.var.index.name = "gene_symbol"
+A.var.reset_index(inplace=True)
+A.var.set_index("gene_symbol", inplace=True)
+A.var["gene_symbol"] = A.var.index
+
 # Layer -> X swap
 if args.counts_layer and args.counts_layer != "X":
     # Swapping layers into X requires a non-backed AnnData (may fully load!)
@@ -86,36 +114,35 @@ if args.counts_layer and args.counts_layer != "X":
     print(f"[H5AD->ZARR] Done.")
     sys.exit(0)
 
-# For backed AnnData: try writing with auto-chunking first
+# In scp_preprocess.py (bigmode branch), before write_zarr:
+try:
+    A.raw = None
+except Exception:
+    pass
+try:
+    if hasattr(A, "layers") and A.layers is not None:
+        # prevent writer from iterating layers
+        A.layers = None
+except Exception:
+    pass
+for attr in ("obsm", "varm", "obsp", "varp", "uns"):
+    try:
+        setattr(A, attr, {})
+    except Exception:
+        pass
+
 print(f"[H5AD->ZARR] Writing Zarr -> {out_dir} (auto chunks)…")
+# decide chunking
+n_genes = int(A.n_vars)
 try:
-    A.write_zarr(
-        str(out_dir)
-    )  # Let anndata pick chunks appropriate to dense/sparse encoders
-    print("[H5AD->ZARR] Done.")
-    sys.exit(0)
-except Exception as e_auto:
-    print(f"[H5AD->ZARR] Auto chunking failed: {e_auto}", file=sys.stderr)
+    probe = A.X[:1, :1]  # tiny read; ok even in backed mode
+    is_sparse = hasattr(probe, "toarray")
+except Exception:
+    is_sparse = False
 
-# Retry with explicit chunks:
-# - For dense X: use (genes_chunk, cells_chunk)
-# - For sparse X: use 1-D chunk (e.g., genes_chunk) because sparse stores 1-D component arrays
-# We can heuristically detect sparse encoding by trying dense chunks first, then fallback to 1-D.
-
-print(
-    f"[H5AD->ZARR] Retrying with dense-style chunks=({args.genes_chunk},{args.cells_chunk}) …"
-)
-try:
-    A.write_zarr(str(out_dir), chunks=(args.genes_chunk, args.cells_chunk))
-    print("[H5AD->ZARR] Done (dense-style chunks).")
-    sys.exit(0)
-except Exception as e_dense:
-    print(f"[H5AD->ZARR] Dense-style chunks failed: {e_dense}", file=sys.stderr)
-
-print("[H5AD->ZARR] Retrying with 1-D chunks for sparse encodings …")
-try:
-    A.write_zarr(str(out_dir), chunks=args.genes_chunk)  # 1-D chunk length
-    print("[H5AD->ZARR] Done (sparse-style chunks).")
-    sys.exit(0)
-except Exception as e_sparse:
-    sys.exit(f"[H5AD->ZARR] Failed to write Zarr even with 1-D chunks: {e_sparse}")
+if is_sparse:
+    # Sparse is stored as 1-D component arrays -> pass a single positive int
+    A.write_zarr(str(out_dir), chunks=100_000)  # rows per chunk
+else:
+    # Dense 2-D: pass (rows_chunk, cols_chunk), both > 0
+    A.write_zarr(str(out_dir), chunks=(100_000, min(n_genes, 50_000)))

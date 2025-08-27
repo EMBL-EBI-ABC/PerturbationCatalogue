@@ -27,38 +27,38 @@ workflow {
 }
 
 process PREPROCESS {
-  label 'bigmem'
+  label 'big'
   tag "preprocess"
   publishDir "${params.outdir}/preprocessed", mode: 'copy'
   input:
     val sample_id
     path h5ad
   output:
-    path "${sample_id}.preprocessed.h5ad"
+    path "${sample_id}.preprocessed.zarr"
   script:
   """
-  scp_preprocess.py \
+  scp_h5ad_to_zarr.py \
     --input ${h5ad} \
     --counts-layer ${params.counts_layer} \
-    --out ${params.sample_id}.preprocessed.h5ad
+    --out ${params.sample_id}.preprocessed.zarr
   """
 }
 
 process PSEUDOBULK {
-  label 'bigmem'
+  label 'big'
   tag "pseudobulk"
   publishDir "${params.outdir}/pseudobulk", mode: 'copy'
   input:
     val sample_id
-    path ad
+    path zarr_dir
   output:
     path "${sample_id}.pb_counts.parquet", emit: pb_counts
     path "${sample_id}.pb_meta.parquet", emit: pb_meta
     path "${sample_id}.pb_summary.tsv", emit: pb_summary
   script:
   """
-  scp_pseudobulk.py \
-    --input ${ad} \
+  scp_pseudobulk_zarr.py \
+    --zarr ${zarr_dir} \
     --min-reps ${params.min_reps} \
     --replicate-mode ${params.replicate_mode} \
     --auto_min_cells_per_bag ${params.auto_min_cells_per_bag} \
@@ -72,7 +72,7 @@ process PSEUDOBULK {
 }
 
 process DE_PYDESEQ2 {
-  label 'bigmemcpu'
+  label 'big'
   tag "DESeq2like"
   publishDir "${params.outdir}/de_pseudobulk", mode: 'copy'
   input:
