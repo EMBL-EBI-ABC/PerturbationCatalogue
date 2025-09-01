@@ -310,7 +310,7 @@ class CuratedDataset:
 
             return schema_dict
 
-    def save_curated_data_parquet(self, split_metadata=False, chunk_size=200):
+    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False,  chunk_size=200):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
@@ -395,6 +395,14 @@ class CuratedDataset:
             if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
                 print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
                 return
+            if save_metadata_only:
+                # Convert metadata_only_df to Polars DataFrame
+                metadata_only_df = pl.from_pandas(full_metadata_df, schema_overrides=polars_schema)
+                # Write metadata_only_df to parquet
+                metadata_only_df.write_parquet(parquet_metadata_path)
+                print(f"Metadata written to {parquet_metadata_path}")
+                return
+                
             else:
                  for i in range(num_chunks):
                     start_col = i * chunk_size
@@ -431,14 +439,14 @@ class CuratedDataset:
                 print("All chunks written and ParquetWriter closed.")
 
             # Now, we will process the metadata separately
-            metadata_only_df = full_metadata_df
+            # metadata_only_df = full_metadata_df
 
-            # Convert metadata_only_df to Polars DataFrame
-            metadata_only_df = pl.from_pandas(metadata_only_df, schema_overrides=polars_schema)
+            # # Convert metadata_only_df to Polars DataFrame
+            # metadata_only_df = pl.from_pandas(metadata_only_df, schema_overrides=polars_schema)
 
-            # Write metadata_only_df to parquet
-            metadata_only_df.write_parquet(parquet_metadata_path)
-            print(f"Metadata written to {parquet_metadata_path}")
+            # # Write metadata_only_df to parquet
+            # metadata_only_df.write_parquet(parquet_metadata_path)
+            # print(f"Metadata written to {parquet_metadata_path}")
             
 
         # X_df = adata.to_df()
