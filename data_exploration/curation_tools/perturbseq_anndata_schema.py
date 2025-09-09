@@ -2,6 +2,7 @@ import pandas as pd
 import pandera as pa
 from pandera import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
+from pandera.typing import Series, Index, String, Int64, Float32
 from typing import Optional
 from pathlib import Path
 
