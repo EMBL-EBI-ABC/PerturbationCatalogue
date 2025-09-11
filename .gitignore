@@ -1,4 +1,5 @@
 .DS_Store
 .vscode
+.env
 *.h5ad
 __pycache__
