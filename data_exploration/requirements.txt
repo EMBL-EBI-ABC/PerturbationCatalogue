@@ -16,3 +16,8 @@ snapatac2
 pandera
 libchebipy
 gprofiler-official
+python-dotenv
+google-cloud-aiplatform
+vertexai
+elsapy
+trafilatura
