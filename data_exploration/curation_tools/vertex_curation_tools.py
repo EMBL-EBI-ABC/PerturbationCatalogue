@@ -1,5 +1,6 @@
 import os
 import json
+import requests
 
 from dotenv import load_dotenv
 
@@ -10,103 +11,6 @@ from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
 
 load_dotenv()
-
-def intitialize_vertexai():
-    """Initializes Vertex AI with project and location from environment variables."""
-    try:
-        vertexai.init(project=os.getenv("PROJECT_ID"), location=os.getenv("LOCATION"))
-        print("Successfully connected to Google Cloud services.")
-    except Exception as e:
-        print(f"Error initializing Google Cloud services: {e}")
-        print(
-            "Please ensure you have run 'gcloud auth application-default login' in your terminal."
-        )
-        
-def extract_text_with_elsapy(doi):
-    """Fetches full text of a document from Elsevier API using its DOI."""
-    client = ElsClient(os.getenv("ELSEVIER_API_KEY"))
-    try:
-        doi_doc = FullDoc(doi=doi)
-        if doi_doc.read(client):
-            print("Successfully retrieved document from Elsevier API.")
-            # save the full JSON data to a file
-            os.makedirs("doi_files", exist_ok=True)
-            doi_save_name = doi.replace('/', '_')
-            with open(f"doi_files/{doi_save_name}.json", 'w') as f:
-                json.dump(doi_doc.data, f, indent=2)
-                print(f"Saved document data to doi_files/{doi_save_name}.json")
-            
-            return doi_doc.data['originalText']
-        else:
-            print("Failed to read document from Elsevier API.")
-            return None
-    except Exception as e:
-        print(f"Error retrieving document: {e}")
-        return None
-
-def cleanup_response(text):
-    """Cleans up the model response text."""
-    response_text = text.text
-    response_text = response_text.strip().replace("```json", "").replace("```", "").strip()
-    response_text = json.loads(response_text)
-    ordered_result_dict = order_result_dict(response_text, schema)
-    return ordered_result_dict
-
-
-def order_result_dict(input_dict_list, schema):
-    """Orders the result nested dictionary according to the schema keys."""
-    output_dict_list = []
-    for input_dict in input_dict_list:
-        output_dict = {}
-        for key in schema.keys():
-            if key in input_dict:
-                output_dict[key] = input_dict[key]
-            else:
-                output_dict[key] = None 
-                print(f"Warning: Key '{key}' not found in input dictionary. Setting it to None.")
-        output_dict_list.append(output_dict)
-    return output_dict_list
-
-def extract_data_with_gemini(text_content, schema=schema, model_name=os.getenv("MODEL_NAME")):
-    """Sends text to Gemini and asks for structured dictionary extraction."""
-
-    model = GenerativeModel(model_name)
-    # This detailed prompt guides the model to return clean JSON that matches your schema.
-    prompt = f"""
-    You are a an experienced biocurator and data analyst. 
-    Your task is to carefully read the provided scientific papers and extract relevant metadata that will be used for a new data repository containing genetic perturbation studies, such as MAVE, CRISPR and Perturb-seq studies. 
-    The data needs to be structured as a python dict that adheres to the provided JSON schema.
-    You need to be critical and meticulous in your data extraction efforts. 
-    When there is no information available in the paper for a particular field - leave the fields empty. 
-    When there are more than one experiment reported in the paper, you will create a list of python dict structures - one for each experiment.
-
-    **Instructions:**
-    1.  Carefully read the text.
-    2.  Extract the data points according to the JSON schema below.
-    3.  If a value is not found, use `null` or an empty array `[]` as appropriate.
-    4.  Your entire response must be ONLY the list of dict objects, with no introductory text, explanations, or markdown formatting like ```json.
-
-    **JSON schema:**
-    
-    {schema}
-    
-    **Scientific Paper Text:**
-    ---
-    {text_content}
-    ---
-    """
-
-    print("Constructed the prompt for with custom instructions, schema and scientific paper text.")
-    print(f"Prompt length: {len(prompt)} characters.")
-    print("Sending the prompt to Gemini model...")
-    try:
-        response = model.generate_content(prompt)
-        return response
-    except Exception as e:
-        print(f"Error calling Gemini model: {e}")
-        return None
-
-
 
 schema = {
     "perturbation_type_label": {
@@ -403,3 +307,239 @@ schema = {
     },
 }
 
+def intitialize_vertexai():
+    """Initializes Vertex AI with project and location from environment variables."""
+    try:
+        vertexai.init(project=os.getenv("PROJECT_ID"), location=os.getenv("LOCATION"))
+        print("Successfully connected to Google Cloud services.")
+    except Exception as e:
+        print(f"Error initializing Google Cloud services: {e}")
+        print(
+            "Please ensure you have run 'gcloud auth application-default login' in your terminal."
+        )
+        
+def extract_text_with_elsapy(doi):
+    """Fetches full text of a document from Elsevier API using its DOI."""
+    client = ElsClient(os.getenv("ELSEVIER_API_KEY"))
+    try:
+        doi_doc = FullDoc(doi=doi)
+        if doi_doc.read(client):
+            print("Successfully retrieved document from Elsevier API.")
+            # save the full JSON data to a file
+            os.makedirs("doi_files", exist_ok=True)
+            doi_save_name = doi.replace('/', '_')
+            with open(f"doi_files/{doi_save_name}.json", 'w') as f:
+                json.dump(doi_doc.data, f, indent=2)
+                print(f"Saved document data to doi_files/{doi_save_name}.json")
+            
+            original_text = doi_doc.data.get('originalText', None)
+            if original_text:
+                print(f"Extracted original text for doi: {doi}")
+                return original_text
+            else:
+                print("No original text found in the document data.")
+                return None
+        else:
+            print(f"The paper doesn't exist or is not accessible: {doi}")
+            return None
+    except Exception as e:
+        print(f"Error retrieving document: {e}")
+        return None
+    
+
+def fetch_pmc_json(pmc_id=None, save_dir=None):
+    """
+    Fetches the PMC JSON data for a given PMC ID.
+
+    Args:
+        pmc_id (str): The PMC ID of the article.
+        save_dir (str): The directory to save the JSON file.
+
+    Returns:
+        dict: The JSON data retrieved from the PMC API or an error message.
+    """
+    if not pmc_id:
+        raise ValueError("PMC ID must be provided.")
+    
+    url = f"https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/{pmc_id}/unicode"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an error for bad responses
+        
+        data = response.json()
+
+        if save_dir:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                print(f"Created directory: {save_dir}")
+            # Save the JSON data to a file
+            with open(f"{save_dir}/{pmc_id}.json", 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                print(f"Saved JSON data to {save_dir}/{pmc_id}.json")
+        return data
+    except (json.JSONDecodeError, Exception) as e:
+        print(f"Paper not in Open Access - Skipping PMID: {pmc_id}")
+        return {"error": "Failed to decode JSON response.", "details": str(e)}
+    except requests.HTTPError as e:
+        print(f"Illegal PMID - Skipping PMC ID {pmc_id}")
+        return {"error": "HTTP error occurred.", "details": str(e)}
+
+
+def extract_pmc_full_text(filepath=None, save_dir=None):
+    """
+    Extracts the full text from a PMC API JSON response file.
+
+    Args:
+        filepath (str): The path to the JSON file.
+
+    Returns:
+        str: The concatenated full text from all passages.
+    """
+    if not filepath or not os.path.isfile(filepath):
+        return "Error: A valid file path must be provided."
+    
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Navigate through the JSON structure to get to the passages
+        # The structure is a list containing one dictionary
+        documents = data[0].get('documents', [])
+        if not documents:
+            return "Error: 'documents' array not found or is empty."
+
+        # The 'documents' array contains one dictionary
+        passages = documents[0].get('passages', [])
+        if not passages:
+            return "Error: 'passages' array not found or is empty."
+
+        # Loop through passages and collect relevant data
+        full_text_parts = []
+        for passage in passages:
+            infon = passage.get('infons', {})
+            section_type = infon.get('section_type', None)
+            content_type = infon.get('type', None)
+            text = passage.get('text', '')
+            if section_type == 'TITLE':
+                full_text_parts.append(f"# {text}\n")
+                full_text_parts.append(f"DOI: {infon.get('article-id_doi', 'N/A')}\n")
+                
+                names = {k: v for k, v in infon.items() if k.startswith('name_')}
+                first_author = names["name_0"].split(';')
+                first_author = f"{first_author[1].split(':')[1]} {first_author[0].split(':')[1]}"
+                last_author = names[f"name_{len(names)-1}"].split(';')
+                last_author = f"{last_author[1].split(':')[1]} {last_author[0].split(':')[1]}"
+                
+                full_text_parts.append(f"First Author: {first_author}\n")
+                full_text_parts.append(f"Last Author: {last_author}\n")
+                
+                full_text_parts.append(f"Year: {infon.get('year', 'N/A')}\n")
+            
+            else:
+                if content_type.startswith('title_1'):
+                    full_text_parts.append(f"# {text}\n")
+                elif content_type.startswith('title_2'):
+                    full_text_parts.append(f"## {text}\n")
+                elif content_type.startswith('title_3'):
+                    full_text_parts.append(f"### {text}\n")
+                elif content_type.startswith('title_4'):
+                    full_text_parts.append(f"#### {text}\n")
+                elif content_type.startswith('fig'):
+                    fig_id = infon.get('id', 'N/A')
+                    if content_type == 'fig_title_caption':
+                        full_text_parts.append(f"*Figure {fig_id}: {text}*\n")
+                    elif content_type == 'fig_caption':
+                        full_text_parts.append(f"{text}\n")
+                elif content_type.startswith('ref'):
+                    continue
+                else:
+                    full_text_parts.append(f"{text}\n")
+                    
+        # Join all the text parts together with a newline for readability
+        full_text = '\n'.join(full_text_parts)
+        
+        if save_dir:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                print(f"Created directory: {save_dir}")
+            base_filename = os.path.basename(filepath).replace('.json', '.txt')
+            output_path = os.path.join(save_dir, base_filename)
+            with open(output_path, 'w', encoding='utf-8') as out_f:
+                out_f.write(full_text)
+                print(f"Saved extracted text to {output_path}")
+                
+        return full_text
+
+    except FileNotFoundError:
+        return f"Error: The file '{filepath}' was not found."
+    except json.JSONDecodeError:
+        return f"Error: The file '{filepath}' is not a valid JSON file."
+    except (IndexError, KeyError) as e:
+        return f"Error: The JSON structure is not as expected. Missing key: {e}"
+    except Exception as e:
+        return f"An unexpected error occurred: {e}"
+
+
+def order_result_dict(input_dict_list, schema):
+    """Orders the result nested dictionary according to the schema keys."""
+    output_dict_list = []
+    for input_dict in input_dict_list:
+        output_dict = {}
+        for key in schema.keys():
+            if key in input_dict:
+                output_dict[key] = input_dict[key]
+            else:
+                output_dict[key] = None 
+                print(f"Warning: Key '{key}' not found in input dictionary. Setting it to None.")
+        output_dict_list.append(output_dict)
+    return output_dict_list
+
+def cleanup_response(text):
+    """Cleans up the model response text."""
+    response_text = text.text
+    response_text = response_text.strip().replace("```json", "").replace("```", "").strip()
+    response_text = json.loads(response_text)
+    ordered_result_dict = order_result_dict(response_text, schema)
+    return ordered_result_dict
+
+def extract_data_with_gemini(text_content, schema=schema, model_name=os.getenv("MODEL_NAME")):
+    """Sends text to Gemini and asks for structured dictionary extraction."""
+
+    model = GenerativeModel(model_name)
+    # This detailed prompt guides the model to return clean JSON that matches your schema.
+    prompt = f"""
+    You are a an experienced biocurator and data analyst. 
+    Your task is to carefully read the provided scientific papers and extract relevant metadata that will be used for a new data repository containing genetic perturbation studies, such as MAVE, CRISPR and Perturb-seq studies. 
+    The data needs to be structured as a python dict that adheres to the provided JSON schema.
+    You need to be critical and meticulous in your data extraction efforts. 
+    When there is no information available in the paper for a particular field - leave the fields empty. 
+    When there are more than one experiment reported in the paper, you will create a list of python dict structures - one for each experiment.
+
+    **Instructions:**
+    1.  Carefully read the text.
+    2.  Extract the data points according to the JSON schema below.
+    3.  If a value is not found, use `null` or an empty array `[]` as appropriate.
+    4.  Your entire response must be ONLY the list of dict objects, with no introductory text, explanations, or markdown formatting like ```json.
+
+    **JSON schema:**
+    
+    {schema}
+    
+    **Scientific Paper Text:**
+    ---
+    {text_content}
+    ---
+    """
+
+    print("Constructed the prompt for with custom instructions, schema and scientific paper text.")
+    print(f"Prompt length: {len(prompt)} characters.")
+    print("Sending the prompt to Gemini model...")
+    try:
+        response = model.generate_content(prompt)
+        clean_response = cleanup_response(response)
+        print("Received and cleaned up the response from Gemini model.")
+        return clean_response
+    except Exception as e:
+        print(f"Error calling Gemini model: {e}")
+        return None
