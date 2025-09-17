@@ -517,10 +517,6 @@ def extract_text_with_openpmc(pmc_id=None, save_dir=None):
         
         return full_text
 
-    except FileNotFoundError:
-        return f"Error: The file '{filepath}' was not found."
-    except json.JSONDecodeError:
-        return f"Error: The file '{filepath}' is not a valid JSON file."
     except (IndexError, KeyError) as e:
         return f"Error: The JSON structure is not as expected. Missing key: {e}"
     except Exception as e:
