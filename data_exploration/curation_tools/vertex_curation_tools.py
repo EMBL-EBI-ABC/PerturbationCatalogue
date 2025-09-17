@@ -534,7 +534,7 @@ def order_result_dict(input_dict_list, schema):
         output_dict_list.append(output_dict)
     return output_dict_list
 
-def cleanup_response(text):
+def cleanup_gemini_response(text):
     """Cleans up the model response text."""
     response_text = text.text
     response_text = response_text.strip().replace("```json", "").replace("```", "").strip()
@@ -542,8 +542,28 @@ def cleanup_response(text):
     ordered_result_dict = order_result_dict(response_text, schema)
     return ordered_result_dict
 
-def extract_data_with_gemini(text_content, schema=schema, model_name=os.getenv("MODEL_NAME")):
-    """Sends text to Gemini and asks for structured dictionary extraction."""
+def extract_data_with_gemini(text_content, schema=schema, model_name=os.getenv("MODEL_NAME"), file_id = None, save_dir=None):
+    """Sends text to Gemini and asks for structured dictionary extraction.
+    
+    Args:
+        text_content (str): The scientific paper text to be processed.
+        schema (dict): The JSON schema defining the expected output structure.
+        model_name (str): The name of the Gemini model to use.
+        file_id (str): Optional identifier for the file being processed, e.g., PMID.
+        save_dir (str): Optional directory to save the resulting JSON file.
+        
+    Returns:
+        list: A list of dictionaries containing the extracted data.
+    """
+    if not text_content or len(text_content) < 100:
+        print("Error: Text content is too short or empty.")
+        return None
+    if not model_name:
+        print("Error: Model name must be provided.")
+        return None
+    if save_dir and not file_id:
+        print("Error: file_id must be provided if save_dir is specified.")
+        return None
 
     model = GenerativeModel(model_name)
     # This detailed prompt guides the model to return clean JSON that matches your schema.
@@ -571,13 +591,21 @@ def extract_data_with_gemini(text_content, schema=schema, model_name=os.getenv("
     ---
     """
 
-    print("Constructed the prompt for with custom instructions, schema and scientific paper text.")
+    print(f"Constructed the prompt with custom instructions, schema and scientific paper text: {file_id}.")
     print(f"Prompt length: {len(prompt)} characters.")
     print("Sending the prompt to Gemini model...")
     try:
         response = model.generate_content(prompt)
-        clean_response = cleanup_response(response)
+        # clean up the response
+        clean_response = cleanup_gemini_response(response)
         print("Received and cleaned up the response from Gemini model.")
+        if save_dir:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                print(f"Created directory: {save_dir}")
+            with open(f"{save_dir}/{file_id}.json", "w") as f:
+                json.dump(clean_response, f, indent=4)
+                print(f"Saved curated data to {save_dir}/{file_id}.json")
         return clean_response
     except Exception as e:
         print(f"Error calling Gemini model: {e}")
