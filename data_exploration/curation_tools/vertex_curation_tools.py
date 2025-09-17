@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import re
 
 from dotenv import load_dotenv
 
@@ -9,6 +10,12 @@ from vertexai.generative_models import GenerativeModel
 
 from elsapy.elsclient import ElsClient
 from elsapy.elsdoc import FullDoc
+
+from docling.datamodel.base_models import InputFormat
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.datamodel.pipeline_options import (
+    PdfPipelineOptions,
+)
 
 load_dotenv()
 
@@ -318,8 +325,19 @@ def intitialize_vertexai():
             "Please ensure you have run 'gcloud auth application-default login' in your terminal."
         )
 
-def extract_text_with_elsapy(doi, save_dir=None):
-    """Fetches full text of a document from Elsevier API using its DOI."""
+def extract_text_with_elsapy(doi, file_id=None, save_dir=None):
+    """Fetches full text of a document from Elsevier API using its DOI.
+    Args:
+        doi (str): The DOI of the document.
+        file_id (str): Optional identifier for the file being processed, e.g., PMID.
+        save_dir (str): Optional directory to save the JSON file.
+    
+    """
+    if not doi:
+        raise ValueError("DOI must be provided.")
+    if save_dir and not file_id:
+        raise ValueError("file_id must be provided if save_dir is specified.")
+    
     client = ElsClient(os.getenv("ELSEVIER_API_KEY"))
     try:
         doi_doc = FullDoc(doi=doi)
@@ -330,10 +348,10 @@ def extract_text_with_elsapy(doi, save_dir=None):
                 if not os.path.exists(save_dir):
                     os.makedirs(save_dir, exist_ok=True)
                     print(f"Created directory: {save_dir}")
-                doi_save_name = doi.replace('/', '_')
-                with open(f"{save_dir}/{doi_save_name}.json", 'w') as f:
+                save_name = file_id.replace('/', '_') # if file_id is a DOI, replace '/' to avoid issues in filename
+                with open(f"{save_dir}/{save_name}.json", 'w') as f:
                     json.dump(doi_doc.data, f, indent=2)
-                    print(f"Saved document data to {save_dir}/{doi_save_name}.json")
+                    print(f"Saved document data to {save_dir}/{save_name}.json")
             # extract the original text
             original_text = doi_doc.data.get('originalText', None)
             if original_text:
@@ -425,30 +443,29 @@ def fetch_pmc_json(pmc_id=None, save_dir=None):
         return {"error": "HTTP error occurred.", "details": str(e)}
 
 
-def extract_pmc_full_text(filepath=None, save_dir=None):
+def extract_text_with_openpmc(pmc_id=None, save_dir=None):
     """
     Extracts the full text from a PMC API JSON response file.
 
     Args:
-        filepath (str): The path to the JSON file.
+        pmc_id (str): The PMC ID of the article.
+        save_dir (str): The directory to save the JSON response from PMC API.
 
     Returns:
         str: The concatenated full text from all passages.
     """
-    if not filepath or not os.path.isfile(filepath):
-        return "Error: A valid file path must be provided."
-    
-    try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+    if not pmc_id:
+        return "Error: PMC ID must be provided."
 
+    # get the json from PMC API
+    response = fetch_pmc_json(pmc_id, save_dir=save_dir)
+
+    try:
         # Navigate through the JSON structure to get to the passages
-        # The structure is a list containing one dictionary
-        documents = data[0].get('documents', [])
+        documents = response[0].get('documents', [])
         if not documents:
             return "Error: 'documents' array not found or is empty."
 
-        # The 'documents' array contains one dictionary
         passages = documents[0].get('passages', [])
         if not passages:
             return "Error: 'passages' array not found or is empty."
@@ -498,16 +515,6 @@ def extract_pmc_full_text(filepath=None, save_dir=None):
         # Join all the text parts together with a newline for readability
         full_text = '\n'.join(full_text_parts)
         
-        if save_dir:
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-                print(f"Created directory: {save_dir}")
-            base_filename = os.path.basename(filepath).replace('.json', '.txt')
-            output_path = os.path.join(save_dir, base_filename)
-            with open(output_path, 'w', encoding='utf-8') as out_f:
-                out_f.write(full_text)
-                print(f"Saved extracted text to {output_path}")
-                
         return full_text
 
     except FileNotFoundError:
