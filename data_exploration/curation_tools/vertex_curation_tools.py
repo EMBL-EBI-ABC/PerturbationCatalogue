@@ -317,8 +317,8 @@ def intitialize_vertexai():
         print(
             "Please ensure you have run 'gcloud auth application-default login' in your terminal."
         )
-        
-def extract_text_with_elsapy(doi):
+
+def extract_text_with_elsapy(doi, save_dir=None):
     """Fetches full text of a document from Elsevier API using its DOI."""
     client = ElsClient(os.getenv("ELSEVIER_API_KEY"))
     try:
@@ -326,16 +326,21 @@ def extract_text_with_elsapy(doi):
         if doi_doc.read(client):
             print("Successfully retrieved document from Elsevier API.")
             # save the full JSON data to a file
-            os.makedirs("doi_files", exist_ok=True)
-            doi_save_name = doi.replace('/', '_')
-            with open(f"doi_files/{doi_save_name}.json", 'w') as f:
-                json.dump(doi_doc.data, f, indent=2)
-                print(f"Saved document data to doi_files/{doi_save_name}.json")
-            
+            if save_dir:
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir, exist_ok=True)
+                    print(f"Created directory: {save_dir}")
+                doi_save_name = doi.replace('/', '_')
+                with open(f"{save_dir}/{doi_save_name}.json", 'w') as f:
+                    json.dump(doi_doc.data, f, indent=2)
+                    print(f"Saved document data to {save_dir}/{doi_save_name}.json")
+            # extract the original text
             original_text = doi_doc.data.get('originalText', None)
             if original_text:
                 print(f"Extracted original text for doi: {doi}")
-                return original_text
+                # clean the text
+                cleaned_text = clean_elsapy_text(original_text)
+                return cleaned_text
             else:
                 print("No original text found in the document data.")
                 return None
@@ -345,7 +350,41 @@ def extract_text_with_elsapy(doi):
     except Exception as e:
         print(f"Error retrieving document: {e}")
         return None
-    
+
+def clean_elsapy_text(text):
+    """Cleans the text extracted from Elsevier API."""
+    if not text:
+        return "Error: No text provided for cleaning."
+
+    url_pattern = re.compile(r'https?://\S+|www\.\S+')
+    docs_pattern = re.compile(r'\S+\.(jpg|png|gif|tif|sml|zip|docx|xlsx)', re.IGNORECASE | re.MULTILINE)
+
+    clean_text = text
+    # remove URLs
+    clean_text = url_pattern.sub('', clean_text)
+    # remove document links
+    clean_text = docs_pattern.sub('', clean_text)
+
+    # remove everything before 'Introduction'
+    intro_pos = clean_text.find('Introduction')
+    if intro_pos != -1:
+        clean_text = clean_text[intro_pos:]
+
+    # remove everything after 'References'
+    ref_pos = clean_text.rfind('References')
+    if ref_pos != -1:
+        clean_text = clean_text[:ref_pos]
+
+    # remove everything after 'Acknowledgements'
+    ack_pos = clean_text.rfind('Acknowledgements')
+    if ack_pos != -1:
+        clean_text = clean_text[:ack_pos]
+
+    print(
+        f"Cleaned the extracted text.\nOriginal length: {len(text)} characters.\nNew length: {len(clean_text)} characters.\nReduction %: {100 - (len(clean_text) / len(text) * 100):.2f}%"
+    )
+    return clean_text
+
 
 def fetch_pmc_json(pmc_id=None, save_dir=None):
     """
