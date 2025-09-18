@@ -522,6 +522,52 @@ def extract_text_with_openpmc(pmc_id=None, save_dir=None):
     except Exception as e:
         return f"An unexpected error occurred: {e}"
 
+def extract_text_from_pdf(input_file_path, file_id=None, save_dir=None):
+    """
+    Extracts text from a PDF file using Docling.
+
+    Args:
+        input_file_path (str): The path to the PDF file.
+        file_id (str): An identifier for the file being processed, e.g., PMID.
+        save_dir (str): The directory to save the extracted text file.
+    Returns:
+        str: The extracted text from the PDF.
+    """
+    
+    if not input_file_path or not os.path.isfile(input_file_path):
+        return "Error: A valid input file path must be provided."
+    if not input_file_path.lower().endswith('.pdf'):
+        return "Error: The input file must be a PDF."
+    if save_dir and not file_id:
+        return "Error: file_id must be provided if save_dir is specified."
+
+    # Set up pipeline options
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = False
+    pipeline_options.do_table_structure = True
+    pipeline_options.table_structure_options.do_cell_matching = True
+
+    # Initialize the DocumentConverter with PDF options
+    doc_converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+    
+    result = doc_converter.convert(input_file_path)
+    text = result.document.export_to_markdown()
+    
+    if save_dir:
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+            print(f"Created directory: {save_dir}")
+        with open(f"{save_dir}/{file_id}.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+            print(f"Saved extracted text to {save_dir}/{file_id}.txt")
+            
+    return text
+    
+
 
 def order_result_dict(input_dict_list, schema):
     """Orders the result nested dictionary according to the schema keys."""
