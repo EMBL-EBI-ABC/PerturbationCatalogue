@@ -778,12 +778,11 @@ class CuratedDataset:
         if df[column].isna().any():
             na_entries = df[column].isna()
             self.adata = self.adata[~na_entries]
+            print(
+                f"Removed {sum(na_entries)} NA entries from column {column} of adata.{slot}"
+            )
         else:
             print(f"Column {column} has no NA entries in adata.{slot}")
-
-        print(
-            f"Removed {sum(na_entries)} NA entries from column {column} of adata.{slot}"
-        )
 
     def map_symbol_to_ensg(self, symbol_column, ensg_column):
         """
