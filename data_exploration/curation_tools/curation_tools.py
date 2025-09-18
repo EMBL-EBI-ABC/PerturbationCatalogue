@@ -882,12 +882,13 @@ class CuratedDataset:
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
         )
 
-    def standardize_compounds(self, column=None):
+    def standardize_compounds(self, column=None, overwrite=False):
         """
         Standardize compound names in a DataFrame column using ChEBI.
 
         Parameters:
             column (str): The name of the column containing compound names to be standardized.
+            overwrite (bool): Whether to overwrite existing 'treatment_label' and 'treatment_id' columns. Default is False.
         """
 
         df = self.adata.obs
@@ -947,6 +948,23 @@ class CuratedDataset:
 
         # if any results were found, merge them back to the original DataFrame
         if not search_results_df.empty:
+            if overwrite:
+                if "treatment_label" in df.columns or "treatment_id" in df.columns:
+                    print(
+                        "Warning: Overwriting existing 'treatment_label' and 'treatment_id' columns."
+                    )
+                    temp_col = f"temp_{column}"
+                    df[temp_col] = df[column]
+                    for col in ["treatment_label", "treatment_id"]:
+                        if col in df.columns:
+                            df = df.drop(columns=[col])
+                    column = temp_col
+            else:
+                if "treatment_label" in df.columns or "treatment_id" in df.columns:
+                    raise ValueError(
+                        "'treatment_label' and/or 'treatment_id' columns already exist. Set overwrite=True to replace them."
+                    )
+            # Merge the search results with the original DataFrame
             df = df.merge(
                 search_results_df,
                 how="left",
