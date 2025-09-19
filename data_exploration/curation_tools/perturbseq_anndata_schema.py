@@ -369,7 +369,7 @@ class ObsSchema(DataFrameModel):
     sequencing_platform_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing platform.",
-        isin=["Illumina NovaSeq X Plus", "Illumina HiSeq 4000", "Illumina HiSeq 2500"],
+        isin=["Illumina NovaSeq X Plus", "Illumina HiSeq 4000", "Illumina HiSeq 2500", "Illumina NovaSeq 6000"],
     )
     sequencing_strategy_id: Series[String] = Field(
         nullable=True,
@@ -387,7 +387,7 @@ class ObsSchema(DataFrameModel):
     software_counts_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for generating counts.",
-        isin=["CellRanger", "Drop-seq Tools"],
+        isin=["MaGeCK", "CellRanger", "Drop-seq Tools"],
     )
     software_analysis_id: Series[String] = Field(
         nullable=True,
