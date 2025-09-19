@@ -317,6 +317,8 @@ class CuratedDataset:
         ----------
         split_metadata : bool, optional
             Whether to split the data and metadata into two separate files (default is False).
+        save_metadata_only : bool, optional
+            Whether to save only the metadata and skip saving the data (default is False).
         chunk_size : int, optional
             The number of genes to process in each chunk (default is 200).
         """
@@ -404,7 +406,14 @@ class CuratedDataset:
                 return
                 
             else:
-                 for i in range(num_chunks):
+                # Convert metadata_only_df to Polars DataFrame
+                metadata_only_df = pl.from_pandas(full_metadata_df, schema_overrides=polars_schema)
+                # Write metadata_only_df to parquet
+                metadata_only_df.write_parquet(parquet_metadata_path)
+                print(f"Metadata written to {parquet_metadata_path}")
+                
+                print("Processing data...")
+                for i in range(num_chunks):
                     start_col = i * chunk_size
                     end_col = min((i + 1) * chunk_size, len(gene_colnames))
                     X_df = adata[:, start_col:end_col].to_df()
@@ -436,127 +445,7 @@ class CuratedDataset:
 
             if 'writer_data' in locals():
                 writer_data.close()
-                print("All chunks written and ParquetWriter closed.")
-
-            # Now, we will process the metadata separately
-            # metadata_only_df = full_metadata_df
-
-            # # Convert metadata_only_df to Polars DataFrame
-            # metadata_only_df = pl.from_pandas(metadata_only_df, schema_overrides=polars_schema)
-
-            # # Write metadata_only_df to parquet
-            # metadata_only_df.write_parquet(parquet_metadata_path)
-            # print(f"Metadata written to {parquet_metadata_path}")
-            
-
-        # X_df = adata.to_df()
-
-        # # Concatenate the count matrix and the full metadata DataFrame
-        # full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
-        # # Convert to Polars DataFrame for better efficiency and performance
-        # full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
-
-        # # Create a long Polars DataFrame
-        # print("Starting the conversion to long format...")
-        # # define the variables for converting to long format
-        # all_columns = full_data_df.columns
-        # metadata_columns = full_metadata_df.columns
-        # id_columns = metadata_columns[0:2]
-        # # Exclude metadata columns from all columns to get the gene columns
-        # gene_colnames = list(set(all_columns) - set(metadata_columns))
-        # num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
-        
-        # print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
-
-        # # Process the genes in chunks to avoid memory issues
-
-        # if not split_metadata:
-        #     parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet").replace('h5ad', 'parquet')
-        #     if os.path.exists(parquet_path):
-        #         raise FileExistsError(f"File {parquet_path} already exists. Skipping write.")
-        #     if not os.path.exists(os.path.dirname(parquet_path)):
-        #         os.makedirs(os.path.dirname(parquet_path))
-        #     else:
-        #         for i in range(num_chunks):
-        #             start_col = i * chunk_size
-        #             end_col = min((i + 1) * chunk_size, len(gene_colnames))
-        #             gene_colnames_chunk = gene_colnames[start_col:end_col]
-
-        #             # melt the current chunk of genes
-        #             chunk_data = full_data_df.unpivot(
-        #                 on=gene_colnames_chunk,
-        #                 index=metadata_columns,
-        #                 variable_name="score_name",
-        #                 value_name="score_value"
-        #             ).filter(pl.col("score_value") != 0)
-                    
-        #             # convert to pyarrow for efficient streaming to parquet
-        #             chunk_data = chunk_data.to_arrow()
-
-        #             if i == 0:
-        #                 # Open ParquetWriter once for the first chunk
-        #                 writer = pq.ParquetWriter(parquet_path, chunk_data.schema)
-        #                 print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
-        #             writer.write_table(chunk_data)
-        #             if i > 0:
-        #                 print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
-
-        #             del chunk_data
-
-        #         if 'writer' in locals():
-        #             writer.close()
-        #             print("All chunks written and ParquetWriter closed.")  
-        # else:
-        #     parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet").replace('h5ad', 'parquet')
-        #     parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet").replace('h5ad', 'parquet')
-        #     if not os.path.exists(os.path.dirname(parquet_data_path)):
-        #         os.makedirs(os.path.dirname(parquet_data_path))
-        #     if not os.path.exists(os.path.dirname(parquet_metadata_path)):
-        #         os.makedirs(os.path.dirname(parquet_metadata_path))
-
-        #     if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
-        #         print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
-        #         return
-        #     else:
-        #         for i in range(num_chunks):
-        #             start_col = i * chunk_size
-        #             end_col = min((i + 1) * chunk_size, len(gene_colnames))
-        #             gene_colnames_chunk = gene_colnames[start_col:end_col]
-        #             # melt the current chunk of genes
-        #             chunk_data = full_data_df.unpivot(
-        #                 on=gene_colnames_chunk,
-        #                 index=id_columns,
-        #                 variable_name="score_name",
-        #                 value_name="score_value"
-        #             ).filter(pl.col("score_value") != 0)
-                    
-        #             # convert to pyarrow for efficient streaming to parquet
-        #             chunk_data = chunk_data.to_arrow()
-
-        #             if i == 0:
-        #                 # Open ParquetWriter once for the first chunk
-        #                 writer_data = pq.ParquetWriter(parquet_data_path, chunk_data.schema)
-        #                 print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
-        #             writer_data.write_table(chunk_data)
-        #             if i > 0:
-        #                 print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
-        #             del chunk_data
-
-        #         if 'writer_data' in locals():
-        #             writer_data.close()
-        #             print("All chunks written and ParquetWriter closed.")
-
-        #         # Now, we will process the metadata separately
-        #         metadata_only_df = full_data_df.select(metadata_columns)
-                
-        #         # convert to pyarrow for efficient streaming to parquet
-        #         metadata_only_df = metadata_only_df.to_arrow()
-
-        #         # write the metadata to a parquet file
-        #         writer_metadata = pq.ParquetWriter(parquet_metadata_path, metadata_only_df.schema)
-        #         writer_metadata.write_table(metadata_only_df)
-        #         writer_metadata.close()
-        #         print(f"Metadata written to {parquet_metadata_path}")
+                print(f"All data chunks written to {parquet_data_path} and ParquetWriter closed.")
 
     def chromosome_encoding(self, chromosome_col="perturbed_target_chromosome"):
         """
