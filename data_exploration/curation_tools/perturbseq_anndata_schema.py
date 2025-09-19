@@ -137,7 +137,7 @@ class ObsSchema(DataFrameModel):
     developmental_stage_label: Series[String] = Field(
         nullable=True,
         description="Developmental stage ontology term label of the investigated sample.",
-        isin=["embryonic", "fetal", "neonatal", "adolescent", "adult", "senior adult"],
+        isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
         nullable=True,
