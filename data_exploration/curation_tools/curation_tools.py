@@ -1298,7 +1298,10 @@ class CuratedDataset:
                     )
                 else:
                     print(f"Overwriting column {col} in adata.obs")
+                    temp_col_name = f"temp_{col}"
+                    df[temp_col_name] = df[col]
                     df = df.drop(columns=col)
+                    input_column = temp_col_name
 
         # Merge the mapped DataFrame with the original DataFrame
         df = df.merge(
