@@ -55,8 +55,8 @@ for pert in perts:
         continue
 
     res = stat.results_df.sort_values("padj", na_position="last").copy()
-    outp = f"{a.out_prefix}{pert}.parquet"
-    res.to_parquet(outp)
+    outp = f"{a.out_prefix}{pert}.csv"
+    res.to_csv(outp)
     rows.append(
         {
             "contrast": pert,
@@ -64,6 +64,21 @@ for pert in perts:
             "n_sig_padj_0.05": int((res["padj"] < 0.05).sum()),
         }
     )
+
+if len(perts) == 0:
+    res = pd.DataFrame(
+        data={
+            "baseMean": [],
+            "log2FoldChange": [],
+            "lfcSE": [],
+            "stat": [],
+            "pvalue": [],
+            "padj": [],
+        },
+        index=[],
+    )
+    outp = f"{a.out_prefix}None.csv"
+    res.to_csv(outp)
 
 pd.DataFrame(rows).to_csv(a.summary, sep="\t", index=False)
 print(f"[DE] Wrote {len(rows)} contrasts; summary -> {a.summary}")
