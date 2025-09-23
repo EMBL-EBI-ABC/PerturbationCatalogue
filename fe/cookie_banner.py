@@ -13,7 +13,7 @@ layout = html.Div(
                         "This website requires cookies, and the limited processing of your personal data in order to function. By using the site you are agreeing to this as outlined in our ",
                         html.A(
                             "Privacy Notice",
-                            href="/privacy-notice",
+                            href="/perturbation-catalogue/assets/privacy-notice.pdf",
                             target="_blank",
                         ),
                         " and our ",
