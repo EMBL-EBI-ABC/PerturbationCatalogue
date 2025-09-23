@@ -18,70 +18,120 @@ workflow {
 
   h5ads = Channel.fromPath(params.input)
                  .ifEmpty { error "No .h5ad matched: ${params.input}" }
-  prepped = PREPROCESS(params.sample_id, h5ads)
-  pb = PSEUDOBULK(params.sample_id, prepped)
-  de = DE_PYDESEQ2(params.sample_id, pb.pb_counts, pb.pb_meta)
+
+  // Get batch metadata from preprocessing
+  batch_metadata = PREPROCESS(h5ads, params.sample_id)
+
+  // Create a separate channel for h5ad files to use in PSEUDOBULK
+  h5ads_for_pseudobulk = Channel.fromPath(params.input)
+                                .ifEmpty { error "No .h5ad matched: ${params.input}" }
+
+  // Combine h5ad files with their corresponding batch metadata
+  combined_data = h5ads_for_pseudobulk
+    .map { h5ad -> tuple(file(h5ad).name, h5ad) }
+    .cross(
+      batch_metadata.map { h5ad_staged, tsv ->
+        tuple(file(h5ad_staged).name, tsv)
+      }
+    ) { it[0] }
+    .map { h5ad_tuple, metadata_tuple ->
+      def h5ad_file = h5ad_tuple[1]
+      def tsv_file = metadata_tuple[1]
+      tuple(h5ad_file, tsv_file)
+    }
+
+  // Expand into batch tuples
+  batch_tuples = combined_data
+    .flatMap { h5ad, tsv ->
+        def lines = file(tsv).text.readLines()
+        def header = lines[0].tokenize('\t')
+        def idx_id = header.indexOf('batch_id')
+        def idx_ctl = header.indexOf('control')
+        def idx_per = header.indexOf('perts')
+
+        lines.drop(1).collect { ln ->
+            def f = ln.split(/\t/)
+            tuple(h5ad, f[idx_id], f[idx_ctl], f[idx_per])
+        }
+    }
+
+  pb = PSEUDOBULK(batch_tuples, params.sample_id)
+  de = DE_PYDESEQ2(params.sample_id, pb.pb_counts, pb.pb_meta, pb.batch_id)
+
   emit:
-    de.parquet_files
+    de.csv_files
     de.summary
 }
 
 process PREPROCESS {
-  label 'big'
-  tag "preprocess"
-  publishDir "${params.outdir}/preprocessed", mode: 'copy'
+  tag { file(h5ad).baseName }
+  label 'normal'
+  publishDir "${params.outdir}/meta", mode: 'copy'
+
   input:
-    val sample_id
     path h5ad
+    val sample_id
+
   output:
-    path "${sample_id}.preprocessed.zarr"
+    tuple path(h5ad), path("${sample_id}.pert_batches.tsv")
+
   script:
   """
-  scp_h5ad_to_zarr.py \
+  # Make a single TSV describing the batches (control + up to 999 perts)
+  scp_preprocess.py \
     --input ${h5ad} \
-    --counts-layer ${params.counts_layer} \
-    --out ${params.sample_id}.preprocessed.zarr
+    --others-per-file 99 \
+    --out ${params.sample_id}.pert_batches.tsv
   """
 }
 
 process PSEUDOBULK {
-  label 'big'
-  tag "pseudobulk"
+  tag "pseudobulk_${batch_id}"
+  label 'normal'
   publishDir "${params.outdir}/pseudobulk", mode: 'copy'
+
   input:
+    tuple path(h5ad), val(batch_id), val(control), val(perts_csv)
     val sample_id
-    path zarr_dir
+
   output:
-    path "${sample_id}.pb_counts.parquet", emit: pb_counts
-    path "${sample_id}.pb_meta.parquet", emit: pb_meta
-    path "${sample_id}.pb_summary.tsv", emit: pb_summary
+    path "${sample_id}_${batch_id}.pb_counts.parquet", emit: pb_counts
+    path "${sample_id}_${batch_id}.pb_meta.parquet", emit: pb_meta
+    path "${sample_id}_${batch_id}.pb_summary.tsv", emit: pb_summary
+    val(batch_id), emit: batch_id
+
   script:
   """
-  scp_pseudobulk_zarr.py \
-    --zarr ${zarr_dir} \
+  scp_pseudobulk.py \
+    --input ${h5ad} \
+    --pert-list '${perts_csv}' \
     --min-reps ${params.min_reps} \
     --replicate-mode ${params.replicate_mode} \
     --auto_min_cells_per_bag ${params.auto_min_cells_per_bag} \
     --auto_min_bags ${params.auto_min_bags} \
     --auto_max_bags ${params.auto_max_bags} \
     --random-seed ${params.random_seed} \
-    --out-counts ${params.sample_id}.pb_counts.parquet \
-    --out-meta ${params.sample_id}.pb_meta.parquet \
-    --out-summary ${params.sample_id}.pb_summary.tsv
+    --out-counts ${params.sample_id}_${batch_id}.pb_counts.parquet \
+    --out-meta ${params.sample_id}_${batch_id}.pb_meta.parquet \
+    --out-summary ${params.sample_id}_${batch_id}.pb_summary.tsv
   """
 }
 
 process DE_PYDESEQ2 {
-  label 'big'
   tag "DESeq2like"
+  label 'big'
   publishDir "${params.outdir}/de_pseudobulk", mode: 'copy'
+
   input:
     val sample_id
     path counts
     path meta
+    val(batch_id)
+
   output:
-    path "${sample_id}.de_*.parquet", emit: parquet_files
-    path "${sample_id}.summary.tsv", emit: summary
+    path "${sample_id}.de_*.csv", emit: csv_files
+    path "${sample_id}_${batch_id}.summary.tsv", emit: summary
+
   script:
   """
   scp_de_pydeseq2.py \
@@ -89,6 +139,6 @@ process DE_PYDESEQ2 {
     --meta ${meta} \
     --covariates ${params.covariates} \
     --out-prefix ${params.sample_id}.de_ \
-    --summary ${params.sample_id}.summary.tsv
+    --summary ${params.sample_id}_${batch_id}.summary.tsv
   """
 }
