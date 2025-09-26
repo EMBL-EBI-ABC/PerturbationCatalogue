@@ -70,7 +70,6 @@ class ObsSchema(DataFrameModel):
         nullable=True,
         regex=r"^[ACGTN]+$",
         coerce=True,
-        description="Guide RNA sequence in 5' to 3' direction consisting of A, C, G, T, N characters only.",
     )
     perturbation_type_label: Series[String] = Field(
         nullable=False,
@@ -423,18 +422,17 @@ class VarSchema(DataFrameModel):
     index: Index[str] = Field(
         nullable=False,
         unique=True,
+        # str_startswith=("ENSG", "control"),
+        # isin=gene_ont.ensembl_gene_id.values,
         check_name=True,
-        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with"
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
         str_startswith=("ENSG", "control"),
-        description="Ensembl gene ID"
     )
     gene_symbol: Series[str] = Field(
         nullable=True,
         coerce=True,
-        description="Gene symbol"
     )
 
     class Config:
