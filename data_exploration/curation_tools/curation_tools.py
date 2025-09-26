@@ -2,15 +2,19 @@ import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import polars as pl
+import pyarrow.parquet as pq
 import json
 from pprint import pprint
 
 from pydantic import ValidationError
 from typing import Literal
 import pandera as pa
+from pandera.typing import Series, Int64, String
 
 from libchebipy import search
 import scanpy as sc
+import anndata as ad
 from gprofiler import GProfiler
 
 # function to add a new synonym to the ontology
@@ -65,15 +69,12 @@ def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tiss
     if save:
         ont.to_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet", index=False)
 
-    
-    
-
 
 class CuratedDataset:
 
     # Get the path to the ontologies directory relative to this file
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
-    
+
     gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet").drop_duplicates()
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
@@ -87,6 +88,7 @@ class CuratedDataset:
         exp_metadata_schema,
         data_source_link=None,
         noncurated_path=None,
+        curated_path=None
     ):
         """Initialize the CuratedDataset class.
         Parameters
@@ -128,9 +130,16 @@ class CuratedDataset:
 
         self.data_source_link = data_source_link
         self.noncurated_path = noncurated_path
-        self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
-            ".h5ad", "_curated.h5ad"
-        )
+        self.curated_path = curated_path
+
+        if self.noncurated_path:
+            self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
+                ".h5ad", "_curated.h5ad"
+            )
+        elif self.curated_path:
+            self.noncurated_path = curated_path.replace("curated", "non_curated").replace(
+                "_curated.h5ad", ".h5ad"
+            )
 
         # Initialise adata object
         self.adata = None
@@ -138,6 +147,17 @@ class CuratedDataset:
         self.exp_metadata = {
             k: {} for k in self.exp_metadata_schema.model_fields.keys()
         }
+        # Initialise a dataset ID
+        if self.noncurated_path:
+            self.dataset_id = self.noncurated_path.split("/")[-1].replace(".h5ad", "")
+        elif self.curated_path:
+            self.dataset_id = self.curated_path.split("/")[-1].replace(
+                "_curated.h5ad", ""
+            )
+        else:
+            raise ValueError(
+                "Either noncurated_path or curated_path must be provided to initialize the dataset ID."
+            )
 
     def show_obs(self, obs_columns=None):
         """
@@ -204,26 +224,50 @@ class CuratedDataset:
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
-    def load_data(self):
+    def load_data(self, path, curated=False):
         """
         Load the adata from the specified source.
         """
-        if os.path.exists(self.noncurated_path):
-            print(f"Loading data from {self.noncurated_path}")
-            self.adata = sc.read_h5ad(self.noncurated_path)
+        if curated:
+            self.curated_path = path
+            if os.path.exists(self.curated_path):
+                print(f"Loading data from {self.curated_path}")
+                self.adata = sc.read_h5ad(self.curated_path)
+            else:
+                raise ValueError(f"File {self.curated_path} does not exist. Check the path.")
+        else:
+            self.noncurated_path = path
+            if os.path.exists(self.noncurated_path):
+                print(f"Loading data from {self.noncurated_path}")
+                self.adata = sc.read_h5ad(self.noncurated_path)
+            else:
+                raise ValueError(
+                    f"File {self.noncurated_path} does not exist. Run download_data() first."
+                )
             for col in self.adata.obs.columns:
                 if self.adata.obs[col].dtype == "object":
                     self.adata.obs[col] = self.adata.obs[col].astype(
                         "str"
                     )  # .astype("category")
-        else:
-            print(
-                f"File {self.noncurated_path} does not exist. Run download_data() first."
-            )
 
-    def save_curated_data(self):
+    def add_exp_metadata_as_uns(self):
+        """
+        Add the experiment metadata to the adata.uns dictionary.
+        """
+        if self.adata is None:
+            raise ValueError("adata is not loaded. Please load the data first.")    
+
+        # Add the experiment metadata to the adata.uns dictionary
+
+        self.adata.uns['experiment_metadata'] = json.dumps(self.exp_metadata)
+
+        print("Experiment metadata added to adata.uns")
+
+    def save_curated_data_h5ad(self):
         """Save the curated data to a h5ad file."""
 
+        ad.settings.allow_write_nullable_strings = True  # Allow nullable strings in adata
+        
         adata = self.adata
 
         if adata is None:
@@ -238,7 +282,307 @@ class CuratedDataset:
 
         adata.write_h5ad(self.curated_path)
         print(f"Curated data saved to {self.curated_path}")
+    
+    def polars_schema_from_pandera_model(self):
+            """
+            Extract a Polars schema dictionary from a Pandera Polars DataFrameModel.
+            The dictionary maps column names to Polars data types.
+            Uses isinstance() to check column dtype properly.
+            """
+            pandera_model = self.obs_schema
+            schema_dict = {}
+            for col_name, column in pandera_model.to_schema().columns.items():
+                pandera_dtype = column.dtype
+                
+                if isinstance(pandera_dtype, String):
+                    polars_dtype = pl.String
+                elif isinstance(pandera_dtype, Int64):
+                    polars_dtype = pl.Int64
+                elif isinstance(pandera_dtype, float):
+                    polars_dtype = pl.Float64
+                elif isinstance(pandera_dtype, bool):
+                    polars_dtype = pl.Boolean
+                else:
+                    # Default to Utf8 for unknown or unhandled dtypes
+                    polars_dtype = pl.Utf8
+                
+                schema_dict[col_name] = polars_dtype
 
+            return schema_dict
+
+    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False,  chunk_size=200):
+        """Save the curated data to a parquet file ready for BigQuery ingestion.
+
+        Parameters
+        ----------
+        split_metadata : bool, optional
+            Whether to split the data and metadata into two separate files (default is False).
+        chunk_size : int, optional
+            The number of genes to process in each chunk (default is 200).
+        """
+
+        adata = self.adata
+
+        if adata is None:
+            raise ValueError("adata is not loaded. Please load the data first.")
+
+        print("Starting the conversion of adata to a long format DataFrame...")
+        # check if the base directory exists, if not create it
+        if not os.path.exists(os.path.dirname(self.curated_path)):
+            os.makedirs(os.path.dirname(self.curated_path))
+
+        polars_schema = self.polars_schema_from_pandera_model()
+
+        # Concatenate the adata.obs and uns_df DataFrames
+        full_metadata_df = adata.obs
+        
+        metadata_columns = full_metadata_df.columns
+        id_columns = metadata_columns[0:2]
+        
+        # Process genes in chunks
+        gene_colnames = adata.var_names.tolist()
+        num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
+
+        if not split_metadata:
+            parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet").replace('h5ad', 'parquet')
+            if os.path.exists(parquet_path):
+                raise FileExistsError(f"File {parquet_path} already exists. Skipping write.")
+            if not os.path.exists(os.path.dirname(parquet_path)):
+                os.makedirs(os.path.dirname(parquet_path))
+            else:
+                for i in range(num_chunks):
+                    start_col = i * chunk_size
+                    end_col = min((i + 1) * chunk_size, len(gene_colnames))
+                    X_df = adata[:, start_col:end_col].to_df()
+                    gene_colnames_chunk = X_df.columns.tolist()
+
+                    full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
+                    full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
+                    
+                    # melt the current chunk of genes
+                    chunk_data = full_data_df.unpivot(
+                        on=gene_colnames_chunk,
+                        index=metadata_columns,
+                        variable_name="score_name",
+                        value_name="score_value"
+                    ).filter(pl.col("score_value") != 0)
+
+                    # convert to pyarrow for efficient streaming to parquet
+                    chunk_data = chunk_data.to_arrow()
+
+                    if i == 0:
+                        # Open ParquetWriter once for the first chunk
+                        writer = pq.ParquetWriter(parquet_path, chunk_data.schema)
+                        print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+                    writer.write_table(chunk_data)
+                    if i > 0:
+                        print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+                        
+                    del chunk_data
+
+            if 'writer' in locals():
+                writer.close()
+                print("All chunks written and ParquetWriter closed.")
+                
+        else:
+            parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet").replace('h5ad', 'parquet')
+            parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet").replace('h5ad', 'parquet')
+            if not os.path.exists(os.path.dirname(parquet_data_path)):
+                os.makedirs(os.path.dirname(parquet_data_path))
+            if not os.path.exists(os.path.dirname(parquet_metadata_path)):
+                os.makedirs(os.path.dirname(parquet_metadata_path))
+
+            if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
+                print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
+                return
+            if save_metadata_only:
+                # Convert metadata_only_df to Polars DataFrame
+                metadata_only_df = pl.from_pandas(full_metadata_df, schema_overrides=polars_schema)
+                # Write metadata_only_df to parquet
+                metadata_only_df.write_parquet(parquet_metadata_path)
+                print(f"Metadata written to {parquet_metadata_path}")
+                return
+                
+            else:
+                 for i in range(num_chunks):
+                    start_col = i * chunk_size
+                    end_col = min((i + 1) * chunk_size, len(gene_colnames))
+                    X_df = adata[:, start_col:end_col].to_df()
+                    gene_colnames_chunk = X_df.columns.tolist()
+
+                    full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
+                    full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
+
+                    # melt the current chunk of genes
+                    chunk_data = full_data_df.unpivot(
+                        on=gene_colnames_chunk,
+                        index=id_columns,
+                        variable_name="score_name",
+                        value_name="score_value"
+                    ).filter(pl.col("score_value") != 0)
+
+                    # convert to pyarrow for efficient streaming to parquet
+                    chunk_data = chunk_data.to_arrow()
+
+                    if i == 0:
+                        # Open ParquetWriter once for the first chunk
+                        writer_data = pq.ParquetWriter(parquet_data_path, chunk_data.schema)
+                        print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+                    writer_data.write_table(chunk_data)
+                    if i > 0:
+                        print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+                        
+                    del chunk_data
+
+            if 'writer_data' in locals():
+                writer_data.close()
+                print("All chunks written and ParquetWriter closed.")
+
+            # Now, we will process the metadata separately
+            # metadata_only_df = full_metadata_df
+
+            # # Convert metadata_only_df to Polars DataFrame
+            # metadata_only_df = pl.from_pandas(metadata_only_df, schema_overrides=polars_schema)
+
+            # # Write metadata_only_df to parquet
+            # metadata_only_df.write_parquet(parquet_metadata_path)
+            # print(f"Metadata written to {parquet_metadata_path}")
+            
+
+        # X_df = adata.to_df()
+
+        # # Concatenate the count matrix and the full metadata DataFrame
+        # full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
+        # # Convert to Polars DataFrame for better efficiency and performance
+        # full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
+
+        # # Create a long Polars DataFrame
+        # print("Starting the conversion to long format...")
+        # # define the variables for converting to long format
+        # all_columns = full_data_df.columns
+        # metadata_columns = full_metadata_df.columns
+        # id_columns = metadata_columns[0:2]
+        # # Exclude metadata columns from all columns to get the gene columns
+        # gene_colnames = list(set(all_columns) - set(metadata_columns))
+        # num_chunks = (len(gene_colnames) + chunk_size - 1) // chunk_size
+        
+        # print(f"Processing {len(gene_colnames)} genes in {num_chunks} chunks of size {chunk_size}...")
+
+        # # Process the genes in chunks to avoid memory issues
+
+        # if not split_metadata:
+        #     parquet_path = self.curated_path.replace(".h5ad", "_long_unified.parquet").replace('h5ad', 'parquet')
+        #     if os.path.exists(parquet_path):
+        #         raise FileExistsError(f"File {parquet_path} already exists. Skipping write.")
+        #     if not os.path.exists(os.path.dirname(parquet_path)):
+        #         os.makedirs(os.path.dirname(parquet_path))
+        #     else:
+        #         for i in range(num_chunks):
+        #             start_col = i * chunk_size
+        #             end_col = min((i + 1) * chunk_size, len(gene_colnames))
+        #             gene_colnames_chunk = gene_colnames[start_col:end_col]
+
+        #             # melt the current chunk of genes
+        #             chunk_data = full_data_df.unpivot(
+        #                 on=gene_colnames_chunk,
+        #                 index=metadata_columns,
+        #                 variable_name="score_name",
+        #                 value_name="score_value"
+        #             ).filter(pl.col("score_value") != 0)
+                    
+        #             # convert to pyarrow for efficient streaming to parquet
+        #             chunk_data = chunk_data.to_arrow()
+
+        #             if i == 0:
+        #                 # Open ParquetWriter once for the first chunk
+        #                 writer = pq.ParquetWriter(parquet_path, chunk_data.schema)
+        #                 print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+        #             writer.write_table(chunk_data)
+        #             if i > 0:
+        #                 print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+
+        #             del chunk_data
+
+        #         if 'writer' in locals():
+        #             writer.close()
+        #             print("All chunks written and ParquetWriter closed.")  
+        # else:
+        #     parquet_data_path = self.curated_path.replace(".h5ad", "_long_data.parquet").replace('h5ad', 'parquet')
+        #     parquet_metadata_path = self.curated_path.replace(".h5ad", "_long_metadata.parquet").replace('h5ad', 'parquet')
+        #     if not os.path.exists(os.path.dirname(parquet_data_path)):
+        #         os.makedirs(os.path.dirname(parquet_data_path))
+        #     if not os.path.exists(os.path.dirname(parquet_metadata_path)):
+        #         os.makedirs(os.path.dirname(parquet_metadata_path))
+
+        #     if os.path.exists(parquet_data_path) or os.path.exists(parquet_metadata_path):
+        #         print(f"Files {parquet_data_path} or {parquet_metadata_path} already exist. Skipping write.")
+        #         return
+        #     else:
+        #         for i in range(num_chunks):
+        #             start_col = i * chunk_size
+        #             end_col = min((i + 1) * chunk_size, len(gene_colnames))
+        #             gene_colnames_chunk = gene_colnames[start_col:end_col]
+        #             # melt the current chunk of genes
+        #             chunk_data = full_data_df.unpivot(
+        #                 on=gene_colnames_chunk,
+        #                 index=id_columns,
+        #                 variable_name="score_name",
+        #                 value_name="score_value"
+        #             ).filter(pl.col("score_value") != 0)
+                    
+        #             # convert to pyarrow for efficient streaming to parquet
+        #             chunk_data = chunk_data.to_arrow()
+
+        #             if i == 0:
+        #                 # Open ParquetWriter once for the first chunk
+        #                 writer_data = pq.ParquetWriter(parquet_data_path, chunk_data.schema)
+        #                 print(f"Created ParquetWriter and wrote chunk 1/{num_chunks}")
+        #             writer_data.write_table(chunk_data)
+        #             if i > 0:
+        #                 print(f"Appended chunk {i+1}/{num_chunks} to parquet file")
+        #             del chunk_data
+
+        #         if 'writer_data' in locals():
+        #             writer_data.close()
+        #             print("All chunks written and ParquetWriter closed.")
+
+        #         # Now, we will process the metadata separately
+        #         metadata_only_df = full_data_df.select(metadata_columns)
+                
+        #         # convert to pyarrow for efficient streaming to parquet
+        #         metadata_only_df = metadata_only_df.to_arrow()
+
+        #         # write the metadata to a parquet file
+        #         writer_metadata = pq.ParquetWriter(parquet_metadata_path, metadata_only_df.schema)
+        #         writer_metadata.write_table(metadata_only_df)
+        #         writer_metadata.close()
+        #         print(f"Metadata written to {parquet_metadata_path}")
+
+    def chromosome_encoding(self, chromosome_col="perturbed_target_chromosome"):
+        """
+        Encode the chromosome column (default='perturbed_target_chromosome') in the adata.obs DataFrame.
+        Parameters
+        ----------
+        chromosome_col : str
+            The name of the column containing chromosome information.
+        """
+        if chromosome_col not in self.adata.obs.columns:
+            raise ValueError(f"Column {chromosome_col} not found in adata.obs")
+        
+        # Create a mapping for chromosome encoding
+        chromosome_encoding_dict = {
+            "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+            "6": 6, "7": 7, "8": 8, "9": 9, "10": 10,
+            "11": 11, "12": 12, "13": 13, "14": 14, "15": 15,
+            "16": 16, "17": 17, "18": 18, "19": 19, "20": 20,
+            "21": 21, "22": 22, "X": 23, "Y": 24
+        }
+        
+        # Apply the mapping to the chromosome column
+        self.adata.obs["perturbed_target_chromosome_encoding"] = [chromosome_encoding_dict[x] if x in chromosome_encoding_dict else 0 for x in self.adata.obs[chromosome_col]]
+        
+        print(f"Chromosome encoding applied to {chromosome_col} in adata.obs and stored as 'perturbed_target_chromosome_encoding'.")
+    
     def create_columns(self, col_dict, slot=Literal["var", "obs"], overwrite=False):
         """
         Create new columns in the specified slot of the adata object based on the provided dictionary.
@@ -332,10 +676,10 @@ class CuratedDataset:
             raise ValueError("map_dict must be provided")
         if not isinstance(map_dict, dict):
             raise ValueError("map_dict must be a dictionary")
-        
+
         for old_val, new_val in map_dict.items():
-            if df[column].str.contains(old_val).any():
-                df[column] = df[column].str.replace(old_val, new_val, regex=True)
+            if df[column].str.upper().str.contains(old_val.upper()).any():
+                df[column] = df[column].str.upper().str.replace(old_val.upper(), new_val, regex=True)
                 print(
                     f"Replaced '{old_val}' with '{new_val}' in column {column} of adata.{slot}"
                 )
@@ -343,28 +687,28 @@ class CuratedDataset:
                 raise ValueError(
                     f"Column {column} has no entries matching {old_val} in adata.{slot}. Check the map_dict."
                 )
-                
+
         setattr(self.adata, slot, df)
 
     def map_values_from_column(self, ref_col, target_col, map_dict):
         """
         Replace values in target_col based on corresponding values in ref_col using ref_value and target_value.
         """
-        
+
         df = self.adata.obs
-        
+
         if ref_col not in df.columns:
             raise ValueError(f"Column {ref_col} not found in adata.obs")
         if df[ref_col].empty:
             raise ValueError(f"Column {ref_col} is empty in adata.obs")
-        
+
         if target_col not in df.columns:
             df[target_col] = np.nan  # Create target_col if it doesn't exist
             print(f"Column {target_col} created in adata.obs")
-        
+
         # Ensure target_col is string type
         df[target_col] = df[target_col].astype(str)
-        
+
         for ref_value, target_value in map_dict.items():
             if ref_value not in df[ref_col].values:
                 print(
@@ -375,11 +719,10 @@ class CuratedDataset:
             print(
                 f"Mapped value {ref_value} in column {ref_col} to {target_value} in column {target_col} of adata.obs"
             )
-            
+
         # Update the adata.obs with the modified DataFrame
         setattr(self.adata, "obs", df)
-        
-    
+
     def remove_entries(self, slot=Literal["var", "obs"], column=None, to_remove=None):
         """
         Remove entries in a column of the named slot of adata object.
@@ -531,10 +874,10 @@ class CuratedDataset:
         df[count_column_name] = [
             len(set(x.split(sep))) if x is not None else 1 for x in df[input_column]
         ]
-        
+
         # if the entry contains "untreated", set the count to 0
         df.loc[df[input_column].str.contains("untreated", na=False), count_column_name] = 0
-        
+
         setattr(self.adata, slot, df)
         print(
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
@@ -724,7 +1067,7 @@ class CuratedDataset:
         # add the biotype and gene_coord columns
         conv_df = (
             conv_df.merge(
-                self.gene_ont[["ensembl_gene_id", "biotype", "gene_coord"]]
+                self.gene_ont[["ensembl_gene_id", "biotype", "gene_coord", "chromosome_name"]]
                 .drop_duplicates()
                 .dropna(subset=["ensembl_gene_id"]),
                 how="left",
@@ -761,6 +1104,7 @@ class CuratedDataset:
                 "name": "perturbed_target_symbol",
                 "biotype": "perturbed_target_biotype",
                 "gene_coord": "perturbed_target_coord",
+                "chromosome_name": "perturbed_target_chromosome",
             }
         elif slot == "var":
             new_colnames_map = {"converted": "ensembl_gene_id", "name": "gene_symbol"}
@@ -921,7 +1265,6 @@ class CuratedDataset:
                 f"Warning: No {ontology_type} ontology terms could be mapped from `{input_column}` column to ontology terms. Map the terms manually or check the input column for errors."
             )
             return
-            
 
         if not unmapped_df.empty:
             print(
@@ -1135,7 +1478,7 @@ class CuratedDataset:
             self.print_data(validated.model_dump())
         except ValidationError as e:
             print(f"Validation error: {e}")
-
+        
     def validate_data(
         self,
         slot=Literal["var", "obs"],
@@ -1152,9 +1495,16 @@ class CuratedDataset:
 
         df = getattr(self.adata, slot)
         if df.empty:
-            raise ValueError(f"adata.{slot} is empty")
-
-        schema = self.obs_schema if slot == "obs" else self.var_schema
+            raise ValueError(f"adata.{slot} is empty")        
+        
+        if slot == "obs":
+            schema = self.obs_schema
+            dtype_map = self.get_schema_dtype_map(schema_cls = schema)
+            # Only cast columns present in the dataframe
+            dtype_map = {col: dtype for col, dtype in dtype_map.items() if col in df.columns}
+            df = df.astype(dtype_map)
+        else:
+            schema = self.var_schema            
 
         try:
             validated_obs = schema.validate(df, lazy=True)
@@ -1167,7 +1517,7 @@ class CuratedDataset:
 
         except pa.errors.SchemaErrors as e:
             print(json.dumps(e.message, indent=2))
-
+        
     def _get_vals(self, column):
         """
         Get the unique values of a column and convert them to a list.
@@ -1314,7 +1664,7 @@ class CuratedDataset:
         if df[unique_val_column].empty:
             raise ValueError(f"Column {unique_val_column} is empty")
 
-        exploded_cols = ["incoming", "converted", "name", "biotype", "gene_coord"]
+        exploded_cols = ["incoming", "converted", "name", "biotype", "gene_coord", "chromosome_name"]
 
         df = df.groupby([unique_val_column]).agg(
             {
@@ -1326,3 +1676,32 @@ class CuratedDataset:
         print(f"Collapsed column {unique_val_column} using separator {sep}")
 
         return df
+
+    @staticmethod
+    def get_schema_dtype_map(schema_cls):
+            """
+            Create a mapping from pandera schema field names to pandas dtypes.
+            Args:
+                schema_cls: The schema class to extract annotations from.
+            """
+            dtype_map = {}
+            for attr, annotation in schema_cls.__annotations__.items():
+                # Get type info: Series[String], Series[Int64], Int64, etc.
+                t = annotation
+                # Handle Series[...] (pandera.typing.Series)
+                if hasattr(t, "__origin__") and t.__origin__ == Series:
+                    dtype = t.__args__[0]
+                else:
+                    dtype = t
+                ## Map to pandas-accepted strings
+                if dtype in [pa.String, str]:
+                    dtype_map[attr] = "string"
+                elif dtype in [pa.Int64, Int64, int]:
+                    dtype_map[attr] = "Int64"
+                elif dtype in [pa.Float64, float]:
+                    dtype_map[attr] = "float"
+                elif dtype in [pa.Bool, bool]:
+                    dtype_map[attr] = "boolean"
+                else:
+                    dtype_map[attr] = "object"
+            return dtype_map
