@@ -152,7 +152,7 @@ class CuratedDataset:
             self.noncurated_path = curated_path.replace("curated", "non_curated").replace(
                 "_curated.h5ad", ".h5ad"
             )
-            
+
         self.curated_parquet_data_path = self.curated_path.replace(".h5ad", "_data.parquet").replace('h5ad', 'parquet')
         self.curated_parquet_metadata_path = self.curated_path.replace(".h5ad", "_metadata.parquet").replace('h5ad', 'parquet')
 
@@ -400,7 +400,7 @@ class CuratedDataset:
                 # Write metadata_only_df to parquet
                 metadata_only_df.write_parquet(self.curated_parquet_metadata_path)
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
-                
+
                 print("Processing data...")
                 X_df = adata.to_df()
 
@@ -1052,7 +1052,7 @@ class CuratedDataset:
         elif ontology_type == "disease":
             ont_df = self.dis_ont
             output_column_names = {"label": "disease_label", "id": "disease_id"}
-            
+
         # if inpjt column has all None values, skip the mapping
         if df[input_column].isnull().all():
             print(f"Column {input_column} contains only None values. Skipping ontology mapping.")
@@ -1713,7 +1713,7 @@ def create_bq_table(
         )
     except Exception as e:
         print(f"Error creating table: {e}")
-        
+
 def add_bq_upload_timestamp(bq_dest_table):
     """Add a timestamp column to the BigQuery table to track when data was ingested."""
     client = bigquery.Client()
@@ -1732,7 +1732,7 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
         )
-    
+
     if verbose:
         print(f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}...")
 
@@ -1745,12 +1745,12 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
             rewind=True
         )
     load_job.result()
-    
+
     dest_table = client.get_table(staging_table_id)
-    
+
     if verbose:
         print(f"Staging table: loaded {dest_table.num_rows} rows to {staging_table_id}")
-        
+
     # add a timestamp column to the staging table
     add_bq_upload_timestamp(staging_table_id)
     if verbose:
@@ -1769,7 +1769,7 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
     client.delete_table(staging_table_id, not_found_ok=True)
     if verbose:
         print(f"Staging table: deleted {staging_table_id}")
-    
+
 
 
 def merge_staging_to_target(client, staging_table_id, target_table_id, key_columns, update_columns):
