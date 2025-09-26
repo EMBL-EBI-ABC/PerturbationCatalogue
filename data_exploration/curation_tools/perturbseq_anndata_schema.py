@@ -34,7 +34,6 @@ class ObsSchema(DataFrameModel):
         nullable=True,
         regex=r"^[ACGTN]+$",
         coerce=True,
-        description="Guide RNA sequence in 5' to 3' direction consisting of A, C, G, T, N characters only.",
     )
     perturbation_type_label: Series[String] = Field(nullable=False)
     perturbation_type_id: Series[String] = Field(nullable=True, str_contains=":")
@@ -56,9 +55,7 @@ class ObsSchema(DataFrameModel):
     sex_label: Series[String] = Field(nullable=True)
     sex_id: Series[String] = Field(nullable=True, str_contains=":")
     developmental_stage_label: Series[String] = Field(nullable=True)
-    developmental_stage_id: Series[String] = Field(
-        nullable=True, str_contains=":"
-    )
+    developmental_stage_id: Series[String] = Field(nullable=True, str_contains=":")
     disease_label: Series[String] = Field(nullable=True)
     disease_id: Series[String] = Field(nullable=True)
     # study details
@@ -73,13 +70,13 @@ class ObsSchema(DataFrameModel):
     number_of_perturbed_targets: Series[Int64] = Field(
         nullable=False,
         ge=1,
-        description="Total number of perturbed targets in the experiment."
+        description="Total number of perturbed targets in the experiment.",
     )
     number_of_perturbed_samples: Series[Int64] = Field(
         nullable=False,
         ge=1,
-        description="Total number of perturbed samples/cells in the experiment."
-    )    # perturbation details
+        description="Total number of perturbed samples/cells in the experiment.",
+    )  # perturbation details
     library_generation_type_id: Series[String] = Field(nullable=True)
     library_generation_type_label: Series[String] = Field(nullable=True)
     library_generation_method_id: Series[String] = Field(nullable=True)
@@ -150,18 +147,17 @@ class VarSchema(DataFrameModel):
     index: Index[str] = Field(
         nullable=False,
         unique=True,
+        # str_startswith=("ENSG", "control"),
+        # isin=gene_ont.ensembl_gene_id.values,
         check_name=True,
-        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with"
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
         str_startswith=("ENSG", "control"),
-        description="Ensembl gene ID"
     )
     gene_symbol: Series[str] = Field(
         nullable=True,
         coerce=True,
-        description="Gene symbol"
     )
 
     class Config:
