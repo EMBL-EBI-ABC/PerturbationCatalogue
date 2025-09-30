@@ -25,3 +25,12 @@ def get_pages(
 
 def get_home_page():
     return get_all_pages_dict()["Home"]
+
+
+REQUEST_DATASET_PAGE = {
+    "name": "Request dataset",
+    "description": "Use this link to request a dataset to be ingested into the Perturbation Catalogue.",
+    "href": "https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+    "icon": "bi-box-arrow-up-right",
+    "button": "Request dataset",
+}

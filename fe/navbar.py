@@ -2,7 +2,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, callback, html
 
-from pages._order import get_pages, get_home_page
+from pages._order import get_pages, get_home_page, REQUEST_DATASET_PAGE
 
 
 def nav_item(page):
@@ -27,10 +27,10 @@ layout = dbc.NavbarSimple(
         dbc.NavItem(
             dbc.NavLink(
                 [
-                    html.I(className="bi bi-box-arrow-up-right me-2"),
-                    "Request dataset",
+                    html.I(className=f"bi {REQUEST_DATASET_PAGE['icon']} me-2"),
+                    REQUEST_DATASET_PAGE["name"],
                 ],
-                href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                href=REQUEST_DATASET_PAGE["href"],
                 className="nav-link-custom text-white",
                 external_link=True,
                 target="_blank",

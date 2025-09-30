@@ -2,7 +2,7 @@ import dash
 from dash import html
 import dash_bootstrap_components as dbc
 
-from ._order import get_pages
+from ._order import get_pages, REQUEST_DATASET_PAGE
 
 dash.register_page(
     __name__,
@@ -77,13 +77,13 @@ def layout():
                                     [
                                         dbc.CardBody(
                                             [
-                                                html.H5("Request dataset"),
+                                                html.H5(REQUEST_DATASET_PAGE["name"]),
                                                 html.P(
-                                                    "Use this link to request a dataset to be ingested into the Perturbation Catalogue."
+                                                    REQUEST_DATASET_PAGE["description"]
                                                 ),
                                                 dbc.Button(
-                                                    "Request dataset",
-                                                    href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                                                    REQUEST_DATASET_PAGE["button"],
+                                                    href=REQUEST_DATASET_PAGE["href"],
                                                     color="success",
                                                     external_link=True,
                                                     target="_blank",
