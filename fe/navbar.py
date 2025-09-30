@@ -22,6 +22,20 @@ def nav_item(page):
 layout = dbc.NavbarSimple(
     children=[
         nav_item(page) for page in get_pages(include_home=False, require_icon=True)
+    ]
+    + [
+        dbc.NavItem(
+            dbc.NavLink(
+                [
+                    html.I(className="bi bi-box-arrow-up-right me-2"),
+                    "Request dataset",
+                ],
+                href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                className="nav-link-custom text-white",
+                external_link=True,
+                target="_blank",
+            )
+        )
     ],
     brand=nav_item(get_home_page()),
     brand_href=get_home_page()["relative_path"],
