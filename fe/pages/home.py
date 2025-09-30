@@ -2,7 +2,7 @@ import dash
 from dash import html
 import dash_bootstrap_components as dbc
 
-from ._order import get_pages
+from ._order import get_pages, REQUEST_DATASET_PAGE
 
 dash.register_page(
     __name__,
@@ -69,6 +69,31 @@ def layout():
                             )
                             for page in get_pages(
                                 include_home=False, require_button=True
+                            )
+                        ]
+                        + [
+                            dbc.Col(
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5(REQUEST_DATASET_PAGE["name"]),
+                                                html.P(
+                                                    REQUEST_DATASET_PAGE["description"]
+                                                ),
+                                                dbc.Button(
+                                                    REQUEST_DATASET_PAGE["button"],
+                                                    href=REQUEST_DATASET_PAGE["href"],
+                                                    color="success",
+                                                    external_link=True,
+                                                    target="_blank",
+                                                ),
+                                            ]
+                                        )
+                                    ]
+                                ),
+                                md=4,
+                                className="mb-4",
                             )
                         ]
                     )
