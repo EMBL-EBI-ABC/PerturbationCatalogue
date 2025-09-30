@@ -71,6 +71,31 @@ def layout():
                                 include_home=False, require_button=True
                             )
                         ]
+                        + [
+                            dbc.Col(
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Request dataset"),
+                                                html.P(
+                                                    "Use this link to request a dataset to be ingested into the Perturbation Catalogue."
+                                                ),
+                                                dbc.Button(
+                                                    "Request dataset",
+                                                    href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                                                    color="success",
+                                                    external_link=True,
+                                                    target="_blank",
+                                                ),
+                                            ]
+                                        )
+                                    ]
+                                ),
+                                md=4,
+                                className="mb-4",
+                            )
+                        ]
                     )
                 ]
             ),
