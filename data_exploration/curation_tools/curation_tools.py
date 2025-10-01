@@ -293,7 +293,7 @@ class CuratedDataset:
         adata.var = adata.var.fillna(value=np.nan)
 
         adata.write_h5ad(self.curated_path)
-        print(f"Curated data saved to {self.curated_path}")
+        print(f"✅ Curated h5ad data saved to {self.curated_path}")
     
     def polars_schema_from_pandera_model(self):
             """
