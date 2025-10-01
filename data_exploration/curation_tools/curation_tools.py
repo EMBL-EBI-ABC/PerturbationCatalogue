@@ -1860,7 +1860,7 @@ def generate_create_table_sql(
     return create_table_sql
 
 
-def create_bq_table_metadata(
+def create_bq_table(
     project_id=None,
     dataset_name=None,
     table_name=None,
@@ -1871,7 +1871,7 @@ def create_bq_table_metadata(
     partition_range_interval=1,
     cluster_columns=['dataset_id', 'sample_id', 'perturbed_target_symbol']
 ):
-    """Create a BigQuery metadata table using the provided DDL SQL."""
+    """Create a BigQuery table using the provided DDL SQL."""
     client = ibis.bigquery.connect(
         project_id=project_id, dataset_id=dataset_name, location="europe-west2"
     )
