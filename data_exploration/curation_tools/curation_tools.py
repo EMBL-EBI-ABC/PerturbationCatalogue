@@ -331,8 +331,6 @@ class CuratedDataset:
             Whether to split the data and metadata into two separate files (default is False).
         save_metadata_only : bool, optional
             Whether to save only the metadata and skip saving the data (default is False).
-        chunk_size : int, optional
-            The number of genes to process in each chunk (default is 200).
         """
 
         adata = self.adata
@@ -340,7 +338,6 @@ class CuratedDataset:
         if adata is None:
             raise ValueError("adata is not loaded. Please load the data first.")
 
-        print("Starting the conversion of adata to a long format DataFrame...")
         # check if the base directory exists, if not create it
         if not os.path.exists(os.path.dirname(self.curated_path)):
             os.makedirs(os.path.dirname(self.curated_path))
