@@ -310,7 +310,7 @@ class CuratedDataset:
 
             return schema_dict
 
-    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False,  chunk_size=200):
+    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
