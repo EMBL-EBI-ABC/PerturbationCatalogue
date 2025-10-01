@@ -195,7 +195,7 @@ class ObsSchema(DataFrameModel):
         description="Total number of perturbed targets in the experiment.",
     )
     number_of_perturbed_samples: Series[Int64] = Field(
-        nullable=False,
+        nullable=True,
         ge=1,
         description="Total number of perturbed samples/cells in the experiment.",
     )  # perturbation details
