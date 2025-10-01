@@ -111,7 +111,9 @@ class CuratedDataset:
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
-            The path to the non-curated data. The default is None.
+            The path to the non-curated h5ad data. The default is None.
+        curated_path : str, optional
+            The path to the curated h5ad data. The default is None.
         """
 
         self.obs_schema = obs_schema
@@ -141,7 +143,7 @@ class CuratedDataset:
         self.noncurated_path = noncurated_path
         self.curated_path = curated_path
 
-        if self.noncurated_path:
+        if self.noncurated_path and not self.curated_path:
             self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
                 ".h5ad", "_curated.h5ad"
             )
