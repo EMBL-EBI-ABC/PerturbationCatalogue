@@ -396,7 +396,7 @@ class ObsSchema(DataFrameModel):
     software_counts_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for generating counts.",
-        isin=["MaGeCK", "CellRanger", "Drop-seq Tools"],
+        isin=["custom", "MaGeCK", "CellRanger", "Drop-seq Tools"],
     )
     software_analysis_id: Series[String] = Field(
         nullable=True,
