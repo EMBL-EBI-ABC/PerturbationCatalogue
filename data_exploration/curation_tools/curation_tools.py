@@ -238,19 +238,17 @@ class CuratedDataset:
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
-    def load_data(self, path, curated=False):
+    def load_data(self, curated=False):
         """
-        Load the adata from the specified source.
+        Load the adata from curated or non-curated path.
         """
         if curated:
-            self.curated_path = path
             if os.path.exists(self.curated_path):
                 print(f"Loading data from {self.curated_path}")
                 self.adata = sc.read_h5ad(self.curated_path)
             else:
                 raise ValueError(f"File {self.curated_path} does not exist. Check the path.")
         else:
-            self.noncurated_path = path
             if os.path.exists(self.noncurated_path):
                 print(f"Loading data from {self.noncurated_path}")
                 self.adata = sc.read_h5ad(self.noncurated_path)
