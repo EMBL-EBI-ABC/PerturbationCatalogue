@@ -1,9 +1,6 @@
 import pandas as pd
-import pandera as pa
 from pandera import Field, DataFrameModel
-from pandera.typing import Series, Index, String, Int64, Float32
-from pandera.typing import Series, Index, String, Int64, Float32
-from typing import Optional
+from pandera.typing import Series, Index, String, Int64, Bool
 from pathlib import Path
 
 # Get the absolute path to the current module file
