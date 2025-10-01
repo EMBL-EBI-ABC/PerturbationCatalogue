@@ -25,6 +25,18 @@ class ObsSchema(DataFrameModel):
     sample_id: Series[String] = Field(
         nullable=False, description="Unique identifier for the sample."
     )
+    data_modality: Series[String] = Field(
+        nullable=False,
+        description="Data modality of the dataset.",
+        isin=["Perturb-seq", "CRISPR screen", "MAVE"],
+    )
+    significant: Series[Bool] = Field(
+        nullable=False, description="Indicates whether the perturbation had a significant effect.",
+        coerce=True
+    )
+    significance_criteria: Series[String] = Field(
+        nullable=True, description="Criteria used to determine significance, e.g., FDR < 0.05."
+    )
     perturbation_name: Series[String] = Field(
         nullable=False,
         description="Name of the perturbation, often a name of the targeted gene or genomic coordinate.",
