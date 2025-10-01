@@ -151,6 +151,9 @@ class CuratedDataset:
             self.noncurated_path = curated_path.replace("curated", "non_curated").replace(
                 "_curated.h5ad", ".h5ad"
             )
+            
+        self.curated_parquet_data_path = self.curated_path.replace(".h5ad", "_data.parquet").replace('h5ad', 'parquet')
+        self.curated_parquet_metadata_path = self.curated_path.replace(".h5ad", "_metadata.parquet").replace('h5ad', 'parquet')
 
         # Initialise adata object
         self.adata = None
