@@ -22,7 +22,7 @@ class ObsSchema(DataFrameModel):
         nullable=False,
         description="Unique identifier for the dataset, follows the format <firstauthor_year>",
     )
-    sample_id: Series[Int64] = Field(
+    sample_id: Series[String] = Field(
         nullable=False, description="Unique identifier for the sample."
     )
     perturbation_name: Series[String] = Field(
