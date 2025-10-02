@@ -175,11 +175,11 @@ class ObsSchema(DataFrameModel):
         description="Publication year of the study/publication.",
     )
     first_author: Series[String] = Field(
-        nullable=False,
+        nullable=True,
         description="Full name of the first author of the study/publication.",
     )
     last_author: Series[String] = Field(
-        nullable=False,
+        nullable=True,
         description="Full name of the last author of the study/publication.",
     )
     # experiment details
