@@ -191,10 +191,12 @@ class ObsSchema(DataFrameModel):
     )
     number_of_perturbed_targets: Series[String] = Field(
         nullable=False,
+        coerce=True,
         description="Total number of perturbed targets in the experiment.",
     )
     number_of_perturbed_samples: Series[String] = Field(
         nullable=True,
+        coerce=True,
         description="Total number of perturbed samples/cells in the experiment.",
     )  # perturbation details
     library_generation_type_id: Series[String] = Field(
