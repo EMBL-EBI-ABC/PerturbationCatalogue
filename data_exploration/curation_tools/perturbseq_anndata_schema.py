@@ -307,9 +307,9 @@ class ObsSchema(DataFrameModel):
     library_grnas_per_target: Series[String] = Field(
         nullable=True, description="Number of gRNAs per target. Example: 4, 5-7"
     )
-    library_total_grnas: Series[Int64] = Field(
+    library_total_grnas: Series[String] = Field(
         nullable=True,
-        ge=0,
+        coerce=True,
         description="Total number of gRNAs in the library. Example: 20,000",
     )
     library_total_variants: Int64 = Field(
