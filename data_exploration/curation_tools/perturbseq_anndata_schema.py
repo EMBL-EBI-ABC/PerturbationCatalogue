@@ -405,7 +405,7 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK"],
+        isin=["custom", "MAGeCK", "Achilles"],
     )
     reference_genome_id: Series[String] = Field(
         nullable=True, description="Ontology term ID for the reference genome."
