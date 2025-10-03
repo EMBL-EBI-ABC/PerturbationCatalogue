@@ -387,7 +387,7 @@ class ObsSchema(DataFrameModel):
     sequencing_strategy_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing strategy.",
-        isin=["barcode sequencing"],
+        isin=["barcode sequencing", "direct sequencing"],
     )
     software_counts_id: Series[String] = Field(
         nullable=True,
