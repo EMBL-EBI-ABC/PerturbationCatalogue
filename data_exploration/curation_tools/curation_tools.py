@@ -7,6 +7,7 @@ import polars as pl
 import pyarrow.parquet as pq
 import json
 from pprint import pprint
+import requests
 
 from pydantic import ValidationError
 from typing import Literal
