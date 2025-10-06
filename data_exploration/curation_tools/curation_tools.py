@@ -2211,3 +2211,24 @@ def make_adata_biogrid(
         print(f"✅ Saved AnnData object to {h5ad_path}")
 
     return adata, h5ad_path
+
+def download_file(url, dest_path, overwrite=False):
+    """Download a file from a URL to a local destination."""
+    # check if the file already exists
+    if os.path.exists(dest_path):
+        if not overwrite:
+            print(f"File {dest_path} already exists. Skipping download.")
+            return
+        else:
+            print(f"File {dest_path} already exists. Overwriting...")
+    response = requests.get(url, stream=True)
+    response.raise_for_status()  # Raise an error for bad responses
+    # if the destination directory does not exist, create it
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    # write the content to the destination file
+    with open(dest_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"Downloaded {url} to {dest_path}")
+    
+    
