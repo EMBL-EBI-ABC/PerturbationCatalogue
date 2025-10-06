@@ -2133,6 +2133,10 @@ def make_adata_biogrid(
     - biogrid_metadata: DataFrame containing BioGRID metadata.
     - curated_metadata_dict: Dictionary containing curated metadata.
     - save_h5ad_dir: Directory to save the AnnData object as an h5ad file.
+    
+    Returns:
+    - AnnData: The created AnnData object.
+    - str: Path to the saved h5ad file.
     """
 
     # Extract the numeric part of the dataset ID
