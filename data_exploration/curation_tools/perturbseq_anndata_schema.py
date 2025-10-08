@@ -136,7 +136,9 @@ class ObsSchema(DataFrameModel):
         description="Cell line ontology term ID of the investigated sample. Must be part of the Cell Line Ontology (CLO).",
     )
     sex_label: Series[String] = Field(
-        nullable=True, description="Sex ontology term label of the investigated sample."
+        nullable=True, 
+        description="Sex ontology term label of the investigated sample.",
+        isin=["female", "male", "mixed", "unknown"]
     )
     sex_id: Series[String] = Field(
         nullable=True,
