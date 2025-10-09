@@ -120,11 +120,11 @@ class ObsSchema(DataFrameModel):
         description="Tissue ontology term ID of the investigated sample. Must be part of the UBERON ontology.",
     )
     cell_type_label: Series[String] = Field(
-        nullable=False,
+        nullable=True,
         description="Cell type ontology term label of the investigated sample. Must be part of the Cell Ontology (CL).",
     )
     cell_type_id: Series[String] = Field(
-        nullable=False,
+        nullable=True,
         description="Cell type ontology term ID of the investigated sample. Must be part of the Cell Ontology (CL).",
     )
     cell_line_label: Series[String] = Field(
