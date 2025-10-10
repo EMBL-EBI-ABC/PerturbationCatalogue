@@ -120,8 +120,20 @@ def main():
         "create_table.sql",
     )
 
-    # 4. Import data from GCS to Cloud SQL
-    print("Step 4/5: Importing data from GCS to Cloud SQL...")
+    # 4. Create Index
+    print(f"Step 4/5: Creating index on table '{ps_table}'...")
+    create_index_sql = f"CREATE INDEX idx_{ps_table}_multi ON {ps_table} (dataset_id, perturbed_target_symbol, gene);"
+    execute_sql_from_gcs(
+        project_id,
+        ps_instance_id,
+        ps_db,
+        warehouse_bucket,
+        create_index_sql,
+        "create_index.sql",
+    )
+
+    # 5. Import data from GCS to Cloud SQL and Cleanup
+    print("Step 5/5: Importing data from GCS to Cloud SQL and cleaning up...")
     storage_client = storage.Client(project=project_id)
     bucket = storage_client.bucket(warehouse_bucket)
     blobs = list(bucket.list_blobs(prefix="bq_export/"))
@@ -151,19 +163,7 @@ def main():
             silent=True,
         )
 
-    print("Step 4/5: Data import completed.")
-
-    # 5. Create Index and Cleanup
-    print(f"Step 5/5: Creating index on table '{ps_table}' and cleaning up...")
-    create_index_sql = f"CREATE INDEX idx_{ps_table}_multi ON {ps_table} (dataset_id, perturbed_target_symbol, gene);"
-    execute_sql_from_gcs(
-        project_id,
-        ps_instance_id,
-        ps_db,
-        warehouse_bucket,
-        create_index_sql,
-        "create_index.sql",
-    )
+    print("Data import completed.")
 
     storage_client = storage.Client(project=project_id)
     bucket = storage_client.bucket(warehouse_bucket)
