@@ -122,7 +122,9 @@ def main():
 
     # 4. Create Index
     print(f"Step 4/5: Creating index on table '{ps_table}'...")
-    create_index_sql = f"CREATE INDEX idx_{ps_table}_multi ON {ps_table} (dataset_id, perturbed_target_symbol, gene);"
+    create_index_sql = f"""CREATE INDEX idx_perturbed_padj ON {ps_table} (perturbed_target_symbol, padj);
+    CREATE INDEX idx_gene_padj ON {ps_table} (gene, padj);
+    CREATE INDEX idx_perturbed_gene_padj ON {ps_table} (perturbed_target_symbol, gene, padj);"""
     execute_sql_from_gcs(
         project_id,
         ps_instance_id,
