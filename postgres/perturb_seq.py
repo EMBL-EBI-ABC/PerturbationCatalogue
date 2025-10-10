@@ -20,10 +20,10 @@ def main():
 
     # 1. Read environment variables
     try:
-        project_id = get_env_var("GCP_PROJECT")
+        project_id = get_env_var("GCLOUD_PROJECT")
         region = get_env_var("GCLOUD_REGION")
         ps_instance_name = get_env_var(
-            "PS_INSTANCE_NAME"
+            "PS_INSTANCE_ID"
         )  # e.g. my-project:us-central1:my-instance
         ps_password = get_env_var("PS_PASSWORD")
         ps_table = get_env_var("PS_TABLE")
