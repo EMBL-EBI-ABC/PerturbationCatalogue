@@ -61,3 +61,9 @@ Execute the Python script to start the migration:
 ```bash
 python3 perturb_seq.py
 ```
+
+To test with the first N chunks only:
+
+```bash
+python3 perturb_seq.py --limit 10
+```

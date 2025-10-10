@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import argparse
 from google.cloud import bigquery, storage
 from tqdm import tqdm
 
@@ -58,6 +59,14 @@ def execute_sql_from_gcs(
 
 def main():
     """Main function to migrate data from BigQuery to PostgreSQL."""
+    parser = argparse.ArgumentParser(
+        description="Migrate data from BigQuery to PostgreSQL."
+    )
+    parser.add_argument(
+        "--limit", type=int, help="Limit the number of CSV files to import."
+    )
+    args = parser.parse_args()
+
     print("--- Starting BigQuery to PostgreSQL Migration ---")
 
     # 1. Read environment variables
@@ -118,6 +127,10 @@ def main():
     blobs = list(bucket.list_blobs(prefix="bq_export/"))
     if not blobs:
         raise Exception("BigQuery export created no files.")
+
+    if args.limit:
+        print(f"Limiting import to the first {args.limit} files.")
+        blobs = blobs[: args.limit]
 
     print(f"Found {len(blobs)} exported file(s). Importing one by one...")
 
