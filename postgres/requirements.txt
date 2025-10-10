@@ -1,3 +1,2 @@
 google-cloud-bigquery
 google-cloud-storage
-google-cloud-sql-connector[psycopg2]
