@@ -82,23 +82,53 @@ def main():
     print("Step 1/5: Environment variables loaded.")
 
     # 2. BigQuery Export
-    print("Step 2/5: Starting BigQuery export to GCS...")
+    print("Step 2/5: Starting BigQuery export to GCS (with padj <= 0.05 filter)...")
     destination_uri = f"gs://{warehouse_bucket}/bq_export/bq_export_*.csv"
-    job_config = bigquery.ExtractJobConfig()
-    job_config.print_header = False
 
     bq_client = bigquery.Client(project=project_id)
-    dataset_ref = bigquery.DatasetReference(project_id, bq_dataset)
-    table_ref = dataset_ref.table(bq_table)
 
-    extract_job = bq_client.extract_table(
-        table_ref,
-        destination_uri,
-        job_config=job_config,
-        location=region,
+    # Define a temporary table for the filtered export
+    temp_table_name = f"{bq_table}_filtered_export"
+    dataset_ref = bigquery.DatasetReference(project_id, bq_dataset)
+    temp_table_ref = dataset_ref.table(temp_table_name)
+
+    # SQL query to select only the rows with padj <= 0.05
+    sql = f"SELECT * FROM `{project_id}.{bq_dataset}.{bq_table}` WHERE padj <= 0.05"
+
+    # Configure the query job to save results to the temporary table
+    query_job_config = bigquery.QueryJobConfig(
+        destination=temp_table_ref,
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
     )
-    extract_job.result()  # Waits for job to complete.
-    print("Step 2/5: BigQuery export to GCS completed.")
+
+    try:
+        # Run the query to create the temporary table with filtered data
+        print(
+            f"Running filter query and creating temporary table: {temp_table_name}..."
+        )
+        query_job = bq_client.query(sql, job_config=query_job_config, location=region)
+        query_job.result()  # Wait for the job to complete
+        print("Temporary table with filtered data created.")
+
+        # Configure and run the extract job from the temporary table
+        extract_job_config = bigquery.ExtractJobConfig()
+        extract_job_config.print_header = False
+
+        print(f"Exporting data from temporary table {temp_table_name} to GCS...")
+        extract_job = bq_client.extract_table(
+            temp_table_ref,
+            destination_uri,
+            job_config=extract_job_config,
+            location=region,
+        )
+        extract_job.result()  # Waits for job to complete.
+        print("Step 2/5: BigQuery export to GCS completed.")
+
+    finally:
+        # Cleanup: Delete the temporary table
+        print(f"Deleting temporary table {temp_table_name}...")
+        bq_client.delete_table(temp_table_ref, not_found_ok=True)
+        print("Temporary table deleted.")
 
     # 3. Create Table in Cloud SQL
     print(f"Step 3/5: Creating table '{ps_table}' in Cloud SQL...")
