@@ -499,6 +499,3 @@ Each perturbation is essentially a row from Postgres with some fields renamed: {
 There can be a lot of data, so truncate it as follows:
 * Always return all datasets, sorted alphabetically by their ID
 * For a given dataset, the total number of *perturbations* must not exceed 20. Sort them in the increasing order of padj.
-
-# Final notes
-* Remember that the connector is called "cloud-sql-python-connector[asyncpg]", not "google-cloud-sql-python-connector[asyncpg]".
