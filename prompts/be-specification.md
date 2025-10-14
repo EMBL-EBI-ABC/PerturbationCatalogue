@@ -11,21 +11,18 @@ What it does is retrieves information from databases according to the three filt
 
 # Environment variables
 The following environment variables are set in the back-end. These are for your reference, so that you know which ones you can use in the code.
-## Google Cloud
-export GCLOUD_REGION=europe-west2
-export GCLOUD_PROJECT=...
 ## Back-end
 export ES_URL=https://....es.europe-west2.gcp.elastic-cloud.com
 export ES_USERNAME=elastic
 export ES_PASSWORD=...
 ## Data warehousing
-export LAKE_BUCKET=...
-export WAREHOUSE_BUCKET=...
 export ELASTIC_ENDPOINT="https://elastic:...@....es.europe-west2.gcp.elastic-cloud.com"
 ## PostgreSQL
-export PS_INSTANCE_ID=perturb-seq
+export PS_HOST=...
+export PS_PORT=...
+export PS_USER=...
 export PS_PASSWORD=...
-export PS_TABLE=perturb_seq
+export PS_DB=...
 
 # Overall data organisation
 Dataset metadata is stored in Elastic. Perturbation and effect data are stored in Postgres. The API will need to query both databases asynchronously, stitch the results together using the dataset_id field, and reply in JSON format.
@@ -483,6 +480,8 @@ As you can see it's quite long, but you must only use a fixed subset of fields b
 Some of these fields are lists and are named in plural (tissue_labels). You must flatteh the list, always assume it only contains a single entry (make an assert), and name output in singular: tissue_label.
 
 # Data in Postgres
+Inside the $PS_DB database, you must use a table named "perturb_seq". Hardcode this into the API.
+
 An example of data row in Postgres:
 
 dataset_id	perturbed_target_symbol	gene	log2foldchange	padj	basemean	max_ingested_at
