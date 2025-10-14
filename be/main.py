@@ -27,6 +27,10 @@ from models import (
     Aggregation,
     RangeAggregation,
 )
+from search import router as search_router
+
+
+import asyncpg
 
 
 @asynccontextmanager
@@ -37,11 +41,21 @@ async def lifespan(app: FastAPI):
         http_auth=(os.getenv("ES_USERNAME"), os.getenv("ES_PASSWORD")),
         verify_certs=True,
     )
-    # Pass the client to the app's state so it's accessible in routes.
+    # Initialize asyncpg connection pool.
+    pg_pool = await asyncpg.create_pool(
+        host=os.getenv("PS_HOST"),
+        port=os.getenv("PS_PORT"),
+        user=os.getenv("PS_USER"),
+        password=os.getenv("PS_PASSWORD"),
+        database=os.getenv("PS_DB"),
+    )
+    # Pass the clients to the app's state so they are accessible in routes.
     app.state.es_client = es_client
+    app.state.pg_pool = pg_pool
     yield
-    # Clean up by closing the Elasticsearch client.
+    # Clean up by closing the clients.
     await es_client.close()
+    await pg_pool.close()
 
 
 # Initialize FastAPI with lifespan manager.
@@ -68,6 +82,8 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all HTTP methods
     allow_headers=["*"],  # Allows all headers
 )
+
+app.include_router(search_router)
 
 
 # Generic search methods.
