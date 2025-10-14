@@ -32,7 +32,7 @@ A very big title, centered: "Perturbation Catalogue". h1, font-size 60px, mt-8, 
 
 ### 2. Subtitle
 
-"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.", font-size 25px, mb-6.
+"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.", font-size 25px, mb-7.
 
 ### 3. Table header
 
@@ -47,11 +47,9 @@ The three titles are:
 
 This is what it should look like on the page:
 [in small font] According to this    Introducing this    Leads to the following
-[in large font] Dataset..............Perturbation........Effect
+[in large font] Dataset              Perturbation        Effect
 
-Note the dotted lines between "Dataset", "Perturbation" and "Effect". They should serve as a visual connecting element, as well as serving a dual purpose of separating table header and data.
-
-The top element is regular coursive, regular size.
+The top element is h4, regular coursive, not muted, mb-0.
 
 The bottom element is h3.
 
@@ -92,7 +90,7 @@ Instead, display labels (such as "Tissue type") in light, thin italics, and valu
 
 Label should not be used for the gene name in both columns, it should simply be displayed as the very leftmost value.
 
-Importantly, all contents for the "Perturbation" and "Effect" sections should be all in one row to make the table visually compact. In comparison, the "Datasource" information mentioned above can and should be in multiple lines, as it spans multiple perturbation + effect rows.
+Importantly, all contents for the "Perturbation" and "Effect" sections should be all in one row to make the table visually compact. No newline breaks in those columns. In comparison, the "Datasource" information mentioned above can and should be in multiple lines, as it spans multiple perturbation + effect rows.
 
 Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value. Use not regular arrows, but ▲▼ arrows.
 
@@ -108,10 +106,10 @@ When displaying float values, make sure that - (hyphen) is replaced with a minus
 
 The label comes first (in thin italics as described above), then value in semibold. Good, but not excessive spacing should be between label-value pairs for the Effect column.
 
-## Final details and particulars to keep in mind
-* It is essential to have *no* divider lines anywhere in the table part, nor horizontal or vertical. Make sure none are present.
-* Make sure column layout is fully aligned: explanation ("According to this"), header ("Dataset"), the corresponding search field, and then the data fields should be perfectly aligned horizontally. Make sure also that the start of every dataset is aligned in all three columns by the top.
-* Do not forget a break between explanation and header: "According to this" should be above "Dataset", they should not be next to each other.
-* Use Bootstrap themes as much as possible, including for large title and subtitle. 
-* Overall layout must be strict, exact, and professional looking.
-* Because the Perturbation column only has gene name, while both Dataset and Effect columns have lots of information, this column should be less wide. Make sure this is adjusted automatically using Bootstrap means.
+### Special notes on layout
+
+It is essential to have *no* divider lines anywhere in the table part, nor horizontal or vertical. Make sure none are present.
+
+Because the Perturbation column only has gene name, while both Dataset and Effect columns have lots of information, this column should be less wide.
+
+For sections 3-5 (table header, search fields, data table) you need to direct extreme attention to make sure they are propertly aligned horizontally and vertically. For example, in the Perturbation column, all elements (header, search field, data) must be all aligned horizontally. For any given dataset, the data in all three columns needs to be properly aligned vertically. The best way to make it work is to wrap *everything* into a single table.
