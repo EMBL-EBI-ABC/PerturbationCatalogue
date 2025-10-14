@@ -14,6 +14,8 @@ Rename existing Data Portal page to Data Portal (legacy). Only the name of the b
 
 Add another page named "Perturbations", flag it with a conspicous yellow "New!" label on the front page, and make its URL /perturbations.
 
+For the new page icon, use the "Whirlpool" icon.
+
 ## New page specification
 
 ### Overall layout
@@ -26,11 +28,11 @@ Make sure to use Bootstrap components and styles as much as possible. Make sure 
 
 ### 1. Title
 
-A very big title, centered: "Perturbation Catalogue". h1, font-size 48px, mt-8, mb-3.
+A very big title, centered: "Perturbation Catalogue". h1, font-size 60px, mt-8, mb-3.
 
 ### 2. Subtitle
 
-"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results". h2, font-size 25px, mb-5.
+"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.", font-size 25px, mb-6.
 
 ### 3. Table header
 
@@ -69,8 +71,6 @@ Essentially, it's a table where 1 row = 1 perturbation from the API. The dataset
 
 Across the entire table, not add *any* vertical or horizontal cell dividers. Instead, use padding to separate contents from each other. Rows of a single dataset should be closer together, while datasets should be reasonably apart from each other.
 
-Even though it's a table, it might be easier to use <div>s instead <table> because their configuration is more flexible.
-
 Note also that in the BE response, the effect + perturbation values are currently all in a single object. Example of such an object:
 
 ```
@@ -90,9 +90,11 @@ Instead, display labels (such as "Tissue type") in light, thin italics, and valu
 
 #### Perturbation and effect column represetntation
 
+Label should not be used for the gene name in both columns, it should simply be displayed as the very leftmost value.
+
 Importantly, all contents for the "Perturbation" and "Effect" sections should be all in one row to make the table visually compact. In comparison, the "Datasource" information mentioned above can and should be in multiple lines, as it spans multiple perturbation + effect rows.
 
-Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value. Use not regular arrows, but a Unicode wide up/down arrows.
+Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value. Use not regular arrows, but ▲▼ arrows.
 
 Similarly to dataset information, do not use colons such as "base mean: 0.288", instead again display label (base mean) in thin, pale coursive, and value in semibold font. Make sure the labels and values styling is consistent between all three main columns.
 
@@ -100,9 +102,11 @@ Similarly to dataset information, do not use colons such as "base mean: 0.288", 
 
 This applies to all columns.
 
-For any values that are displayed, make sure they are capitalised, *except* for datasource ID.
+For any values that are displayed, make sure their first letter only is capitalised, *except* for datasource ID, which 
 
-When displaying floata values, make sure that - (hyphen) is replaced with a minus sign for both negative values such as -0.13, and negative exponents of padj such as 1.03e-05.
+When displaying float values, make sure that - (hyphen) is replaced with a minus sign for both negative values such as -0.13, and negative exponents of padj such as 1.03e-05.
+
+The label comes first (in thin italics as described above), then value in semibold. Good, but not excessive spacing should be between label-value pairs for the Effect column.
 
 ## Final details and particulars to keep in mind
 * It is essential to have *no* divider lines anywhere in the table part, nor horizontal or vertical. Make sure none are present.
@@ -110,3 +114,4 @@ When displaying floata values, make sure that - (hyphen) is replaced with a minu
 * Do not forget a break between explanation and header: "According to this" should be above "Dataset", they should not be next to each other.
 * Use Bootstrap themes as much as possible, including for large title and subtitle. 
 * Overall layout must be strict, exact, and professional looking.
+* Because the Perturbation column only has gene name, while both Dataset and Effect columns have lots of information, this column should be less wide. Make sure this is adjusted automatically using Bootstrap means.
