@@ -75,9 +75,26 @@ Note also that in the BE response, the effect + perturbation values are currentl
 
 Here, perturbation_gene_name should be in the "Perturbation" section, and the rest of the fields should be in the "Effect" section.
 
-#### Representation of data in columns
+Dataset ID, perturbed gene name and affected gene name should be most visible (for example in bold) because these are the main properties of each of the columns. 
 
-For now, there is no detailed specification of how contents of each column should look like. Use your best judgement for usability and for things to be nice visually. Some suggestions:
-* Dataset ID, perturbed gene name and affected gene name should be most visible (for example in bold) because these are the main properties of each of the columns
-* Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value
-* Importantly, all contents for the "Perturbation" and "Effect" sections should be all in one row to make the table visually compact. In comparison, the "Datasource" information can and should be in multiple lines, as it spans multiple perturbation + effect rows.
+#### Dataset column representation
+First, dataset ID is listed in prominent bold. Do not use a label. For example, instead of "Dataset: some_dataset_123", display "some_dataset_123" only.
+
+Then, dataset metadata is listed, one on new line. Do not use colons, as they are visually distracting. This is bad: "Tissue type: Blood".
+
+Instead, display labels (such as "Tissue type") in light, thin italics, and values (such as "Blood") in regular text. Do not use a colon between them.
+
+#### Perturbation and effect column represetntation
+
+Importantly, all contents for the "Perturbation" and "Effect" sections should be all in one row to make the table visually compact. In comparison, the "Datasource" information mentioned above can and should be in multiple lines, as it spans multiple perturbation + effect rows.
+
+Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value. Use not regular arrows, but a Unicode wide up/down arrows.
+
+Similarly to dataset information, do not use colons such as "base mean: 0.288", instead again display label (base mean) in thin, pale coursive, and value in regular font. Make sure the labels and values styling is consistent between all three main columns.
+
+## Final details and particulars to keep in mind
+* It is essential to have *no* divider lines anywhere in the table part, nor horizontal or vertical. Make sure none are present.
+* Make sure column layout is fully aligned: explanation ("According to this"), header ("Dataset"), the corresponding search field, and then the data fields should be perfectly aligned horizontally.
+* Do not forget a break between explanation and header: "According to this" should be above "Dataset", they should not be next to each other.
+* Use Bootstrap themes as much as possible, including for large title and subtitle. 
+* Overall layout must be strict, exact, and professional looking.
