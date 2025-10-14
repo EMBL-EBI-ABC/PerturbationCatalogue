@@ -22,9 +22,6 @@ export ES_PASSWORD=...
 export LAKE_BUCKET=...
 export WAREHOUSE_BUCKET=...
 export ELASTIC_ENDPOINT="https://elastic:...@....es.europe-west2.gcp.elastic-cloud.com"
-## BigQuery
-export BQ_DATASET=unified_data
-export BQ_TABLE=perturb_seq_data
 ## PostgreSQL
 export PS_INSTANCE_ID=perturb-seq
 export PS_PASSWORD=...
@@ -502,3 +499,6 @@ Each perturbation is essentially a row from Postgres with some fields renamed: {
 There can be a lot of data, so truncate it as follows:
 * Always return all datasets, sorted alphabetically by their ID
 * For a given dataset, the total number of *perturbations* must not exceed 20. Sort them in the increasing order of padj.
+
+# Final notes
+* Remember that the connector is called "cloud-sql-python-connector[asyncpg]", not "google-cloud-sql-python-connector[asyncpg]".
