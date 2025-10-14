@@ -1,6 +1,12 @@
 import dash
 
-PAGE_ORDER = ("Data Portal", "Dashboards", "API documentation", "About")
+PAGE_ORDER = (
+    "Perturbations",
+    "Data Portal (legacy)",
+    "Dashboards",
+    "API documentation",
+    "About",
+)
 
 
 def get_all_pages_dict():

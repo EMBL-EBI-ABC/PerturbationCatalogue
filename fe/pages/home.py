@@ -15,6 +15,35 @@ dash.register_page(
 )
 
 
+def create_page_card(page):
+    card_content = [
+        dbc.CardBody(
+            [
+                html.H5(page["name"]),
+                html.P(page["description"]),
+                dbc.Button(
+                    page["button"],
+                    href=page["relative_path"],
+                    color="success",
+                ),
+            ]
+        )
+    ]
+    if page["name"] == "Perturbations":
+        card_content.insert(
+            0,
+            dbc.Badge(
+                "New!",
+                color="warning",
+                className="position-absolute top-0 start-0 translate-middle-y",
+                style={"transform": "translateX(-10%)"},
+            ),
+        )
+    return dbc.Col(
+        dbc.Card(card_content, className="position-relative"), md=4, className="mb-4"
+    )
+
+
 def layout():
     return html.Div(
         [
@@ -48,25 +77,7 @@ def layout():
                 [
                     dbc.Row(
                         [
-                            dbc.Col(
-                                dbc.Card(
-                                    [
-                                        dbc.CardBody(
-                                            [
-                                                html.H5(page["name"]),
-                                                html.P(page["description"]),
-                                                dbc.Button(
-                                                    page["button"],
-                                                    href=page["relative_path"],
-                                                    color="success",
-                                                ),
-                                            ]
-                                        )
-                                    ]
-                                ),
-                                md=4,
-                                className="mb-4",
-                            )
+                            create_page_card(page)
                             for page in get_pages(
                                 include_home=False, require_button=True
                             )
