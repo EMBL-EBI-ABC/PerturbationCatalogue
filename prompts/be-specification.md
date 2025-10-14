@@ -1,4 +1,6 @@
-Study all files in the @be directory which contains back-end implementation.
+First, study general instructions for LLM agents in @prompts/README.md.
+
+Then study all files in the @be directory which contains back-end implementation.
 
 In addition to existing APIs (keep them and do not modify them whatsoever), I want you to implement a new one.
 
