@@ -26,11 +26,11 @@ Make sure to use Bootstrap components and styles as much as possible. Make sure 
 
 ### 1. Title
 
-A very big title, centered: "Perturbation Catalogue"
+A very big title, centered: "Perturbation Catalogue". h1, font-size 48px, mt-8, mb-3.
 
 ### 2. Subtitle
 
-"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results"
+"A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results". h2, font-size 25px, mb-5.
 
 ### 3. Table header
 
@@ -48,6 +48,10 @@ This is what it should look like on the page:
 [in large font] Dataset..............Perturbation........Effect
 
 Note the dotted lines between "Dataset", "Perturbation" and "Effect". They should serve as a visual connecting element, as well as serving a dual purpose of separating table header and data.
+
+The top element is regular coursive, regular size.
+
+The bottom element is h3.
 
 ### 4. Search fields
 
@@ -82,7 +86,7 @@ First, dataset ID is listed in prominent bold. Do not use a label. For example, 
 
 Then, dataset metadata is listed, one on new line. Do not use colons, as they are visually distracting. This is bad: "Tissue type: Blood".
 
-Instead, display labels (such as "Tissue type") in light, thin italics, and values (such as "Blood") in regular text. Do not use a colon between them.
+Instead, display labels (such as "Tissue type") in light, thin italics, and values (such as "Blood") in semibold text. Do not use a colon between them.
 
 #### Perturbation and effect column represetntation
 
@@ -90,11 +94,19 @@ Importantly, all contents for the "Perturbation" and "Effect" sections should be
 
 Depending on whether log2fc is positive (increased) or negative (decreased), display an arrow up or arrow down to the left of the value. Use not regular arrows, but a Unicode wide up/down arrows.
 
-Similarly to dataset information, do not use colons such as "base mean: 0.288", instead again display label (base mean) in thin, pale coursive, and value in regular font. Make sure the labels and values styling is consistent between all three main columns.
+Similarly to dataset information, do not use colons such as "base mean: 0.288", instead again display label (base mean) in thin, pale coursive, and value in semibold font. Make sure the labels and values styling is consistent between all three main columns.
+
+#### Value formatting
+
+This applies to all columns.
+
+For any values that are displayed, make sure they are capitalised, *except* for datasource ID.
+
+When displaying floata values, make sure that - (hyphen) is replaced with a minus sign for both negative values such as -0.13, and negative exponents of padj such as 1.03e-05.
 
 ## Final details and particulars to keep in mind
 * It is essential to have *no* divider lines anywhere in the table part, nor horizontal or vertical. Make sure none are present.
-* Make sure column layout is fully aligned: explanation ("According to this"), header ("Dataset"), the corresponding search field, and then the data fields should be perfectly aligned horizontally.
+* Make sure column layout is fully aligned: explanation ("According to this"), header ("Dataset"), the corresponding search field, and then the data fields should be perfectly aligned horizontally. Make sure also that the start of every dataset is aligned in all three columns by the top.
 * Do not forget a break between explanation and header: "According to this" should be above "Dataset", they should not be next to each other.
 * Use Bootstrap themes as much as possible, including for large title and subtitle. 
 * Overall layout must be strict, exact, and professional looking.
