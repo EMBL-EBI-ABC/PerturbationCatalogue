@@ -4,17 +4,15 @@
 
 Study general instructions for LLM agents in @prompts/README.md.
 
-Study how relevant BE parts are organised in @be/search.py. Be aware that API endpoint is configured with the $PERTURBATION_CATALOGUE_BE env variable.
+Study how relevant BE parts are organised in @be/main.py. Be aware that FE is configured with the $PERTURBATION_CATALOGUE_BE env variable - this is what you should use as your endpoint. The endpoint to be used is /v1/search.
 
-Study how relevant FE parts are organised in in @fe/app.py and @fe/pages/home.py.
+Study how relevant FE parts are organised in in @fe/app.py, @fe/pages/home.py, @fe/pages/_order.py. Do not peek into other FE components, as they are irrelevant and can be quite large when loaded into context.
 
 ## Pages update
 
-Rename existing Data Portal page to Data Portal (legacy). Only the name of the button & menu needs to change.
+Add a new page named "Perturbations", flag it with a conspicous yellow "New!" label on the front page, and make its URL /perturbations.
 
-Add another page named "Perturbations", flag it with a conspicous yellow "New!" label on the front page, and make its URL /perturbations.
-
-For the new page icon, use the "Whirlpool" icon.
+For the new page icon in the navbar, use the "tropical-storm" Bootstrap icon.
 
 ## New page specification
 
@@ -115,6 +113,34 @@ The data grid requires a specific nested structure to achieve the desired layout
     1. A `dbc.Col` with `width=4` for the "Dataset" information.
     2. A `dbc.Col` with `width=8` that will contain all the perturbation rows for that dataset.
 - Inside the `width=8` column, each perturbation is rendered as its own nested `dbc.Row`.
-- These nested rows should have `align="start"` and be separated by a `border-top` (except for the first one).
+- These nested rows should have `align="start"`. No borders should be used between these nested rows; the only visual separator should be the main `border-top` between datasets. This applies to all views (ungrouped and grouped).
 - Each nested row is split into two columns that maintain the `2:6` ratio relative to their parent. Since the parent column has a width of 8, the nested columns for "Perturbation" and "Effect" should have widths of `3` and `9` respectively (as `2/8 = 3/12` and `6/8 = 9/12`).
 - All data content within columns should be top-aligned. For columns containing multiple horizontal elements (like the Effect column), use `d-flex align-items-start flex-wrap` to ensure content is top-aligned and wraps correctly.
+
+# Note on grouping
+
+Another feature of the BE which has not yet been discussed is grouping. Data can be grouped optionally by either Perturbation or Effect in the back-end. This means that a given UI side (Perturbation or Effect) becomes "vertically-merged", similarly to a Dataset.
+
+Also, when grouping is enabled, additional metrics are displayed. In all cases, it's n_total, n_up, and n_down: how many records there are for sigificant total change of expression (total, upregulation, downregulation). Display this information in the grouped column, too.
+
+To highlight that the columns can be grouped by, add a dotted-line, rounded-corner rectangle outline around the "Perturbation" and "Effect" `H3` headers. By default, the view should be grouped by Perturbation when the page first loads.
+
+The grouping selector should be clickable. Clicking an unselected element selects it and unselects the other. Clicking an already-selected element unselects it, returning to the ungrouped view.
+
+The styling of the selector is critical. The `H3` element itself should be styled with `display: 'inline-block'` to ensure the border wraps the text tightly. The default style for the selector should be `border: '1px dotted black'`, `border-radius: '8px'`, `padding: '2px'`, and `cursor: 'pointer'`. When an element is selected for grouping, it should receive an additional `background-color: '#FFF3CD'`.
+
+## UI specifics
+When grouping by perturbation:
+* Display the perturbed gene name in a larger font
+* Below, write in normal font: "Affects XXX genes", where number is in bold (in all following examples number also bold)
+* Below: "(green arrow up) XXX genes", 
+* Below: "(red arrow down) XXX genes"
+
+When grouping by effect:
+* Display the effect gene name in a larger font.
+* Below, write in normal font: "Affected by XXX genes"
+* Below: "(green arrow up) by XXX genes",
+* Below: "(red arrow down) by XXX genes"
+* Below: "Base mean expression is XX.XX", number also in bold
+
+Then, display the perturbation rows. Note that perturbed gene should be displayed in the perturbation column, and log2fc, padj must be displayed in the Effect column. These should be well aligned.
