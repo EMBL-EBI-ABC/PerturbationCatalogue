@@ -529,3 +529,6 @@ In order to avoid multi-second queries, to determine that, use summary materiali
 "adamson_2016_pilot","AC006262.5","1","1","0","5.548977295822654"
 "adamson_2016_pilot","AC096559.1","1","0","1","4.410971172950684"
 "adamson_2016_pilot","AC108868.6","1","0","1","22.91355626193407"
+
+## Summary views results in BE response
+When aggregation by either perturbation or effect is turned on, also add the summary metrics (n_total, n_up, n_down). They should be injected next to the perturbation or effect information. For example, for perturbation: data: [{perturbation_gene_name: ABC123, n_total: 1000, n_up: 200, n_down: 800, effects: [...]}, ...], and similar for when aggregating by effect.
