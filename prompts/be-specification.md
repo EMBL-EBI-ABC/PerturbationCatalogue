@@ -128,8 +128,10 @@ Where each `perturbation` element looks like this:
 {"perturbation_gene_name": "DEF456", "log2foldchange": -2.17, "padj": 3.2e-17}
 ```
 
-## 5. Avoiding code duplication
+## 5. Code style.
 When implementing the BE, it's important to minimise code duplication; to make it as compact, succinct and easy to understand as possible.
+
+Avoid adding too many comments or internal thoughts to the code - it should be compact, concise, simple and the point.
 
 ## 6. Query performance
 When constructing the queries, it's extremely important to make sure they are efficient. You must only ever use the quick look up operations, which are:
