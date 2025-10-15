@@ -2,10 +2,11 @@ Study all files in the @be directory which contains back-end implementation.
 
 In addition to existing APIs (keep them and do not modify them whatsoever), I want you to implement a new one.
 
-It should use a URL "/v1/search" and should accept exactly three parameters, all optional:
+It should use a URL "/v1/search" and should accept exactly four parameters, all optional:
 * dataset_metadata: string, used to free text search in the dataset metadata
 * perturbation_gene_name: string, used to filter by a perturbed gene name
 * effect_gene_name: string, used to filter by an effect gene name
+* group_by: string, possible values are "perturbation_gene_name" or "effect_gene_name"
 
 What it does is retrieves information from databases according to the three filters specified, compiles it, and returns data in JSON format.
 
@@ -490,11 +491,20 @@ adamson_2016_pilot	SPI1	CHST11	0.23117926187171009	0.50391124972854473	27.081083
 Use "perturbation_gene_name" API parameter to filter by perturbed_target_symbol, and "effect_gene_name" parameter to filter by gene.
 
 # Output format
-Output should conform to this schema: [(list of datasets)]
-Each dataset is: {"dataset_id": ..., "tissue_label": ..., (other dataset fields), "perturbations": [(list of perturbations of a given dataset after filtering)}
-Each perturbation is essentially a row from Postgres with some fields renamed: {"perturbation_gene_name": "SPI1", "base_mean": 27.0810834104398, "effect_gene_name": "CHST11", "log2foldchange": ..., "padj": ...}
+Output is always a single list of datasets.
+
+Each dataset object is: {"dataset_id": ..., "tissue_label": ..., (other dataset fields), "data": [...]} - the format of the data field depends on the group_by field.
+
+* group_by = "perturbation_gene_name", then each entry in data contains results for a particular perturbed gene name and is formatted like this: {perturbation_gene_name: ABC123, effects: [{effect_gene_name: ..., base_mean: ..., log2foldchange: ..., padj: ...}]}
+* group_by = "effect_gene_name", then each entry in data contains results for a particular *effect* gene and is formatted like this: {effect_gene_name: DEF456, base_mean: ..., perturbations: [{perturbation_gene_name: ..., log2foldchange: ..., padj: ...}]}
+* No group_by set: each entry in data is simply one perturbation+effect entry, example: {perturbation_gene_name: ABC123, effect_gene_name: DEF456, base_mean: ..., log2foldchange: ..., padj: ...}
+
+When implementing the logic, try to make it elegant and avoid code duplication as much as possible.
 
 # Data truncation
 There can be a lot of data, so truncate it as follows:
-* Always return all datasets, sorted alphabetically by their ID
-* For a given dataset, the total number of *perturbations* must not exceed 20. Sort them in the increasing order of padj.
+* Always return *all* datasets, sorted alphabetically by their ID
+* For a given dataset, apply the following limits:
+  + If grouping by perturbation_gene_name, return only top 3 perturbations, sorted by the total number of effects. For each of the perturbations, return at most top 10 effects, sorted by padj increasing.
+  + If grouping by perturbation_effect_name, return only top 3 effects, sorted by the total number of perturbations. For each of the effects, return at most top 10 perturbations, sorted by padj increasing.
+  + If no grouping, return top at most top 20 perturbation + effect rows, sort them in the increasing order of padj.
