@@ -508,3 +508,24 @@ There can be a lot of data, so truncate it as follows:
   + If grouping by perturbation_gene_name, return only top 3 perturbations, sorted by the total number of effects. For each of the perturbations, return at most top 10 effects, sorted by padj increasing.
   + If grouping by perturbation_effect_name, return only top 3 effects, sorted by the total number of perturbations. For each of the effects, return at most top 10 perturbations, sorted by padj increasing.
   + If no grouping, return top at most top 20 perturbation + effect rows, sort them in the increasing order of padj.
+
+# Summary views
+When grouping by perturbation or effect, it's essential to be able to quickly identify which perturbations have the maximum number of effects, or vice versa which effects have the highest numbers of perturbations.
+
+In order to avoid multi-second queries, to determine that, use summary materialised views which are present in the same database. Here is the example of how they look like:
+
+## View perturb_seq_summary_perturbation - when grouping by perturbation
+"dataset_id","perturbed_target_symbol","n_total","n_down","n_up"
+"orion_2025_hek293t","MSRB1","1","1","0"
+"orion_2025_hct116","SPRR4","10","4","6"
+"orion_2025_hct116","NUB1","10","8","2"
+"orion_2025_hek293t","GRK3","62","2","60"
+"orion_2025_hct116","ID2","5","1","4"
+
+## View perturb_seq_summary_effect - when grouping by effect
+"dataset_id","gene","n_total","n_down","n_up","base_mean"
+"adamson_2016_pilot","ABCB10","1","0","1","44.2341576206527"
+"adamson_2016_pilot","AC005256.1","1","0","1","4.607358250167694"
+"adamson_2016_pilot","AC006262.5","1","1","0","5.548977295822654"
+"adamson_2016_pilot","AC096559.1","1","0","1","4.410971172950684"
+"adamson_2016_pilot","AC108868.6","1","0","1","22.91355626193407"
