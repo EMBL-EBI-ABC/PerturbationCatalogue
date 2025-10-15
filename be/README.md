@@ -3,9 +3,16 @@
 ## Environment variables
 
 For deploying any of the options below, set the following environmental variables:
-- ES_URL
-- ES_USERNAME
-- ES_PASSWORD
+- Elastic
+  - ES_URL
+  - ES_USERNAME
+  - ES_PASSWORD
+- Postgres
+  - PS_HOST
+  - PS_PORT
+  - PS_USER
+  - PS_PASSWORD
+  - PS_DB
 
 ## Local deployment
 
@@ -25,6 +32,11 @@ docker run \
   -e ES_URL=${ES_URL} \
   -e ES_USERNAME=${ES_USERNAME} \
   -e ES_PASSWORD=${ES_PASSWORD} \
+  -e PS_HOST=${PS_HOST} \
+  -e PS_PORT=${PS_PORT} \
+  -e PS_USER=${PS_USER} \
+  -e PS_PASSWORD=${PS_PASSWORD} \
+  -e PS_DB=${PS_DB} \
   perturbation-catalogue-be
 ```
 
