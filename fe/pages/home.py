@@ -53,7 +53,21 @@ def layout():
                                     [
                                         dbc.CardBody(
                                             [
-                                                html.H5(page["name"]),
+                                                html.H5(
+                                                    [
+                                                        page["name"],
+                                                        (
+                                                            dbc.Badge(
+                                                                "New!",
+                                                                color="warning",
+                                                                className="ms-2",
+                                                            )
+                                                            if page["name"]
+                                                            == "Perturbations"
+                                                            else None
+                                                        ),
+                                                    ]
+                                                ),
                                                 html.P(page["description"]),
                                                 dbc.Button(
                                                     page["button"],
