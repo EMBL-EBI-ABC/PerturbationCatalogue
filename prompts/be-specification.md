@@ -532,3 +532,16 @@ In order to avoid multi-second queries, to determine that, use summary materiali
 
 ## Summary views results in BE response
 When aggregation by either perturbation or effect is turned on, also add the summary metrics (n_total, n_up, n_down). They should be injected next to the perturbation or effect information. For example, for perturbation: data: [{perturbation_gene_name: ABC123, n_total: 1000, n_up: 200, n_down: 800, effects: [...]}, ...], and similar for when aggregating by effect.
+
+# Query performance
+When constructing the queries, make sure to make them efficient. You must only use the quick lookup operations, which are:
+* All lookups from Elastic
+* Lookups on the main perturb_seq table which use the following indexes:
+```
+"indexname","indexdef"
+"idx_dataset_padj","CREATE INDEX idx_dataset_padj ON public.perturb_seq USING btree (dataset_id, padj)"
+"idx_perturbed_padj","CREATE INDEX idx_perturbed_padj ON public.perturb_seq USING btree (perturbed_target_symbol, padj)"
+"idx_gene_padj","CREATE INDEX idx_gene_padj ON public.perturb_seq USING btree (gene, padj)"
+"idx_perturbed_gene_padj","CREATE INDEX idx_perturbed_gene_padj ON public.perturb_seq USING btree (perturbed_target_symbol, gene, padj)"
+```
+* All lookups on the summary views are fast.
