@@ -61,12 +61,10 @@ Use the API parameters to filter data from this table:
 * "phenotype_gene_name" filters by "gene".
 * "change_direction" filters "log2foldchange" (> 0 for "increased", < 0 for "decreased").
 
-As a reminder, all of the provided filters must match for the data piece to be returned.
-
-### 2.4. Summary views and Query Limits
+### 2.4. Query Logic: Filtering, Grouping, and Limits
 The API uses grouping to structure the output. In order to speed up performance, materialised views for summary statistics are pre-computed.
 
-When `group_by` is `perturbation_gene_name` (or is omitted, which defaults to perturbation), use the `perturb_seq_summary_perturbation` view to find the top perturbations.
+When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_perturbation` view. Here is an example of the data in this view:
 ```sql
 ## View perturb_seq_summary_perturbation
 "dataset_id","perturbed_target_symbol","n_total","n_down","n_up"
@@ -77,7 +75,7 @@ When `group_by` is `perturbation_gene_name` (or is omitted, which defaults to pe
 "orion_2025_hct116","ID2","5","1","4"
 ```
 
-When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` view to find the top phenotypes. Note that this view is grouped by `gene` (the phenotype gene).
+When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` view to find the top phenotypes (this view is grouped by `gene`, which is the phenotype gene). Here is an example of the data in this view:
 ```sql
 ## View perturb_seq_summary_effect
 "dataset_id","gene","n_total","n_down","n_up","base_mean"
@@ -88,9 +86,12 @@ When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` v
 "adamson_2016_pilot","AC108868.6","1","0","1","22.91355626193407"
 ```
 
-The following hardcoded limits must be applied:
-*   Return up to **3** top-level entities per dataset (i.e., 3 perturbations or 3 phenotypes). The sorting should be based on `n_total` descending from the appropriate summary view.
-*   For each of those top-level entities, return up to **10** underlying data rows. The sorting should be based on `padj` ascending from the `perturb_seq` table.
+It is crucial to apply filtering **before** aggregation and limiting. The correct order of operations is:
+1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`).
+2.  **Group and Limit:** After filtering, apply grouping and limits as follows:
+    *   Return up to **3** top-level entities per dataset (e.g., 3 perturbations or 3 phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
+    *   For each of those top-level entities, return up to **10** underlying data rows (e.g., 10 `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
+
 
 ## 3. Code style.
 When implementing the BE, it's important to minimise code duplication; to make it as compact, succinct and easy to understand as possible.
