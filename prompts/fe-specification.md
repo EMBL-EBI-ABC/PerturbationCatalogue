@@ -4,7 +4,11 @@
 
 Study general instructions for LLM agents in @prompts/README.md.
 
-Study the data model and API contract in @prompts/data-model.md. Be aware that FE is configured with the $PERTURBATION_CATALOGUE_BE environment variable, which has a BE which was implemented according to this data model. This is what you should use as your endpoint.
+Study the data model and API contract in @prompts/data-model.md.
+
+Then, read the BE implementation which is based on the above data model in @be/main.py.
+
+Be aware that FE is configured with the $PERTURBATION_CATALOGUE_BE environment variable, which has a BE which was implemented according to this data model. This is what you should use as your endpoint.
 
 Study how relevant FE parts are organised in in @fe/app.py, @fe/pages/home.py, @fe/pages/_order.py. Do not peek into other FE components, as they are irrelevant and can be quite large when loaded into context.
 
