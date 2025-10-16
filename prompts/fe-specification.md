@@ -38,106 +38,62 @@ A subtitle below the title, centered: "A unified engine to search and filter CRI
 
 ### 3. Grouping controls
 
-Below the subtitle and above the main table headers, add a `dbc.ButtonGroup` to control data grouping. This component should be centered.
+Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by: " followed by a `dbc.ButtonGroup`.
 
-The button group will contain two buttons: "Group by Perturbation" and "Group by Phenotype".
-
-By default, the view should be grouped by "Perturbation" when the page first loads. The `group_by` parameter in the API call should be set to `perturbation_gene_name` by default.
+The button group will contain two buttons: "Perturbation" and "Phenotype". Their width should be determined by the text, not stretched. The default selection is "Perturbation". The active button should have `color="primary"` and the inactive one should have `color="light"`.
 
 ### 4. Table header
 
-The main concept is four columns, left to right: Dataset > Perturbation > Change > Phenotype.
-
-The column headers need to be conspicuously labeled in a large font, with smaller explanation on top. So each header is two-line: first line in a smaller font provides a grammatical connectivity and context, while the second line is in a much larger font to serve as the column header.
-
-The four titles are:
-* (In / Dataset)
+The four column headers are:
+* (According to / Dataset)
 * (Introducing / Perturbation)
-* (Leads to / Change)
+* (Causes / Change)
 * (In / Phenotype)
 
-This is what it should look like on the page:
-[in small font] In                   Introducing      Leads to     In
-[in large font] Dataset              Perturbation     Change       Phenotype
-
-The top element is an `h4` with classes `"fw-normal fst-italic mb-0"`.
-
-The bottom element is an `h3` with default styling.
+This should be implemented as a two-line header where the top line is a `h4` with classes `"fw-normal fst-italic mb-0"` and the bottom line is an `h3`.
 
 ### 5. Search and filter fields
 
-Immediately below the headers, there are corresponding search and filter fields.
+Immediately below the headers, provide search and filter fields for each column:
 
 - **Dataset:** `dbc.Input` with placeholder "Filter by dataset metadata".
 - **Perturbation:** `dbc.Input` with placeholder "Filter by perturbed gene".
-- **Change:** A `dbc.ButtonGroup` with three buttons: "Up", "Down", and "Both". "Both" should be the default selection. This controls the `change_direction` API parameter.
+- **Change:** A `dbc.ButtonGroup` with three buttons: "Up", "Down", and "Both". "Both" is the default. The active button has `color="primary"`, inactive is `color="light"`.
 - **Phenotype:** `dbc.Input` with placeholder "Filter by phenotype gene".
 
 When any of these fields are modified, the data table should update immediately.
 
-### 6. Data grid
+### 6. Data Grid Layout
 
-Below the search fields, data is displayed, as provided by the BE API according to the structure in @prompts/data-model.md. The layout is detailed in the "Layout and Alignment" section below.
+To ensure precise and consistent column alignment, the layout for sections 4-6 (headers, filters, data grid) must use a **CSS Grid**. This replaces nested `dbc.Row`/`dbc.Col` structures.
 
-Dataset ID, perturbed gene name and phenotype gene name should be most visible (for example in bold) because these are the main properties of each of the columns.
+- The entire table structure is a single `html.Div` with `display: 'grid'` and `grid-template-columns: 4fr 3fr 2fr 3fr`.
+- Use `row-gap: '0.5rem'` for spacing between grid rows and `column-gap: '1rem'` for spacing between columns.
+- There should be **no** border between the grouping controls and the headers.
+- A `border-top` must be applied **only** to the dataset cells to create a visual separation between different dataset groups. No other borders should be present in the data grid.
+- All cells must be top-aligned using `align-self: 'start'`.
 
-#### Dataset column representation
-First, dataset ID is listed in prominent bold. Do not use a label. For example, instead of "Dataset: some_dataset_123", display "some_dataset_123" only.
+### 7. Data Column Rendering
 
-Then, dataset metadata is listed, one on new line. Do not use colons, as they are visually distracting. This is bad: "Tissue type: Blood".
+This section specifies the exact rendering for the content within each data column. This rendering must be applied consistently, regardless of whether the item is being grouped on or is part of a nested data row.
 
-Instead, display labels (such as "Tissue type") in light, thin italics (`html.I`), and values (such as "Blood") in semibold text (`className="fw-semibold"`). Do not use a colon between them.
+#### Dataset Column
+- The `dataset_id` is displayed first in a bold `h5` tag.
+- Below the ID, all other metadata fields (Tissue, Cell type, etc.) are listed. Each field must be on a **new line** and formatted as "Label: Value" (e.g., "Tissue: Blood").
 
-#### Perturbation, Change, and Phenotype column representation
+#### Perturbation Column
+- The `perturbation_gene_name` is displayed in a bold `h5` tag.
+- On a new line: "Affects **N** phenotypes", where N is the `n_total` value in bold.
+- On a third line: "▲ **N** up | ▼ **N** down", where N is `n_up` and `n_down` respectively, in bold.
 
-Gene names in the "Perturbation" and "Phenotype" columns should be displayed in bold.
+#### Change Column
+- All content must be on a **single line**.
+- Display `log2fc` first, with the label "log2fc:" and the value formatted to **two decimal places**.
+- Next, display `padj`, with the label "padj:" and the value formatted in **scientific notation** (e.g., 1.23e-05).
+- Finally, display an arrow: ▲ for "increased" or ▼ for "decreased". The arrow must be colored **green** for increased and **red** for decreased.
 
-The "Change" column should display the direction of change with an arrow (▲ for "increased", ▼ for "decreased"), followed by the `log2fc` and `padj` values.
-
-Similarly to dataset information, do not use colons for labels (e.g., "log2fc: 0.63"). Instead, display the label in thin, pale italics, and the value in a semibold font. Ensure consistent styling across all columns. Use good spacing between label-value pairs (e.g. `me-3`).
-
-#### Value formatting
-
-This applies to all columns.
-
-For any values that are displayed, make sure their first letter only is capitalised, *except* for the dataset ID.
-
-When displaying float values, make sure that - (hyphen) is replaced with a minus sign (`−`) for both negative values such as -0.13, and negative exponents of padj such as 1.03e-05.
-
-### Layout, Alignment, and Grouping
-
-To ensure precise and consistent column alignment that is robust to content and grouping changes, the layout for sections 4-6 (table header, search fields, data grid) must be implemented using a **CSS Grid**. This approach replaces the previous nested `dbc.Row`/`dbc.Col` structure with a single, flat grid container, providing direct control over column widths and cell placement.
-
-#### Grid Definition
-- The entire table-like structure (headers, filters, and data rows) should be contained within a single `html.Div` acting as the grid container.
-- This container's style must include `display: 'grid'` and `grid-template-columns: 4fr 3fr 2fr 3fr`. This sets up the four main columns with the required `4:3:2:3` ratio, making them flexible and proportional.
-- Use `gap` property (e.g. `row-gap: '0.5rem'`) for spacing between rows, but no column gap. Padding should be handled inside the cells. A `border-top` on the grid container can separate it from the filters.
-
-#### Grid Content: Headers and Filters
-- Headers and filter fields are straightforward: they will occupy the first four columns of the first two rows of the grid.
-
-#### Grid Content: Data and Vertical Merging
-The key to this layout is dynamically calculating the vertical span of cells that are "merged".
-
-- **Dataset Cells:** A dataset cell will always be in the first column and will span multiple rows. You must calculate how many data rows belong to that dataset and set the `grid-row: 'span <number_of_rows>'` style property on the dataset cell's `html.Div`. The cell should also have a `border-top` to visually separate dataset groups.
-
-- **Grouped Cells:** When grouping by "Perturbation" or "Phenotype", the grouped cell acts as a merged cell. It will span multiple rows corresponding to its children. This also requires calculating the number of child rows and applying the `grid-row: 'span <number_of_rows>'` style. The content of the grouped cell must be updated to show summary information:
-    - **When grouping by perturbation:**
-        * The cell is in the "Perturbation" column.
-        * Display the `perturbation_gene_name` in a larger font.
-        * Below, write in normal font: "Affects XXX phenotypes", where XXX is `n_total` (in bold).
-        * Below: "▲ XXX up" (`n_up` in bold).
-        * Below: "▼ XXX down" (`n_down` in bold).
-    - **When grouping by phenotype:**
-        * The cell is in the "Phenotype" column.
-        * Display the `phenotype_gene_name` in a larger font.
-        * Below, write in normal font: "Affected by XXX perturbations", where XXX is `n_total` (in bold).
-        * Below: "▲ by XXX up" (`n_up` in bold).
-        * Below: "▼ by XXX down" (`n_down` in bold).
-        * Below: "Base mean expression is XX.XX" (`base_mean` in bold).
-
-- **Standard Cells:** Regular, non-merged cells (like "Change" and the non-grouped "Phenotype"/"Perturbation") simply occupy a single cell in the grid. The remaining columns in the row will display the corresponding data for each entry in the group.
-
-- **Alignment:** All cells should be top-aligned. This can be achieved by styling the grid items with `align-self: 'start'`. For content within cells, use flexbox (`display: 'flex', flexDirection: 'column'`) to control layout and ensure content is top-aligned and wraps correctly.
-
-This CSS Grid-based structure ensures all columns across all rows are perfectly aligned to the master grid definition, solving the width consistency problem regardless of grouping.
+#### Phenotype Column
+- The `phenotype_gene_name` is displayed in a bold `h5` tag.
+- On a new line: "Base mean: **N**", where N is the `base_mean` value, formatted as an **integer** and in bold.
+- On a new line: "Affected by **N** perturbations", where N is `n_total` in bold.
+- On a final line: "▲ by **N** up | ▼ by **N** down", where N is `n_up` and `n_down` respectively, in bold.
