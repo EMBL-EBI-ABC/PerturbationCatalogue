@@ -38,7 +38,7 @@ A subtitle below the title, centered: "A unified engine to search and filter CRI
 
 ### 3. Grouping controls
 
-Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by: " followed by a `dbc.ButtonGroup`.
+Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by " followed by a `dbc.ButtonGroup`.
 
 The button group will contain two buttons: "Perturbation" and "Phenotype". Their width should be determined by the text, not stretched. The default selection is "Perturbation". The active button should have `color="primary"` and the inactive one should have `color="light"`.
 
@@ -50,7 +50,7 @@ The four column headers are:
 * (Causes / Change)
 * (In / Phenotype)
 
-This should be implemented as a two-line header where the top line is a `h4` with classes `"fw-normal fst-italic mb-0"` and the bottom line is an `h3`.
+This should be implemented as a two-line header where the top line is a `h4` with classes `"fw-normal fst-italic mb-0"` and the bottom line is an `h3`. The actual / must not be displayed.
 
 ### 5. Search and filter fields
 
@@ -65,11 +65,15 @@ When any of these fields are modified, the data table should update immediately.
 
 ### 6. Data Grid Layout
 
-To ensure precise and consistent column alignment, the layout for sections 4-6 (headers, filters, data grid) must use a **CSS Grid**. This replaces nested `dbc.Row`/`dbc.Col` structures.
+To ensure precise and consistent column alignment, the layout for sections 4-6 (headers, filters, and the data itself) must be implemented as a single **CSS Grid**.
 
-- The entire table structure is a single `html.Div` with `display: 'grid'` and `grid-template-columns: 4fr 3fr 2fr 3fr`.
-- Use `row-gap: '0.5rem'` for spacing between grid rows and `column-gap: '1rem'` for spacing between columns.
-- There should be **no** border between the grouping controls and the headers.
+- The container for the headers, filters, and data should be an `html.Div` with `display: 'grid'`.
+- Define the column widths with `grid-template-columns: 4fr 3fr 2fr 3fr`.
+- Set `row-gap: '0.5rem'` and `column-gap: '1rem'`.
+- All direct children of this grid container will be automatically placed into grid cells.
+- The data rows, generated in a callback, must be inserted into a container that allows them to participate in the main grid. This is achieved by creating a placeholder `html.Div` with `id="data-grid-container"` inside the main grid structure. This placeholder must span all columns (`grid-column: '1 / -1'`) and have its `display` style set to `'contents'`.
+- The callback that fetches and renders the data should target the `children` of this placeholder. The callback must return a **flat list** of components (e.g., `[cell1, cell2, cell3, cell4, cell5, ...]`), where each component represents a single cell in the grid. Do **not** wrap the list of cells in an extra `html.Div`.
+- Any message, such as "No results" or an error, should also be a child of the grid and span all columns (`style={'grid-column': '1 / -1'}`).
 - A `border-top` must be applied **only** to the dataset cells to create a visual separation between different dataset groups. No other borders should be present in the data grid.
 - All cells must be top-aligned using `align-self: 'start'`.
 
@@ -77,23 +81,32 @@ To ensure precise and consistent column alignment, the layout for sections 4-6 (
 
 This section specifies the exact rendering for the content within each data column. This rendering must be applied consistently, regardless of whether the item is being grouped on or is part of a nested data row.
 
+#### General Style for Labels and Values
+For displaying metadata and numeric values (like in the Dataset, Change, and Phenotype columns), use the following style consistently:
+- **Labels** (e.g., "Tissue", "log2fc", "Base mean") should be rendered in a `html.Span` with `className="text-muted fst-italic"`.
+- **Values** (e.g., "Blood", "1.23", "500") should be rendered in a `html.Span` with `className="fw-semibold"`.
+- There should be **no colon** between the label and the value.
+
 #### Dataset Column
 - The `dataset_id` is displayed first in a bold `h5` tag.
-- Below the ID, all other metadata fields (Tissue, Cell type, etc.) are listed. Each field must be on a **new line** and formatted as "Label: Value" (e.g., "Tissue: Blood").
+- Below the ID, list all other metadata fields. Each field must be on a **new line**. Apply the label/value styling described above.
+- The **first letter** of each metadata *value* must be **capitalized** (e.g., "blood" becomes "Blood").
 
 #### Perturbation Column
 - The `perturbation_gene_name` is displayed in a bold `h5` tag.
 - On a new line: "Affects **N** phenotypes", where N is the `n_total` value in bold.
-- On a third line: "▲ **N** up | ▼ **N** down", where N is `n_up` and `n_down` respectively, in bold.
+- On a third line, show the breakdown of up/down regulated phenotypes. The format should be: "▲ **N** ▼ **N**", where N is the `n_up` and `n_down` count respectively, in bold. Do not include the words "up" or "down" or a vertical separator.
 
 #### Change Column
 - All content must be on a **single line**.
-- Display `log2fc` first, with the label "log2fc:" and the value formatted to **two decimal places**.
-- Next, display `padj`, with the label "padj:" and the value formatted in **scientific notation** (e.g., 1.23e-05).
+- Display `log2fc` and its value, then `padj` and its value. Apply the label/value styling.
+- Format `log2fc` to **two decimal places**.
+- Format `padj` in **scientific notation** (e.g., 1.23e-05).
+- Add a small margin (`me-2`) after each value for spacing.
 - Finally, display an arrow: ▲ for "increased" or ▼ for "decreased". The arrow must be colored **green** for increased and **red** for decreased.
 
 #### Phenotype Column
 - The `phenotype_gene_name` is displayed in a bold `h5` tag.
-- On a new line: "Base mean: **N**", where N is the `base_mean` value, formatted as an **integer** and in bold.
+- On a new line: Display "Base mean" and its value. Apply the label/value styling. The value should be formatted as an **integer with thousands separators**.
 - On a new line: "Affected by **N** perturbations", where N is `n_total` in bold.
-- On a final line: "▲ by **N** up | ▼ by **N** down", where N is `n_up` and `n_down` respectively, in bold.
+- On a final line, show the breakdown of up/down regulating perturbations. The format should be: "▲ **N** ▼ **N**", where N is the `n_up` and `n_down` count respectively, in bold. Do not include the words "by", "up", or "down" or a vertical separator.
