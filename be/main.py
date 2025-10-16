@@ -165,7 +165,7 @@ async def get_by_perturbation(params: dict, dataset_ids: list[str], dataset_map:
 
     # Fetch top 3 perturbations per dataset
     query = f"""
-        SELECT * FROM (
+        SELECT dataset_id, perturbation_gene_name, n_total, n_up, n_down FROM (
             SELECT dataset_id, {group_key} AS perturbation_gene_name, n_total, n_up, n_down,
                    ROW_NUMBER() OVER(PARTITION BY dataset_id ORDER BY n_total DESC) as rn
             FROM {summary_view}
@@ -210,7 +210,7 @@ async def get_by_phenotype(params: dict, dataset_ids: list[str], dataset_map: di
 
     # Fetch top 3 phenotypes per dataset
     query = f"""
-        SELECT * FROM (
+        SELECT dataset_id, phenotype_gene_name, n_total, n_up, n_down, base_mean FROM (
             SELECT dataset_id, {group_key} AS phenotype_gene_name, n_total, n_up, n_down, base_mean,
                    ROW_NUMBER() OVER(PARTITION BY dataset_id ORDER BY n_total DESC) as rn
             FROM {summary_view}
@@ -251,11 +251,22 @@ async def fetch_perturbation_details(entity, params):
         filters.append(f"log2foldchange {op} 0")
 
     query = f"""
-        SELECT log2foldchange, padj, gene as phenotype_gene_name, basemean
-        FROM perturb_seq
-        WHERE {" AND ".join(filters)}
-        ORDER BY padj ASC
-        LIMIT 10
+        WITH top_phenotypes AS (
+            SELECT dataset_id, gene, log2foldchange, padj
+            FROM perturb_seq
+            WHERE {" AND ".join(filters)}
+            ORDER BY padj ASC
+            LIMIT 10
+        )
+        SELECT
+            tp.log2foldchange, tp.padj, tp.gene as phenotype_gene_name,
+            COALESCE(pse.base_mean, 0) as base_mean,
+            COALESCE(pse.n_total, 0) as n_total,
+            COALESCE(pse.n_up, 0) as n_up,
+            COALESCE(pse.n_down, 0) as n_down
+        FROM top_phenotypes tp
+        LEFT JOIN perturb_seq_summary_effect pse
+            ON tp.dataset_id = pse.dataset_id AND tp.gene = pse.gene
     """
     async with db_pool.acquire() as conn:
         return await conn.fetch(query, *args)
@@ -276,11 +287,21 @@ async def fetch_phenotype_details(entity, params):
         filters.append(f"log2foldchange {op} 0")
 
     query = f"""
-        SELECT perturbed_target_symbol as perturbation_gene_name, log2foldchange, padj
-        FROM perturb_seq
-        WHERE {" AND ".join(filters)}
-        ORDER BY padj ASC
-        LIMIT 10
+        WITH top_perturbations AS (
+            SELECT dataset_id, perturbed_target_symbol, log2foldchange, padj
+            FROM perturb_seq
+            WHERE {" AND ".join(filters)}
+            ORDER BY padj ASC
+            LIMIT 10
+        )
+        SELECT
+            tp.perturbed_target_symbol as perturbation_gene_name, tp.log2foldchange, tp.padj,
+            COALESCE(psp.n_total, 0) as n_total,
+            COALESCE(psp.n_up, 0) as n_up,
+            COALESCE(psp.n_down, 0) as n_down
+        FROM top_perturbations tp
+        LEFT JOIN perturb_seq_summary_perturbation psp
+            ON tp.dataset_id = psp.dataset_id AND tp.perturbed_target_symbol = psp.perturbed_target_symbol
     """
     async with db_pool.acquire() as conn:
         return await conn.fetch(query, *args)
@@ -300,8 +321,10 @@ def structure_response(
     for entity, details in zip(top_entities, details_results):
         key = (entity["dataset_id"], entity[f"{entity_name}_gene_name"])
         if key not in entity_details_map:
+            entity_dict = dict(entity)
+            entity_dict.pop("dataset_id", None)
             entity_details_map[key] = {
-                entity_name: dict(entity),
+                entity_name: entity_dict,
                 details_name: format_details(details, entity_name),
             }
 
@@ -337,7 +360,10 @@ def format_details(details, parent_entity_name):
                     },
                     "phenotype": {
                         "phenotype_gene_name": row["phenotype_gene_name"],
-                        "base_mean": row["basemean"],
+                        "base_mean": row["base_mean"],
+                        "n_total": row["n_total"],
+                        "n_up": row["n_up"],
+                        "n_down": row["n_down"],
                     },
                 }
             )
@@ -346,6 +372,9 @@ def format_details(details, parent_entity_name):
                 {
                     "perturbation": {
                         "perturbation_gene_name": row["perturbation_gene_name"],
+                        "n_total": row["n_total"],
+                        "n_up": row["n_up"],
+                        "n_down": row["n_down"],
                     },
                     "change": {
                         "direction": (
