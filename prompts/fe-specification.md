@@ -68,64 +68,58 @@ When any of these fields are modified, the data table should update immediately.
 To ensure precise and consistent column alignment, the layout for sections 4-6 (headers, filters, and the data itself) must be implemented as a single **CSS Grid**.
 
 - The container for the headers, filters, and data should be an `html.Div` with `display: 'grid'`.
-- Define the column widths with `grid-template-columns: 4fr 3fr 2fr 3fr`.
+- Define the column widths with `grid-template-columns: 4fr 3fr 3fr 3fr`.
 - Set `row-gap: '0.5rem'` and `column-gap: '1rem'`.
 - To create visual separation, a spacer row with a height of `1.5rem` must be added between the filter controls and the data grid itself.
-- To handle aggregated data correctly, where one cell in an outer group (like Dataset or a grouped Perturbation/Phenotype) corresponds to multiple rows of child data, the implementation must use CSS Grid's `grid-row: span N` property.
+- To handle aggregated data correctly, where one cell in an outer group (like Dataset) corresponds to multiple rows of child data, the implementation must use CSS Grid's `grid-row: span N` property.
 - The callback that generates the data grid must first calculate the number of rows each aggregated cell needs to span.
 - The callback must then return a **flat list** of cell components. It must be constructed carefully so that for rows where a column is spanned by a cell from a previous row, that item is **omitted** from the list for the current row, maintaining the grid structure.
 - Any message, such as "No results" or an error, should also be a child of the grid and span all columns (`style={'grid-column': '1 / -1'}`).
-- To create a clear visual separation between datasets, a **full-width horizontal divider** must be placed *between* each top-level dataset group. This should be an `html.Div` that spans all four columns (`grid-column: '1 / -1'`) and has a `border-top`. A small amount of `padding` should be added to the divider to create vertical space.
-- There should be **no other borders or dividers** within the data grid (e.g., no borders on individual cells).
-- All cells must be strictly top-aligned using `align-self: 'start'`. Do not add any `padding-top` or `margin-top` to individual cell rendering functions.
 
 ### 7. Data Column Rendering
 
 This section specifies the exact rendering for the content within each data column.
 
-#### Universal Styling for Labels and Values
-A consistent styling pattern must be used for all informational text across all four columns.
-- **Labels** (e.g., "Tissue", "Affects", "logfc"): Rendered using a light font weight (e.g., `fw-light`).
-- **Values** (e.g., "Blood", "502", "1.23"): Rendered in a `html.Span` with `className="fw-semibold"`.
-- There should be **no colon** between a label and its value.
-- For negative numeric values (`log2fc`, `padj` exponents), the standard hyphen-minus (-) must be replaced with the Unicode minus sign (`\u2212`).
+#### Font Sizes
+Only two font sizes should be used within the data grid cells:
+- **Large:** A font size equivalent to `H3`. This is used for the `dataset_id` and the gene name of the primary, grouped-on item (e.g., the main Perturbation in a group).
+- **Regular:** The default browser font size. This is used for all other text, including dataset metadata, all informational text (e.g., "Affects phenotypes", "up, down", "log2fc"), and direction arrows.
 
-#### Layout Principles
-- For the Perturbation, Change, and Phenotype columns, a two-component layout should be used. This should be implemented using a flexbox (`display: 'flex', align-items: 'start'`) to ensure the components are top-aligned.
-- The secondary informational text (e.g., "Affects X phenotypes", "logfc 1.23") should be made slightly smaller than the default font size (e.g., by wrapping it in a `html.Small` tag).
+#### Universal Styling for Labels and Values
+A consistent styling pattern must be used for all informational text.
+- **Labels** (e.g., "Tissue", "Affects", "log2fc"): Rendered using a light font weight (`fw-light`).
+- **Values** (e.g., "Blood", "502", "1.23"): Rendered in a `html.Span` with `className="fw-semibold"`.
+- For negative numeric values, the standard hyphen-minus (-) must be replaced with the Unicode minus sign (`\u2212`).
 
 #### Vertical Spacing
 A 3-tier vertical spacing model must be implemented:
-1.  **Sub-item Spacing:** The smallest space, between individual rows of data (e.g., between multiple Change/Phenotype rows for a single Perturbation), is handled by the grid's `row-gap` (`0.5rem`).
-2.  **Group Spacing:** A larger vertical space (`1.5rem`) must be created between aggregated groups within the same dataset. This is achieved by adding a `margin-top` to the primary cell of each group (excluding the first one).
+1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.5rem`).
+2.  **Group Spacing:** A larger vertical space (`1.5rem`) with a horizontal line must be created between aggregated groups within the same dataset. This is achieved by applying a `border-top` and `padding-top` to the first row of cells belonging to a new group (spanning columns 2, 3, and 4).
 3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a full-width horizontal line that has `2rem` of `padding-top`.
 
 #### Dataset Column
-- The `dataset_id` is displayed first in a bold `h5` tag.
-- Below the ID, list all other metadata fields. Each field must be on a **new line**. Apply the universal label/value styling.
+- The `dataset_id` is displayed in a **Large** font size (`H3`) and bold weight.
+- Below the ID, list all other metadata fields on new lines, using the **Regular** font size. Apply the universal label/value styling.
 - The **first letter** of each metadata *value* must be **capitalized**.
 
 #### Perturbation Column
-- A two-component, top-aligned layout.
-- **Left Component:** The `perturbation_gene_name` displayed in a large, semi-bold font (e.g., `html.H3` with `fw-semibold`).
-- **Right Component:** A block of smaller text containing two lines:
-    1. "Affects **N** phenotypes" (where N is `n_total`).
-    2. "**X** up, **Y** down" (where X/Y are `n_up`/`n_down`).
-- The universal label/value styling must be applied. Do not use arrow symbols here.
+This cell has two rendering modes:
+- **When Grouped On:** Displays the `perturbation_gene_name` in a **Large**, semi-bold font (`H3` with `fw-semibold`). Below this, on new lines, it shows informational text in the **Regular** font size:
+    1. "Affects **N** phenotypes"
+    2. "**X** up, **Y** down"
+- **When in a Sub-Row:** Displays only the `perturbation_gene_name` in the **Regular** font size.
 
 #### Change Column
-- A two-component, top-aligned layout, with the order reversed.
-- **Left Component:** A block of smaller text containing two lines:
-    1. "logfc **X**" (formatted to two decimal places).
-    2. "padj **Y**" (formatted in scientific notation).
-- **Right Component:** A large, equilateral triangle icon (e.g., `bi-triangle-fill` from Bootstrap Icons) with a `font-size` of `2.5rem`. The icon for "decreased" must be rotated 180 degrees. The icon must be colored with distinct, soft shades: a pleasant green (`#34d399`) for increased and a soft red (`#f87171`) for decreased.
-- The universal label/value styling must be applied.
+- All content must be on a **single line** and in the **Regular** font size.
+- Displays `log2fc` and its value, then `padj` and its value, with extra margin (`me-3`) between them.
+- The `logfc` label must be corrected to `log2fc`.
+- Finally, display a Unicode arrow symbol (`🡱` for up, `🡳` for down).
+- The arrows must be colored with bright, specific shades: green (`#2acc06`) for up and red (`#ff4824`) for down.
 
 #### Phenotype Column
-- A two-component, top-aligned layout, identical in style to the Perturbation column.
-- **Left Component:** The `phenotype_gene_name` displayed in a large, semi-bold font (e.g., `html.H3` with `fw-semibold`).
-- **Right Component:** A block of smaller text containing three lines:
-    1. "Affected by **N** perturbations" (where N is `n_total`).
-    2. "**X** up, **Y** down" (where X/Y are `n_up`/`n_down`).
-    3. "Base expression **Z**" (where Z is `base_mean`, formatted as an integer with thousands separators).
-- The universal label/value styling must be applied. Do not use arrow symbols here.
+This cell has two rendering modes:
+- **When Grouped On:** Displays the `phenotype_gene_name` in a **Large**, semi-bold font (`H3` with `fw-semibold`). Below this, on new lines, it shows informational text in the **Regular** font size:
+    1. "Base expression **Z**"
+    2. "Affected by **N** perturbations"
+    3. "**X** up, **Y** down"
+- **When in a Sub-Row:** Displays only the `phenotype_gene_name` in the **Regular** font size.
