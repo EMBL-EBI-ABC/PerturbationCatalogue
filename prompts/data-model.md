@@ -14,14 +14,11 @@ API endpoint is /v1/search. It accepts the following optional parameters:
 
 * dataset_metadata: string, used to free text search in the dataset metadata
 * perturbation_gene_name: string, used to filter by a perturbed gene name
-* effect_direction: string, used to filter by an effect gene name. Must be "increased" or "decreased".
+* change_direction: string, used to filter by the direction of the change. Must be "increased" or "decreased".
 * phenotype_gene_name: string, used to filter by a phenotype gene name
+* group_by: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows, as described below. If not provided, it defaults to "perturbation_gene_name".
 
-These four parameters are used for filtering. In order to be returned, the data row must satisfy all conditions which are satisfied. If a particular filter is not specified, filtering on that condition is not performed.
-
-The API also accepts an additional mandatory parameter: 
-
-* group_by: string, possible values are "perturbation_gene_name" or "effect_gene_name". This is used to aggregate the data rows, as described below.
+These parameters are used for filtering. In order to be returned, the data row must satisfy all conditions which are specified. If a particular filter is not specified, filtering on that condition is not performed.
 
 ## 3. Data types
 
@@ -57,8 +54,6 @@ n_total, n_up, n_down are integers. They show how many phenotypes in the dataset
 n_total, n_up, n_down are integers. They show how many perturbations in the dataset *affect* this phenotype.
 
 ## 4. Grouping
-When querying, data must always be grouped either by perturbation 
-(default), or by phenotype.
 
 In addition, data is *always* aggregated by dataset on top level.
 
@@ -69,8 +64,8 @@ In addition, data is *always* aggregated by dataset on top level.
         "dataset": {
             // dataset object fields
         },
-        "by_perturbation": {
-            [
+        "by_perturbation": [
+            {
                 "perturbation": {
                     // perturbation object fields
                 },
@@ -82,13 +77,13 @@ In addition, data is *always* aggregated by dataset on top level.
                         "phenotype": {
                             // phenotype object fields
                         }
-                    },
+                    }
                     // More change_phenotype elements
                 ]
-            ],
+            }
             // More by_perturbation elements
-        }
-    },
+        ]
+    }
     // More top level dataset elements
 ]
 ```
@@ -100,8 +95,8 @@ In addition, data is *always* aggregated by dataset on top level.
         "dataset": {
             // dataset object fields
         },
-        "by_phenotype": {
-            [
+        "by_phenotype": [
+            {
                 "phenotype": {
                     // phenotype object fields
                 },
@@ -112,15 +107,14 @@ In addition, data is *always* aggregated by dataset on top level.
                         },
                         "change": {
                             // change object fields
-                        },
-
-                    },
+                        }
+                    }
                     // More perturbation_change elements
                 ]
-            ],
+            }
             // More by_phenotype elements
-        }
-    },
+        ]
+    }
     // More top level dataset elements
 ]
 ```

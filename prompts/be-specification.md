@@ -59,14 +59,14 @@ adamson_2016_pilot	SPI1	CHST11	0.23117926187171009	0.50391124972854473	27.081083
 Use the API parameters to filter data from this table:
 * "perturbation_gene_name" filters by "perturbed_target_symbol".
 * "phenotype_gene_name" filters by "gene".
-* "effect_direction" filters "log2foldchange" (> 0 for "increased", < 0 for "decreased").
+* "change_direction" filters "log2foldchange" (> 0 for "increased", < 0 for "decreased").
 
 As a reminder, all of the provided filters must match for the data piece to be returned.
 
-### 2.4. Summary views in Postgres
-The API requires grouping. In order to speed up performance, materialised views for such summary statistics are pre-computed.
+### 2.4. Summary views and Query Limits
+The API uses grouping to structure the output. In order to speed up performance, materialised views for summary statistics are pre-computed.
 
-When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_perturbation` view:
+When `group_by` is `perturbation_gene_name` (or is omitted, which defaults to perturbation), use the `perturb_seq_summary_perturbation` view to find the top perturbations.
 ```sql
 ## View perturb_seq_summary_perturbation
 "dataset_id","perturbed_target_symbol","n_total","n_down","n_up"
@@ -77,7 +77,7 @@ When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_pertur
 "orion_2025_hct116","ID2","5","1","4"
 ```
 
-When `group_by` is `effect_gene_name` (as specified in the data model), you should group by phenotype. Use the `perturb_seq_summary_effect` view for this, as it is grouped by `gene` (the phenotype gene):
+When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` view to find the top phenotypes. Note that this view is grouped by `gene` (the phenotype gene).
 ```sql
 ## View perturb_seq_summary_effect
 "dataset_id","gene","n_total","n_down","n_up","base_mean"
@@ -87,6 +87,10 @@ When `group_by` is `effect_gene_name` (as specified in the data model), you shou
 "adamson_2016_pilot","AC096559.1","1","0","1","4.410971172950684"
 "adamson_2016_pilot","AC108868.6","1","0","1","22.91355626193407"
 ```
+
+The following hardcoded limits must be applied:
+*   Return up to **3** top-level entities per dataset (i.e., 3 perturbations or 3 phenotypes). The sorting should be based on `n_total` descending from the appropriate summary view.
+*   For each of those top-level entities, return up to **10** underlying data rows. The sorting should be based on `padj` ascending from the `perturb_seq` table.
 
 ## 3. Code style.
 When implementing the BE, it's important to minimise code duplication; to make it as compact, succinct and easy to understand as possible.
