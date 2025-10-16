@@ -104,43 +104,40 @@ For any values that are displayed, make sure their first letter only is capitali
 
 When displaying float values, make sure that - (hyphen) is replaced with a minus sign (`−`) for both negative values such as -0.13, and negative exponents of padj such as 1.03e-05.
 
-### Layout and Alignment
+### Layout, Alignment, and Grouping
 
-The layout for sections 4-6 (table header, search fields, data grid) must be strictly aligned using a 12-column Bootstrap grid system (`dash-bootstrap-components`).
+To ensure precise and consistent column alignment that is robust to content and grouping changes, the layout for sections 4-6 (table header, search fields, data grid) must be implemented using a **CSS Grid**. This approach replaces the previous nested `dbc.Row`/`dbc.Col` structure with a single, flat grid container, providing direct control over column widths and cell placement.
 
-#### Column Ratios
-The four main columns (Dataset, Perturbation, Change, Phenotype) should consistently use a `4:3:2:3` width ratio. This applies to the headers, search fields, and the data grid.
+#### Grid Definition
+- The entire table-like structure (headers, filters, and data rows) should be contained within a single `html.Div` acting as the grid container.
+- This container's style must include `display: 'grid'` and `grid-template-columns: 4fr 3fr 2fr 3fr`. This sets up the four main columns with the required `4:3:2:3` ratio, making them flexible and proportional.
+- Use `gap` property (e.g. `row-gap: '0.5rem'`) for spacing between rows, but no column gap. Padding should be handled inside the cells. A `border-top` on the grid container can separate it from the filters.
 
-#### Data Grid Structure
-The data grid requires a specific nested structure to achieve the desired layout where the dataset information acts as a vertically merged cell.
+#### Grid Content: Headers and Filters
+- Headers and filter fields are straightforward: they will occupy the first four columns of the first two rows of the grid.
 
-- Each dataset entry should be a single `dbc.Row` with `align="start"` to ensure its child columns are top-aligned and have independent heights. A `border-top` should separate these main dataset rows.
-- This main row is split into two columns:
-    1. A `dbc.Col` with `width=4` for the "Dataset" information.
-    2. A `dbc.Col` with `width=8` that will contain all the data rows for that dataset.
-- Inside the `width=8` column, each data entry is rendered as its own nested `dbc.Row`.
-- These nested rows should have `align="start"`. No borders should be used between them.
-- Each nested row is split into three columns that maintain the `3:2:3` ratio relative to their parent. Since the parent column has a width of 8, the nested columns for "Perturbation", "Change", and "Phenotype" should have widths of `3`, `2`, and `3` respectively.
-- All data content within columns should be top-aligned. For columns containing multiple horizontal elements, use `d-flex align-items-start flex-wrap` to ensure content is top-aligned and wraps correctly.
+#### Grid Content: Data and Vertical Merging
+The key to this layout is dynamically calculating the vertical span of cells that are "merged".
 
-# Note on grouping
+- **Dataset Cells:** A dataset cell will always be in the first column and will span multiple rows. You must calculate how many data rows belong to that dataset and set the `grid-row: 'span <number_of_rows>'` style property on the dataset cell's `html.Div`. The cell should also have a `border-top` to visually separate dataset groups.
 
-Grouping is controlled by the `dbc.ButtonGroup` as described in section 3. The BE provides aggregated data based on the `group_by` parameter.
+- **Grouped Cells:** When grouping by "Perturbation" or "Phenotype", the grouped cell acts as a merged cell. It will span multiple rows corresponding to its children. This also requires calculating the number of child rows and applying the `grid-row: 'span <number_of_rows>'` style. The content of the grouped cell must be updated to show summary information:
+    - **When grouping by perturbation:**
+        * The cell is in the "Perturbation" column.
+        * Display the `perturbation_gene_name` in a larger font.
+        * Below, write in normal font: "Affects XXX phenotypes", where XXX is `n_total` (in bold).
+        * Below: "▲ XXX up" (`n_up` in bold).
+        * Below: "▼ XXX down" (`n_down` in bold).
+    - **When grouping by phenotype:**
+        * The cell is in the "Phenotype" column.
+        * Display the `phenotype_gene_name` in a larger font.
+        * Below, write in normal font: "Affected by XXX perturbations", where XXX is `n_total` (in bold).
+        * Below: "▲ by XXX up" (`n_up` in bold).
+        * Below: "▼ by XXX down" (`n_down` in bold).
+        * Below: "Base mean expression is XX.XX" (`base_mean` in bold).
 
-When data is grouped, the grouped column ("Perturbation" or "Phenotype") becomes a "vertically-merged" cell, similar to the "Dataset" column, and displays additional summary statistics.
+- **Standard Cells:** Regular, non-merged cells (like "Change" and the non-grouped "Phenotype"/"Perturbation") simply occupy a single cell in the grid. The remaining columns in the row will display the corresponding data for each entry in the group.
 
-## UI specifics for grouped views
-When grouping by perturbation:
-* Display the `perturbation_gene_name` in a larger font.
-* Below, write in normal font: "Affects XXX phenotypes", where XXX is `n_total` (in bold).
-* Below: "▲ XXX up" (`n_up` in bold).
-* Below: "▼ XXX down" (`n_down` in bold).
+- **Alignment:** All cells should be top-aligned. This can be achieved by styling the grid items with `align-self: 'start'`. For content within cells, use flexbox (`display: 'flex', flexDirection: 'column'`) to control layout and ensure content is top-aligned and wraps correctly.
 
-When grouping by phenotype:
-* Display the `phenotype_gene_name` in a larger font.
-* Below, write in normal font: "Affected by XXX perturbations", where XXX is `n_total` (in bold).
-* Below: "▲ by XXX up" (`n_up` in bold).
-* Below: "▼ by XXX down" (`n_down` in bold).
-* Below: "Base mean expression is XX.XX" (`base_mean` in bold).
-
-The remaining columns in the row will display the corresponding data for each entry in the group.
+This CSS Grid-based structure ensures all columns across all rows are perfectly aligned to the master grid definition, solving the width consistency problem regardless of grouping.
