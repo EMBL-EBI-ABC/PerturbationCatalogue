@@ -22,7 +22,7 @@ For the new page icon in the navbar, use the "tropical-storm" Bootstrap icon.
 
 ### Overall layout
 
-The page layout, top to bottom, is: title, subtitle, grouping controls, table header, search fields, and a data grid obtained from BE according to filters.
+The page layout, top to bottom, is: title, subtitle, grouping controls, table header, search fields, a main separator, and a data grid obtained from BE according to filters.
 
 The page content should span the entire width of the container using `fluid=True`. The main content should have horizontal padding (e.g., `px-5`) and a margin at the bottom (e.g., `mb-5`) to ensure adequate spacing from the page footer.
 
@@ -30,15 +30,15 @@ Make sure to use Bootstrap components and styles as much as possible. Make sure 
 
 ### 1. Title
 
-A very big title, centered: "Perturbation Catalogue". Use an `h1` tag with classes `"text-center display-4 mt-5 mb-3"` and an inline style for `font-size: "60px"`.
+A very big title, centered: "Perturbation Catalogue". Use an `h1` tag with classes `"text-center display-4 mb-3"` and an inline style for `font-size: "60px"` and `margin-top: "4.5rem"`.
 
 ### 2. Subtitle
 
-A subtitle below the title, centered: "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.". Use a `p` tag with classes `"text-center lead mb-5"` and an inline style for `font-size: "25px"`.
+A subtitle below the title, centered: "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.". Use a `p` tag with class `"text-center lead"` and inline styles for `font-size: "25px"` and `margin-bottom: "4.5rem"`.
 
 ### 3. Grouping controls
 
-Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by " followed by a `dbc.ButtonGroup`.
+Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by " followed by a `dbc.ButtonGroup`. This container should have a larger bottom margin (`mb-5`) to create more space before the table headers.
 
 The button group will contain two buttons: "Perturbation" and "Phenotype". Their width should be determined by the text, not stretched. The default selection is "Perturbation". The active button should have `color="primary"` and the inactive one should have `color="light"`.
 
@@ -70,9 +70,9 @@ To ensure precise and consistent column alignment, the layout for sections 4-6 (
 - The container for the headers, filters, and data should be an `html.Div` with `display: 'grid'`.
 - Define the column widths with `grid-template-columns: 4fr 3fr 3fr 3fr`.
 - Set `row-gap: '0.5rem'` and `column-gap: '1rem'`.
-- To create visual separation, a spacer row with a height of `1.5rem` must be added between the filter controls and the data grid itself.
+- To create a clear visual break, a prominent, full-width separator must be placed after the filter controls and before the data grid begins. This should be a `div` with a thick top border (`2px`) and significant vertical margin.
 - To handle aggregated data correctly, where one cell in an outer group (like Dataset) corresponds to multiple rows of child data, the implementation must use CSS Grid's `grid-row: span N` property.
-- The callback that generates the data grid must first calculate the number of rows each aggregated cell needs to span.
+- The callback that generates the data grid must first calculate the number of rows each aggregated cell needs to span, including rows for separators.
 - The callback must then return a **flat list** of cell components. It must be constructed carefully so that for rows where a column is spanned by a cell from a previous row, that item is **omitted** from the list for the current row, maintaining the grid structure.
 - Any message, such as "No results" or an error, should also be a child of the grid and span all columns (`style={'grid-column': '1 / -1'}`).
 
@@ -94,7 +94,7 @@ A consistent styling pattern must be used for all informational text.
 #### Vertical Spacing
 A 3-tier vertical spacing model must be implemented:
 1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.5rem`).
-2.  **Group Spacing:** A larger, visually balanced vertical space must be created between aggregated groups within the same dataset. This is achieved by applying a `border-top`, `margin-top`, and `padding-top` to the first row of cells in a new group to create an even gap above and below the separator line.
+2.  **Group Spacing:** A continuous horizontal line (`1px`) must separate aggregated groups within the same dataset. This should be implemented as a dedicated `html.Div` spanning the three rightmost columns (`grid-column: 2 / 5`), with vertical margins (e.g., `margin-top: 1rem`, `margin-bottom: 1rem`) to create even spacing.
 3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a thicker, full-width horizontal line (`2px`) with significant, even vertical spacing above and below it (e.g., `margin-top: 2rem`, `padding-top: 2rem`).
 
 #### Dataset Column
@@ -106,12 +106,13 @@ A 3-tier vertical spacing model must be implemented:
 This cell has two rendering modes:
 - **When Grouped On:** Displays the `perturbation_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
     1. "Affects **N** phenotypes"
-    2. "△ **X** ▽ **Y**" (e.g., "△ 225 ▽ 277")
+    2. "△ **X** ▽ **Y**" (e.g., "△ 225 ▽ 277"). The up-regulated count and icon must be green (`#2acc06`), and the down-regulated count and icon must be red (`#ff4824`).
 - **When in a Sub-Row:** Displays only the `perturbation_gene_name` in **Regular & Semi-bold**.
 
 #### Change Column
-- All content must be on a **single line** and in the **Regular** font size.
-- Displays `padj` and its value, then `log2fc` and its value, with extra margin (`me-3`) between them.
+- To ensure vertical alignment of values across rows, the content must be structured using a flexbox container (`display: flex`).
+- Each component (`padj` info, `log2fc` info, direction arrow) should be in its own `html.Div` with a `min-width` to create stable columns.
+- Displays `padj` and its value, then `log2fc` and its value.
 - Finally, display a Unicode triangle symbol (`△` for up, `▽` for down).
 - The triangles must be colored with bright, specific shades: green (`#2acc06`) for up and red (`#ff4824`) for down.
 
@@ -120,13 +121,16 @@ This cell has two rendering modes:
 - **When Grouped On:** Displays the `phenotype_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
     1. "Base expression **Z**"
     2. "Affected by **N** perturbations"
-    3. "△ **X** ▽ **Y**"
+    3. "△ **X** ▽ **Y**". The up-regulated count and icon must be green (`#2acc06`), and the down-regulated count and icon must be red (`#ff4824`).
 - **When in a Sub-Row:** Displays only the `phenotype_gene_name` in **Regular & Semi-bold**.
 
 ### 8. Temporary Truncation Notice
 
-As a temporary measure, the front-end must detect when the data from the back-end is truncated. The API will be called with `limit_groups=3` and `limit_per_group=10`.
-- If exactly 3 groups are returned for a dataset, display a link below the last group: "Displaying top 3 groups, View all".
-- If exactly 10 entries are returned within a group, display a link below the last entry of that group: "Displaying top 10 entries, View all".
-- The "View all" is a placeholder link that can point to the current page (`#`).
+As a temporary measure, the front-end must detect when the data from the back-end is truncated by assuming that 3 groups or 10 items per group is a sign of truncation.
+- The notice must have a light grey background (`#f8f9fa`), padding, and rounded corners.
+- The text should be left-aligned and read "Displaying first N entries" (or groups), with no comma.
+- Only the "View all" portion of the text should be a clickable link.
+- **Spanning behavior is critical:**
+    - If **10 entries** are returned within a group, the notice must span only the columns of the nested data (e.g., for a `group by Perturbation`, it spans the `Change` and `Phenotype` columns).
+    - If **3 groups** are returned for a dataset, the notice must span all columns except the `Dataset` column (i.e., `Perturbation`, `Change`, and `Phenotype`).
 - This requires careful calculation of `grid-row` spans to accommodate the extra row for the notice without breaking the grid layout.
