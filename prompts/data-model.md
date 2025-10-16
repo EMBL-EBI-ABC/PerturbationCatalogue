@@ -10,15 +10,18 @@ Hence, there are four individual object types being built by BE; and there are f
 
 ## 2. API specification
 
-API endpoint is /v1/search. It accepts the following optional parameters:
+API endpoint is /v1/search. It accepts the following optional parameters for filtering:
 
 * dataset_metadata: string, used to free text search in the dataset metadata
 * perturbation_gene_name: string, used to filter by a perturbed gene name
 * change_direction: string, used to filter by the direction of the change. Must be "increased" or "decreased".
 * phenotype_gene_name: string, used to filter by a phenotype gene name
-* group_by: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows, as described below. If not provided, it defaults to "perturbation_gene_name".
 
-These parameters are used for filtering. In order to be returned, the data row must satisfy all conditions which are specified. If a particular filter is not specified, filtering on that condition is not performed.
+In order to be returned, the data row must satisfy all specified filter conditions.
+
+The API also accepts the following mandatory parameter for grouping:
+
+* group_by: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows.
 
 ## 3. Data types
 
