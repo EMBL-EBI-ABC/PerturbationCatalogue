@@ -46,7 +46,7 @@ Dataset metadata is stored in Elastic. The data core which you need to use is na
 
 You must only use a fixed subset of fields both for search and for returning the results. Here is the subset: dataset_id, tissue_labels, cell_type_labels, cell_line_labels, sex_labels, developmental_stage_labels, disease_labels, library_perturbation_type_labels.
 
-You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), and name output in singular, for example: tissue_label.
+You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), name output in singular, and strip the _label suffix, for example: tissue_labels -> tissue.
 
 ### 2.3. Perturbation, change and phenotype data in Postgres
 Inside the $PS_DB database, use a table named "perturb_seq". An example of data row in Postgres:
