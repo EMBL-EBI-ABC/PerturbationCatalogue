@@ -42,6 +42,7 @@ All fields are strings. dataset_id is used to link together Elastic and Postgres
 * n_up, e.g. 20
 * n_down, e.g. 100
 n_total, n_up, n_down are integers. They show how many phenotypes in the dataset *are affected by* perturbing this gene.
+Note that ALL these fields must be included into the perturbation object whether it's being grouped on, or whether it's a part of the data row in by_phenotype/perturbation_change/perturbation.
 
 ### 3.3. Change
 * direction: string, either "increased" or "decreased" based on log2fc
@@ -55,6 +56,7 @@ n_total, n_up, n_down are integers. They show how many phenotypes in the dataset
 * n_down, e.g. 1
 * n_up, e.g. 4
 n_total, n_up, n_down are integers. They show how many perturbations in the dataset *affect* this phenotype.
+Note that ALL these fields must be included into the phenotype object whether it's being grouped on, or whether it's a part of the data row in by_perturbation/change_phenotype/phenotype.
 
 ## 4. Grouping
 
