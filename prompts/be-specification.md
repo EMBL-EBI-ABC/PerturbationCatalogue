@@ -92,6 +92,8 @@ It is crucial to apply filtering **before** aggregation and limiting. The correc
     *   Return up to **3** top-level entities per dataset (e.g., 3 perturbations or 3 phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
     *   For each of those top-level entities, return up to **10** underlying data rows (e.g., 10 `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
 
+### 2.5. Parameter validation
+The API must reject any requests that include query parameters not explicitly defined in the API specification. A `400 Bad Request` error should be returned with a message listing the unrecognized parameters.
 
 ## 3. Code style.
 When implementing the BE, it's important to minimise code duplication; to make it as compact, succinct and easy to understand as possible.
