@@ -79,10 +79,18 @@ def render_perturbation_cell(p, is_grouped=False):
                     ),
                     html.Div(
                         [
-                            html.Span("△ ", className="fw-semibold"),
-                            html.Span(f"{p.get('n_up', 0)}", className="fw-semibold"),
-                            html.Span(" ▽ ", className="fw-semibold"),
-                            html.Span(f"{p.get('n_down', 0)}", className="fw-semibold"),
+                            html.Span("△ ", style={"color": "#2acc06"}),
+                            html.Span(
+                                f"{p.get('n_up', 0)}",
+                                style={"color": "#2acc06"},
+                                className="fw-semibold",
+                            ),
+                            html.Span(" ▽ ", style={"color": "#ff4824"}),
+                            html.Span(
+                                f"{p.get('n_down', 0)}",
+                                style={"color": "#ff4824"},
+                                className="fw-semibold",
+                            ),
                         ]
                     ),
                 ]
@@ -106,21 +114,31 @@ def render_change_cell(c):
 
     return html.Div(
         [
-            html.Span(
+            html.Div(
                 [
                     html.Span("padj ", className="fw-light"),
-                    html.Span(padj_str, className="fw-semibold me-3"),
-                ]
+                    html.Span(padj_str, className="fw-semibold"),
+                ],
+                style={"min-width": "110px"},
             ),
-            html.Span(
+            html.Div(
                 [
                     html.Span("log2fc ", className="fw-light"),
-                    html.Span(log2fc_str, className="fw-semibold me-3"),
-                ]
+                    html.Span(log2fc_str, className="fw-semibold"),
+                ],
+                style={"min-width": "90px"},
             ),
-            html.Span(arrow_char, style={"color": color, "font-weight": "bold"}),
+            html.Div(
+                html.Span(arrow_char, style={"color": color, "font-weight": "bold"}),
+                style={"min-width": "30px"},
+            ),
         ],
-        style={"align-self": "start"},
+        style={
+            "align-self": "start",
+            "display": "flex",
+            "justify-content": "space-between",
+            "width": "100%",
+        },
     )
 
 
@@ -160,11 +178,17 @@ def render_phenotype_cell(ph, is_grouped=False):
                     ),
                     html.Div(
                         [
-                            html.Span("△ ", className="fw-semibold"),
-                            html.Span(f"{ph.get('n_up', 0)}", className="fw-semibold"),
-                            html.Span(" ▽ ", className="fw-semibold"),
+                            html.Span("△ ", style={"color": "#2acc06"}),
                             html.Span(
-                                f"{ph.get('n_down', 0)}", className="fw-semibold"
+                                f"{ph.get('n_up', 0)}",
+                                style={"color": "#2acc06"},
+                                className="fw-semibold",
+                            ),
+                            html.Span(" ▽ ", style={"color": "#ff4824"}),
+                            html.Span(
+                                f"{ph.get('n_down', 0)}",
+                                style={"color": "#ff4824"},
+                                className="fw-semibold",
                             ),
                         ]
                     ),
@@ -185,16 +209,16 @@ def layout():
         children=[
             html.H1(
                 "Perturbation Catalogue",
-                className="text-center display-4 mt-5 mb-3",
-                style={"font-size": "60px"},
+                className="text-center display-4 mb-3",
+                style={"font-size": "60px", "margin-top": "4.5rem"},
             ),
             html.P(
                 "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.",
-                className="text-center lead mb-5",
-                style={"font-size": "25px"},
+                className="text-center lead",
+                style={"font-size": "25px", "margin-bottom": "4.5rem"},
             ),
             html.Div(
-                className="d-flex justify-content-center mb-4",
+                className="d-flex justify-content-center mb-5",
                 children=[
                     html.Span("Group by ", className="align-self-center me-2"),
                     dbc.ButtonGroup(
@@ -275,7 +299,14 @@ def layout():
                         id="filter-phenotype", placeholder="Filter by phenotype gene"
                     ),
                     # --- Data Grid Container ---
-                    html.Div(style={"grid-column": "1 / -1", "height": "1.5rem"}),
+                    html.Div(
+                        style={
+                            "grid-column": "1 / -1",
+                            "border-top": "2px solid #dee2e6",
+                            "margin-top": "2rem",
+                            "padding-top": "2rem",
+                        }
+                    ),
                     html.Div(
                         id="data-grid-container",
                         style={"grid-column": "1 / -1", "display": "contents"},
@@ -442,7 +473,7 @@ def update_data_grid(
                     row_span += 1
                 group_rowspans.append(row_span)
 
-            dataset_rowspan = sum(group_rowspans)
+            dataset_rowspan = sum(group_rowspans) + max(0, len(group_items) - 1)
             if len(group_items) == 3:
                 dataset_rowspan += 1
 
@@ -452,6 +483,18 @@ def update_data_grid(
             grid_cells.append(dataset_cell)
 
             for i, group_item in enumerate(group_items):
+                if i > 0:
+                    grid_cells.append(
+                        html.Div(
+                            style={
+                                "grid-column": "2 / 5",
+                                "border-top": "1px solid #dee2e6",
+                                "margin-top": "1rem",
+                                "margin-bottom": "1rem",
+                            }
+                        )
+                    )
+
                 pert_cell = render_perturbation_cell(
                     group_item.get("perturbation", {}), is_grouped=True
                 )
@@ -460,35 +503,24 @@ def update_data_grid(
                 if pert_rowspan > 0:
                     pert_cell.style["grid-row"] = f"span {pert_rowspan}"
 
-                separator_style = {}
-                if i > 0:
-                    separator_style = {
-                        "border-top": "1px solid #dee2e6",
-                        "padding-top": "1rem",
-                        "margin-top": "0.5rem",
-                    }
-
-                pert_cell.style.update(separator_style)
                 grid_cells.append(pert_cell)
 
                 if not sub_items:
                     grid_cells.extend(
                         [
-                            html.Div(style=separator_style),
-                            html.Div(style=separator_style),
+                            html.Div(),
+                            html.Div(),
                         ]
                     )
                 else:
-                    change_cell = render_change_cell(sub_items[0].get("change", {}))
-                    pheno_cell = render_phenotype_cell(
-                        sub_items[0].get("phenotype", {}), is_grouped=False
+                    grid_cells.append(
+                        render_change_cell(sub_items[0].get("change", {}))
                     )
-
-                    change_cell.style.update(separator_style)
-                    pheno_cell.style.update(separator_style)
-
-                    grid_cells.append(change_cell)
-                    grid_cells.append(pheno_cell)
+                    grid_cells.append(
+                        render_phenotype_cell(
+                            sub_items[0].get("phenotype", {}), is_grouped=False
+                        )
+                    )
 
                     for sub_item in sub_items[1:]:
                         grid_cells.append(
@@ -503,19 +535,34 @@ def update_data_grid(
                 if len(sub_items) == 10:
                     grid_cells.append(
                         html.Div(
-                            dcc.Link("Displaying top 10 entries, View all", href="#"),
-                            style={"grid-column": "3 / 5", "text-align": "right"},
+                            [
+                                html.Span("Displaying first 10 entries "),
+                                dcc.Link("View all", href="#"),
+                            ],
+                            style={
+                                "grid-column": "3 / 5",
+                                "text-align": "left",
+                                "background-color": "#f8f9fa",
+                                "padding": "0.25rem",
+                                "border-radius": "0.25rem",
+                            },
                         )
                     )
 
             if len(group_items) == 3:
                 grid_cells.append(
                     html.Div(
-                        dcc.Link("Displaying top 3 groups, View all", href="#"),
+                        [
+                            html.Span("Displaying first 3 groups "),
+                            dcc.Link("View all", href="#"),
+                        ],
                         style={
                             "grid-column": "2 / 5",
-                            "text-align": "right",
-                            "padding-top": "0.5rem",
+                            "text-align": "left",
+                            "background-color": "#f8f9fa",
+                            "padding": "0.25rem",
+                            "border-radius": "0.25rem",
+                            "margin-top": "0.5rem",
                         },
                     )
                 )
@@ -531,7 +578,7 @@ def update_data_grid(
                     row_span += 1
                 group_rowspans.append(row_span)
 
-            dataset_rowspan = sum(group_rowspans)
+            dataset_rowspan = sum(group_rowspans) + max(0, len(group_items) - 1)
             if len(group_items) == 3:
                 dataset_rowspan += 1
 
@@ -541,6 +588,18 @@ def update_data_grid(
             grid_cells.append(dataset_cell)
 
             for i, group_item in enumerate(group_items):
+                if i > 0:
+                    grid_cells.append(
+                        html.Div(
+                            style={
+                                "grid-column": "2 / 5",
+                                "border-top": "1px solid #dee2e6",
+                                "margin-top": "1rem",
+                                "margin-bottom": "1rem",
+                            }
+                        )
+                    )
+
                 pheno_cell = render_phenotype_cell(
                     group_item.get("phenotype", {}), is_grouped=True
                 )
@@ -549,31 +608,17 @@ def update_data_grid(
                 if pheno_rowspan > 0:
                     pheno_cell.style["grid-row"] = f"span {pheno_rowspan}"
 
-                separator_style = {}
-                if i > 0:
-                    separator_style = {
-                        "border-top": "1px solid #dee2e6",
-                        "padding-top": "1rem",
-                        "margin-top": "0.5rem",
-                    }
-
-                pheno_cell.style.update(separator_style)
-
                 if not sub_items:
-                    pert_cell = html.Div(style=separator_style)
-                    change_cell = html.Div(style=separator_style)
-                    grid_cells.extend([pert_cell, change_cell, pheno_cell])
+                    grid_cells.extend([html.Div(), html.Div(), pheno_cell])
                 else:
-                    pert_cell = render_perturbation_cell(
-                        sub_items[0].get("perturbation", {}), is_grouped=False
+                    grid_cells.append(
+                        render_perturbation_cell(
+                            sub_items[0].get("perturbation", {}), is_grouped=False
+                        )
                     )
-                    change_cell = render_change_cell(sub_items[0].get("change", {}))
-
-                    pert_cell.style.update(separator_style)
-                    change_cell.style.update(separator_style)
-
-                    grid_cells.append(pert_cell)
-                    grid_cells.append(change_cell)
+                    grid_cells.append(
+                        render_change_cell(sub_items[0].get("change", {}))
+                    )
                     grid_cells.append(pheno_cell)
 
                     for sub_item in sub_items[1:]:
@@ -590,19 +635,34 @@ def update_data_grid(
                     grid_cells.append(html.Div())
                     grid_cells.append(
                         html.Div(
-                            dcc.Link("Displaying top 10 entries, View all", href="#"),
-                            style={"grid-column": "2 / 4", "text-align": "right"},
+                            [
+                                html.Span("Displaying first 10 entries "),
+                                dcc.Link("View all", href="#"),
+                            ],
+                            style={
+                                "grid-column": "2 / 4",
+                                "text-align": "left",
+                                "background-color": "#f8f9fa",
+                                "padding": "0.25rem",
+                                "border-radius": "0.25rem",
+                            },
                         )
                     )
 
             if len(group_items) == 3:
                 grid_cells.append(
                     html.Div(
-                        dcc.Link("Displaying top 3 groups, View all", href="#"),
+                        [
+                            html.Span("Displaying first 3 groups "),
+                            dcc.Link("View all", href="#"),
+                        ],
                         style={
-                            "grid-column": "1 / 5",
-                            "text-align": "right",
-                            "padding-top": "0.5rem",
+                            "grid-column": "2 / 5",
+                            "text-align": "left",
+                            "background-color": "#f8f9fa",
+                            "padding": "0.25rem",
+                            "border-radius": "0.25rem",
+                            "margin-top": "0.5rem",
                         },
                     )
                 )
