@@ -1,0 +1,459 @@
+import dash
+from dash import html, dcc, callback, Input, Output, State
+import dash_bootstrap_components as dbc
+import requests
+import os
+import json
+
+dash.register_page(
+    __name__,
+    path="/perturbations",
+    relative_path="/perturbations",
+    name="Perturbations",
+    button="Explore perturbations",
+    description="A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.",
+    icon="bi-tropical-storm",
+)
+
+
+# --- Reusable component for rendering labels and values ---
+def render_label_value(label, value, value_class="fw-semibold"):
+    return html.Div(
+        [
+            html.Span(f"{label} ", className="text-muted fst-italic"),
+            html.Span(value, className=value_class),
+        ]
+    )
+
+
+# --- Data Rendering Functions ---
+
+
+def render_dataset_cell(item):
+    dataset = item.get("dataset", {})
+    metadata = [
+        ("Tissue", dataset.get("tissue", "N/A")),
+        ("Cell type", dataset.get("cell_type", "N/A")),
+        ("Cell line", dataset.get("cell_line", "N/A")),
+        ("Sex", dataset.get("sex", "N/A")),
+        ("Developmental stage", dataset.get("developmental_stage", "N/A")),
+        ("Disease", dataset.get("disease", "N/A")),
+        ("Library perturbation type", dataset.get("library_perturbation_type", "N/A")),
+    ]
+    return html.Div(
+        [
+            html.H5(dataset.get("dataset_id", "Unknown Dataset"), className="fw-bold"),
+            *[
+                render_label_value(label, str(value).capitalize())
+                for label, value in metadata
+                if value != "N/A"
+            ],
+        ],
+        style={"align-self": "start"},
+    )
+
+
+def render_perturbation_cell(p):
+    return html.Div(
+        [
+            html.H5(p.get("perturbation_gene_name", "N/A"), className="fw-bold"),
+            html.Div(
+                [
+                    "Affects ",
+                    html.Span(f"{p.get('n_total', 0)}", className="fw-bold"),
+                    " phenotypes",
+                ]
+            ),
+            html.Div(
+                [
+                    html.Span("▲ ", className="fw-bold"),
+                    html.Span(f"{p.get('n_up', 0)}", className="fw-bold"),
+                    html.Span(" ▼ ", className="fw-bold"),
+                    html.Span(f"{p.get('n_down', 0)}", className="fw-bold"),
+                ]
+            ),
+        ],
+        style={"align-self": "start"},
+    )
+
+
+def render_change_cell(c):
+    direction = c.get("direction", "increased")
+    arrow, color = ("▲", "green") if direction == "increased" else ("▼", "red")
+    log2fc = c.get("log2fc", 0)
+    padj = c.get("padj", 0)
+
+    return html.Div(
+        [
+            html.Span(
+                [
+                    html.Span("log2fc ", className="text-muted fst-italic"),
+                    html.Span(f"{log2fc:.2f}", className="fw-semibold me-2"),
+                ]
+            ),
+            html.Span(
+                [
+                    html.Span("padj ", className="text-muted fst-italic"),
+                    html.Span(f"{padj:.2e}", className="fw-semibold me-2"),
+                ]
+            ),
+            html.Span(arrow, style={"color": color, "font-weight": "bold"}),
+        ],
+        style={"align-self": "start"},
+    )
+
+
+def render_phenotype_cell(ph):
+    base_mean = ph.get("base_mean", 0)
+    try:
+        base_mean_formatted = f"{int(base_mean):,}"
+    except (ValueError, TypeError):
+        base_mean_formatted = "N/A"
+
+    return html.Div(
+        [
+            html.H5(ph.get("phenotype_gene_name", "N/A"), className="fw-bold"),
+            render_label_value("Base mean", base_mean_formatted),
+            html.Div(
+                [
+                    "Affected by ",
+                    html.Span(f"{ph.get('n_total', 0)}", className="fw-bold"),
+                    " perturbations",
+                ]
+            ),
+            html.Div(
+                [
+                    html.Span("▲ ", className="fw-bold"),
+                    html.Span(f"{ph.get('n_up', 0)}", className="fw-bold"),
+                    html.Span(" ▼ ", className="fw-bold"),
+                    html.Span(f"{ph.get('n_down', 0)}", className="fw-bold"),
+                ]
+            ),
+        ],
+        style={"align-self": "start"},
+    )
+
+
+# --- Page Layout ---
+
+
+def layout():
+    return dbc.Container(
+        fluid=True,
+        className="px-5",
+        children=[
+            html.H1(
+                "Perturbation Catalogue",
+                className="text-center display-4 mt-5 mb-3",
+                style={"font-size": "60px"},
+            ),
+            html.P(
+                "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.",
+                className="text-center lead mb-5",
+                style={"font-size": "25px"},
+            ),
+            html.Div(
+                className="d-flex justify-content-center mb-4",
+                children=[
+                    html.Span("Group by ", className="align-self-center me-2"),
+                    dbc.ButtonGroup(
+                        [
+                            dbc.Button(
+                                "Perturbation",
+                                id="group-by-perturbation-btn",
+                                color="primary",
+                            ),
+                            dbc.Button(
+                                "Phenotype", id="group-by-phenotype-btn", color="light"
+                            ),
+                        ]
+                    ),
+                ],
+            ),
+            # --- CSS Grid for Headers, Filters, and Data ---
+            html.Div(
+                style={
+                    "display": "grid",
+                    "grid-template-columns": "4fr 3fr 2fr 3fr",
+                    "row-gap": "0.5rem",
+                    "column-gap": "1rem",
+                },
+                children=[
+                    # --- Headers ---
+                    html.Div(
+                        [
+                            html.H4(
+                                "According to", className="fw-normal fst-italic mb-0"
+                            ),
+                            html.H3("Dataset"),
+                        ]
+                    ),
+                    html.Div(
+                        [
+                            html.H4(
+                                "Introducing", className="fw-normal fst-italic mb-0"
+                            ),
+                            html.H3("Perturbation"),
+                        ]
+                    ),
+                    html.Div(
+                        [
+                            html.H4("Leads to", className="fw-normal fst-italic mb-0"),
+                            html.H3("Change"),
+                        ]
+                    ),
+                    html.Div(
+                        [
+                            html.H4("Affecting", className="fw-normal fst-italic mb-0"),
+                            html.H3("Phenotype"),
+                        ]
+                    ),
+                    # --- Filter Fields ---
+                    dbc.Input(
+                        id="filter-dataset", placeholder="Filter by dataset metadata"
+                    ),
+                    dbc.Input(
+                        id="filter-perturbation", placeholder="Filter by perturbed gene"
+                    ),
+                    dbc.ButtonGroup(
+                        [
+                            dbc.Button("Up", id="filter-change-up-btn", color="light"),
+                            dbc.Button(
+                                "Down", id="filter-change-down-btn", color="light"
+                            ),
+                            dbc.Button(
+                                "Both", id="filter-change-both-btn", color="primary"
+                            ),
+                        ],
+                        id="filter-change-group",
+                    ),
+                    dbc.Input(
+                        id="filter-phenotype", placeholder="Filter by phenotype gene"
+                    ),
+                    # --- Data Grid Container ---
+                    html.Div(
+                        id="data-grid-container",
+                        style={"grid-column": "1 / -1", "display": "contents"},
+                    ),
+                ],
+            ),
+        ],
+    )
+
+
+# --- Callbacks ---
+
+
+@callback(
+    [
+        Output("group-by-perturbation-btn", "color"),
+        Output("group-by-phenotype-btn", "color"),
+    ],
+    [
+        Input("group-by-perturbation-btn", "n_clicks"),
+        Input("group-by-phenotype-btn", "n_clicks"),
+    ],
+)
+def update_group_by_selection(pert_clicks, pheno_clicks):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "primary", "light"
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if button_id == "group-by-perturbation-btn":
+        return "primary", "light"
+    else:
+        return "light", "primary"
+
+
+@callback(
+    [
+        Output("filter-change-up-btn", "color"),
+        Output("filter-change-down-btn", "color"),
+        Output("filter-change-both-btn", "color"),
+    ],
+    [
+        Input("filter-change-up-btn", "n_clicks"),
+        Input("filter-change-down-btn", "n_clicks"),
+        Input("filter-change-both-btn", "n_clicks"),
+    ],
+)
+def update_change_filter_selection(up_clicks, down_clicks, both_clicks):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return "light", "light", "primary"
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if button_id == "filter-change-up-btn":
+        return "primary", "light", "light"
+    elif button_id == "filter-change-down-btn":
+        return "light", "primary", "light"
+    else:  # both
+        return "light", "light", "primary"
+
+
+@callback(
+    Output("data-grid-container", "children"),
+    [
+        Input("filter-dataset", "value"),
+        Input("filter-perturbation", "value"),
+        Input("filter-phenotype", "value"),
+        Input("group-by-perturbation-btn", "color"),
+        Input("filter-change-up-btn", "color"),
+        Input("filter-change-down-btn", "color"),
+    ],
+)
+def update_data_grid(
+    dataset_filter,
+    pert_filter,
+    pheno_filter,
+    group_by_pert_color,
+    change_up_color,
+    change_down_color,
+):
+    backend_url = os.getenv("PERTURBATION_CATALOGUE_BE", "http://127.0.0.1:8000")
+    api_endpoint = f"{backend_url}/v1/search"
+
+    group_by = (
+        "perturbation_gene_name"
+        if group_by_pert_color == "primary"
+        else "phenotype_gene_name"
+    )
+
+    params = {"group_by": group_by}
+    if dataset_filter:
+        params["dataset_metadata"] = dataset_filter
+    if pert_filter:
+        params["perturbation_gene_name"] = pert_filter
+    if pheno_filter:
+        params["phenotype_gene_name"] = pheno_filter
+
+    if change_up_color == "primary":
+        params["change_direction"] = "increased"
+    elif change_down_color == "primary":
+        params["change_direction"] = "decreased"
+
+    try:
+        response = requests.get(api_endpoint, params=params)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        return [
+            html.Div(
+                f"Error fetching data: {e}",
+                style={
+                    "grid-column": "1 / -1",
+                    "text-align": "center",
+                    "padding": "2rem",
+                },
+            )
+        ]
+    except json.JSONDecodeError:
+        return [
+            html.Div(
+                "Error: Invalid JSON response from server.",
+                style={
+                    "grid-column": "1 / -1",
+                    "text-align": "center",
+                    "padding": "2rem",
+                },
+            )
+        ]
+
+    if not data:
+        return [
+            html.Div(
+                "No results found.",
+                style={
+                    "grid-column": "1 / -1",
+                    "text-align": "center",
+                    "padding": "2rem",
+                },
+            )
+        ]
+
+    grid_cells = []
+    for item_index, item in enumerate(data):
+        if item_index > 0:
+            grid_cells.append(
+                html.Div(
+                    style={
+                        "grid-column": "1 / -1",
+                        "border-top": "1px solid #dee2e6",
+                        "padding": "0.5rem",
+                    }
+                )
+            )
+
+        if group_by == "perturbation_gene_name":
+            group_items = item.get("by_perturbation", [])
+            dataset_rowspan = sum(
+                max(1, len(g.get("change_phenotype", []))) for g in group_items
+            )
+
+            dataset_cell = render_dataset_cell(item)
+            if dataset_rowspan > 0:
+                dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
+            grid_cells.append(dataset_cell)
+
+            for group_item in group_items:
+                pert_cell = render_perturbation_cell(group_item.get("perturbation", {}))
+                sub_items = group_item.get("change_phenotype", [])
+                pert_rowspan = max(1, len(sub_items))
+                if pert_rowspan > 0:
+                    pert_cell.style["grid-row"] = f"span {pert_rowspan}"
+                grid_cells.append(pert_cell)
+
+                if not sub_items:
+                    grid_cells.extend([html.Div(), html.Div()])
+                else:
+                    grid_cells.append(
+                        render_change_cell(sub_items[0].get("change", {}))
+                    )
+                    grid_cells.append(
+                        render_phenotype_cell(sub_items[0].get("phenotype", {}))
+                    )
+                    for sub_item in sub_items[1:]:
+                        grid_cells.append(
+                            render_change_cell(sub_item.get("change", {}))
+                        )
+                        grid_cells.append(
+                            render_phenotype_cell(sub_item.get("phenotype", {}))
+                        )
+        else:  # group by phenotype
+            group_items = item.get("by_phenotype", [])
+            dataset_rowspan = sum(
+                max(1, len(g.get("perturbation_change", []))) for g in group_items
+            )
+
+            dataset_cell = render_dataset_cell(item)
+            if dataset_rowspan > 0:
+                dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
+            grid_cells.append(dataset_cell)
+
+            for group_item in group_items:
+                pheno_cell = render_phenotype_cell(group_item.get("phenotype", {}))
+                sub_items = group_item.get("perturbation_change", [])
+                pheno_rowspan = max(1, len(sub_items))
+                if pheno_rowspan > 0:
+                    pheno_cell.style["grid-row"] = f"span {pheno_rowspan}"
+
+                if not sub_items:
+                    grid_cells.extend([html.Div(), html.Div(), pheno_cell])
+                else:
+                    grid_cells.append(
+                        render_perturbation_cell(sub_items[0].get("perturbation", {}))
+                    )
+                    grid_cells.append(
+                        render_change_cell(sub_items[0].get("change", {}))
+                    )
+                    grid_cells.append(pheno_cell)
+                    for sub_item in sub_items[1:]:
+                        grid_cells.append(
+                            render_perturbation_cell(sub_item.get("perturbation", {}))
+                        )
+                        grid_cells.append(
+                            render_change_cell(sub_item.get("change", {}))
+                        )
+
+    return grid_cells

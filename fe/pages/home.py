@@ -513,16 +513,26 @@ layout = html.Div(
                                     [
                                         dbc.InputGroup(
                                             [
-                                                dbc.Input(
-                                                    id="search-input",
-                                                    placeholder="Search by target name...",
-                                                    type="text",
-                                                    value="",
-                                                    debounce=True,
-                                                    className="form-control-lg",
-                                                    style={
-                                                        "borderRadius": "8px 0 0 8px"
-                                                    },
+                                                html.H5(
+                                                    [
+                                                        page["name"],
+                                                        (
+                                                            dbc.Badge(
+                                                                "New!",
+                                                                color="warning",
+                                                                className="ms-2",
+                                                            )
+                                                            if page["name"]
+                                                            == "Perturbations"
+                                                            else None
+                                                        ),
+                                                    ]
+                                                ),
+                                                html.P(page["description"]),
+                                                dbc.Button(
+                                                    page["button"],
+                                                    href=page["relative_path"],
+                                                    color="success",
                                                 ),
                                                 dbc.Button(
                                                     [
