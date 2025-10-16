@@ -24,7 +24,7 @@ For the new page icon in the navbar, use the "tropical-storm" Bootstrap icon.
 
 The page layout, top to bottom, is: title, subtitle, grouping controls, table header, search fields, and a data grid obtained from BE according to filters.
 
-The page content should span the entire width of the container using `fluid=True`. The main content should have horizontal padding (e.g., `px-5`).
+The page content should span the entire width of the container using `fluid=True`. The main content should have horizontal padding (e.g., `px-5`) and a margin at the bottom (e.g., `mb-5`) to ensure adequate spacing from the page footer.
 
 Make sure to use Bootstrap components and styles as much as possible. Make sure that everything uses the same font (the default), is visually pleasing and coherent.
 
@@ -58,7 +58,7 @@ Immediately below the headers, provide search and filter fields for each column:
 
 - **Dataset:** `dbc.Input` with placeholder "Filter by dataset metadata".
 - **Perturbation:** `dbc.Input` with placeholder "Filter by perturbed gene".
-- **Change:** A `dbc.ButtonGroup` with three buttons: "Up", "Down", and "Both". "Both" is the default. The active button has `color="primary"`, inactive is `color="light"`.
+- **Change:** A `dbc.ButtonGroup` with three buttons: "△ Up", "▽ Down", and "△▽ Both". "Both" is the default. The active button has `color="primary"`, inactive is `color="light"`.
 - **Phenotype:** `dbc.Input` with placeholder "Filter by phenotype gene".
 
 When any of these fields are modified, the data table should update immediately.
@@ -80,46 +80,53 @@ To ensure precise and consistent column alignment, the layout for sections 4-6 (
 
 This section specifies the exact rendering for the content within each data column.
 
-#### Font Sizes
-Only two font sizes should be used within the data grid cells:
-- **Large:** A font size equivalent to `H3`. This is used for the `dataset_id` and the gene name of the primary, grouped-on item (e.g., the main Perturbation in a group).
-- **Regular:** The default browser font size. This is used for all other text, including dataset metadata, all informational text (e.g., "Affects phenotypes", "up, down", "log2fc"), and direction arrows.
+#### Font Styles
+- **Large & Bold:** A font size equivalent to `H3` with `fw-bold`. This is used for the `dataset_id` and the gene name of the primary, grouped-on item (e.g., the main Perturbation in a group).
+- **Regular & Semi-bold:** The default browser font size with `fw-semibold`. This is used for sub-row gene names (the non-grouped items).
+- **Regular:** The default browser font size. This is used for all other text, including dataset metadata and all informational text (e.g., "Affects phenotypes", "log2fc").
 
 #### Universal Styling for Labels and Values
 A consistent styling pattern must be used for all informational text.
-- **Labels** (e.g., "Tissue", "Affects", "log2fc"): Rendered using a light font weight (`fw-light`).
-- **Values** (e.g., "Blood", "502", "1.23"): Rendered in a `html.Span` with `className="fw-semibold"`.
-- For negative numeric values, the standard hyphen-minus (-) must be replaced with the Unicode minus sign (`\u2212`).
+- **Labels** (e.g., "Tissue", "Affects", "padj"): Rendered using a light font weight (`fw-light`).
+- **Values** (e.g., "Blood", "502", "1.23e-5"): Rendered in a `html.Span` with `className="fw-semibold"`.
+- For negative numeric values, the standard hyphen-minus (-) must be replaced with the Unicode minus sign (`−`).
 
 #### Vertical Spacing
 A 3-tier vertical spacing model must be implemented:
 1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.5rem`).
-2.  **Group Spacing:** A larger vertical space (`1.5rem`) with a horizontal line must be created between aggregated groups within the same dataset. This is achieved by applying a `border-top` and `padding-top` to the first row of cells belonging to a new group (spanning columns 2, 3, and 4).
-3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a full-width horizontal line that has `2rem` of `padding-top`.
+2.  **Group Spacing:** A larger, visually balanced vertical space must be created between aggregated groups within the same dataset. This is achieved by applying a `border-top`, `margin-top`, and `padding-top` to the first row of cells in a new group to create an even gap above and below the separator line.
+3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a thicker, full-width horizontal line (`2px`) with significant, even vertical spacing above and below it (e.g., `margin-top: 2rem`, `padding-top: 2rem`).
 
 #### Dataset Column
-- The `dataset_id` is displayed in a **Large** font size (`H3`) and bold weight.
+- The `dataset_id` is displayed in a **Large & Bold** font. It must be formatted to replace underscores with spaces and capitalize the first letter (e.g., `adamson_2016_pilot` becomes `Adamson 2016 pilot`).
 - Below the ID, list all other metadata fields on new lines, using the **Regular** font size. Apply the universal label/value styling.
 - The **first letter** of each metadata *value* must be **capitalized**.
 
 #### Perturbation Column
 This cell has two rendering modes:
-- **When Grouped On:** Displays the `perturbation_gene_name` in a **Large**, semi-bold font (`H3` with `fw-semibold`). Below this, on new lines, it shows informational text in the **Regular** font size:
+- **When Grouped On:** Displays the `perturbation_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
     1. "Affects **N** phenotypes"
-    2. "**X** up, **Y** down"
-- **When in a Sub-Row:** Displays only the `perturbation_gene_name` in the **Regular** font size.
+    2. "△ **X** ▽ **Y**" (e.g., "△ 225 ▽ 277")
+- **When in a Sub-Row:** Displays only the `perturbation_gene_name` in **Regular & Semi-bold**.
 
 #### Change Column
 - All content must be on a **single line** and in the **Regular** font size.
-- Displays `log2fc` and its value, then `padj` and its value, with extra margin (`me-3`) between them.
-- The `logfc` label must be corrected to `log2fc`.
-- Finally, display a Unicode arrow symbol (`🡱` for up, `🡳` for down).
-- The arrows must be colored with bright, specific shades: green (`#2acc06`) for up and red (`#ff4824`) for down.
+- Displays `padj` and its value, then `log2fc` and its value, with extra margin (`me-3`) between them.
+- Finally, display a Unicode triangle symbol (`△` for up, `▽` for down).
+- The triangles must be colored with bright, specific shades: green (`#2acc06`) for up and red (`#ff4824`) for down.
 
 #### Phenotype Column
 This cell has two rendering modes:
-- **When Grouped On:** Displays the `phenotype_gene_name` in a **Large**, semi-bold font (`H3` with `fw-semibold`). Below this, on new lines, it shows informational text in the **Regular** font size:
+- **When Grouped On:** Displays the `phenotype_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
     1. "Base expression **Z**"
     2. "Affected by **N** perturbations"
-    3. "**X** up, **Y** down"
-- **When in a Sub-Row:** Displays only the `phenotype_gene_name` in the **Regular** font size.
+    3. "△ **X** ▽ **Y**"
+- **When in a Sub-Row:** Displays only the `phenotype_gene_name` in **Regular & Semi-bold**.
+
+### 8. Temporary Truncation Notice
+
+As a temporary measure, the front-end must detect when the data from the back-end is truncated. The API will be called with `limit_groups=3` and `limit_per_group=10`.
+- If exactly 3 groups are returned for a dataset, display a link below the last group: "Displaying top 3 groups, View all".
+- If exactly 10 entries are returned within a group, display a link below the last entry of that group: "Displaying top 10 entries, View all".
+- The "View all" is a placeholder link that can point to the current page (`#`).
+- This requires careful calculation of `grid-row` spans to accommodate the extra row for the notice without breaking the grid layout.
