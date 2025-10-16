@@ -54,83 +54,103 @@ def render_dataset_cell(item):
 
 
 def render_perturbation_cell(p):
-    return html.Div(
+    gene_name = html.H3(
+        p.get("perturbation_gene_name", "N/A"),
+        className="fw-bold",
+        style={"margin-right": "1rem", "margin-bottom": "0"},
+    )
+
+    info_lines = html.Div(
         [
-            html.H5(p.get("perturbation_gene_name", "N/A"), className="fw-bold"),
             html.Div(
                 [
-                    "Affects ",
-                    html.Span(f"{p.get('n_total', 0)}", className="fw-bold"),
-                    " phenotypes",
+                    html.Span("Affects ", className="text-muted fst-italic"),
+                    html.Span(f"{p.get('n_total', 0)}", className="fw-semibold"),
+                    html.Span(" phenotypes", className="text-muted fst-italic"),
                 ]
             ),
             html.Div(
                 [
-                    html.Span("▲ ", className="fw-bold"),
-                    html.Span(f"{p.get('n_up', 0)}", className="fw-bold"),
-                    html.Span(" ▼ ", className="fw-bold"),
-                    html.Span(f"{p.get('n_down', 0)}", className="fw-bold"),
+                    html.Span(f"{p.get('n_up', 0)}", className="fw-semibold"),
+                    html.Span(" up, ", className="text-muted fst-italic"),
+                    html.Span(f"{p.get('n_down', 0)}", className="fw-semibold"),
+                    html.Span(" down", className="text-muted fst-italic"),
                 ]
             ),
-        ],
-        style={"align-self": "start"},
+        ]
+    )
+
+    return html.Div(
+        [gene_name, info_lines],
+        style={"display": "flex", "align-items": "center", "align-self": "start"},
     )
 
 
 def render_change_cell(c):
+    log2fc_val = c.get("log2fc", 0)
+    padj_val = c.get("padj", 0)
+
+    log2fc_str = f"{log2fc_val:.2f}".replace("-", "\u2212")
+    padj_str = f"{padj_val:.2e}".replace("e-", "e\u2212")
+
+    info_lines = html.Div(
+        [render_label_value("logfc", log2fc_str), render_label_value("padj", padj_str)],
+        style={"margin-right": "1rem"},
+    )
+
     direction = c.get("direction", "increased")
-    arrow, color = ("▲", "green") if direction == "increased" else ("▼", "red")
-    log2fc = c.get("log2fc", 0)
-    padj = c.get("padj", 0)
+    arrow_char, color = ("▲", "green") if direction == "increased" else ("▼", "red")
+
+    arrow = html.H3(arrow_char, style={"color": color, "margin-bottom": "0"})
 
     return html.Div(
-        [
-            html.Span(
-                [
-                    html.Span("log2fc ", className="text-muted fst-italic"),
-                    html.Span(f"{log2fc:.2f}", className="fw-semibold me-2"),
-                ]
-            ),
-            html.Span(
-                [
-                    html.Span("padj ", className="text-muted fst-italic"),
-                    html.Span(f"{padj:.2e}", className="fw-semibold me-2"),
-                ]
-            ),
-            html.Span(arrow, style={"color": color, "font-weight": "bold"}),
-        ],
-        style={"align-self": "start"},
+        [info_lines, arrow],
+        style={"display": "flex", "align-items": "center", "align-self": "start"},
     )
 
 
 def render_phenotype_cell(ph):
+    gene_name = html.H3(
+        ph.get("phenotype_gene_name", "N/A"),
+        className="fw-bold",
+        style={"margin-right": "1rem", "margin-bottom": "0"},
+    )
+
     base_mean = ph.get("base_mean", 0)
     try:
         base_mean_formatted = f"{int(base_mean):,}"
     except (ValueError, TypeError):
         base_mean_formatted = "N/A"
 
-    return html.Div(
+    info_lines = html.Div(
         [
-            html.H5(ph.get("phenotype_gene_name", "N/A"), className="fw-bold"),
-            render_label_value("Base mean", base_mean_formatted),
             html.Div(
                 [
-                    "Affected by ",
-                    html.Span(f"{ph.get('n_total', 0)}", className="fw-bold"),
-                    " perturbations",
+                    html.Span("Affected by ", className="text-muted fst-italic"),
+                    html.Span(f"{ph.get('n_total', 0)}", className="fw-semibold"),
+                    html.Span(" perturbations", className="text-muted fst-italic"),
                 ]
             ),
             html.Div(
                 [
-                    html.Span("▲ ", className="fw-bold"),
-                    html.Span(f"{ph.get('n_up', 0)}", className="fw-bold"),
-                    html.Span(" ▼ ", className="fw-bold"),
-                    html.Span(f"{ph.get('n_down', 0)}", className="fw-bold"),
+                    html.Span(f"{ph.get('n_up', 0)}", className="fw-semibold"),
+                    html.Span(" up, ", className="text-muted fst-italic"),
+                    html.Span(f"{ph.get('n_down', 0)}", className="fw-semibold"),
+                    html.Span(" down", className="text-muted fst-italic"),
                 ]
             ),
-        ],
-        style={"align-self": "start"},
+            html.Div(
+                [
+                    html.Span("Base expression ", className="text-muted fst-italic"),
+                    html.Span(base_mean_formatted, className="fw-semibold"),
+                ]
+            ),
+        ]
+    )
+
+    return html.Div(
+        [gene_name, info_lines],
+        style={"display": "flex", "align-items": "center", "align-self": "start"},
     )
 
 
