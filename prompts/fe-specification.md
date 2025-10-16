@@ -80,34 +80,44 @@ To ensure precise and consistent column alignment, the layout for sections 4-6 (
 
 ### 7. Data Column Rendering
 
-This section specifies the exact rendering for the content within each data column. This rendering must be applied consistently, regardless of whether the item is being grouped on or is part of a nested data row.
+This section specifies the exact rendering for the content within each data column.
 
-#### General Style for Labels and Values
-For displaying metadata and numeric values (like in the Dataset, Change, and Phenotype columns), use the following style consistently:
-- **Labels** (e.g., "Tissue", "log2fc", "Base mean") should be rendered in a `html.Span` with `className="text-muted fst-italic"`.
-- **Values** (e.g., "Blood", "1.23", "500") should be rendered in a `html.Span` with `className="fw-semibold"`.
-- There should be **no colon** between the label and the value.
+#### Universal Styling for Labels and Values
+A consistent styling pattern must be used for all informational text across all four columns. This pattern should be defined once and reused where possible.
+- **Labels** (e.g., "Tissue", "Affects", "logfc"): Rendered in a `html.Span` with `className="text-muted fst-italic"`.
+- **Values** (e.g., "Blood", "502", "1.23"): Rendered in a `html.Span` with `className="fw-semibold"`.
+- There should be **no colon** between a label and its value.
+- For negative numeric values (`log2fc`, `padj` exponents), the standard hyphen-minus (-) must be replaced with the Unicode minus sign (`\u2212`).
+
+#### Layout Principles
+For the Perturbation, Change, and Phenotype columns, a two-component layout should be used, with a large, prominent element and smaller associated text. This should be implemented using a flexbox (`display: 'flex', align-items: 'center'`) to ensure vertical alignment between the two components.
 
 #### Dataset Column
 - The `dataset_id` is displayed first in a bold `h5` tag.
-- Below the ID, list all other metadata fields. Each field must be on a **new line**. Apply the label/value styling described above.
-- The **first letter** of each metadata *value* must be **capitalized** (e.g., "blood" becomes "Blood").
+- Below the ID, list all other metadata fields. Each field must be on a **new line**. Apply the universal label/value styling.
+- The **first letter** of each metadata *value* must be **capitalized**.
 
 #### Perturbation Column
-- The `perturbation_gene_name` is displayed in a bold `h5` tag.
-- On a new line: "Affects **N** phenotypes", where N is the `n_total` value in bold.
-- On a third line, show the breakdown of up/down regulated phenotypes. The format should be: "▲ **N** ▼ **N**", where N is the `n_up` and `n_down` count respectively, in bold. Do not include the words "up" or "down" or a vertical separator.
+- A two-component layout.
+- **Left Component:** The `perturbation_gene_name` displayed in a large, bold font (e.g., `html.H3`).
+- **Right Component:** A block of smaller text, vertically centered with the gene name, containing two lines:
+    1. "Affects **N** phenotypes" (where N is `n_total`).
+    2. "**X** up, **Y** down" (where X/Y are `n_up`/`n_down`).
+- The universal label/value styling must be applied to these lines. Do not use arrow symbols here.
 
 #### Change Column
-- All content must be on a **single line**.
-- Display `log2fc` and its value, then `padj` and its value. Apply the label/value styling.
-- Format `log2fc` to **two decimal places**.
-- Format `padj` in **scientific notation** (e.g., 1.23e-05).
-- Add a small margin (`me-2`) after each value for spacing.
-- Finally, display an arrow: ▲ for "increased" or ▼ for "decreased". The arrow must be colored **green** for increased and **red** for decreased.
+- A two-component layout, with the order reversed.
+- **Left Component:** A block of smaller text containing two lines:
+    1. "logfc **X**" (formatted to two decimal places).
+    2. "padj **Y**" (formatted in scientific notation).
+- **Right Component:** A large, conspicuous, filled triangle symbol (▲ for "increased", ▼ for "decreased"). Its size should be comparable to the gene name `H3` elements. The triangle must be colored **green** for increased and **red** for decreased.
+- The universal label/value styling must be applied.
 
 #### Phenotype Column
-- The `phenotype_gene_name` is displayed in a bold `h5` tag.
-- On a new line: Display "Base mean" and its value. Apply the label/value styling. The value should be formatted as an **integer with thousands separators**.
-- On a new line: "Affected by **N** perturbations", where N is `n_total` in bold.
-- On a final line, show the breakdown of up/down regulating perturbations. The format should be: "▲ **N** ▼ **N**", where N is the `n_up` and `n_down` count respectively, in bold. Do not include the words "by", "up", or "down" or a vertical separator.
+- A two-component layout, identical in style to the Perturbation column.
+- **Left Component:** The `phenotype_gene_name` displayed in a large, bold font (e.g., `html.H3`).
+- **Right Component:** A block of smaller text, vertically centered with the gene name, containing three lines:
+    1. "Affected by **N** perturbations" (where N is `n_total`).
+    2. "**X** up, **Y** down" (where X/Y are `n_up`/`n_down`).
+    3. "Base expression **Z**" (where Z is `base_mean`, formatted as an integer with thousands separators).
+- The universal label/value styling must be applied. Do not use arrow symbols here.
