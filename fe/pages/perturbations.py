@@ -31,6 +31,8 @@ def render_label_value(label, value, value_class="fw-semibold"):
 
 def render_dataset_cell(item):
     dataset = item.get("dataset", {})
+    dataset_id = dataset.get("dataset_id", "Unknown Dataset")
+    formatted_dataset_id = dataset_id.replace("_", " ").capitalize()
     metadata = [
         ("Tissue", dataset.get("tissue", "N/A")),
         ("Cell type", dataset.get("cell_type", "N/A")),
@@ -42,7 +44,7 @@ def render_dataset_cell(item):
     ]
     return html.Div(
         [
-            html.H3(dataset.get("dataset_id", "Unknown Dataset"), className="fw-bold"),
+            html.H3(formatted_dataset_id, className="fw-bold"),
             *[
                 render_label_value(label, str(value).capitalize())
                 for label, value in metadata
@@ -56,13 +58,14 @@ def render_dataset_cell(item):
 def render_perturbation_cell(p, is_grouped=False):
     if not is_grouped:
         return html.Div(
-            p.get("perturbation_gene_name", "N/A"), style={"align-self": "start"}
+            html.Span(p.get("perturbation_gene_name", "N/A"), className="fw-semibold"),
+            style={"align-self": "start"},
         )
 
     # Grouped rendering
     return html.Div(
         [
-            html.H3(p.get("perturbation_gene_name", "N/A"), className="fw-semibold"),
+            html.H3(p.get("perturbation_gene_name", "N/A"), className="fw-bold"),
             html.Div(
                 [
                     html.Div(
@@ -76,10 +79,10 @@ def render_perturbation_cell(p, is_grouped=False):
                     ),
                     html.Div(
                         [
+                            html.Span("△ ", className="fw-semibold"),
                             html.Span(f"{p.get('n_up', 0)}", className="fw-semibold"),
-                            html.Span(" up, ", className="fw-light"),
+                            html.Span(" ▽ ", className="fw-semibold"),
                             html.Span(f"{p.get('n_down', 0)}", className="fw-semibold"),
-                            html.Span(" down", className="fw-light"),
                         ]
                     ),
                 ]
@@ -93,26 +96,26 @@ def render_change_cell(c):
     log2fc_val = c.get("log2fc", 0)
     padj_val = c.get("padj", 0)
 
-    log2fc_str = f"{log2fc_val:.2f}".replace("-", "\u2212")
-    padj_str = f"{padj_val:.2e}".replace("e-", "e\u2212")
+    log2fc_str = f"{log2fc_val:.2f}".replace("-", "−")
+    padj_str = f"{padj_val:.2e}".replace("e-", "e−")
 
     direction = c.get("direction", "increased")
     arrow_char, color = (
-        ("🡱", "#2acc06") if direction == "increased" else ("🡳", "#ff4824")
+        ("△", "#2acc06") if direction == "increased" else ("▽", "#ff4824")
     )
 
     return html.Div(
         [
             html.Span(
                 [
-                    html.Span("log2fc ", className="fw-light"),
-                    html.Span(log2fc_str, className="fw-semibold me-3"),
+                    html.Span("padj ", className="fw-light"),
+                    html.Span(padj_str, className="fw-semibold me-3"),
                 ]
             ),
             html.Span(
                 [
-                    html.Span("padj ", className="fw-light"),
-                    html.Span(padj_str, className="fw-semibold me-3"),
+                    html.Span("log2fc ", className="fw-light"),
+                    html.Span(log2fc_str, className="fw-semibold me-3"),
                 ]
             ),
             html.Span(arrow_char, style={"color": color, "font-weight": "bold"}),
@@ -124,7 +127,8 @@ def render_change_cell(c):
 def render_phenotype_cell(ph, is_grouped=False):
     if not is_grouped:
         return html.Div(
-            ph.get("phenotype_gene_name", "N/A"), style={"align-self": "start"}
+            html.Span(ph.get("phenotype_gene_name", "N/A"), className="fw-semibold"),
+            style={"align-self": "start"},
         )
 
     # Grouped rendering
@@ -136,7 +140,7 @@ def render_phenotype_cell(ph, is_grouped=False):
 
     return html.Div(
         [
-            html.H3(ph.get("phenotype_gene_name", "N/A"), className="fw-semibold"),
+            html.H3(ph.get("phenotype_gene_name", "N/A"), className="fw-bold"),
             html.Div(
                 [
                     html.Div(
@@ -156,12 +160,12 @@ def render_phenotype_cell(ph, is_grouped=False):
                     ),
                     html.Div(
                         [
+                            html.Span("△ ", className="fw-semibold"),
                             html.Span(f"{ph.get('n_up', 0)}", className="fw-semibold"),
-                            html.Span(" up, ", className="fw-light"),
+                            html.Span(" ▽ ", className="fw-semibold"),
                             html.Span(
                                 f"{ph.get('n_down', 0)}", className="fw-semibold"
                             ),
-                            html.Span(" down", className="fw-light"),
                         ]
                     ),
                 ]
@@ -209,6 +213,7 @@ def layout():
             ),
             # --- CSS Grid for Headers, Filters, and Data ---
             html.Div(
+                className="mb-5",
                 style={
                     "display": "grid",
                     "grid-template-columns": "4fr 3fr 3fr 3fr",
@@ -254,12 +259,14 @@ def layout():
                     ),
                     dbc.ButtonGroup(
                         [
-                            dbc.Button("Up", id="filter-change-up-btn", color="light"),
                             dbc.Button(
-                                "Down", id="filter-change-down-btn", color="light"
+                                "△ Up", id="filter-change-up-btn", color="light"
                             ),
                             dbc.Button(
-                                "Both", id="filter-change-both-btn", color="primary"
+                                "▽ Down", id="filter-change-down-btn", color="light"
+                            ),
+                            dbc.Button(
+                                "△▽ Both", id="filter-change-both-btn", color="primary"
                             ),
                         ],
                         id="filter-change-group",
@@ -417,7 +424,8 @@ def update_data_grid(
                 html.Div(
                     style={
                         "grid-column": "1 / -1",
-                        "border-top": "1px solid #dee2e6",
+                        "border-top": "2px solid #dee2e6",
+                        "margin-top": "2rem",
                         "padding-top": "2rem",
                     }
                 )
@@ -425,9 +433,18 @@ def update_data_grid(
 
         if group_by == "perturbation_gene_name":
             group_items = item.get("by_perturbation", [])
-            dataset_rowspan = sum(
-                max(1, len(g.get("change_phenotype", []))) for g in group_items
-            )
+
+            group_rowspans = []
+            for g in group_items:
+                sub_items_len = len(g.get("change_phenotype", []))
+                row_span = max(1, sub_items_len)
+                if sub_items_len == 10:
+                    row_span += 1
+                group_rowspans.append(row_span)
+
+            dataset_rowspan = sum(group_rowspans)
+            if len(group_items) == 3:
+                dataset_rowspan += 1
 
             dataset_cell = render_dataset_cell(item)
             if dataset_rowspan > 0:
@@ -439,7 +456,7 @@ def update_data_grid(
                     group_item.get("perturbation", {}), is_grouped=True
                 )
                 sub_items = group_item.get("change_phenotype", [])
-                pert_rowspan = max(1, len(sub_items))
+                pert_rowspan = group_rowspans[i]
                 if pert_rowspan > 0:
                     pert_cell.style["grid-row"] = f"span {pert_rowspan}"
 
@@ -447,7 +464,8 @@ def update_data_grid(
                 if i > 0:
                     separator_style = {
                         "border-top": "1px solid #dee2e6",
-                        "padding-top": "1.5rem",
+                        "padding-top": "1rem",
+                        "margin-top": "0.5rem",
                     }
 
                 pert_cell.style.update(separator_style)
@@ -481,11 +499,41 @@ def update_data_grid(
                                 sub_item.get("phenotype", {}), is_grouped=False
                             )
                         )
+
+                if len(sub_items) == 10:
+                    grid_cells.append(
+                        html.Div(
+                            dcc.Link("Displaying top 10 entries, View all", href="#"),
+                            style={"grid-column": "3 / 5", "text-align": "right"},
+                        )
+                    )
+
+            if len(group_items) == 3:
+                grid_cells.append(
+                    html.Div(
+                        dcc.Link("Displaying top 3 groups, View all", href="#"),
+                        style={
+                            "grid-column": "2 / 5",
+                            "text-align": "right",
+                            "padding-top": "0.5rem",
+                        },
+                    )
+                )
+
         else:  # group by phenotype
             group_items = item.get("by_phenotype", [])
-            dataset_rowspan = sum(
-                max(1, len(g.get("perturbation_change", []))) for g in group_items
-            )
+
+            group_rowspans = []
+            for g in group_items:
+                sub_items_len = len(g.get("perturbation_change", []))
+                row_span = max(1, sub_items_len)
+                if sub_items_len == 10:
+                    row_span += 1
+                group_rowspans.append(row_span)
+
+            dataset_rowspan = sum(group_rowspans)
+            if len(group_items) == 3:
+                dataset_rowspan += 1
 
             dataset_cell = render_dataset_cell(item)
             if dataset_rowspan > 0:
@@ -497,7 +545,7 @@ def update_data_grid(
                     group_item.get("phenotype", {}), is_grouped=True
                 )
                 sub_items = group_item.get("perturbation_change", [])
-                pheno_rowspan = max(1, len(sub_items))
+                pheno_rowspan = group_rowspans[i]
                 if pheno_rowspan > 0:
                     pheno_cell.style["grid-row"] = f"span {pheno_rowspan}"
 
@@ -505,7 +553,8 @@ def update_data_grid(
                 if i > 0:
                     separator_style = {
                         "border-top": "1px solid #dee2e6",
-                        "padding-top": "1.5rem",
+                        "padding-top": "1rem",
+                        "margin-top": "0.5rem",
                     }
 
                 pheno_cell.style.update(separator_style)
@@ -536,5 +585,26 @@ def update_data_grid(
                         grid_cells.append(
                             render_change_cell(sub_item.get("change", {}))
                         )
+
+                if len(sub_items) == 10:
+                    grid_cells.append(html.Div())
+                    grid_cells.append(
+                        html.Div(
+                            dcc.Link("Displaying top 10 entries, View all", href="#"),
+                            style={"grid-column": "2 / 4", "text-align": "right"},
+                        )
+                    )
+
+            if len(group_items) == 3:
+                grid_cells.append(
+                    html.Div(
+                        dcc.Link("Displaying top 3 groups, View all", href="#"),
+                        style={
+                            "grid-column": "1 / 5",
+                            "text-align": "right",
+                            "padding-top": "0.5rem",
+                        },
+                    )
+                )
 
     return grid_cells
