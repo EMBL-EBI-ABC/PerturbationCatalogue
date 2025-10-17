@@ -69,7 +69,9 @@ To ensure precise and consistent column alignment, the layout for sections 4-6 (
 
 - The container for the headers, filters, and data should be an `html.Div` with `display: 'grid'`.
 - Define the column widths with `grid-template-columns: 4fr 3fr 3fr 3fr`.
-- Set `row-gap: '0.5rem'` and `column-gap: '1rem'`.
+- To make nested rows more compact, set `row-gap: '0.25rem'`.
+- Set `column-gap: '1.5rem'` for more space between columns.
+- To prevent rows from stretching vertically to fill space, set `grid-auto-rows: 'min-content'`.
 - To create a clear visual break, a prominent, full-width separator must be placed after the filter controls and before the data grid begins. This should be a `div` with a thick top border (`2px`) and significant vertical margin.
 - To handle aggregated data correctly, where one cell in an outer group (like Dataset) corresponds to multiple rows of child data, the implementation must use CSS Grid's `grid-row: span N` property.
 - The callback that generates the data grid must first calculate the number of rows each aggregated cell needs to span, including rows for separators.
@@ -93,7 +95,7 @@ A consistent styling pattern must be used for all informational text.
 
 #### Vertical Spacing
 A 3-tier vertical spacing model must be implemented:
-1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.5rem`).
+1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.25rem`).
 2.  **Group Spacing:** A continuous horizontal line (`1px`) must separate aggregated groups within the same dataset. This should be implemented as a dedicated `html.Div` spanning the three rightmost columns (`grid-column: 2 / 5`), with vertical margins (e.g., `margin-top: 1rem`, `margin-bottom: 1rem`) to create even spacing.
 3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a thicker, full-width horizontal line (`2px`) with significant, even vertical spacing above and below it (e.g., `margin-top: 2rem`, `padding-top: 2rem`).
 
@@ -104,10 +106,9 @@ A 3-tier vertical spacing model must be implemented:
 
 #### Perturbation Column
 This cell has two rendering modes:
-- **When Grouped On:** Displays the `perturbation_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
-    1. "Affects **N** phenotypes"
-    2. "△ **X** ▽ **Y**" (e.g., "△ 225 ▽ 277"). The up-regulated count and icon must be green (`#2acc06`), and the down-regulated count and icon must be red (`#ff4824`).
-- **When in a Sub-Row:** Displays only the `perturbation_gene_name` in **Regular & Semi-bold**.
+- **When Grouped On:** Displays the `perturbation_gene_name` in a **Large & Bold** font with reduced bottom margin (`mb-1`). Below this, on a new line, it shows a conditional label: "Multiple gene knockout" if the gene name contains a `|`, otherwise "Single gene knockout". This is followed by the informational text in the **Regular** font size:
+        1. "Affects **N** phenotypes"
+        2. "△ **X** ▽ **Y**" (e.g., "△ 225 ▽ 277"). The up-regulated count and icon must be green (`#2acc06`), and the down-regulated count and icon must be red (`#ff4824`).- **When in a Sub-Row:** Displays only the `perturbation_gene_name` in **Regular & Semi-bold**.
 
 #### Change Column
 - To ensure vertical alignment of values across rows, the content must be structured using a flexbox container (`display: flex`).
@@ -118,7 +119,7 @@ This cell has two rendering modes:
 
 #### Phenotype Column
 This cell has two rendering modes:
-- **When Grouped On:** Displays the `phenotype_gene_name` in a **Large & Bold** font. Below this, on new lines, it shows informational text in the **Regular** font size:
+- **When Grouped On:** Displays the `phenotype_gene_name` in a **Large & Bold** font with reduced bottom margin (`mb-1`). Below this, on new lines, it shows informational text in the **Regular** font size:
     1. "Base expression **Z**"
     2. "Affected by **N** perturbations"
     3. "△ **X** ▽ **Y**". The up-regulated count and icon must be green (`#2acc06`), and the down-regulated count and icon must be red (`#ff4824`).
@@ -126,11 +127,11 @@ This cell has two rendering modes:
 
 ### 8. Temporary Truncation Notice
 
-As a temporary measure, the front-end must detect when the data from the back-end is truncated by assuming that 3 groups or 10 items per group is a sign of truncation.
+As a temporary measure, the front-end must detect when the data from the back-end is truncated. It should be assumed that 3 groups is a sign of group truncation, and the front-end should manually truncate nested entries to the first 5.
 - The notice must have a light grey background (`#f8f9fa`), padding, and rounded corners.
-- The text should be left-aligned and read "Displaying first N entries" (or groups), with no comma.
+- The text should be center-aligned, italicized, and read "Displaying first 5 entries " or "Displaying first 3 perturbations/phenotypes ", with no comma.
 - Only the "View all" portion of the text should be a clickable link.
 - **Spanning behavior is critical:**
-    - If **10 entries** are returned within a group, the notice must span only the columns of the nested data (e.g., for a `group by Perturbation`, it spans the `Change` and `Phenotype` columns).
+    - If **5 entries** are displayed within a group, the notice must span only the columns of the nested data (e.g., for a `group by Perturbation`, it spans the `Change` and `Phenotype` columns).
     - If **3 groups** are returned for a dataset, the notice must span all columns except the `Dataset` column (i.e., `Perturbation`, `Change`, and `Phenotype`).
 - This requires careful calculation of `grid-row` spans to accommodate the extra row for the notice without breaking the grid layout.
