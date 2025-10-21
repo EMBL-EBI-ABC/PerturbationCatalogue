@@ -52,6 +52,7 @@ docker run \
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
 1. Container(s), volumes, networking, security → Containers → Variables & Secrets → fill in environment variables: (see the environment variables section above)
+1. Networking → Enable checkbox for "Connect to VPC for outbound traffic". Leave default settings, namely; Send traffic directly to a VPC; default network and subnet.
 1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
