@@ -209,118 +209,167 @@ def render_phenotype_cell(ph, is_grouped=False):
 
 
 def layout():
-    return dbc.Container(
-        fluid=True,
-        className="px-5",
-        children=[
-            html.H1(
-                "Perturbation Catalogue",
-                className="text-center display-4 mb-3",
-                style={"font-size": "60px", "margin-top": "4.5rem"},
-            ),
-            html.P(
-                "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.",
-                className="text-center lead",
-                style={"font-size": "25px", "margin-bottom": "4.5rem"},
-            ),
+    return html.Div(
+        [
             html.Div(
-                className="d-flex justify-content-center mb-5",
-                children=[
-                    html.Span("Group by ", className="align-self-center me-2"),
-                    dbc.ButtonGroup(
-                        [
-                            dbc.Button(
-                                "Perturbation",
-                                id="group-by-perturbation-btn",
-                                color="primary",
-                            ),
-                            dbc.Button(
-                                "Phenotype", id="group-by-phenotype-btn", color="light"
-                            ),
-                        ]
-                    ),
-                ],
-            ),
-            # --- CSS Grid for Headers, Filters, and Data ---
-            html.Div(
-                className="mb-5",
+                className="text-center",
                 style={
-                    "display": "grid",
-                    "grid-template-columns": "4fr 3fr 3fr 3fr",
-                    "row-gap": "0.25rem",
-                    "column-gap": "1.5rem",
-                    "grid-auto-rows": "min-content",
+                    "background-image": 'url("https://new-pc-fe-959149465821.europe-west2.run.app/assets/banner.png")',
+                    "background-size": "cover",
+                    "background-position": "center",
+                    "padding": "4.5rem 2rem",
+                    "color": "white",
                 },
                 children=[
-                    # --- Headers ---
-                    html.Div(
-                        [
-                            html.H4(
-                                "According to", className="fw-normal fst-italic mb-0"
-                            ),
-                            html.H3("Dataset"),
-                        ]
-                    ),
-                    html.Div(
-                        [
-                            html.H4(
-                                "Introducing", className="fw-normal fst-italic mb-0"
-                            ),
-                            html.H3("Perturbation"),
-                        ]
-                    ),
-                    html.Div(
-                        [
-                            html.H4("Leads to", className="fw-normal fst-italic mb-0"),
-                            html.H3("Change"),
-                        ]
-                    ),
-                    html.Div(
-                        [
-                            html.H4("Affecting", className="fw-normal fst-italic mb-0"),
-                            html.H3("Phenotype"),
-                        ]
-                    ),
-                    # --- Filter Fields ---
-                    dbc.Input(
-                        id="filter-dataset", placeholder="Filter by dataset metadata"
-                    ),
-                    dbc.Input(
-                        id="filter-perturbation", placeholder="Filter by perturbed gene"
-                    ),
-                    dbc.ButtonGroup(
-                        [
-                            dbc.Button(
-                                "△ Up", id="filter-change-up-btn", color="light"
-                            ),
-                            dbc.Button(
-                                "▽ Down", id="filter-change-down-btn", color="light"
-                            ),
-                            dbc.Button(
-                                "△▽ Both", id="filter-change-both-btn", color="primary"
-                            ),
-                        ],
-                        id="filter-change-group",
-                    ),
-                    dbc.Input(
-                        id="filter-phenotype", placeholder="Filter by phenotype gene"
-                    ),
-                    # --- Data Grid Container ---
-                    html.Div(
+                    html.H1(
+                        "Perturbation Catalogue",
+                        className="display-4 mb-3 fw-bold",
                         style={
-                            "grid-column": "1 / -1",
-                            "border-top": "2px solid #dee2e6",
-                            "margin-top": "2rem",
-                            "padding-top": "2rem",
-                        }
+                            "font-size": "60px",
+                            "text-shadow": "2px 2px 4px rgba(0, 0, 0, 0.6)",
+                        },
                     ),
-                    html.Div(
-                        id="data-grid-container",
-                        style={"grid-column": "1 / -1", "display": "contents"},
+                    html.P(
+                        "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.",
+                        className="lead",
+                        style={
+                            "font-size": "25px",
+                            "text-shadow": "1px 1px 3px rgba(0, 0, 0, 0.6)",
+                        },
                     ),
                 ],
             ),
-        ],
+            dbc.Container(
+                fluid=True,
+                className="px-5 pt-5",
+                children=[
+                    html.Div(
+                        className="d-flex justify-content-center mb-5",
+                        children=[
+                            html.Span(
+                                "Group by ",
+                                className="align-self-center me-2",
+                                style={"font-size": "1.25rem"},
+                            ),
+                            dbc.ButtonGroup(
+                                [
+                                    dbc.Button(
+                                        "Perturbation",
+                                        id="group-by-perturbation-btn",
+                                        color="primary",
+                                    ),
+                                    dbc.Button(
+                                        "Phenotype",
+                                        id="group-by-phenotype-btn",
+                                        color="light",
+                                    ),
+                                ],
+                                size="lg",
+                            ),
+                        ],
+                    ),
+                    # --- CSS Grid for Headers, Filters, and Data ---
+                    html.Div(
+                        className="mb-5",
+                        style={
+                            "display": "grid",
+                            "grid-template-columns": "4fr 3fr 3fr 3fr",
+                            "row-gap": "0.25rem",
+                            "column-gap": "1.5rem",
+                            "grid-auto-rows": "min-content",
+                        },
+                        children=[
+                            # --- Headers ---
+                            html.Div(
+                                [
+                                    html.H4(
+                                        "According to",
+                                        className="fw-normal fst-italic mb-0",
+                                    ),
+                                    html.H3("Dataset"),
+                                ],
+                            ),
+                            html.Div(
+                                [
+                                    html.H4(
+                                        "Introducing",
+                                        className="fw-normal fst-italic mb-0",
+                                    ),
+                                    html.H3("Perturbation"),
+                                ],
+                            ),
+                            html.Div(
+                                [
+                                    html.H4(
+                                        "Leads to",
+                                        className="fw-normal fst-italic mb-0",
+                                    ),
+                                    html.H3("Change"),
+                                ],
+                            ),
+                            html.Div(
+                                [
+                                    html.H4(
+                                        "Affecting",
+                                        className="fw-normal fst-italic mb-0",
+                                    ),
+                                    html.H3("Phenotype"),
+                                ],
+                            ),
+                            # --- Filter Fields ---
+                            dbc.Input(
+                                id="filter-dataset",
+                                placeholder="Filter by dataset metadata",
+                            ),
+                            dbc.Input(
+                                id="filter-perturbation",
+                                placeholder="Filter by perturbed gene",
+                            ),
+                            dbc.ButtonGroup(
+                                [
+                                    dbc.Button(
+                                        "△ Up",
+                                        id="filter-change-up-btn",
+                                        color="light",
+                                    ),
+                                    dbc.Button(
+                                        "▽ Down",
+                                        id="filter-change-down-btn",
+                                        color="light",
+                                    ),
+                                    dbc.Button(
+                                        "△▽ Both",
+                                        id="filter-change-both-btn",
+                                        color="secondary",
+                                    ),
+                                ],
+                                id="filter-change-group",
+                            ),
+                            dbc.Input(
+                                id="filter-phenotype",
+                                placeholder="Filter by phenotype gene",
+                            ),
+                            # --- Data Grid Container ---
+                            html.Div(
+                                style={
+                                    "grid-column": "1 / -1",
+                                    "border-top": "2px solid #dee2e6",
+                                    "margin-top": "2rem",
+                                    "padding-top": "2rem",
+                                }
+                            ),
+                            html.Div(
+                                id="data-grid-container",
+                                style={
+                                    "grid-column": "1 / -1",
+                                    "display": "contents",
+                                },
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ]
     )
 
 
@@ -364,15 +413,15 @@ def update_group_by_selection(pert_clicks, pheno_clicks):
 def update_change_filter_selection(up_clicks, down_clicks, both_clicks):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return "light", "light", "primary"
+        return "light", "light", "secondary"
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
     if button_id == "filter-change-up-btn":
-        return "primary", "light", "light"
+        return "secondary", "light", "light"
     elif button_id == "filter-change-down-btn":
-        return "light", "primary", "light"
+        return "light", "secondary", "light"
     else:  # both
-        return "light", "light", "primary"
+        return "light", "light", "secondary"
 
 
 @callback(
