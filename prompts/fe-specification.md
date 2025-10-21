@@ -22,25 +22,33 @@ For the new page icon in the navbar, use the "tropical-storm" Bootstrap icon.
 
 ### Overall layout
 
-The page layout, top to bottom, is: title, subtitle, grouping controls, table header, search fields, a main separator, and a data grid obtained from BE according to filters.
+The page layout, top to bottom, is: a full-width banner containing the title and subtitle, grouping controls, table header, search fields, a main separator, and a data grid obtained from BE according to filters.
 
 The page content should span the entire width of the container using `fluid=True`. The main content should have horizontal padding (e.g., `px-5`) and a margin at the bottom (e.g., `mb-5`) to ensure adequate spacing from the page footer.
 
 Make sure to use Bootstrap components and styles as much as possible. Make sure that everything uses the same font (the default), is visually pleasing and coherent.
 
+### Banner
+
+A full-width banner should be at the top of the page.
+- It should use the background image from `https://new-pc-fe-959149465821.europe-west2.run.app/assets/banner.png`.
+- The background image should cover the banner area and be centered.
+- The banner should contain the title and subtitle.
+- The text inside the banner should be white with a text shadow to ensure readability against the background image.
+
 ### 1. Title
 
-A very big title, centered: "Perturbation Catalogue". Use an `h1` tag with classes `"text-center display-4 mb-3"` and an inline style for `font-size: "60px"` and `margin-top: "4.5rem"`.
+A very big title, centered, inside the banner: "Perturbation Catalogue". Use an `h1` tag with classes `"text-center display-4 mb-3 fw-bold"` and an inline style for `font-size: "60px"`.
 
 ### 2. Subtitle
 
-A subtitle below the title, centered: "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.". Use a `p` tag with class `"text-center lead"` and inline styles for `font-size: "25px"` and `margin-bottom: "4.5rem"`.
+A subtitle below the title, centered, inside the banner: "A unified engine to search and filter CRISPR, MAVE and Perturb-Seq perturbation results.". Use a `p` tag with class `"text-center lead"` and inline styles for `font-size: "25px"`.
 
 ### 3. Grouping controls
 
-Below the subtitle, add controls for data grouping. This should consist of a `html.Span` with the text "Group by " followed by a `dbc.ButtonGroup`. This container should have a larger bottom margin (`mb-5`) to create more space before the table headers.
+Below the banner, add controls for data grouping. This should consist of a `html.Span` with the text "Group by " followed by a `dbc.ButtonGroup`. This container should have a larger bottom margin (`mb-5`) to create more space before the table headers.
 
-The button group will contain two buttons: "Perturbation" and "Phenotype". Their width should be determined by the text, not stretched. The default selection is "Perturbation". The active button should have `color="primary"` and the inactive one should have `color="light"`.
+The button group will contain two buttons: "Perturbation" and "Phenotype". Their width should be determined by the text, not stretched. The default selection is "Perturbation". The active button should have `color="primary"` and the inactive one should have `color="light"`. The `dbc.ButtonGroup` should have `size="lg"`. The "Group by" text should have a font size of `1.25rem` to match the buttons.
 
 ### 4. Table header
 
@@ -58,7 +66,7 @@ Immediately below the headers, provide search and filter fields for each column:
 
 - **Dataset:** `dbc.Input` with placeholder "Filter by dataset metadata".
 - **Perturbation:** `dbc.Input` with placeholder "Filter by perturbed gene".
-- **Change:** A `dbc.ButtonGroup` with three buttons: "△ Up", "▽ Down", and "△▽ Both". "Both" is the default. The active button has `color="primary"`, inactive is `color="light"`.
+- **Change:** A `dbc.ButtonGroup` with three buttons: "△ Up", "▽ Down", and "△▽ Both". "Both" is the default. The active button has `color="secondary"`, inactive is `color="light"`.
 - **Phenotype:** `dbc.Input` with placeholder "Filter by phenotype gene".
 
 When any of these fields are modified, the data table should update immediately.
@@ -97,7 +105,7 @@ A consistent styling pattern must be used for all informational text.
 A 3-tier vertical spacing model must be implemented:
 1.  **Sub-item Spacing:** The smallest space, between individual rows of data, is handled by the grid's `row-gap` (`0.25rem`).
 2.  **Group Spacing:** A continuous horizontal line (`1px`) must separate aggregated groups within the same dataset. This should be implemented as a dedicated `html.Div` spanning the three rightmost columns (`grid-column: 2 / 5`), with vertical margins (e.g., `margin-top: 1rem`, `margin-bottom: 1rem`) to create even spacing.
-3.  **Dataset Spacing:** The largest separation is between datasets. This is achieved with a thicker, full-width horizontal line (`2px`) with significant, even vertical spacing above and below it (e.g., `margin-top: 2rem`, `padding-top: 2rem`).
+3.  **Dataset Spacing:** The largest separation is between datasets.. This is achieved with a thicker, full-width horizontal line (`2px`) with significant, even vertical spacing above and below it (e.g., `margin-top: 2rem`, `padding-top: 2rem`).
 
 #### Dataset Column
 - The `dataset_id` is displayed in a **Large & Bold** font. It must be formatted to replace underscores with spaces and capitalize the first letter (e.g., `adamson_2016_pilot` becomes `Adamson 2016 pilot`).
