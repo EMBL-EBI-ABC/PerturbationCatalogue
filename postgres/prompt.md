@@ -2,12 +2,10 @@
 
 ## 1. Component Overview
 
-Implement a highly efficient Python script named `bq_to_postgres.py` that loads data from a BigQuery table into a Google Cloud PostgreSQL instance. Core requirements:
-- Save the script to `@postgres/bq_to_postgres.py`.
+Implement a Python script that loads data from a BigQuery table into a Google Cloud PostgreSQL instance:
+- Save the script to `@postgres/bq_to_postgres.py`. The script must run on a Google Cloud VM. All script arguments must use the `--argument` form and be mandatory.
 - Save its dependencies to `@postgres/requirements.txt`.
-- Provide clear execution instructions in `@postgres/instructions.md`.
-- All operations must be designed to run within the Google Cloud ecosystem, utilizing service account credentials.
-- All script arguments must use the `--argument` form and be mandatory.
+- Provide concise, clear, exact execution instructions in `@postgres/instructions.md`. Hypothetical or missing instructions are not acceptable. Provide exact commands to create the VM to run the script on. The VM must connect to Cloud VPC in order to be able to connect to the Cloud SQL instance by its private IP.
 
 ## 2. Script Arguments
 
