@@ -1,33 +1,59 @@
-# BigQuery to Postgres projector
+# BigQuery to Postgres Projector
 
-## 1. Component overview
+## 1. Component Overview
 
-Implement a highly efficient Python script which will load data from BigQuery into a Google Cloud PostgreSQL instance and save it to @postgres/bq_to_postgres.py. Save the necessary requirements to @postgres/requirements.txt and instructions to run it to @postgres/instructions.md.
+Implement a highly efficient Python script named `bq_to_postgres.py` that loads data from a BigQuery table into a Google Cloud PostgreSQL instance. Core requirements:
+- Save the script to `@postgres/bq_to_postgres.py`.
+- Save its dependencies to `@postgres/requirements.txt`.
+- Provide clear execution instructions in `@postgres/instructions.md`.
+- All operations must be designed to run within the Google Cloud ecosystem, utilizing service account credentials.
+- All script arguments must use the `--argument` form and be mandatory.
 
-All operations must be performed in Google Cloud, never on a local machine. Take that into account when writing the instructions. The script must also be as efficient as possible to be able to move large amounts of data.
+## 2. Script Arguments
 
-All arguments of the script must use the two dash form (--argument) and be mandatory, unless specified otherwise.
+### BigQuery Source
+* `--bq-dataset`: The source dataset in BigQuery.
+* `--bq-table`: The source table in BigQuery. The script must assume this table contains a timestamp column named `max_ingested_at`.
 
-## 2. Input data in BigQuery
-Arguments:
-* bq_dataset: source dataset in BigQuery
-* bq_table: source table in BigQuery
+### PostgreSQL Target
+* `--pg-conn`: The connection URI for the target PostgreSQL database (e.g., `postgresql://user:password@host:port/dbname`).
+* `--pg-table`: The name of the target table in PostgreSQL.
 
-## 3. Output data in PostgreSQL
-Arguments:
-* pg_conn: connection information for the target database
-* pg_table: target table in PostgreSQL
+### Temporary Storage
+* `--gcs-bucket`: The name of the Google Cloud Storage bucket to use for temporary data staging.
 
-## 4. Incremental load
+## 3. Data Transfer Workflow
 
-To avoid moving data which was already ingested, the script must always consider the synchronisation state of BigQuery and PostgreSQL. It is stored in the "sync_state" table of the PostgreSQL database. Instructions to work with the table are as follows.
+To ensure high performance with large datasets, the script must follow this workflow:
+1. **Export from BigQuery:** Export the required data from BigQuery to a new file (e.g., in CSV format) in the specified GCS bucket.
+2. **Load into PostgreSQL:** Use the PostgreSQL `COPY` command to efficiently bulk-load the data from the GCS file into the target PostgreSQL table.
+3. **Cleanup:** Remove the temporary file from the GCS bucket after the operation completes.
 
-First, if the `sync_state` table is missing, create it. It only has two fields:
-- `table_name`: text, not null. It refers to the *target* table name in PostgreSQL, corresponding to pg_table above.
-- `last_synced`: timestamp without timezone. It refers to the highest timestamp of the "max_ingested_at" field in the corresponding BigQuery data.
+## 4. Incremental Load and State Management
 
-Then:
-- If the target table is not mentioned in the `sync_state` table or the timestamp is empty, then the target table must be dropped and fully ingested from BigQuery.
-- Otherwise, only those entries should be ingested from BigQuery such that last_synced (of the sync_state) < max_ingested_at (of the particular entry from BigQuery).
+The script must perform incremental loads to avoid re-ingesting data. The synchronization state is maintained in a PostgreSQL table named `sync_state`.
 
-After the import is completed, the `sync_state` table must be updated.
+### `sync_state` Table
+If the `sync_state` table does not exist, the script must create it with the following schema:
+- `table_name`: `TEXT`, `NOT NULL`, `PRIMARY KEY`. The name of the target table (`--pg-table`).
+- `last_synced`: `TIMESTAMP WITHOUT TIME ZONE`. The latest `max_ingested_at` timestamp from the data successfully synced.
+
+### Loading Logic
+1. Query the `sync_state` table for the `last_synced` timestamp corresponding to `--pg-table`.
+2. **Full Load:** If no entry exists for the table or `last_synced` is `NULL`, perform a full data load.
+3. **Incremental Load:** Otherwise, export only those rows from BigQuery where `max_ingested_at` is greater than the `last_synced` timestamp.
+
+## 5. Transactional Integrity
+
+All data loading operations in PostgreSQL must be transactional to ensure data consistency.
+
+### Full Load
+1. Create a temporary staging table.
+2. Load data from the GCS file into this staging table.
+3. In a single, atomic transaction: drop the original target table and rename the staging table to the target table name.
+
+### Incremental Load
+1. In a single transaction, insert the new data from the GCS file into the main target table.
+
+### State Update
+After the data transaction is successfully committed, update the `sync_state` table. Set `last_synced` to the maximum `max_ingested_at` value from the records that were just loaded. This update must be an atomic `INSERT ... ON CONFLICT` operation to prevent race conditions.
