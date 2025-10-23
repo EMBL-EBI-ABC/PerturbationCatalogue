@@ -74,7 +74,7 @@ class ObsSchema(DataFrameModel):
     perturbation_type_label: Series[String] = Field(
         nullable=False,
         description="Perturbation type ontology term label of the investigated sample.",
-        isin=["CRISPRn", "CRISPRi", "CRISPRa"],
+        isin=["CRISPRn", "CRISPRi", "CRISPRa", "DMS"],
     )
     perturbation_type_id: Series[String] = Field(
         nullable=True,
