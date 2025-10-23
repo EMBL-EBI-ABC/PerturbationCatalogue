@@ -211,11 +211,11 @@ class ObsSchema(DataFrameModel):
     )
     library_generation_method_id: Series[String] = Field(
         nullable=True,
-        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868 (Endogenous genetic perturbation method)",
+        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
     )
     library_generation_method_label: Series[String] = Field(
         nullable=True,
-        description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868 (Endogenous genetic perturbation method)",
+        description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
     )
     enzyme_delivery_method_id: Series[String] = Field(
         nullable=True,
