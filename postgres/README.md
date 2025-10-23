@@ -11,6 +11,7 @@ Change the settings:
 * Customise your instance
   + Machine configuration: Dedicated core, 4 vCPU, 16 GB
   + Data protection: disable "Automated daily backups" and "Enable point-in-time recovery"
+  + Flags and parameters: set temp_file_limit to 104857600
 
 # Migrate data from BigQuery
 
@@ -41,10 +42,10 @@ pip3 install -r requirements.txt
 ## 4. Run the script
 ```bash
 python3 bq_to_postgres.py \
-    --bq-dataset <your-bq-dataset> \
-    --bq-table <your-bq-table> \
-    --bq-location <your-bq-location> \
-    --pg-conn "postgresql://<user>:<password>@<private-ip>:<port>/<dbname>" \
-    --pg-table <your-pg-table> \
-    --gcs-bucket <your-gcs-bucket>
+    --bq-dataset ${BQ_DATASET} \
+    --bq-table ${BQ_TABLE} \
+    --bq-location ${BQ_LOCATION}$ \
+    --pg-conn "${PG_CONN}" \
+    --pg-table ${PG_TABLE} \
+    --gcs-bucket ${GCLOUD_TMP_BUCKET}
 ```
