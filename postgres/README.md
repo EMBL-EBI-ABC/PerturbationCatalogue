@@ -44,6 +44,8 @@ pip3 install -r requirements.txt
 
 ## 4. Run the script
 ```bash
+export BQ_TABLE=...
+export PG_TABLE=...
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-table ${BQ_TABLE} \
