@@ -70,6 +70,17 @@ class ObsSchema(DataFrameModel):
         nullable=True,
         regex=r"^[ACGTN]+$",
         coerce=True,
+        description="Guide RNA sequence in 5' to 3' direction consisting of A, C, G, T, N characters only.",
+    )
+    perturbation_type_label: Series[String] = Field(
+        nullable=False,
+        description="Perturbation type ontology term label of the investigated sample.",
+        isin=["CRISPRn", "CRISPRi", "CRISPRa", "DMS"],
+    )
+    perturbation_type_id: Series[String] = Field(
+        nullable=True,
+        str_contains=":",
+        description="Perturbation type ontology term ID of the investigated sample.",
     )
     perturbation_type_label: Series[String] = Field(
         nullable=False,
