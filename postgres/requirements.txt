@@ -1,3 +1,4 @@
 google-cloud-bigquery
 google-cloud-storage
+psycopg2-binary
 tqdm
