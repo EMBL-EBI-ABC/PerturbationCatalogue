@@ -11,7 +11,10 @@ Change the settings:
 * Customise your instance
   + Machine configuration: Dedicated core, 4 vCPU, 16 GB
   + Data protection: disable "Automated daily backups" and "Enable point-in-time recovery"
-  + Flags and parameters: set temp_file_limit to 104857600
+  + Flags and parameters:
+    - `temp_file_limit` = 104857600
+    - `maintenance_work_mem` = 4194304
+    - `max_parallel_maintenance_workers` = 4
 
 # Migrate data from BigQuery
 
