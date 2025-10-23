@@ -63,9 +63,28 @@ After running the command above, run `psql $PG_CONN` and create the indexes.
 
 ## Perturb-Seq
 ```
+\timing on
 CREATE INDEX CONCURRENTLY idx_perturbation
   ON perturb_seq (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
 
 CREATE INDEX CONCURRENTLY idx_phenotype
   ON perturb_seq (gene, dataset_id, padj, basemean, log2foldchange);
+```
+
+## Monitoring
+You can use this query in a separate psql session to monitor the progress of index creation:
+```
+SELECT
+    p.pid,
+    p.datname,
+    c.relname AS table_name,
+    i.relname AS index_name,
+    p.phase,
+    p.blocks_total,
+    p.blocks_done,
+    ROUND(100.0 * p.blocks_done / NULLIF(p.blocks_total, 0), 1) AS pct_done
+FROM pg_stat_progress_create_index p
+JOIN pg_class c ON p.relid = c.oid
+LEFT JOIN pg_class i ON p.index_relid = i.oid;
+\watch 10
 ```
