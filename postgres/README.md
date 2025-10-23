@@ -14,43 +14,37 @@ Change the settings:
 
 # Migrate data from BigQuery
 
-## 1. Authenticate Google Cloud SDK
+## 1. Create a Google Cloud VM
 ```bash
-gcloud auth application-default login
+gcloud compute instances create bq-to-pg-projector \
+    --project=${GCLOUD_PROJECT} \
+    --zone=${GCLOUD_ZONE} \
+    --machine-type=e2-medium \
+    --network=default \
+    --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
 
-## 2. Set up Cloud SQL permissions
-This is required so that the Cloud SQL instance can read from the bucket. These commands need to be run once.
+## 2. Copy files and SSH into the VM
 ```bash
-SERVICE_ACCOUNT_EMAIL=$(gcloud sql instances describe $PS_INSTANCE_ID --format='value(serviceAccountEmailAddress)')
-gsutil iam ch serviceAccount:$SERVICE_ACCOUNT_EMAIL:objectAdmin gs://$WAREHOUSE_BUCKET
+gcloud compute scp --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE} postgres/requirements.txt postgres/bq_to_postgres.py   bq-to-pg-projector:~
+gcloud compute ssh bq-to-pg-projector --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
-## 3. Export environment variables
-These should come from project wide secrets:
+## 3. Install dependencies
 ```bash
-export GCLOUD_PROJECT="your-gcp-project-id"
-export GCLOUD_REGION="your-gcp-region"
-export PS_INSTANCE_ID="your-ps-instance-id"
-export PS_PASSWORD="your-postgres-password"
-export PS_TABLE="your-postgres-table-name"
-export BQ_DATASET="your-bigquery-dataset"
-export BQ_TABLE="your-bigquery-table"
-export WAREHOUSE_BUCKET="your-gcs-bucket-for-staging"
+sudo apt install -y python3-pip python3-venv
+python3 -m venv env
+source env/bin/activate
+pip3 install -r requirements.txt
 ```
 
-## 4. Install dependencies
+## 4. Run the script
 ```bash
-pip install -r requirements.txt
-```
-
-## 5. Run the migration
-```bash
-python3 perturb_seq.py
-```
-
-To test with the first N chunks only:
-
-```bash
-python3 perturb_seq.py --limit 10
+python3 bq_to_postgres.py \
+    --bq-dataset <your-bq-dataset> \
+    --bq-table <your-bq-table> \
+    --bq-location <your-bq-location> \
+    --pg-conn "postgresql://<user>:<password>@<private-ip>:<port>/<dbname>" \
+    --pg-table <your-pg-table> \
+    --gcs-bucket <your-gcs-bucket>
 ```
