@@ -5,7 +5,7 @@
 Implement a Python script that loads data from a BigQuery table into a Google Cloud PostgreSQL instance:
 - Save the script to `@postgres/bq_to_postgres.py`. The script must run on a Google Cloud VM. All script arguments must use the `--argument` form and be mandatory.
 - Save its dependencies to `@postgres/requirements.txt`.
-- Update the execution instructions in `@postgres/instructions.md` accordingly. Hypothetical or missing instructions are not acceptable. Provide exact commands to create the VM to run the script on. The VM must connect to Cloud VPC in order to be able to connect to the Cloud SQL instance by its private IP.
+- Only if necessary, update the execution instructions in `@postgres/README.md`, section "Migrate data from BigQuery". Instructions have to be precise; hypothetical, ambiguous or missing instructions are not acceptable. Note that an essential requirement is that the VM must connect to Cloud VPC in order to be able to connect to the Cloud SQL instance by its private IP.
 
 ## 2. Script Arguments
 
@@ -24,8 +24,8 @@ Implement a Python script that loads data from a BigQuery table into a Google Cl
 ## 3. Data Transfer Workflow
 
 To ensure high performance with large datasets, the script must follow this workflow:
-1. **Export from BigQuery:** Export the required data from BigQuery to a new file (e.g., in CSV format) in the specified GCS bucket. The export URI must include a wildcard (`*`) to shard the output into multiple files.
-2. **Load into PostgreSQL:** Use the PostgreSQL `COPY` command to efficiently bulk-load the data from the GCS file(s) into the target PostgreSQL table.
+1. **Export from BigQuery:** Export the required data from BigQuery to a new file (e.g., in CSV format) in the specified GCS bucket. For large tables, the export URI must include a wildcard (`*`) to shard the output into multiple files.
+2. **Load into PostgreSQL:** Use the PostgreSQL `COPY` command to efficiently bulk-load the data from the GCS file(s) into the target PostgreSQL table. A progress bar (using `tqdm`) should be displayed to show the progress of loading the shards.
 3. **Cleanup:** Remove the temporary file(s) from the GCS bucket after the operation completes.
 
 ## 4. Incremental Load and State Management
