@@ -30,11 +30,14 @@ gcloud compute instances create bq-to-pg-projector \
 
 ## 2. Copy files and SSH into the VM
 ```bash
-gcloud compute scp --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE} postgres/requirements.txt postgres/bq_to_postgres.py   bq-to-pg-projector:~
+gcloud compute scp --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE} postgres/requirements.txt postgres/bq_to_postgres.py bq-to-pg-projector:~
 gcloud compute ssh bq-to-pg-projector --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
-## 3. Install dependencies
+## 3. Create permanent session
+Run `screen` so that the commands above can run for a long time and will not be interrupted by a connection failure.
+
+## 4. Install dependencies
 ```bash
 sudo apt install -y python3-pip python3-venv
 python3 -m venv env
@@ -42,7 +45,7 @@ source env/bin/activate
 pip3 install -r requirements.txt
 ```
 
-## 4. Run the script
+## 5. Run the script
 ```bash
 export BQ_TABLE=...
 export PG_TABLE=...
@@ -53,4 +56,16 @@ python3 bq_to_postgres.py \
     --pg-conn "${PG_CONN}" \
     --pg-table ${PG_TABLE} \
     --gcs-bucket ${GCLOUD_TMP_BUCKET}
+```
+
+# Create indexes
+After running the command above, run `psql $PG_CONN` and create the indexes.
+
+## Perturb-Seq
+```
+CREATE INDEX CONCURRENTLY idx_perturbation
+  ON perturb_seq (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
+
+CREATE INDEX CONCURRENTLY idx_phenotype
+  ON perturb_seq (gene, dataset_id, padj, basemean, log2foldchange);
 ```
