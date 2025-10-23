@@ -99,7 +99,7 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[String] = Field(
         nullable=False,
         description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid"],
+        isin=["cell_line", "primary_cell", "organoid", 'yeast'],
     )
     model_system_id: Series[String] = Field(
         nullable=True,
