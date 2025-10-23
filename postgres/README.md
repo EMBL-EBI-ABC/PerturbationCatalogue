@@ -47,7 +47,7 @@ pip3 install -r requirements.txt
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-table ${BQ_TABLE} \
-    --bq-location ${BQ_LOCATION}$ \
+    --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
     --pg-table ${PG_TABLE} \
     --gcs-bucket ${GCLOUD_TMP_BUCKET}
