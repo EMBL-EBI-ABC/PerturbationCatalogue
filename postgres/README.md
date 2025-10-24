@@ -62,13 +62,20 @@ python3 bq_to_postgres.py \
 After running the command above, run `psql $PG_CONN` and create the indexes.
 
 ## Perturb-Seq
-```
+```sql
 \timing on
 CREATE INDEX CONCURRENTLY idx_perturbation
   ON perturb_seq (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
 
 CREATE INDEX CONCURRENTLY idx_phenotype
   ON perturb_seq (gene, dataset_id, padj, basemean, log2foldchange);
+```
+
+## CRISPR
+```sql
+\timing on
+CREATE INDEX idx_crispr_data_dataset ON public.crispr_data USING btree (dataset_id);
+CREATE INDEX idx_crispr_data_target ON public.crispr_data USING btree (perturbed_target_symbol);
 ```
 
 ## Monitoring
