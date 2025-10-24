@@ -5,13 +5,13 @@
 Implement a Python script that loads data from a BigQuery table into a Google Cloud PostgreSQL instance:
 - Save the script to `@postgres/bq_to_postgres.py`. The script must run on a Google Cloud VM. All script arguments must use the `--argument` form and be mandatory.
 - Save its dependencies to `@postgres/requirements.txt`.
-- Only if necessary, update the execution instructions in `@postgres/README.md`, section "Migrate data from BigQuery". Instructions have to be precise; hypothetical, ambiguous or missing instructions are not acceptable. Note that an essential requirement is that the VM must connect to Cloud VPC in order to be able to connect to the Cloud SQL instance by its private IP.
+- Update the execution instructions in `@postgres/instructions.md` accordingly. Hypothetical or missing instructions are not acceptable. Provide exact commands to create the VM to run the script on. The VM must connect to Cloud VPC in order to be able to connect to the Cloud SQL instance by its private IP.
 
 ## 2. Script Arguments
 
 ### BigQuery Source
 * `--bq-dataset`: The source dataset in BigQuery.
-* `--bq-table`: The source table in BigQuery. The script must assume this table contains a timestamp column named `max_ingested_at`.
+* `--bq-table`: The source table in BigQuery. The script must assume this table contains a `DATETIME` column named `max_ingested_at`.
 * `--bq-location`: The location of the BigQuery dataset.
 
 ### PostgreSQL Target
@@ -39,8 +39,12 @@ If the `sync_state` table does not exist, the script must create it with the fol
 
 ### Loading Logic
 1. Query the `sync_state` table for the `last_synced_at` timestamp corresponding to `--pg-table`.
-2. **Full Load:** If no entry exists for the table or `last_synced_at` is `NULL`, perform a full data load.
-3. **Incremental Load:** Otherwise, export only those rows from BigQuery where `max_ingested_at` is greater than the `last_synced_at` timestamp.
+2. **Full Load:** If no entry exists for the table or `last_synced_at` is `NULL`, perform a full data load by exporting the entire BigQuery table directly to GCS.
+3. **Incremental Load:** Otherwise, perform the following steps:
+    a. Create a temporary BigQuery table.
+    b. Run a query to select rows from the source table where `max_ingested_at` is greater than the `last_synced_at` timestamp, and save the results to the temporary table.
+    c. Export the temporary table to GCS. The export URI must include a wildcard (`*`) to shard the output.
+    d. Delete the temporary BigQuery table after the export is complete.
 
 ## 5. Transactional Integrity
 
