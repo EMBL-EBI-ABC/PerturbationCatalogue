@@ -370,7 +370,7 @@ class ObsSchema(DataFrameModel):
         isin=[
             "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
             "10x Genomics Single Cell 3-prime",
-            "Nextera XT",
+            "Nextera XT DNA Library Preparation Kit",
         ],
     )
     sequencing_platform_id: Series[String] = Field(
