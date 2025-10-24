@@ -1,6 +1,7 @@
 import argparse
 import logging
 import uuid
+from datetime import datetime
 
 from google.cloud import bigquery, storage
 import psycopg2
@@ -45,25 +46,41 @@ def export_bq_to_gcs(
     destination_uri = f"gs://{gcs_bucket}/{gcs_file_path_prefix}-*.csv"
 
     if last_synced_at:
+        # Incremental load: query to a temporary table, then export.
+        temp_table_id = f"temp_export_{uuid.uuid4().hex}"
+        temp_table_ref = dataset_ref.table(temp_table_id)
+
         query = f"""
         SELECT *
         FROM `{bq_dataset}.{bq_table}`
-        WHERE max_ingested_at > TIMESTAMP('{last_synced_at.isoformat()}')
+        WHERE max_ingested_at > DATETIME('{last_synced_at.isoformat()}')
         """
-        job_config = bigquery.QueryJobConfig(destination=destination_uri)
-        extract_job = bq_client.query(
-            query, job_config=job_config, location=bq_location
+        query_job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
+
+        query_job = bq_client.query(
+            query, job_config=query_job_config, location=bq_location
         )
+        query_job.result()  # Wait for the query to finish
+
+        extract_job = bq_client.extract_table(
+            temp_table_ref,
+            destination_uri,
+            location=bq_location,
+        )
+        extract_job.result()  # Wait for the extract to finish
+
+        bq_client.delete_table(temp_table_ref)  # Clean up temp table
+
     else:
+        # Full load: direct export
         extract_job = bq_client.extract_table(
             table_ref,
             destination_uri,
             location=bq_location,
         )
-    extract_job.result()
-    logging.info(
-        f"Exported {bq_dataset}.{bq_table} to gs://{gcs_bucket}/{gcs_file_path_prefix}-*.csv"
-    )
+        extract_job.result()
+
+    logging.info(f"Exported data to gs://{gcs_bucket}/{gcs_file_path_prefix}-*.csv")
 
 
 def load_to_postgres(
