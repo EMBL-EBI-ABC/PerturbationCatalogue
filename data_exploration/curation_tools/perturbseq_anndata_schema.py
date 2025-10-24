@@ -296,7 +296,7 @@ class ObsSchema(DataFrameModel):
     library_perturbation_type_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the library perturbation type.",
-        isin=["knockout", "inhibition", "activation", "base editing", "prime editing"],
+        isin=["knockout", "inhibition", "activation", "base editing", "prime editing", "mutagenesis"],
     )
     library_manufacturer: Series[String] = Field(
         nullable=True,
