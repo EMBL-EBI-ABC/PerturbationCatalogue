@@ -80,7 +80,7 @@ CREATE INDEX idx_crispr_data_target ON public.crispr_data USING btree (perturbed
 
 ## Monitoring
 You can use this query in a separate psql session to monitor the progress of index creation:
-```
+```sql
 SELECT
     p.pid,
     p.datname,
