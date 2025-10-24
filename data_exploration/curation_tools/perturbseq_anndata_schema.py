@@ -409,6 +409,10 @@ class ObsSchema(DataFrameModel):
         description="Ontology term label for the software used for analysis.",
         isin=["custom", "MAGeCK", "Achilles"],
     )
+    score_interpretation: Series[String] = Field(
+        nullable=True,
+        description="Interpretation of the perturbation effect score."
+    )
     reference_genome_id: Series[String] = Field(
         nullable=True, description="Ontology term ID for the reference genome."
     )
