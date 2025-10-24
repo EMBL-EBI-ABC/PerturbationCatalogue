@@ -5,8 +5,8 @@ Create the database using the link: https://console.cloud.google.com/sql/instanc
 Change the settings:
 * Cloud SQL edition: Enterprise
 * Edition preset: Development
-* Instance ID: `$PS_INSTANCE_ID`
-* Password: `$PS_PASSWORD`
+* Instance ID: `$PG_INSTANCE_ID`
+* Password: `$PG_PASSWORD`
 * Zonal availability: Single zone
 * Customise your instance
   + Machine configuration: Dedicated core, 4 vCPU, 16 GB
