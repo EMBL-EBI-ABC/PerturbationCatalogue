@@ -1,7 +1,6 @@
 import argparse
 import logging
 import uuid
-from datetime import datetime
 
 from google.cloud import bigquery, storage
 import psycopg2
@@ -156,10 +155,12 @@ def get_pg_type(bq_type):
     }.get(bq_type, "TEXT")
 
 
-def update_sync_state(pg_conn, pg_table, bq_client, bq_dataset, bq_table_name):
+def update_sync_state(
+    pg_conn, pg_table, bq_client, bq_dataset, bq_table_name, bq_location
+):
     """Updates the sync_state table with the latest timestamp."""
     query = f"SELECT MAX(max_ingested_at) FROM `{bq_dataset}.{bq_table_name}`"
-    query_job = bq_client.query(query)
+    query_job = bq_client.query(query, location=bq_location)
     max_ingested_at = list(query_job.result())[0][0]
 
     if max_ingested_at:
@@ -221,7 +222,12 @@ def main():
         args.bq_table,
     )
     update_sync_state(
-        args.pg_conn, args.pg_table, bq_client, args.bq_dataset, args.bq_table
+        args.pg_conn,
+        args.pg_table,
+        bq_client,
+        args.bq_dataset,
+        args.bq_table,
+        args.bq_location,
     )
     cleanup_gcs(args.gcs_bucket, gcs_file_path_prefix)
 
