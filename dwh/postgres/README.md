@@ -74,8 +74,8 @@ CREATE INDEX CONCURRENTLY idx_phenotype
 ## CRISPR
 ```sql
 \timing on
-CREATE INDEX idx_crispr_data_dataset ON public.crispr_data USING btree (dataset_id);
-CREATE INDEX idx_crispr_data_target ON public.crispr_data USING btree (perturbed_target_symbol);
+CREATE INDEX idx_crispr_data_dataset ON public.crispr_data (dataset_id);
+CREATE INDEX idx_crispr_data_target ON public.crispr_data (perturbed_target_symbol);
 ```
 
 ## Monitoring
