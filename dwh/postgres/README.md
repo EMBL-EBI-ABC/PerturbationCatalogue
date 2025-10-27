@@ -95,3 +95,39 @@ JOIN pg_class c ON p.relid = c.oid
 LEFT JOIN pg_class i ON p.index_relid = i.oid;
 \watch 10
 ```
+
+# Migrate tables and indexes from development to production
+
+Export and import is done via a shared temporary bucket. As such, the commands for export and import do not require a direct connection to the instance and can be run from a local terminal.
+
+## Export in development environment
+```bash
+dev_secrets
+export PG_TABLE=...
+gcloud sql export sql ${PG_INSTANCE_ID} \
+  gs://${GCLOUD_TMP_BUCKET}/postgres_dev_to_prod/${PG_TABLE}.sql \
+  --project=${GCLOUD_PROJECT} \
+  --database=${PG_DB} \
+  --table=${PG_TABLE}
+```
+
+## Import in production environment
+```bash
+prod_secrets
+export PG_TABLE=...
+gcloud sql import sql ${PG_INSTANCE_ID} \
+  gs://${GCLOUD_TMP_BUCKET}/postgres_dev_to_prod/${PG_TABLE}.sql \
+  --database=${PG_DB}
+```
+
+## Clean up
+```bash
+gsutil rm gs://${GCLOUD_TMP_BUCKET}/postgres_dev_to_prod/${PG_TABLE}.sql
+```
+
+## Note on service accounts
+Cloud SQL service accounts of *both* projects need to have access to the bucket. Run the below command in both projects. It only needs to be run once per project:
+
+```bash
+gsutil iam ch serviceAccount:$(gcloud sql instances describe ${PG_INSTANCE_ID} --project=${GCLOUD_PROJECT} --format="value(serviceAccountEmailAddress)"):roles/storage.objectAdmin gs://${GCLOUD_TMP_BUCKET}
+```
