@@ -104,11 +104,14 @@ Export and import is done via a shared temporary bucket. As such, the commands f
 ```bash
 dev_secrets
 export PG_TABLE=...
-gcloud sql export sql ${PG_INSTANCE_ID} \
+# Start export
+gcloud sql export sql --async ${PG_INSTANCE_ID} \
   gs://${GCLOUD_TMP_BUCKET}/postgres_dev_to_prod/${PG_TABLE}.sql \
   --project=${GCLOUD_PROJECT} \
   --database=${PG_DB} \
   --table=${PG_TABLE}
+# Wait for the operation to continue
+gcloud beta sql operations wait --timeout 7200 $(gcloud beta sql operations list --instance=perturb-seq --filter STATUS=RUNNING --format "value(name)")
 ```
 
 ## Import in production environment
