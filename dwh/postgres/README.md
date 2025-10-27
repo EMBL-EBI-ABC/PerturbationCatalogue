@@ -111,7 +111,7 @@ gcloud sql export sql --async ${PG_INSTANCE_ID} \
   --database=${PG_DB} \
   --table=${PG_TABLE}
 # Wait for the operation to complete
-gcloud beta sql operations wait --timeout 7200 $(gcloud beta sql operations list --instance=${PG_INSTANCE_ID} --filter STATUS=RUNNING --format "value(name)")
+gcloud beta sql operations wait --timeout 86400 $(gcloud beta sql operations list --instance=${PG_INSTANCE_ID} --filter STATUS=RUNNING --format "value(name)")
 ```
 
 ## Import in production environment
@@ -123,7 +123,7 @@ gcloud sql import sql --async ${PG_INSTANCE_ID} \
   gs://${GCLOUD_TMP_BUCKET}/postgres_dev_to_prod/${PG_TABLE}.sql \
   --database=${PG_DB}
 # Wait for the operation to complete
-gcloud beta sql operations wait --timeout 7200 $(gcloud beta sql operations list --instance=${PG_INSTANCE_ID} --filter STATUS=RUNNING --format "value(name)")
+gcloud beta sql operations wait --timeout 86400 $(gcloud beta sql operations list --instance=${PG_INSTANCE_ID} --filter STATUS=RUNNING --format "value(name)")
 ```
 
 ## Clean up
