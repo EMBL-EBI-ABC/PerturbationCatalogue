@@ -355,7 +355,7 @@ class ObsSchema(DataFrameModel):
     method_name_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the method name used in the readout assay.",
-        isin=["Perturb-seq", "scRNA-seq", "proliferation CRISPR screen"],
+        isin=["Perturb-seq", "scRNA-seq", "proliferation CRISPR screen", "DMS-TileSeq", "DMS-BarSeq", "Joined and refined DMS-BarSeq and DMS-TileSeq", "Combined DMS-BarSeq and DMS-TileSeq"],
     )
     method_uri: Series[String] = Field(
         nullable=True,
