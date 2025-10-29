@@ -9,34 +9,47 @@ from data_exploration.curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
-    Experiment
+    Experiment,
 )
 
 
 def process_biogrid_screen(
     biogrid_dataset_id: str = None,
-    biogrid_screen_path: Path = None,
+    biogrid_screen_path: str = None,
     biogrid_metadata_df: pd.DataFrame = None,
     curated_metadata_dict: dict = None,
     non_curated_h5ad_dir: str = None,
     upload_to_bq: bool = False,
     bq_dataset_id: str = None,
     bq_metadata_table_name: str = "metadata",
-    bq_data_table_name: str = "data"
+    bq_data_table_name: str = "data",
 ):
     """
     Process a BioGRID screen dataset: create AnnData, curate it, save as h5ad and Parquet, and optionally upload to BigQuery.
 
     Parameters:
-    - biogrid_dataset_id: Identifier for the BioGRID dataset.
-    - biogrid_screen_path: Path to the BioGRID screen data file.
-    - biogrid_metadata_df: DataFrame containing metadata for the BioGRID dataset.
-    - curated_metadata_dict: Dictionary containing curated metadata for the dataset.
-    - non_curated_h5ad_dir: Directory to save non-curated h5ad files.
-    - upload_to_bq: Boolean flag indicating whether to upload to BigQuery.
-    - bq_dataset_id: BigQuery dataset ID for uploading data.
-    - bq_metadata_table_name: Table name for metadata in BigQuery.
-    - bq_data_table_name: Table name for data in BigQuery.
+    ----------
+    - biogrid_dataset_id: str
+        Identifier for the BioGRID dataset.
+    - biogrid_screen_path: str
+        Path to the BioGRID screen data file.
+    - biogrid_metadata_df: pd.DataFrame
+        DataFrame containing metadata for the BioGRID dataset.
+    - curated_metadata_dict: dict
+        Dictionary containing curated metadata for the dataset.
+    - non_curated_h5ad_dir: str
+        Directory to save non-curated h5ad files.
+    - upload_to_bq: bool
+        Boolean flag indicating whether to upload to BigQuery.
+    - bq_dataset_id: str
+        BigQuery dataset ID for uploading data.
+    - bq_metadata_table_name: str
+        Table name for metadata in BigQuery.
+    - bq_data_table_name: str
+        Table name for data in BigQuery.
+    Returns:
+    -------
+    - CuratedDataset
     """
 
     if upload_to_bq and bq_dataset_id is None:
@@ -61,41 +74,54 @@ def process_biogrid_screen(
 
     # Step 3: Upload to BigQuery if specified
     if upload_to_bq:
-        print(f"Uploading metadata Parquet to BigQuery: {cur_data.curated_parquet_metadata_path}")
+        print(
+            f"Uploading metadata Parquet to BigQuery: {cur_data.curated_parquet_metadata_path}"
+        )
         upload_parquet_to_bq(
             parquet_path=cur_data.curated_parquet_metadata_path,
             bq_dataset_id=bq_dataset_id,
             bq_table_name=bq_metadata_table_name,
-            key_columns=["dataset_id", "sample_id"]
+            key_columns=["dataset_id", "sample_id"],
         )
 
-        print(f"Uploading data Parquet to BigQuery: {cur_data.curated_parquet_data_path}")
+        print(
+            f"Uploading data Parquet to BigQuery: {cur_data.curated_parquet_data_path}"
+        )
         upload_parquet_to_bq(
             parquet_path=cur_data.curated_parquet_data_path,
             bq_dataset_id=bq_dataset_id,
             bq_table_name=bq_data_table_name,
-            key_columns=["dataset_id", "sample_id"]
+            key_columns=["dataset_id", "sample_id"],
         )
-
 
     return cur_data
 
 
 def curate_biogrid_screen(
-        adata_h5ad_path: Path = None,
-        save_curated_h5ad: bool = True,
-        save_curated_parquet: bool = True,
-        split_parquet=True,
+    adata_h5ad_path: Path = None,
+    save_curated_h5ad: bool = True,
+    save_curated_parquet: bool = True,
+    split_parquet: bool = True,
 ):
     """
     Curate a BioGRID screen AnnData object.
 
     Parameters:
-    - biogrid_dataset_id: Identifier of the BioGRID dataset (e.g., "biogrid_5").
-    - adata_h5ad_path: Path to the non-curated AnnData h5ad file.
-    - save_curated_h5ad: Whether to save the curated AnnData object.
-    - save_curated_parquet: Whether to save the curated data as Parquet files.
-    - split_parquet: Whether to save separate Parquet files for data and metadata.
+    ----------
+    - biogrid_dataset_id: str
+        Identifier of the BioGRID dataset (e.g., "biogrid_5").
+    - adata_h5ad_path: str
+        Path to the non-curated AnnData h5ad file.
+    - save_curated_h5ad: bool
+        Whether to save the curated AnnData object.
+    - save_curated_parquet: bool
+        Whether to save the curated data as Parquet files.
+    - split_parquet: bool
+        Whether to save separate Parquet files for data and metadata.
+
+    Returns:
+    -------
+    - CuratedDataset
     """
 
     # Create a CuratedDataset object from the non-curated AnnData file
@@ -149,35 +175,46 @@ def curate_biogrid_screen(
 
 
 def make_adata_biogrid(
-        biogrid_dataset_id: str = None,
-        biogrid_screen_path: Path = None,
-        biogrid_metadata_df: pd.DataFrame = None,
-        curated_metadata_dict: dict = None,
-        save_h5ad_dir: str = None,
+    biogrid_dataset_id: str = None,
+    biogrid_screen_path: str = None,
+    biogrid_metadata_df: pd.DataFrame = None,
+    curated_metadata_dict: dict = None,
+    save_h5ad_dir: str = None,
 ):
     """
     Create an AnnData object from a BioGRID screen file and curated metadata.
 
     Parameters:
-    - biogrid_dataset_id: Identifier for the BioGRID dataset.
-    - biogrid_screen_path: Path to the BioGRID screen file.
-    - biogrid_metadata: DataFrame containing BioGRID metadata.
-    - curated_metadata_dict: Dictionary containing curated metadata.
-    - save_h5ad_dir: Directory to save the AnnData object as an h5ad file.
-    
+    ----------
+    - biogrid_dataset_id: str
+        Identifier for the BioGRID dataset.
+    - biogrid_screen_path: str
+        Path to the BioGRID screen file.
+    - biogrid_metadata: pd.DataFrame
+        DataFrame containing BioGRID metadata.
+    - curated_metadata_dict: dict
+        Dictionary containing curated metadata.
+    - save_h5ad_dir: str
+        Directory to save the AnnData object as an h5ad file.
+
     Returns:
-    - AnnData: The created AnnData object.
-    - str: Path to the saved h5ad file.
+    -------
+    - AnnData:
+        The created AnnData object.
+    - str:
+        Path to the saved h5ad file.
     """
 
     # Extract the numeric part of the dataset ID
-    biogrid_dataset_id_num = int(biogrid_dataset_id.lstrip('biogrid_'))
+    biogrid_dataset_id_num = int(biogrid_dataset_id.lstrip("biogrid_"))
 
     # Load the BioGRID screen data
     biogrid_screen_df = pd.read_csv(biogrid_screen_path, sep="\t")
 
     # create a boolean 'significant' column based on the 'HIT' column
-    biogrid_screen_df['significant'] = biogrid_screen_df['HIT'].apply(lambda x: True if x == 'YES' else False)
+    biogrid_screen_df["significant"] = biogrid_screen_df["HIT"].apply(
+        lambda x: True if x == "YES" else False
+    )
 
     # get the column mappings for the score of interest
     biogrid_screen_df, score_columns = map_metadata_score_columns_biogrid(
@@ -185,27 +222,35 @@ def make_adata_biogrid(
     )
 
     # convert the new columns to numeric
-    biogrid_screen_df[score_columns] = biogrid_screen_df[score_columns].apply(pd.to_numeric, errors='coerce')
+    biogrid_screen_df[score_columns] = biogrid_screen_df[score_columns].apply(
+        pd.to_numeric, errors="coerce"
+    )
 
     # group_by 'IDENTIFIER_ID' and average the counts
     biogrid_screen_df = (
-        biogrid_screen_df.groupby([e for e in biogrid_screen_df.columns if e not in score_columns])
+        biogrid_screen_df.groupby(
+            [e for e in biogrid_screen_df.columns if e not in score_columns]
+        )
         .agg({e: "mean" for e in score_columns})
         .reset_index()
     )
 
     # create unique index for the adata.obs
-    biogrid_screen_df['index'] = "biogrid_" + biogrid_screen_df['#SCREEN_ID'].astype(str) + '_' + biogrid_screen_df[
-        'OFFICIAL_SYMBOL']
+    biogrid_screen_df["index"] = (
+        "biogrid_"
+        + biogrid_screen_df["#SCREEN_ID"].astype(str)
+        + "_"
+        + biogrid_screen_df["OFFICIAL_SYMBOL"]
+    )
 
     # remove duplicates if any
-    biogrid_screen_df = biogrid_screen_df[~biogrid_screen_df['index'].duplicated()]
+    biogrid_screen_df = biogrid_screen_df[~biogrid_screen_df["index"].duplicated()]
 
     # get X data for adata object based on the score columns
     X_df = biogrid_screen_df[score_columns]
 
     # set the index to the unique index created above
-    X_df.index = biogrid_screen_df['index']
+    X_df.index = biogrid_screen_df["index"]
 
     # create adata.obs DataFrame
     OBS_df = pd.DataFrame(index=X_df.index)
@@ -213,10 +258,11 @@ def make_adata_biogrid(
     OBS_df["perturbation_name"] = OBS_df.index
     OBS_df["perturbed_target_symbol"] = biogrid_screen_df["OFFICIAL_SYMBOL"].to_list()
     OBS_df["significant"] = biogrid_screen_df["significant"].to_list()
-    OBS_df['significance_criteria'] = biogrid_metadata_df.loc[
-        biogrid_metadata_df["#SCREEN_ID"] == biogrid_screen_df['#SCREEN_ID'].values[0], 'significance_criteria'].values[
-        0]
-    OBS_df['guide_sequence'] = None
+    OBS_df["significance_criteria"] = biogrid_metadata_df.loc[
+        biogrid_metadata_df["#SCREEN_ID"] == biogrid_screen_df["#SCREEN_ID"].values[0],
+        "significance_criteria",
+    ].values[0]
+    OBS_df["guide_sequence"] = None
     OBS_df = OBS_df.drop_duplicates()
 
     # add all columns from gemini-curated metadata
@@ -244,7 +290,12 @@ def make_adata_biogrid(
     return adata, h5ad_path
 
 
-def compare_metadata_biogrid(bg_metadata_df=None, gc_metadata_df=None, biogrid_screen_id=None, gemini_id=None):
+def compare_metadata_biogrid(
+    bg_metadata_df: pd.DataFrame = None,
+    gc_metadata_df: pd.DataFrame = None,
+    biogrid_screen_id: str = None,
+    gemini_id: str = None,
+) -> pd.DataFrame:
     """
     Compare the metadata from biogrid and gemini-curated dataframes
     to identify any discrepancies or missing information.
@@ -269,34 +320,51 @@ def compare_metadata_biogrid(bg_metadata_df=None, gc_metadata_df=None, biogrid_s
         print("Both bg_metadata_df and gc_metadata_df must be provided")
         return None
     if biogrid_screen_id is None or gemini_id is None:
-        print("⚠️Provide biogrid_screen_id and gemini_id to show a subset of metadata comparison")
+        print(
+            "⚠️Provide biogrid_screen_id and gemini_id to show a subset of metadata comparison"
+        )
 
     gc_compar = gc_metadata_df.T
-    gc_compar['col'] = gc_compar.index
+    gc_compar["col"] = gc_compar.index
 
     bg_compar = bg_metadata_df.T
-    bg_compar.columns = ['biogrid_' + str(e) for e in bg_compar.loc['#SCREEN_ID', :]]
-    bg_compar['col'] = bg_compar.index
+    bg_compar.columns = ["biogrid_" + str(e) for e in bg_compar.loc["#SCREEN_ID", :]]
+    bg_compar["col"] = bg_compar.index
 
     comparison_df = pd.merge(
-        bg_compar,
-        gc_compar,
-        left_on='col', right_on='col', how='outer', indicator=True
+        bg_compar, gc_compar, left_on="col", right_on="col", how="outer", indicator=True
     )
-    comparison_df.index = comparison_df['col']
-    comparison_df = comparison_df.drop(columns=['col']).sort_values(by='_merge', ascending=False)
+    comparison_df.index = comparison_df["col"]
+    comparison_df = comparison_df.drop(columns=["col"]).sort_values(
+        by="_merge", ascending=False
+    )
 
     if biogrid_screen_id and gemini_id:
-        comparison_df = comparison_df[[biogrid_screen_id, gemini_id, '_merge']]
+        comparison_df = comparison_df[[biogrid_screen_id, gemini_id, "_merge"]]
     elif biogrid_screen_id and not gemini_id:
         comparison_df = comparison_df[
-            [biogrid_screen_id] + [e for e in comparison_df.columns if e.startswith('gemini')] + ['_merge']]
+            [biogrid_screen_id]
+            + [e for e in comparison_df.columns if e.startswith("gemini")]
+            + ["_merge"]
+        ]
     elif gemini_id and not biogrid_screen_id:
-        comparison_df = comparison_df[[e for e in comparison_df.columns if e.startswith('biogrid')] + ['_merge']]
+        comparison_df = comparison_df[
+            [e for e in comparison_df.columns if e.startswith("biogrid")] + ["_merge"]
+        ]
 
     return comparison_df
 
-def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadata_df=None, biogrid_screen_id=None, data_modality=None, gemini_id=None, save_h5ad=True, save_dir=None):
+
+def make_adata_biogrid(
+    biogrid_screen_path: str = None,
+    bg_metadata_df: pd.DataFrame = None,
+    gc_metadata_df: pd.DataFrame = None,
+    biogrid_screen_id: str = None,
+    data_modality: str = None,
+    gemini_id: str = None,
+    save_h5ad: bool = True,
+    save_dir: str = None,
+):
     """
     Process the original biogrid CRISPR screen data to construct the adata object ready for downstream curation
 
@@ -321,7 +389,8 @@ def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadat
 
     Returns
     -------
-
+    AnnData
+        The created AnnData object
     """
 
     if not biogrid_screen_path.exists():
@@ -345,19 +414,28 @@ def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadat
 
     # read the screen data
     screen_df = pd.read_csv(biogrid_screen_path, sep="\t")
-    screen_df['significant'] = screen_df['HIT'].apply(lambda x: True if x == 'YES' else False)
-    screen_df = screen_df[["#SCREEN_ID", "IDENTIFIER_ID", "OFFICIAL_SYMBOL", "significant"] + [e for e in screen_df.columns if e.startswith("SCORE.")]]
+    screen_df["significant"] = screen_df["HIT"].apply(
+        lambda x: True if x == "YES" else False
+    )
+    screen_df = screen_df[
+        ["#SCREEN_ID", "IDENTIFIER_ID", "OFFICIAL_SYMBOL", "significant"]
+        + [e for e in screen_df.columns if e.startswith("SCORE.")]
+    ]
 
-    screen_id = int(biogrid_screen_id.lstrip('biogrid_'))
+    screen_id = int(biogrid_screen_id.lstrip("biogrid_"))
     # get the column mappings for the score of interest
     screen_df, score_columns = map_metadata_score_columns_biogrid(
         screen_df, bg_metadata_df, screen_id
     )
 
-    screen_significance_criteria = bg_metadata_df.loc[bg_metadata_df["#SCREEN_ID"] == screen_id, 'significance_criteria'].values[0]
+    screen_significance_criteria = bg_metadata_df.loc[
+        bg_metadata_df["#SCREEN_ID"] == screen_id, "significance_criteria"
+    ].values[0]
 
     # convert the new columns to numeric
-    screen_df[score_columns] = screen_df[score_columns].apply(pd.to_numeric, errors='coerce')
+    screen_df[score_columns] = screen_df[score_columns].apply(
+        pd.to_numeric, errors="coerce"
+    )
 
     # group_by 'IDENTIFIER_ID' and average the counts
     screen_df = (
@@ -366,20 +444,25 @@ def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadat
         .reset_index()
     )
     # create unique index for the adata.obs
-    screen_df['index'] = "biogrid_" + screen_df['#SCREEN_ID'].astype(str) + '_' + screen_df['OFFICIAL_SYMBOL']
+    screen_df["index"] = (
+        "biogrid_"
+        + screen_df["#SCREEN_ID"].astype(str)
+        + "_"
+        + screen_df["OFFICIAL_SYMBOL"]
+    )
     # remove duplicates if any
-    screen_df = screen_df[~screen_df['index'].duplicated()]
+    screen_df = screen_df[~screen_df["index"].duplicated()]
     # get X data for adata object based on the score columns
     X_df = screen_df[score_columns]
     # set the index to the unique index created above
-    X_df.index = screen_df['index']
+    X_df.index = screen_df["index"]
     # create adata.obs DataFrame
     OBS_df = pd.DataFrame(index=X_df.index)
-    OBS_df['data_modality'] = data_modality
+    OBS_df["data_modality"] = data_modality
     OBS_df["perturbation_name"] = OBS_df.index
     OBS_df["perturbed_target_symbol"] = screen_df["OFFICIAL_SYMBOL"].to_list()
     OBS_df["significant"] = screen_df["significant"].to_list()
-    OBS_df['significance_criteria'] = screen_significance_criteria
+    OBS_df["significance_criteria"] = screen_significance_criteria
     OBS_df = OBS_df.drop_duplicates()
 
     # add all columns from gemini-curated gc_metadata_df as default values for the obs columns
@@ -407,7 +490,29 @@ def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadat
     else:
         return adata
 
-def map_metadata_score_columns_biogrid(screen_df, metadata_df, screen_id):
+
+def map_metadata_score_columns_biogrid(
+    screen_df: pd.DataFrame = None,
+    metadata_df: pd.DataFrame = None,
+    screen_id: str = None,
+) -> list[pd.DataFrame, list[str]]:
+    """
+    Map the metadata score columns from the Biogrid metadata DataFrame to the screen DataFrame.
+
+    Parameters
+    ----------
+    screen_df : pd.DataFrame
+        The screen DataFrame to map metadata score columns to.
+    metadata_df : pd.DataFrame
+        The Biogrid metadata DataFrame containing score information.
+    screen_id : str
+        The screen ID to filter the metadata for.
+
+    Returns
+    -------
+    list[pd.DataFrame, list[str]]
+        A list containing the updated screen DataFrame and a list of new column names.
+    """
 
     # score columns in metadata are named SCORE.1_TYPE, SCORE.2_TYPE, etc.
     score_cols_meta = [f"SCORE.{e}_TYPE" for e in range(1, 6)]
