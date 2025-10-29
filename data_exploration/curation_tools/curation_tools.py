@@ -17,7 +17,6 @@ from pandera.typing import Series, Int64, String
 
 from libchebipy import search
 import scanpy as sc
-from scanpy import AnnData
 import anndata as ad
 from gprofiler import GProfiler
 
