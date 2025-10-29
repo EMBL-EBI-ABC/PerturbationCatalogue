@@ -1068,6 +1068,10 @@ class CuratedDataset:
         # convert the input column to lowercase for case-insensitive matching
         conv_df["input_column_lower"] = conv_df["input_column"].str.lower()
 
+        # replace underscores with colons in the input column for matching
+        if '_' in conv_df['input_column_lower'][0]:
+            conv_df["input_column_lower"] = conv_df["input_column_lower"].str.replace('_', ':', regex=False)
+
         if column_type == "term_id":
             # create lower `ontology_id` column for case-insensitive matching
             ont_df["ontology_id_lower"] = ont_df["ontology_id"].str.lower()
