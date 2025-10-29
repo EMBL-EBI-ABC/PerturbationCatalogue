@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import re
-import glob
-import pyarrow.parquet as pq
 
 from data_exploration.curation_tools.curation_tools import (
     CuratedDataset,
