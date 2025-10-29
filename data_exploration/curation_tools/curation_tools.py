@@ -1862,7 +1862,7 @@ def generate_create_table_sql(
     partition_clause = ""
     if partition_column:
         # Validate partition range parameters
-        if (partition_range_start is None or partition_range_end is None or partition_range_interval is None):
+        if partition_range_start is None or partition_range_end is None or partition_range_interval is None:
             raise ValueError("For integer range partitioning, you must specify start, end, and interval.")
         # BigQuery requires partition column identifier to be backticked if needed
         partition_col_safe = f"`{partition_column}`" if re.match(r'\W', partition_column) else partition_column
