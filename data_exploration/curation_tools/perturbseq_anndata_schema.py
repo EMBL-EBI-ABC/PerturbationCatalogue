@@ -30,9 +30,10 @@ class ObsSchema(DataFrameModel):
         description="Data modality of the dataset.",
         isin=["Perturb-seq", "CRISPR screen", "MAVE"],
     )
-    significant: Series[Bool] = Field(
-        nullable=False, description="Indicates whether the perturbation had a significant effect.",
-        coerce=True
+    significant: Series[String] = Field(
+        nullable=True, description="Indicates whether the perturbation had a significant effect.",
+        coerce=True,
+        isin=["True", "False"]
     )
     significance_criteria: Series[String] = Field(
         nullable=True, description="Criteria used to determine significance, e.g., FDR < 0.05."
