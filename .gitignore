@@ -1,7 +1,11 @@
 .DS_Store
 .vscode
 .env
+.idea
+.venv
 *.h5ad
 *.parquet
 __pycache__
 data_exploration/CRISPR/supplementary/temp
+data_exploration/MaveDB/Dump
+data_exploration/text_extraction
