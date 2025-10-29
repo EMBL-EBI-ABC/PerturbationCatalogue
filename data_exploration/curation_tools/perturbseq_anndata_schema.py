@@ -431,7 +431,7 @@ class ObsSchema(DataFrameModel):
 
     class Config:
         strict = True
-        coerce = False
+        # coerce = False
         ordered = True
 
 
