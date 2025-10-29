@@ -11,24 +11,29 @@ from data_exploration.curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
-    Experiment
+    Experiment,
 )
 
+
 def process_depmap_metadata_df(
-        df: pd.DataFrame,
-        age_mapping: dict = None,
-        sex_mapping: dict = None,
-        tissue_mapping: dict = None,
-        disease_mapping: dict = None) -> pd.DataFrame:
+    df: pd.DataFrame,
+    age_mapping: dict = None,
+    sex_mapping: dict = None,
+    tissue_mapping: dict = None,
+    disease_mapping: dict = None,
+) -> pd.DataFrame:
     """Process DepMap metadata dataframe to match Perturbation Catalogue unified schema.
 
     Parameters:
+    -----------
         df (pd.DataFrame): DepMap metadata dataframe.
         age_mapping (dict): Mapping dictionary for age categories. Defaults to None.
         sex_mapping (dict): Mapping dictionary for sex categories. Defaults to None.
         tissue_mapping (dict): Mapping dictionary for tissue categories. Defaults to None.
         disease_mapping (dict): Mapping dictionary for disease categories. Defaults to None.
+
     Returns:
+    -------
         pd.DataFrame: Processed metadata dataframe.
     """
     # Define a mapping dictionary
@@ -40,7 +45,7 @@ def process_depmap_metadata_df(
         "AgeCategory": "developmental_stage_label",
         "Sex": "sex_label",
         "ModelType": "model_system_label",
-        "Days": "timepoint"
+        "Days": "timepoint",
     }
 
     model_system_mapping = {"Cell Line": "cell_line"}
@@ -57,46 +62,72 @@ def process_depmap_metadata_df(
         age_mapping
     )
     df_mapped["sex_label"] = df_mapped["sex_label"].map(sex_mapping)
-    df_mapped["tissue_label"] = df_mapped["disease_label"].map(tissue_mapping)  # mapping from disease is correct!
-    df_mapped[["disease_label", "disease_id"]] = df_mapped["disease_label"].map(disease_mapping).to_list()
+    df_mapped["tissue_label"] = df_mapped["disease_label"].map(
+        tissue_mapping
+    )  # mapping from disease is correct!
+    df_mapped[["disease_label", "disease_id"]] = (
+        df_mapped["disease_label"].map(disease_mapping).to_list()
+    )
     df_mapped["model_system_label"] = df_mapped["model_system_label"].map(
         model_system_mapping
     )
 
-    df_mapped['timepoint'] = df_mapped['timepoint'].map({0: 'P0D', 14: 'P14D', 15: 'P15D', 21: 'P21D', 22: 'P22D'})
+    df_mapped["timepoint"] = df_mapped["timepoint"].map(
+        {0: "P0D", 14: "P14D", 15: "P15D", 21: "P21D", 22: "P22D"}
+    )
 
     df_days_library_for_merge = pd.DataFrame(
         data={
-            "Library": ['Avana', 'KY', 'Humagne-CD'],
-            "library_name": ["Avana", "Human Improved Genome-wide Knockout CRISPR Library v1 (KY)",
-                             "Humagne Set C and Set D Human CRISPR Knockout Libraries"],
-            "library_uri": ["https://www.addgene.org/pooled-library/yusa-crispr-knockout-human-v1/",
-                            "https://www.addgene.org/pooled-library/yusa-crispr-knockout-human-v1/",
-                            "https://www.addgene.org/pooled-library/broadgpp-human-knockout-humagne/"],
+            "Library": ["Avana", "KY", "Humagne-CD"],
+            "library_name": [
+                "Avana",
+                "Human Improved Genome-wide Knockout CRISPR Library v1 (KY)",
+                "Humagne Set C and Set D Human CRISPR Knockout Libraries",
+            ],
+            "library_uri": [
+                "https://www.addgene.org/pooled-library/yusa-crispr-knockout-human-v1/",
+                "https://www.addgene.org/pooled-library/yusa-crispr-knockout-human-v1/",
+                "https://www.addgene.org/pooled-library/broadgpp-human-knockout-humagne/",
+            ],
             "library_generation_method_label": ["SpCas9", "SpCas9", "AsCas12a"],
-            "library_generation_method_id": ["EFO:0022876", "EFO:0022876", "EFO:0022878"],
-            "library_manufacturer": ["Broad Institute", "Kosuke Yusa lab", "Doench and Root labs"],
+            "library_generation_method_id": [
+                "EFO:0022876",
+                "EFO:0022876",
+                "EFO:0022878",
+            ],
+            "library_manufacturer": [
+                "Broad Institute",
+                "Kosuke Yusa lab",
+                "Doench and Root labs",
+            ],
             "library_grnas_per_target": ["6", "5", "2"],
             "library_total_grnas": ["110257", "90709", "40710"],
             "library_lentiviral_generation": ["3", "3", "2"],
         }
     )
 
-    df_mapped = df_mapped.merge(df_days_library_for_merge, on="Library", how="left").drop(columns=["Library"])
+    df_mapped = df_mapped.merge(
+        df_days_library_for_merge, on="Library", how="left"
+    ).drop(columns=["Library"])
 
     return df_mapped
 
 
-def get_cellosaurus_ontology(output_json_path: str, overwrite: bool = False,
-                             cellosaurus_ontology_csv_path: str = "../supplementary/depmap/cellosaurus_derived_ontology.csv") -> pd.DataFrame:
+def get_cellosaurus_ontology(
+    output_json_path: str,
+    overwrite: bool = False,
+    cellosaurus_ontology_csv_path: str = "../supplementary/depmap/cellosaurus_derived_ontology.csv",
+) -> pd.DataFrame:
     """
     Download and convert Cellosaurus OBO ontology to Obograph JSON format.
 
     Parameters:
+    ----------
         output_json_path (str): Path to save the converted Cellosaurus ontology in Obograph JSON format.
         overwrite (bool): Whether to overwrite the existing JSON file if it exists. Defaults to False.
         cellosaurus_ontology_csv_path (str): Path to save the processed Cellosaurus ontology dataframe as a CSV file. Defaults to "../supplementary/depmap/cellosaurus_derived_ontology.csv".
     Returns:
+    -------
         pd.DataFrame: Processed Cellosaurus ontology dataframe.
     """
     from bioontologies import convert_to_obograph
@@ -104,80 +135,101 @@ def get_cellosaurus_ontology(output_json_path: str, overwrite: bool = False,
 
     # if the cell line ontology mapping already exists, load it and return
     if Path(cellosaurus_ontology_csv_path).exists():
-        print(f"✅ Cellosaurus ontology mapping already exists at {cellosaurus_ontology_csv_path}. Loading...")
+        print(
+            f"✅ Cellosaurus ontology mapping already exists at {cellosaurus_ontology_csv_path}. Loading..."
+        )
         codf = pd.read_csv(cellosaurus_ontology_csv_path)
         return codf
 
     # download and convert cellosaurus ontology to obograph json format if it doesn't exist
     if not Path(output_json_path).exists():
-        print(f"⬇️ Downloading and converting Cellosaurus ontology to {output_json_path}...")
+        print(
+            f"⬇️ Downloading and converting Cellosaurus ontology to {output_json_path}..."
+        )
         convert_to_obograph(
-            input_path='https://ftp.expasy.org/databases/cellosaurus/cellosaurus.obo',
-            input_flag='-I',
-            json_path=output_json_path
+            input_path="https://ftp.expasy.org/databases/cellosaurus/cellosaurus.obo",
+            input_flag="-I",
+            json_path=output_json_path,
         )
     else:
         if overwrite:
-            print(f"♻️ Cellosaurus ontology already exists at {output_json_path}. Overwriting...")
-            print(f"⬇️ Downloading and converting Cellosaurus ontology to {output_json_path}...")
+            print(
+                f"♻️ Cellosaurus ontology already exists at {output_json_path}. Overwriting..."
+            )
+            print(
+                f"⬇️ Downloading and converting Cellosaurus ontology to {output_json_path}..."
+            )
             convert_to_obograph(
-                input_path='https://ftp.expasy.org/databases/cellosaurus/cellosaurus.obo',
-                input_flag='-I',
-                json_path=output_json_path
+                input_path="https://ftp.expasy.org/databases/cellosaurus/cellosaurus.obo",
+                input_flag="-I",
+                json_path=output_json_path,
             )
         else:
-            print(f"✅ Cellosaurus ontology already exists at {output_json_path}. Skipping download.")
+            print(
+                f"✅ Cellosaurus ontology already exists at {output_json_path}. Skipping download."
+            )
 
     # read json with cellosaurus ontology
     with open(output_json_path) as f:
-        co = json.load(f)['graphs'][0]['nodes']
-        print(f"✅ Loaded Cellosaurus ontology from {output_json_path} with {len(co)} entries.")
+        co = json.load(f)["graphs"][0]["nodes"]
+        print(
+            f"✅ Loaded Cellosaurus ontology from {output_json_path} with {len(co)} entries."
+        )
 
     # convert to dataframe
     codf = pd.DataFrame(co)
     # filter out irrelevant entries
-    codf = codf[codf['id'].str.contains('Cellosaurus')]
+    codf = codf[codf["id"].str.contains("Cellosaurus")]
     # drop rows with missing labels
-    codf = codf.dropna(subset=['lbl'])
+    codf = codf.dropna(subset=["lbl"])
     # drop irrelevant columns
-    codf = codf.drop(columns=['type', 'propertyType'])
+    codf = codf.drop(columns=["type", "propertyType"])
 
     # extract relevant information from existing columns
     print("ℹ️ Extracting relevant information from Cellosaurus ontology...")
-    codf['comments'] = codf['meta'].apply(lambda x: x.get('comments', []) if isinstance(x, dict) else [])
-    codf['subsets'] = codf['meta'].apply(lambda x: x.get('subsets', []) if isinstance(x, dict) else [])
-    codf['xrefs'] = codf['meta'].apply(lambda x: x.get('xrefs', []) if isinstance(x, dict) else [])
-    codf['synonyms'] = codf['meta'].apply(lambda x: x.get('synonyms', []) if isinstance(x, dict) else [])
-    codf['subsets'] = codf['subsets'].apply(
-        lambda x: [s.split('Cellosaurus#')[1] for s in x] if isinstance(x, list) else [])
+    codf["comments"] = codf["meta"].apply(
+        lambda x: x.get("comments", []) if isinstance(x, dict) else []
+    )
+    codf["subsets"] = codf["meta"].apply(
+        lambda x: x.get("subsets", []) if isinstance(x, dict) else []
+    )
+    codf["xrefs"] = codf["meta"].apply(
+        lambda x: x.get("xrefs", []) if isinstance(x, dict) else []
+    )
+    codf["synonyms"] = codf["meta"].apply(
+        lambda x: x.get("synonyms", []) if isinstance(x, dict) else []
+    )
+    codf["subsets"] = codf["subsets"].apply(
+        lambda x: [s.split("Cellosaurus#")[1] for s in x] if isinstance(x, list) else []
+    )
 
     # extract synonyms
     syn_dict = {}
-    for e, lbl in zip(codf['synonyms'], codf['lbl']):
+    for e, lbl in zip(codf["synonyms"], codf["lbl"]):
         syn_list_temp = []
         for i in e:
             for k, v in i.items():
-                if k == 'pred' and v == 'hasRelatedSynonym':
-                    syn_list_temp.append(i.get('val', []))
+                if k == "pred" and v == "hasRelatedSynonym":
+                    syn_list_temp.append(i.get("val", []))
 
         # add the label itself to the list of synonyms
         syn_dict[lbl] = [lbl] + syn_list_temp
 
     # extract cell type (CL) information
     celltype_dict = {}
-    for e, lbl in zip(codf['comments'], codf['lbl']):
+    for e, lbl in zip(codf["comments"], codf["lbl"]):
         if e != []:
             e = e[0]
-            if 'CL=CL' in e:
-                celltype_dict[lbl] = re.search(r'(?<=CL=)CL_\d+', e).group(0)
+            if "CL=CL" in e:
+                celltype_dict[lbl] = re.search(r"(?<=CL=)CL_\d+", e).group(0)
 
     # extract cell line (CLO) information
     celline_dict = {}
-    for lbl, xref_list in zip(codf['lbl'], codf['xrefs']):
+    for lbl, xref_list in zip(codf["lbl"], codf["xrefs"]):
         if xref_list != []:
             for xref in xref_list:
-                if 'CLO:CLO' in xref['val']:
-                    clo_entry = xref['val'].split(':')[1]
+                if "CLO:CLO" in xref["val"]:
+                    clo_entry = xref["val"].split(":")[1]
                     if lbl in celline_dict.keys():
                         celline_dict[lbl] = celline_dict[lbl] + [clo_entry]
                     else:
@@ -185,25 +237,22 @@ def get_cellosaurus_ontology(output_json_path: str, overwrite: bool = False,
 
     # map extracted information to the dataframe
     print("ℹ️ Mapping extracted information to the dataframe...")
-    codf['synonyms'] = codf['lbl'].map(syn_dict)
-    codf['cell_type_id'] = codf['lbl'].map(celltype_dict).str.replace('_', ':')
-    codf['cell_line_id'] = codf['lbl'].map(celline_dict)
-    codf['cell_line_id'] = [e[0] if isinstance(e, list) else None for e in codf['cell_line_id']]
-    codf['cell_line_id'] = codf['cell_line_id'].str.replace('_', ':')
+    codf["synonyms"] = codf["lbl"].map(syn_dict)
+    codf["cell_type_id"] = codf["lbl"].map(celltype_dict).str.replace("_", ":")
+    codf["cell_line_id"] = codf["lbl"].map(celline_dict)
+    codf["cell_line_id"] = [
+        e[0] if isinstance(e, list) else None for e in codf["cell_line_id"]
+    ]
+    codf["cell_line_id"] = codf["cell_line_id"].str.replace("_", ":")
 
     # explode on synonyms to have one synonym per row for simpler mapping
-    codf = codf.explode('synonyms')
+    codf = codf.explode("synonyms")
 
     # rename lbl to cell_line_label
-    codf = codf.rename(columns={'lbl': 'cell_line_label'})
+    codf = codf.rename(columns={"lbl": "cell_line_label"})
 
     # keep only relevant columns
-    codf = codf[[
-        'cell_line_label',
-        'synonyms',
-        'cell_type_id',
-        'cell_line_id'
-    ]]
+    codf = codf[["cell_line_label", "synonyms", "cell_type_id", "cell_line_id"]]
 
     # save the cellosaurus ontology dataframe as a csv file
     codf.to_csv(cellosaurus_ontology_csv_path, index=False)
@@ -212,18 +261,23 @@ def get_cellosaurus_ontology(output_json_path: str, overwrite: bool = False,
 
 
 def make_adata_depmap(
-        depmap_model_id: str, depmap_data: pd.DataFrame, depmap_metadata: pd.DataFrame, save_h5ad_dir: Path = None,
-        cellosaurus_ont_json_path: str = "../supplementary/depmap/cellosaurus_ontology.json"
+    depmap_model_id: str,
+    depmap_data: pd.DataFrame,
+    depmap_metadata: pd.DataFrame,
+    save_h5ad_dir: Path = None,
+    cellosaurus_ont_json_path: str = "../supplementary/depmap/cellosaurus_ontology.json",
 ) -> tuple[AnnData, str | None]:
     """Create an AnnData object from DepMap data and metadata.
 
     Parameters:
+    ----------
         depmap_model_id (str): DepMap model ID (e.g. ACH-000001).
         depmap_data (pd.DataFrame): DepMap data dataframe.
         depmap_metadata (pd.DataFrame): DepMap metadata dataframe.
         save_h5ad_dir (Path, optional): Directory to save the AnnData object as an h5ad file. Defaults to None.
         cellosaurus_ont_json_path (str, optional): Path to the Cellosaurus ontology JSON file. Defaults to "../supplementary/depmap/cellosaurus_ontology.json".
     Returns:
+    -------
         AnnData: AnnData object for a given DepMap cell line identified by its model ID.
         str: Path to the saved h5ad file (if applicable).
     """
@@ -246,7 +300,7 @@ def make_adata_depmap(
         age_mapping=dm.age_mapping,
         sex_mapping=dm.sex_mapping,
         tissue_mapping=dm.tissue_mapping,
-        disease_mapping=dm.disease_mapping
+        disease_mapping=dm.disease_mapping,
     )
     metadata_subset_dict = (
         metadata_subset[metadata_subset["ModelID"] == depmap_model_id]
@@ -343,7 +397,7 @@ def make_adata_depmap(
                     "dataset_file_name": "CRISPRGeneDependency.csv",
                 }
             ]
-        )
+        ),
     }
 
     for key, value in metadata_dict.items():
@@ -351,16 +405,22 @@ def make_adata_depmap(
             OBS_df[key] = value
 
     # download and process cellosaurus ontology
-    cellosaurus_ontology = get_cellosaurus_ontology(cellosaurus_ont_json_path, overwrite=False)
+    cellosaurus_ontology = get_cellosaurus_ontology(
+        cellosaurus_ont_json_path, overwrite=False
+    )
 
     # map cellosaurus ontology information to the metadata
     print("ℹ️ Mapping Cellosaurus ontology information to the metadata...")
-    co_fields = ['cell_line_label', 'cell_line_id', 'cell_type_id']
+    co_fields = ["cell_line_label", "cell_line_id", "cell_type_id"]
     for field in co_fields:
-        mapping_dict = dict(zip(cellosaurus_ontology['synonyms'], cellosaurus_ontology[field]))
+        mapping_dict = dict(
+            zip(cellosaurus_ontology["synonyms"], cellosaurus_ontology[field])
+        )
         if field not in OBS_df.columns:
-            OBS_df[field] = np.nan # create the column if it doesn't exist
-        OBS_df[field] = OBS_df['cell_line_label'].map(mapping_dict).fillna(OBS_df[field]) # fillna - if there are no matches, keep the existing value
+            OBS_df[field] = np.nan  # create the column if it doesn't exist
+        OBS_df[field] = (
+            OBS_df["cell_line_label"].map(mapping_dict).fillna(OBS_df[field])
+        )  # fillna - if there are no matches, keep the existing value
 
     # VAR
     VAR_df = pd.DataFrame(index=score_name, data={"score_name": score_name})
@@ -384,18 +444,23 @@ def make_adata_depmap(
 
 
 def curate_depmap(
-        adata_h5ad_path: Path = None,
-        save_curated_h5ad: bool = True,
-        save_curated_parquet: bool = True,
-        split_parquet: bool = True,
+    adata_h5ad_path: Path = None,
+    save_curated_h5ad: bool = True,
+    save_curated_parquet: bool = True,
+    split_parquet: bool = True,
 ):
     """Curate DepMap AnnData object using curation tools.
 
     Parameters:
+    ----------
         adata_h5ad_path: Path to the non-curated AnnData h5ad file.
         save_curated_h5ad: Whether to save the curated AnnData object as an h5ad file. Defaults to True.
         save_curated_parquet: Whether to save the curated data as a parquet file. Defaults to True.
         split_parquet: Whether to save separate Parquet files for data and metadata. Defaults to True.
+
+    Returns:
+    -------
+        CuratedDataset: CuratedDataset object containing the curated data.
     """
 
     # Create a CuratedDataset object from the non-curated AnnData file
@@ -443,16 +508,16 @@ def curate_depmap(
         input_column="cell_type_id",
         column_type="term_id",
         ontology_type="cell_type",
-        overwrite=True
+        overwrite=True,
     )
 
     # if tissue_label is 'soft tissue', add an empty tissue_id
-    if "soft tissue" in cur_data.adata.obs['tissue_label'].values:
-        cur_data.adata.obs['tissue_id'] = None
+    if "soft tissue" in cur_data.adata.obs["tissue_label"].values:
+        cur_data.adata.obs["tissue_id"] = None
 
     # if all tissue labels are empty, set tissue_id to None
-    if cur_data.adata.obs['tissue_label'].isna().all():
-        cur_data.adata.obs['tissue_id'] = None
+    if cur_data.adata.obs["tissue_label"].isna().all():
+        cur_data.adata.obs["tissue_id"] = None
 
     # match the order of columns in obs to the schema
     cur_data.match_schema_columns(slot="obs")
@@ -470,20 +535,40 @@ def curate_depmap(
 
     return cur_data
 
+
 def process_depmap(
-        depmap_dataset_id: str = None,
-        depmap_data: pd.DataFrame = None,
-        depmap_metadata: pd.DataFrame = None,
-        non_curated_h5ad_dir: Path = Path("../non_curated/h5ad/depmap"),
-        overwrite: bool = False
+    depmap_dataset_id: str = None,
+    depmap_data: pd.DataFrame = None,
+    depmap_metadata: pd.DataFrame = None,
+    non_curated_h5ad_dir: Path = Path("../non_curated/h5ad/depmap"),
+    overwrite: bool = False,
 ):
+    """Process and curate DepMap data for a specific cell line/dataset id.
+    Parameters:
+    ----------
+        depmap_dataset_id (str): DepMap dataset ID (e.g. ACH-000001).
+        depmap_data (pd.DataFrame): DepMap data dataframe.
+        depmap_metadata (pd.DataFrame): DepMap metadata dataframe.
+        non_curated_h5ad_dir (Path): Directory to save non-curated h5ad files.
+        overwrite (bool): Whether to overwrite existing curated data. Defaults to False.
+    Returns:
+    -------
+        CuratedDataset: CuratedDataset object containing the curated data.
+    """
     # check if the data has been processed already, if yes, skip processing
-    curated_h5ad_path = Path(non_curated_h5ad_dir.as_posix().replace('non_curated', 'curated')) / f"depmap_{depmap_dataset_id}_curated.h5ad"
+    curated_h5ad_path = (
+        Path(non_curated_h5ad_dir.as_posix().replace("non_curated", "curated"))
+        / f"depmap_{depmap_dataset_id}_curated.h5ad"
+    )
     if curated_h5ad_path.exists():
         if overwrite:
-            print(f"♻️ Curated DepMap data for {depmap_dataset_id} already exists at {curated_h5ad_path}. Overwriting...")
+            print(
+                f"♻️ Curated DepMap data for {depmap_dataset_id} already exists at {curated_h5ad_path}. Overwriting..."
+            )
         else:
-            print(f"✅ Curated DepMap data for {depmap_dataset_id} already exists at {curated_h5ad_path}. Skipping processing.")
+            print(
+                f"✅ Curated DepMap data for {depmap_dataset_id} already exists at {curated_h5ad_path}. Skipping processing."
+            )
             return
 
     # Step 1: Create AnnData object for a specific DepMap cell line
