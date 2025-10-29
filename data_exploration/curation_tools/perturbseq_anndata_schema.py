@@ -281,7 +281,7 @@ class ObsSchema(DataFrameModel):
     library_format_label: Series[String] = Field(
         nullable=True,
         description="Perturbation library format ontology term label.",
-        isin=["pooled", "arrayed", "in vivo"],
+        isin=["pooled", "arrayed", "arrayed|pooled", "in vivo"],
     )
     library_scope_id: Series[String] = Field(
         nullable=True, description="Perturbation library scope ontology term ID."
