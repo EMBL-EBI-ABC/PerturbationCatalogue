@@ -866,6 +866,8 @@ class CuratedDataset:
             input_column_type: Type of the input column, either 'gene_symbol' or 'ensembl_gene_id'
             remove_version: Boolean indicating whether to remove version numbers from gene symbols/ENSG IDs (default is False)
             version_sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
+            multiple_entries: Boolean indicating whether to handle multiple entries. Default is False.
+            multiple_entries_sep: Separator used between multiple entries (default is None).
         Returns:
             DataFrame with standardized gene symbols and ENSG IDs
         """
@@ -1490,8 +1492,12 @@ class CuratedDataset:
         Map synonyms to gene symbols using the gene ontology.
         Parameters
         ----------
+        df : DataFrame
+            Dataframe containing the original gene symbols to be mapped.
         symbol_column : str
             The name of the column containing gene symbols to be mapped.
+        gene_ont : DataFrame
+            Gene ontology dataframe containing the gene symbols and synonyms.
         """
         if symbol_column not in df.columns:
             raise ValueError(f"Column {symbol_column} not found in the dataframe")
@@ -1644,6 +1650,10 @@ def compare_metadata_biogrid(bg_metadata_df=None, gc_metadata_df=None, biogrid_s
         Biogrid metadata dataframe
     gc_metadata_df : pd.DataFrame
         Gemini-curated metadata dataframe
+    biogrid_screen_id : str
+        Specific biogrid screen ID to compare metadata for
+    gemini_id : str
+        Specific gemini ID to compare metadata for
 
     Returns
     -------
@@ -1701,6 +1711,8 @@ def make_adata_biogrid(biogrid_screen_path=None, bg_metadata_df=None, gc_metadat
         Gemini ID of the publication for cross-referencing metadata
     save_h5ad : bool
         Whether to save the resulting AnnData object as an h5ad file
+    save_dir : str
+        Directory to save the h5ad file if save_h5ad is True
 
     Returns
     -------
@@ -2213,8 +2225,20 @@ def make_adata_biogrid(
 
     return adata, h5ad_path
 
-def download_file(url, dest_path, overwrite=False):
-    """Download a file from a URL to a local destination."""
+def download_file(url: str = None, dest_path: str = None, overwrite=False, unarchive: bool = False) -> None:
+    """
+    Download a file from a URL to a local destination.
+
+    Parameters:
+        url: str
+            URL of the file to download.
+        dest_path: str
+            Destination path for the downloaded file.
+        overwrite: bool
+            Whether to overwrite the existing file.
+        unarchive: bool
+            Whether to unarchive the file if it's an archive (zip/tar.gz/tgz)
+    """
     # check if the file already exists
     if os.path.exists(dest_path):
         if not overwrite:
