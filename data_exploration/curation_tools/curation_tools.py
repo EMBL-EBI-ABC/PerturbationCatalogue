@@ -2277,5 +2277,31 @@ def download_file(url: str = None, dest_path: str = None, overwrite=False, unarc
             print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
 
     print(f"Downloaded {url} to {dest_path}")
-    
-    
+
+def concatenate_parquet_files(parquet_dir: str = None, output_path: str = None, pattern:str = None) -> None:
+    """
+    Concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`.
+
+    Parameters
+    ----------
+    parquet_dir : str
+        Directory containing the Parquet files to concatenate.
+    output_path : str
+        Path to save the concatenated Parquet file.
+    pattern : str, optional
+        Pattern to match Parquet files (default is "*_curated_metadata.parquet").
+    """
+
+    parquet_files = sorted(glob.glob(f"{parquet_dir}/{pattern}"))
+    if not parquet_files:
+        raise ValueError("No parquet files found to concatenate.")
+
+    first_table = pq.read_table(parquet_files[0])
+    writer = pq.ParquetWriter(output_path, first_table.schema)
+
+    for pq_file in parquet_files:
+        table = pq.read_table(pq_file)
+        writer.write_table(table)
+
+    writer.close()
+
