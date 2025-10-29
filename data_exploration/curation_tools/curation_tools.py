@@ -1053,6 +1053,11 @@ class CuratedDataset:
         elif ontology_type == "disease":
             ont_df = self.dis_ont
             output_column_names = {"label": "disease_label", "id": "disease_id"}
+            
+        # if inpjt column has all None values, skip the mapping
+        if df[input_column].isnull().all():
+            print(f"Column {input_column} contains only None values. Skipping ontology mapping.")
+            return
 
         # get the original column values for mapping
         conv_df = df[[input_column]].drop_duplicates().reset_index(drop=True).copy()
