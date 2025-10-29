@@ -2231,6 +2231,7 @@ def make_adata_biogrid(
     adata = AnnData(X=X_df, obs=OBS_df, var=VAR_df)
 
     # save the AnnData object as an h5ad file
+    h5ad_path = None
     if save_h5ad_dir:
         h5ad_path = Path(save_h5ad_dir) / f"{biogrid_dataset_id}.h5ad"
         adata.write_h5ad(h5ad_path)
