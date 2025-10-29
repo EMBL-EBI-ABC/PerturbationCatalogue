@@ -295,7 +295,7 @@ def compare_metadata_biogrid(
     gc_metadata_df: pd.DataFrame = None,
     biogrid_screen_id: str = None,
     gemini_id: str = None,
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     """
     Compare the metadata from biogrid and gemini-curated dataframes
     to identify any discrepancies or missing information.
