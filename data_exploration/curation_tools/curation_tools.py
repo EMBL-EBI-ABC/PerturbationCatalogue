@@ -1378,6 +1378,7 @@ class CuratedDataset:
     def validate_data(
         self,
         slot=Literal["var", "obs"],
+        verbose = True
     ):
         """
         Validate the data in the specified slot of the adata object against the schema.
@@ -1385,6 +1386,8 @@ class CuratedDataset:
         ----------
         slot : str
             The slot to validate. Can be either "obs" or "var".
+        verbose : bool
+            Whether to print the validation results. Defaults to True.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
@@ -1408,8 +1411,9 @@ class CuratedDataset:
             setattr(self.adata, slot, validated_obs)
 
             print(f"adata.{slot} is valid according to the {slot}_schema.")
-            print("Validated data:")
-            display(validated_obs)
+            if verbose:
+                print("Validated data:")
+                display(validated_obs)
 
         except pa.errors.SchemaErrors as e:
             print(json.dumps(e.message, indent=2))
