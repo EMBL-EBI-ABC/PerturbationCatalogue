@@ -2268,6 +2268,14 @@ def download_file(url: str = None, dest_path: str = None, overwrite=False, unarc
     with open(dest_path, 'wb') as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
+    if unarchive:
+        if dest_path.endswith('.zip'):
+            subprocess.run(['unzip', '-o', dest_path, '-d', os.path.dirname(dest_path)])
+        elif dest_path.endswith(('.tar.gz', '.tgz')):
+            subprocess.run(['tar', '-xzf', dest_path, '-C', os.path.dirname(dest_path)])
+        else:
+            print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
+
     print(f"Downloaded {url} to {dest_path}")
     
     
