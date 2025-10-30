@@ -1,5 +1,6 @@
 # Jupyter kernel
 ipykernel
+ipython
 
 # General maths packages
 matplotlib
@@ -16,3 +17,8 @@ anndata==0.12.2
 pandera
 libchebipy
 gprofiler-official
+pydantic
+google-cloud-bigquery
+
+# Local package install (editable mode)
+-e .

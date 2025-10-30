@@ -22,6 +22,9 @@ If you have [uv](https://github.com/astral-sh/uv) installed, run:
 uv pip install -e .
 ```
 
+> **Note:**  
+> The `requirements.txt` includes local package install in editable mode: `-e .`, so if you set up your environment using the instructions in the [data exploration README](../README.md), the `curation_tools` package will already be installed and available for import.
+
 ## Usage
 
 After installation, you can import modules and classes from `curation_tools` in your scripts or notebooks:
