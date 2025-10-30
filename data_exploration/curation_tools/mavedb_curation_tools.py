@@ -5,7 +5,7 @@ import pandas as pd
 from pathlib import Path
 import re
 
-from data_exploration.curation_tools.curation_tools import (
+from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,

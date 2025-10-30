@@ -4,7 +4,7 @@ from anndata import AnnData
 import numpy as np
 import pandas as pd
 
-from data_exploration.curation_tools.curation_tools import (
+from curation_tools.curation_tools import (
     upload_parquet_to_bq,
     CuratedDataset,
     ObsSchema,

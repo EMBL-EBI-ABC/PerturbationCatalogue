@@ -24,8 +24,8 @@ import ibis
 import re
 from google.cloud import bigquery
 
-from data_exploration.curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
-from data_exploration.curation_tools.unified_metadata_schema.unified_metadata_schema import Experiment
+from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
+from curation_tools.unified_metadata_schema.unified_metadata_schema import Experiment
 
 # function to add a new synonym to the ontology
 def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"], ref_column=str, syn_column=str, syn_map=dict, save=True):

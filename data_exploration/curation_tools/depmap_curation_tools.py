@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from anndata import AnnData
 
-from data_exploration.CRISPR.supplementary.depmap import depmap_mapping as dm
-from data_exploration.curation_tools.curation_tools import (
+from CRISPR.supplementary.depmap import depmap_mapping as dm
+from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
