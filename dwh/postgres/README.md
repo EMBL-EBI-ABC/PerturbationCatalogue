@@ -39,13 +39,14 @@ Run `screen` so that the commands above can run for a long time and will not be 
 
 ## 4. Install dependencies
 ```bash
-sudo apt install -y python3-pip python3-venv
+sudo apt install -y python3-pip python3-venv postgresql-client
 python3 -m venv env
 source env/bin/activate
 pip3 install -r requirements.txt
 ```
 
 ## 5. Run the script
+Note: you should set `$PG_CONN` to `$PG_CONN_INTERNAL` from the list of secrets, as the VM is connected to the VPC and should connect to the SQL instance via its private IP.
 ```bash
 export BQ_TABLE=...
 export PG_TABLE=...
@@ -56,6 +57,12 @@ python3 bq_to_postgres.py \
     --pg-conn "${PG_CONN}" \
     --pg-table ${PG_TABLE} \
     --gcs-bucket ${GCLOUD_TMP_BUCKET}
+```
+
+## 6. Remove the VM
+Once the ingestion is complete (including any index creation as described below), remove the instance:
+```bash
+gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
 # Create indexes
