@@ -10,6 +10,15 @@ sources:
         description: "Sample-level metadata"
       - name: data
         description: "CRISPR scores per (dataset_id, sample_id)"
+  - name: mave
+    description: "MAVE metadata and data"
+    database: prj-ext-dev-pertcat-437314   # GCP project id
+    schema: mavedb                   # BigQuery dataset
+    tables:
+      - name: metadata
+        description: "Sample-level metadata"
+      - name: data
+        description: "MAVE scores per (dataset_id, sample_id)"
   - name: perturb_seq
     description: "Perturb-seq metadata and data"
     database: prj-ext-dev-pertcat-437314   # GCP project id

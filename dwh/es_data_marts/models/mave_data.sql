@@ -2,16 +2,17 @@
     config(
         materialized="incremental",
         incremental_strategy="insert_overwrite",
-        unique_key=["dataset_id", "perturbed_target_symbol", "gene"],
+        unique_key=["dataset_id", "sample_id"],
         on_schema_change="sync_all_columns",
         partition_by={
             "field": "max_ingested_at",
             "data_type": "timestamp",
             "granularity": "day",
         },
-        cluster_by=["dataset_id", "perturbed_target_symbol"],
+        cluster_by=["dataset_id", "sample_id", "perturbed_target_symbol"],
     )
 }}
+
 
 with
     latest_loaded_partition as (
@@ -23,13 +24,13 @@ with
     )
 select
     dataset_id,
+    sample_id,
+    perturbation_name,
     perturbed_target_symbol,
-    gene,
-    log2foldchange,
-    padj,
-    basemean,
+    score_name,
+    score_value,
     max_ingested_at
-from {{ ref("perturb_seq_metadata_data") }}
+from {{ ref("mave_metadata_data") }}
 {% if is_incremental() %}
     where
         timestamp_trunc(max_ingested_at, day)

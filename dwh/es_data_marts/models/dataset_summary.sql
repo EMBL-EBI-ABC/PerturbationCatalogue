@@ -6,13 +6,21 @@
         on_schema_change="sync_all_columns",
         partition_by={
             "field": "max_ingested_at",
-            "data_type": "datetime",
+            "data_type": "timestamp",
             "granularity": "day",
         },
+        cluster_by=["dataset_id"],
     )
 }}
 
 with
+    latest_loaded_partition as (
+        select parse_date('%Y%m%d', max(partition_id)) as pdate
+        from `{{ this.database }}`.`{{ this.schema }}.INFORMATION_SCHEMA.PARTITIONS`
+        where
+            table_name = '{{ this.identifier }}'
+            and partition_id not in ('__NULL__', '__UNPARTITIONED__')  -- ignore null + unpartitioned pseudo-ids
+    ),
     base as (
         select
             dataset_id,
@@ -186,11 +194,8 @@ with
             -- No late arrivals: only load rows newer than what we've already loaded.
             -- Using a strict greater-than avoids reprocessing the last batch.
             where
-                datetime(max_ingested_at) > (
-                    select
-                        coalesce(max(max_ingested_at), datetime '1970-01-01 00:00:00')
-                    from {{ this }}
-                )
+                timestamp_trunc(max_ingested_at, day)
+                > (select timestamp(pdate) from latest_loaded_partition)
         {% endif %}
         group by dataset_id
     )

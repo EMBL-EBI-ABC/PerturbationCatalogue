@@ -2,14 +2,14 @@
     config(
         materialized="incremental",
         incremental_strategy="insert_overwrite",
-        unique_key=["dataset_id", "perturbed_target_symbol", "gene"],
+        unique_key=["dataset_id", "sample_id"],
         on_schema_change="sync_all_columns",
         partition_by={
             "field": "max_ingested_at",
             "data_type": "timestamp",
             "granularity": "day",
         },
-        cluster_by=["dataset_id", "perturbed_target_symbol"],
+        cluster_by=["dataset_id", "sample_id", "perturbed_target_symbol"],
     )
 }}
 
@@ -23,20 +23,16 @@ with
     ),
     base as (
         select
-            d.* except (dataset_id, perturbation, ingested_at),
             m.* except (ingested_at),
+            d.score_name,
+            d.score_value,
+            -- Keep as DATETIME
             greatest(m.ingested_at, d.ingested_at) as max_ingested_at
-        from {{ source("perturb_seq", "data") }} as d
-        right join
-            (
-                select distinct * except (sample_id)
-                from {{ source("perturb_seq", "metadata") }}
-                where
-                    perturbed_target_symbol not like 'control%'
-                    and perturbed_target_symbol not like '%None%'
-            ) as m
+        from {{ source("mave", "metadata") }} as m
+        join
+            {{ source("mave", "data") }} as d
             on m.dataset_id = d.dataset_id
-            and m.perturbed_target_symbol = d.perturbation
+            and m.sample_id = d.sample_id
 
         {% if is_incremental() %}
             where

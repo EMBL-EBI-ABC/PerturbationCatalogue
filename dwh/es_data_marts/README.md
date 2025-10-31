@@ -1,15 +1,13 @@
-Welcome to your new dbt project!
+# dbt project for data marts
 
-### Using the starter project
+### Installing dependencies
 
-Try running the following commands:
-- dbt run
-- dbt test
+Run following commands:
+- ```python -m venv .venv```
+- ```source .venv/bin/activate```
+- ```pip install -r requirements.txt```
 
 
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
+### Run dbt:
+- ```dbt run --exclude target_summary gene_summary```
+- ```dbt run --select target_summary gene_summary```
