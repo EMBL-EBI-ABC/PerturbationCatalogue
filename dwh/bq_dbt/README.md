@@ -1,11 +1,14 @@
 # dbt project for data marts
 
 ### Installing dependencies
-
-Run following commands:
 - ```python -m venv .venv```
 - ```source .venv/bin/activate```
 - ```pip install -r requirements.txt```
+
+### Initialize dbt:
+- ```dbt init```
+
+### Update location in ~/.dbt/profiles.yml to europe-west2
 
 
 ### Run dbt:
