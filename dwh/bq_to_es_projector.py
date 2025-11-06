@@ -50,6 +50,22 @@ logging.basicConfig(
 )
 
 
+def _get_index_meta(index: str) -> Tuple[str, str]:
+    """Returns (`index_name`, `key`) from full index name."""
+    index_name = index.split("-")[0]
+    if index_name == "contrast":
+        key = "contrast_id"
+    elif index_name == "dataset":
+        key = "dataset_id"
+    elif index_name == "target":
+        key = "perturbed_target_symbol"
+    elif index_name == "gene":
+        key = "gene"
+    else:
+        raise ValueError(f"Unknown index prefix: {index_name} (from {index})")
+    return index_name, key
+
+
 # ------------- ES client ----------------
 def make_es_client() -> Elasticsearch:
     if not ES_URL or not ES_USER or not ES_PASS:
@@ -60,14 +76,31 @@ def make_es_client() -> Elasticsearch:
     return es
 
 
-def ensure_index(es: Elasticsearch, index: str) -> None:
+def ensure_index(es: Elasticsearch, index: str, index_name: str) -> None:
+    """Creates index if it doesn't exist."""
     try:
-        exists = es.indices.exists(index=index)
-        if exists:
+        if es.indices.exists(index=index):
             logging.info("Index %s exists.", index)
             return
+
+        logging.info("Index '%s' not found, creating...", index)
+        settings_file = f"{index_name}-summary_settings+mapping.json"
+        try:
+            with open(settings_file) as f:
+                settings_mapping = json.load(f)
+            es.indices.create(index=index, body=settings_mapping)
+            logging.info("Index '%s' created with provided settings.", index)
+        except FileNotFoundError:
+            logging.warning(
+                "Settings file '%s' not found. Creating index '%s' with default settings.",
+                settings_file,
+                index,
+            )
+            es.indices.create(index=index)
+            logging.info("Index '%s' created with default settings.", index)
+
     except ApiError as e:
-        logging.info(f"Elasticsearch ApiError: {e}", index)
+        logging.error("Elasticsearch ApiError ensuring index %s: %s", index, e)
         raise
 
 
@@ -87,20 +120,31 @@ def get_typed_fields(index_name: str) -> tuple[list[str], list[str], list[str]]:
     int_fields: list[str] = []
     float_fields: list[str] = []
     nested_fields: list[str] = []
-    with open(f"{index_name}-summary_settings+mapping.json") as f:
-        settings_mapping = json.load(f)
-    for k, v in settings_mapping["mappings"]["properties"].items():
-        if v["type"] == "integer":
-            int_fields.append(k)
-        elif v["type"] == "float":
-            float_fields.append(k)
-        elif v["type"] == "nested":
-            nested_fields.append(k)
-            for n_k, n_v in v["properties"]:
-                if n_v["type"] == "integer":
-                    int_fields.append(n_k)
-                elif n_v["type"] == "float":
-                    float_fields.append(n_k)
+    settings_file = f"{index_name}-summary_settings+mapping.json"
+    try:
+        with open(settings_file) as f:
+            settings_mapping = json.load(f)
+
+        mappings = settings_mapping.get("mappings", {})
+        properties = mappings.get("properties", {})
+        for k, v in properties.items():
+            if v.get("type") == "integer":
+                int_fields.append(k)
+            elif v.get("type") == "float":
+                float_fields.append(k)
+            elif v.get("type") == "nested":
+                nested_fields.append(k)
+                nested_properties = v.get("properties", {})
+                for n_k, n_v in nested_properties.items():
+                    if n_v.get("type") == "integer":
+                        int_fields.append(n_k)
+                    elif n_v.get("type") == "float":
+                        float_fields.append(n_k)
+    except FileNotFoundError:
+        logging.warning(
+            "Settings file '%s' not found. Field types will not be coerced based on schema.",
+            settings_file,
+        )
     return int_fields, float_fields, nested_fields
 
 
@@ -113,33 +157,19 @@ def _coerce_num(v, to_float=False):
         return v
 
 
-def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+def transform_row(
+    row: Dict[str, Any], key: str, typed_fields: tuple
+) -> Tuple[str, Dict[str, Any]]:
     """
     Convert a BQ row to ES document.
     Ensures numerics are numeric and nested arrays are cleaned.
     """
     doc: Dict[str, Any] = {}
-    if ES_INDEX == "contrast-summary":
-        key = "contrast_id"
-        index_name = "contrast"
-    elif ES_INDEX == "dataset-summary":
-        key = "dataset_id"
-        index_name = "dataset"
-    elif ES_INDEX == "target-summary":
-        key = "perturbed_target_symbol"
-        index_name = "target"
-    elif ES_INDEX == "gene-summary":
-        index_name = "gene"
-        key = "gene"
-    else:
-        raise ValueError(f"Unknown index name: {ES_INDEX}")
     symbol = row.get(key)
     if not symbol:
         raise ValueError(f"Row missing '{key}'")
 
-    numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(
-        index_name
-    )
+    numeric_int_fields, numeric_float_fields, nested_fields = typed_fields
     for k, v in row.items():
         if k in numeric_int_fields:
             doc[k] = _coerce_num(v)
@@ -169,9 +199,11 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     return symbol, doc
 
 
-def actions_generator(rows_iter: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+def actions_generator(
+    rows_iter: Iterable[Dict[str, Any]], key: str, typed_fields: tuple
+) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
-        _id, doc = transform_row(row)
+        _id, doc = transform_row(row, key, typed_fields)
         yield {"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc}
 
 
@@ -182,14 +214,22 @@ def main() -> int:
         return 2
 
     es = make_es_client()
-    ensure_index(es, ES_INDEX)
+    try:
+        index_name, key = _get_index_meta(ES_INDEX)
+    except ValueError as e:
+        logging.error(str(e))
+        return 1
+
+    ensure_index(es, ES_INDEX, index_name)
+
+    typed_fields = get_typed_fields(index_name)
 
     rows_iter = stream_rows_from_bq(BQ_PROJECT, BQ_DATASET, BQ_TABLE)
 
     logging.info("Starting bulk indexing into %s …", ES_INDEX)
     success, errors = helpers.bulk(
         es,
-        actions_generator(rows_iter),
+        actions_generator(rows_iter, key, typed_fields),
         chunk_size=BULK_CHUNK_SIZE,
         max_retries=BULK_MAX_RETRIES,
         request_timeout=BULK_TIMEOUT,
