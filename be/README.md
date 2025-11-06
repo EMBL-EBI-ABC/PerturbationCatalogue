@@ -8,7 +8,11 @@ For deploying any of the options below, set the following environmental variable
   - ES_USERNAME
   - ES_PASSWORD
 - Postgres
-  - PG_CONN
+  - PG_HOST
+  - PG_PORT
+  - PG_USER
+  - PG_PASSWORD
+  - PG_DB
 
 ## Local deployment
 

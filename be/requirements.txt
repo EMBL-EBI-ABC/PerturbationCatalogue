@@ -1,5 +1,5 @@
-aiohttp
 fastapi
 uvicorn
+elasticsearch[async]
 asyncpg
-elasticsearch
+pydantic-settings
