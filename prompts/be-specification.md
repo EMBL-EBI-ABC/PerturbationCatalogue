@@ -16,10 +16,13 @@ There are two data sources: Elastic, which contains dataset metadata; and Postgr
 Database access credentials are provided as environment variables; use them.
 
 ### 2.2. Dataset metadata in Elastic
-Dataset metadata is stored in Elastic. The data core which you need to use is named dataset-summary-v1. This is an example of one row from it. It contains a lot of columns, but here only the relevant fields are kept:
+Dataset metadata is stored in Elastic. The data core which you need to use is named dataset-summary-v2. This data source indicates the modality of each dataset via the `data_modalities` field (it is a plain text field, not a list, and always contains just one value).
+
+This is an example of one row from it. It contains a lot of columns, but here only the relevant fields are kept:
 ```json
 {
     "dataset_id": "datlinger_2017",
+    "data_modalities": "Perturb-seq",
     "tissue_labels": [
       "blood"
     ],
@@ -49,7 +52,10 @@ You must only use a fixed subset of fields both for search and for returning the
 You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), name output in singular, and strip the _label suffix, for example: tissue_labels -> tissue.
 
 ### 2.3. Perturbation, change and phenotype data in Postgres
-Inside the $PS_DB database, use a table named "perturb_seq". An example of data row in Postgres:
+Inside the $PG_DB database, different tables are used for different modalities.
+
+#### 2.3.1. For "Perturb-seq" modality
+Use a table named "perturb_seq_2". An example of data row in Postgres:
 
 ```tsv
 dataset_id	perturbed_target_symbol	gene	log2foldchange	padj	basemean	max_ingested_at
@@ -61,7 +67,15 @@ Use the API parameters to filter data from this table:
 * "phenotype_gene_name" filters by "gene".
 * "change_direction" filters "log2foldchange" (> 0 for "increased", < 0 for "decreased").
 
+#### 2.3.2. For "CRISPR screen" modality
+Use a table named "crispr_data". The relevant columns are: `dataset_id`, `perturbed_target_symbol` (maps to `perturbation_gene_name` in the data model), `score_name`, `score_value`.
+
+#### 2.3.3. For "MAVE" modality
+Use a table named "mave_data". The relevant columns are: `dataset_id`, `perturbed_target_symbol` (maps to `perturbation_gene_name` in the data model), `score_name`, `score_value`.
+
 ### 2.4. Query Logic: Filtering, Grouping, and Limits
+
+#### 2.4.1. For "Perturb-seq" modality
 The API uses grouping to structure the output. In order to speed up performance, materialised views for summary statistics are pre-computed.
 
 When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_perturbation` view. Here is an example of the data in this view:
@@ -70,9 +84,6 @@ When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_pertur
 "dataset_id","perturbed_target_symbol","n_total","n_down","n_up"
 "orion_2025_hek293t","MSRB1","1","1","0"
 "orion_2025_hct116","SPRR4","10","4","6"
-"orion_2025_hct116","NUB1","10","8","2"
-"orion_2025_hek293t","GRK3","62","2","60"
-"orion_2025_hct116","ID2","5","1","4"
 ```
 
 When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` view to find the top phenotypes (this view is grouped by `gene`, which is the phenotype gene). Here is an example of the data in this view:
@@ -81,9 +92,6 @@ When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` v
 "dataset_id","gene","n_total","n_down","n_up","base_mean"
 "adamson_2016_pilot","ABCB10","1","0","1","44.2341576206527"
 "adamson_2016_pilot","AC005256.1","1","0","1","4.607358250167694"
-"adamson_2016_pilot","AC006262.5","1","1","0","5.548977295822654"
-"adamson_2016_pilot","AC096559.1","1","0","1","4.410971172950684"
-"adamson_2016_pilot","AC108868.6","1","0","1","22.91355626193407"
 ```
 
 It is crucial to apply filtering **before** aggregation and limiting. The correct order of operations is:
@@ -91,6 +99,9 @@ It is crucial to apply filtering **before** aggregation and limiting. The correc
 2.  **Group and Limit:** After filtering, apply grouping and limits as follows:
     *   Return up to **3** top-level entities per dataset (e.g., 3 perturbations or 3 phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
     *   For each of those top-level entities, return up to **10** underlying data rows (e.g., 10 `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
+
+#### 2.4.2. For "CRISPR screen" and "MAVE" modalities
+No grouping is applied. Simply return the data rows from the corresponding tables (`crispr_data` or `mave_data`) that match the filter criteria.
 
 ### 2.5. Parameter validation
 The API must reject any requests that include query parameters not explicitly defined in the API specification. A `400 Bad Request` error should be returned with a message listing the unrecognized parameters.
