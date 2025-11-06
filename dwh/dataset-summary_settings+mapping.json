@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "default": {
+          "type": "standard"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "dataset_id": {
+        "type": "keyword"
+      },
+      "data_modalities": {
+        "type": "keyword"
+      },
+      "tissue_labels": {
+        "type": "keyword"
+      },
+      "cell_type_labels": {
+        "type": "keyword"
+      },
+      "cell_line_labels": {
+        "type": "keyword"
+      },
+      "sex_labels": {
+        "type": "keyword"
+      },
+      "developmental_stage_labels": {
+        "type": "keyword"
+      },
+      "disease_labels": {
+        "type": "keyword"
+      },
+      "library_perturbation_type_labels": {
+        "type": "keyword"
+      }
+    }
+  }
+}
