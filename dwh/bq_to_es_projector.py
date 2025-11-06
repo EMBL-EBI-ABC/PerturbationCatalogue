@@ -9,14 +9,9 @@ Reads rows from:
 Writes to ES index:
   <contrast|dataset|target|gene>-summary
 
-Env:
-  BQ_PROJECT=prj-ext-dev-pertcat-437314
+Env (to be set *in addition* to dev_secrets or prod_secrets):
   BQ_DATASET=perturb_seq
   BQ_TABLE=<contrast|dataset|target|gene>_summary
-
-  ES_URL=https://<your-es-endpoint>      # e.g., Elastic Cloud endpoint
-  ES_USERNAME=elastic
-  ES_PASSWORD=<password>
 
 Optional:
   ES_INDEX=<contrast|dataset|target|gene>-summary
@@ -50,16 +45,18 @@ BULK_CHUNK_SIZE = int(os.getenv("BULK_CHUNK_SIZE", "2000"))
 BULK_MAX_RETRIES = int(os.getenv("BULK_MAX_RETRIES", "5"))
 BULK_TIMEOUT = int(os.getenv("BULK_TIMEOUT", "120"))
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 
 # ------------- ES client ----------------
 def make_es_client() -> Elasticsearch:
     if not ES_URL or not ES_USER or not ES_PASS:
         raise RuntimeError("ES credentials are not set")
-    es = Elasticsearch(ES_URL, basic_auth=(ES_USER, ES_PASS),
-                       request_timeout=BULK_TIMEOUT)
+    es = Elasticsearch(
+        ES_URL, basic_auth=(ES_USER, ES_PASS), request_timeout=BULK_TIMEOUT
+    )
     return es
 
 
@@ -75,8 +72,9 @@ def ensure_index(es: Elasticsearch, index: str) -> None:
 
 
 # ------------- BQ helpers ---------------
-def stream_rows_from_bq(project: str, dataset: str, table: str) -> Iterable[
-    Dict[str, Any]]:
+def stream_rows_from_bq(
+    project: str, dataset: str, table: str
+) -> Iterable[Dict[str, Any]]:
     client = bigquery.Client(project=project)
     table_ref = f"{project}.{dataset}.{table}"
     logging.info("Reading BigQuery rows: %s", table_ref)
@@ -140,7 +138,8 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         raise ValueError(f"Row missing '{key}'")
 
     numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(
-        index_name)
+        index_name
+    )
     for k, v in row.items():
         if k in numeric_int_fields:
             doc[k] = _coerce_num(v)
@@ -153,8 +152,10 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
                     if not isinstance(item, dict):
                         continue
                     obj = dict(item)
-                    for fields_list, is_float in {numeric_int_fields: False,
-                                                  numeric_float_fields: True}.items():
+                    for fields_list, is_float in {
+                        numeric_int_fields: False,
+                        numeric_float_fields: True,
+                    }.items():
                         for nf in fields_list:
                             if nf in obj and obj[nf] is not None:
                                 obj[nf] = _coerce_num(obj[nf], is_float)
@@ -171,12 +172,7 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
 def actions_generator(rows_iter: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
         _id, doc = transform_row(row)
-        yield {
-            "_op_type": "index",
-            "_index": ES_INDEX,
-            "_id": _id,
-            "_source": doc
-        }
+        yield {"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc}
 
 
 # ----------------- Main ------------------
@@ -198,14 +194,16 @@ def main() -> int:
         max_retries=BULK_MAX_RETRIES,
         request_timeout=BULK_TIMEOUT,
         raise_on_error=False,  # collect item errors
-        stats_only=False
+        stats_only=False,
     )
 
     if errors:
         # errors is a list of per-item failure dicts (can be large); show first few
         sample = errors[:5] if isinstance(errors, list) else errors
-        logging.error("Bulk completed with item errors. Sample: %s",
-                      json.dumps(sample, indent=2)[:1200])
+        logging.error(
+            "Bulk completed with item errors. Sample: %s",
+            json.dumps(sample, indent=2)[:1200],
+        )
 
     logging.info("Bulk done. Successful actions: %s", success)
     return 0
