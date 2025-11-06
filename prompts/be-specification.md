@@ -47,9 +47,11 @@ This is an example of one row from it. It contains a lot of columns, but here on
 }
 ```
 
-You must only use a fixed subset of fields both for search and for returning the results. Here is the subset: dataset_id, tissue_labels, cell_type_labels, cell_line_labels, sex_labels, developmental_stage_labels, disease_labels, library_perturbation_type_labels.
+You must only use a fixed subset of fields both for search and for returning the results. Here is the subset: `dataset_id`, `tissue_labels`, `cell_type_labels`, `cell_line_labels`, `sex_labels`, `developmental_stage_labels`, `disease_labels`, `library_perturbation_type_labels`.
 
-You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), name output in singular, and strip the _label suffix, for example: tissue_labels -> tissue.
+You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), name output in singular, and strip the _label suffix, for example: `tissue_labels` -> `tissue`.
+
+To get the `facet_counts` and the `total_datasets_count` for each modality, you should perform an aggregation query on Elastic. This query should be executed once with all the filters applied (`dataset_metadata`, etc.), and it should compute counts for each metadata field and counts per modality.
 
 ### 2.3. Perturbation, change and phenotype data in Postgres
 Inside the $PG_DB database, different tables are used for different modalities.
@@ -75,6 +77,8 @@ Use a table named "mave_data". The relevant columns are: `dataset_id`, `perturbe
 
 ### 2.4. Query Logic: Filtering, Grouping, and Limits
 
+First, filter the modalities to be returned based on the `modalities` parameter. If the parameter is not provided, return all three.
+
 #### 2.4.1. For "Perturb-seq" modality
 The API uses grouping to structure the output. In order to speed up performance, materialised views for summary statistics are pre-computed.
 
@@ -95,13 +99,13 @@ When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` v
 ```
 
 It is crucial to apply filtering **before** aggregation and limiting. The correct order of operations is:
-1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`).
+1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`). The number of datasets returned per modality is limited by `max_datasets_per_modality` (default 10).
 2.  **Group and Limit:** After filtering, apply grouping and limits as follows:
-    *   Return up to **3** top-level entities per dataset (e.g., 3 perturbations or 3 phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
-    *   For each of those top-level entities, return up to **10** underlying data rows (e.g., 10 `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
+    *   Return up to `max_top_level` (default 10) top-level entities per dataset (e.g., perturbations or phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
+    *   For each of those top-level entities, return up to `max_rows` (default 10) underlying data rows (e.g., `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
 
 #### 2.4.2. For "CRISPR screen" and "MAVE" modalities
-No grouping is applied. Simply return the data rows from the corresponding tables (`crispr_data` or `mave_data`) that match the filter criteria.
+No grouping is applied. Simply return up to `max_rows` (default 10) data rows from the corresponding tables (`crispr_data` or `mave_data`) that match the filter criteria, for up to `max_datasets_per_modality` (default 10) datasets.
 
 ### 2.5. Parameter validation
 The API must reject any requests that include query parameters not explicitly defined in the API specification. A `400 Bad Request` error should be returned with a message listing the unrecognized parameters.

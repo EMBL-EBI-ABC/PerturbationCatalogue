@@ -12,16 +12,23 @@ The data is presented grouped by modality, and within each modality, by dataset.
 
 API endpoint is /v1/search. It accepts the following optional parameters for filtering:
 
-* dataset_metadata: string, used to free text search in the dataset metadata
-* perturbation_gene_name: string, used to filter by a perturbed gene name
-* change_direction: string, used to filter by the direction of the change. Must be "increased" or "decreased".
-* phenotype_gene_name: string, used to filter by a phenotype gene name
+* `dataset_metadata`: string, used to free text search in the dataset metadata.
+* `perturbation_gene_name`: string, used to filter by a perturbed gene name.
+* `change_direction`: string, used to filter by the direction of the change. Must be "increased" or "decreased". Only applies to Perturb-seq modality. If any value is specified, only Perturb-seq data matching the filter should be returned.
+* `phenotype_gene_name`: string, used to filter by a phenotype gene name.
+* `modalities`: string, comma-separated list of modalities to return. Default is "perturb-seq,crispr-screen,mave".
 
 In order to be returned, the data row must satisfy all specified filter conditions.
 
 The API also accepts the following mandatory parameter for grouping:
 
-* group_by: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows for the "Perturb-seq" modality. For other modalities, no grouping is performed.
+* `group_by`: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows for the "Perturb-seq" modality. For other modalities, no grouping is performed.
+
+The API also accepts the following optional parameters for limiting the number of results:
+
+* `max_datasets_per_modality`: integer, default 10. The maximum number of datasets to return for each modality.
+* `max_top_level`: integer, default 10. For "Perturb-seq" modality, the maximum number of top-level groups (e.g., perturbations or phenotypes) to return per dataset.
+* `max_rows`: integer, default 10. For "Perturb-seq" modality, the maximum number of underlying data rows (e.g., `change_phenotype` items) to return for each top-level group. For other modalities, the maximum number of data records to return per dataset.
 
 ## 3. Data types
 
@@ -53,8 +60,7 @@ n_total, n_up, n_down are integers. They show how many phenotypes in the dataset
 #### 3.2.3. For "MAVE" modality
 * perturbation_type: hardcoded to "mave"
 * perturbation_gene_name, e.g. ABC123
-* phenotype_gene_name, e.g. DEF456
-* perturbation_name, e.g. V123D
+* perturbation_name, e.g. p.Pro73Gln
 
 ### 3.3. Change
 
@@ -81,32 +87,49 @@ n_total, n_up, n_down are integers. They show how many perturbations in the data
 
 ## 4. Response structure
 
-The top-level response is a list of modalities.
+The top-level response is an object containing a list of modalities and global facet counts for dataset metadata.
 
 ```json
-[
-    {
-        "modality": "perturb-seq",
-        "datasets": [
-            // dataset objects for this modality
-        ]
-    },
-    {
-        "modality": "crispr-screen",
-        "datasets": [
-            // dataset objects for this modality
-        ]
-    },
-    {
-        "modality": "mave",
-        "datasets": [
-            // dataset objects for this modality
+{
+    "modalities": [
+        {
+            "modality": "perturb-seq",
+            "total_datasets_count": 123,
+            "datasets": [
+                // dataset objects for this modality, limited by max_datasets_per_modality
+            ]
+        },
+        {
+            "modality": "crispr-screen",
+            "total_datasets_count": 45,
+            "datasets": [
+                // dataset objects for this modality
+            ]
+        },
+        {
+            "modality": "mave",
+            "total_datasets_count": 67,
+            "datasets": [
+                // dataset objects for this modality
+            ]
+        }
+    ],
+    "facet_counts": {
+        "tissue": [
+            { "value": "blood", "count": 50 },
+            { "value": "liver", "count": 20 }
+        ],
+        "cell_type": [
+            { "value": "T cell", "count": 30 },
+            { "value": "B cell", "count": 15 }
         ]
     }
-]
+}
 ```
 
 ### 4.1. For "Perturb-seq" modality (grouping applies)
+
+The number of elements in `by_perturbation` or `by_phenotype` is limited by `max_top_level`. The number of elements in `change_phenotype` or `perturbation_change` is limited by `max_rows`.
 
 #### 4.1.1. Grouped by perturbation
 ```json
@@ -165,7 +188,7 @@ The top-level response is a list of modalities.
 ```
 
 ### 4.2. For "CRISPR screen" and "MAVE" modalities (no grouping)
-For these modalities, the structure is a simple list of records.
+For these modalities, the structure is a simple list of records. The number of elements in `data` is limited by `max_rows`.
 
 ```json
 {
