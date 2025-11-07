@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State, ALL
 import dash_bootstrap_components as dbc
 import requests
 import os
@@ -15,6 +15,17 @@ dash.register_page(
     icon="bi-tropical-storm",
 )
 
+# --- Constants ---
+FACET_FIELDS = [
+    "tissue",
+    "cell_type",
+    "cell_line",
+    "sex",
+    "developmental_stage",
+    "disease",
+    "library_perturbation_type",
+]
+
 
 # --- Reusable component for rendering labels and values ---
 def render_label_value(label, value, value_class="fw-semibold"):
@@ -26,7 +37,7 @@ def render_label_value(label, value, value_class="fw-semibold"):
     )
 
 
-# --- Data Rendering Functions ---
+# --- Data Rendering Functions for Perturb-Seq ---
 
 
 def render_dataset_cell(item):
@@ -48,14 +59,14 @@ def render_dataset_cell(item):
             *[
                 render_label_value(label, str(value).capitalize())
                 for label, value in metadata
-                if value != "N/A"
+                if value and value != "N/A"
             ],
         ],
         style={"align-self": "start"},
     )
 
 
-def render_perturbation_cell(p, is_grouped=False):
+def render_perturbation_cell_perturb_seq(p, is_grouped=False):
     if not is_grouped:
         return html.Div(
             html.Span(p.get("perturbation_gene_name", "N/A"), className="fw-semibold"),
@@ -67,7 +78,6 @@ def render_perturbation_cell(p, is_grouped=False):
         "Multiple gene knockout" if "|" in gene_name else "Single gene knockout"
     )
 
-    # Grouped rendering
     return html.Div(
         [
             html.H3(gene_name, className="fw-bold mb-1"),
@@ -78,7 +88,7 @@ def render_perturbation_cell(p, is_grouped=False):
                         [
                             html.Span("Affects ", className="fw-light"),
                             html.Span(
-                                f"{p.get('n_total', 0)}", className="fw-semibold"
+                                f'{p.get("n_total", 0)}', className="fw-semibold"
                             ),
                             html.Span(" phenotypes", className="fw-light"),
                         ]
@@ -87,13 +97,13 @@ def render_perturbation_cell(p, is_grouped=False):
                         [
                             html.Span("△ ", style={"color": "#2acc06"}),
                             html.Span(
-                                f"{p.get('n_up', 0)}",
+                                f'{p.get("n_up", 0)}',
                                 style={"color": "#2acc06"},
                                 className="fw-semibold",
                             ),
                             html.Span(" ▽ ", style={"color": "#ff4824"}),
                             html.Span(
-                                f"{p.get('n_down', 0)}",
+                                f'{p.get("n_down", 0)}',
                                 style={"color": "#ff4824"},
                                 className="fw-semibold",
                             ),
@@ -106,7 +116,7 @@ def render_perturbation_cell(p, is_grouped=False):
     )
 
 
-def render_change_cell(c):
+def render_change_cell_perturb_seq(c):
     log2fc_val = c.get("log2fc", 0)
     padj_val = c.get("padj", 0)
 
@@ -148,14 +158,13 @@ def render_change_cell(c):
     )
 
 
-def render_phenotype_cell(ph, is_grouped=False):
+def render_phenotype_cell_perturb_seq(ph, is_grouped=False):
     if not is_grouped:
         return html.Div(
             html.Span(ph.get("phenotype_gene_name", "N/A"), className="fw-semibold"),
             style={"align-self": "start"},
         )
 
-    # Grouped rendering
     base_mean = ph.get("base_mean", 0)
     try:
         base_mean_formatted = f"{int(base_mean):,}"
@@ -177,7 +186,7 @@ def render_phenotype_cell(ph, is_grouped=False):
                         [
                             html.Span("Affected by ", className="fw-light"),
                             html.Span(
-                                f"{ph.get('n_total', 0)}", className="fw-semibold"
+                                f'{ph.get("n_total", 0)}', className="fw-semibold"
                             ),
                             html.Span(" perturbations", className="fw-light"),
                         ]
@@ -186,13 +195,13 @@ def render_phenotype_cell(ph, is_grouped=False):
                         [
                             html.Span("△ ", style={"color": "#2acc06"}),
                             html.Span(
-                                f"{ph.get('n_up', 0)}",
+                                f'{ph.get("n_up", 0)}',
                                 style={"color": "#2acc06"},
                                 className="fw-semibold",
                             ),
                             html.Span(" ▽ ", style={"color": "#ff4824"}),
                             html.Span(
-                                f"{ph.get('n_down', 0)}",
+                                f'{ph.get("n_down", 0)}',
                                 style={"color": "#ff4824"},
                                 className="fw-semibold",
                             ),
@@ -205,12 +214,63 @@ def render_phenotype_cell(ph, is_grouped=False):
     )
 
 
+# --- Data Rendering Functions for CRISPR/MAVE ---
+
+
+def render_perturbation_cell_crispr_mave(p):
+    gene_name = p.get("perturbation_gene_name", "N/A")
+    pert_name = p.get("perturbation_name")  # MAVE specific
+    return html.Div(
+        [
+            html.Span(gene_name, className="fw-semibold"),
+            html.Br(),
+            html.Span(pert_name, className="fw-light") if pert_name else None,
+        ],
+        style={"align-self": "start"},
+    )
+
+
+def render_change_cell_crispr_mave(c):
+    score_val = c.get("score_value", 0)
+    score_str = f"{score_val:.2f}".replace("-", "−")
+    return html.Div(
+        [
+            html.Span("Score ", className="fw-light"),
+            html.Span(score_str, className="fw-semibold"),
+        ],
+        style={"align-self": "start"},
+    )
+
+
+def render_phenotype_cell_crispr_mave(ph):
+    return html.Div(
+        html.Span(ph.get("score_name", "N/A"), className="fw-semibold"),
+        style={"align-self": "start"},
+    )
+
+
+# --- Truncation Notice ---
+def render_truncation_notice(text, grid_column):
+    return html.Div(
+        html.I(text),
+        style={
+            "grid-column": grid_column,
+            "text-align": "center",
+            "background-color": "#f8f9fa",
+            "padding": "0.25rem",
+            "border-radius": "0.25rem",
+            "margin-top": "0.5rem",
+        },
+    )
+
+
 # --- Page Layout ---
-
-
 def layout():
     return html.Div(
         [
+            dcc.Store(id="api-response-store"),
+            dcc.Store(id="group-by-store", data="perturbation_gene_name"),
+            dcc.Store(id="change-direction-store"),
             html.Div(
                 className="text-center",
                 style={
@@ -241,132 +301,222 @@ def layout():
             ),
             dbc.Container(
                 fluid=True,
-                className="px-5 pt-5",
+                className="px-5 pt-5 mb-5",
                 children=[
-                    html.Div(
-                        className="d-flex justify-content-center mb-5",
-                        children=[
-                            html.Span(
-                                "Group by ",
-                                className="align-self-center me-2",
-                                style={"font-size": "1.25rem"},
-                            ),
-                            dbc.ButtonGroup(
-                                [
-                                    dbc.Button(
-                                        "Perturbation",
-                                        id="group-by-perturbation-btn",
-                                        color="primary",
-                                    ),
-                                    dbc.Button(
-                                        "Phenotype",
-                                        id="group-by-phenotype-btn",
-                                        color="light",
-                                    ),
-                                ],
-                                size="lg",
-                            ),
-                        ],
-                    ),
-                    # --- CSS Grid for Headers, Filters, and Data ---
-                    html.Div(
-                        className="mb-5",
-                        style={
-                            "display": "grid",
-                            "grid-template-columns": "4fr 3fr 3fr 3fr",
-                            "row-gap": "0.25rem",
-                            "column-gap": "1.5rem",
-                            "grid-auto-rows": "min-content",
-                        },
-                        children=[
-                            # --- Headers ---
-                            html.Div(
-                                [
-                                    html.H4(
-                                        "According to",
-                                        className="fw-normal fst-italic mb-0",
-                                    ),
-                                    html.H3("Dataset"),
-                                ],
-                            ),
-                            html.Div(
-                                [
-                                    html.H4(
-                                        "Introducing",
-                                        className="fw-normal fst-italic mb-0",
-                                    ),
-                                    html.H3("Perturbation"),
-                                ],
-                            ),
-                            html.Div(
-                                [
-                                    html.H4(
-                                        "Leads to",
-                                        className="fw-normal fst-italic mb-0",
-                                    ),
-                                    html.H3("Change"),
-                                ],
-                            ),
-                            html.Div(
-                                [
-                                    html.H4(
-                                        "Affecting",
-                                        className="fw-normal fst-italic mb-0",
-                                    ),
-                                    html.H3("Phenotype"),
-                                ],
-                            ),
-                            # --- Filter Fields ---
-                            dbc.Input(
-                                id="filter-dataset",
-                                placeholder="Filter by dataset metadata",
-                            ),
-                            dbc.Input(
-                                id="filter-perturbation",
-                                placeholder="Filter by perturbed gene",
-                            ),
-                            dbc.ButtonGroup(
-                                [
-                                    dbc.Button(
-                                        "△ Up",
-                                        id="filter-change-up-btn",
-                                        color="light",
-                                    ),
-                                    dbc.Button(
-                                        "▽ Down",
-                                        id="filter-change-down-btn",
-                                        color="light",
-                                    ),
-                                    dbc.Button(
-                                        "△▽ Both",
-                                        id="filter-change-both-btn",
-                                        color="secondary",
+                    dbc.Row(
+                        [
+                            # --- Left Column: Facet Filters ---
+                            dbc.Col(
+                                width=3,
+                                children=[
+                                    html.H4("Filter by", className="mb-3"),
+                                    html.Div(
+                                        id="facet-filters-container",
+                                        children=[
+                                            html.Div(
+                                                [
+                                                    html.H5(
+                                                        field.replace("_", " ").title(),
+                                                        className="mt-3",
+                                                    ),
+                                                    dbc.Checklist(
+                                                        options=[],
+                                                        id={
+                                                            "type": "facet-filter",
+                                                            "index": field,
+                                                        },
+                                                    ),
+                                                ],
+                                                id=f"facet-wrapper-{field}",
+                                                style={"display": "none"},
+                                            )
+                                            for field in FACET_FIELDS
+                                        ],
                                     ),
                                 ],
-                                id="filter-change-group",
                             ),
-                            dbc.Input(
-                                id="filter-phenotype",
-                                placeholder="Filter by phenotype gene",
+                            # --- Right Column: Controls and Data ---
+                            dbc.Col(
+                                width=9,
+                                children=[
+                                    # --- Controls ---
+                                    html.Div(
+                                        className="d-flex justify-content-center align-items-center mb-4",
+                                        children=[
+                                            html.Span(
+                                                "Group by ",
+                                                className="align-self-center me-2",
+                                                style={"font-size": "1.25rem"},
+                                            ),
+                                            dbc.ButtonGroup(
+                                                [
+                                                    dbc.Button(
+                                                        "Perturbation",
+                                                        id="group-by-perturbation-btn",
+                                                        color="primary",
+                                                        n_clicks=0,
+                                                    ),
+                                                    dbc.Button(
+                                                        "Phenotype",
+                                                        id="group-by-phenotype-btn",
+                                                        color="light",
+                                                        n_clicks=0,
+                                                    ),
+                                                ],
+                                                size="lg",
+                                            ),
+                                            html.Div(className="flex-grow-1"),  # Spacer
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText("Max Datasets"),
+                                                    dbc.Input(
+                                                        id="limit-datasets",
+                                                        type="number",
+                                                        value=10,
+                                                        min=1,
+                                                    ),
+                                                ],
+                                                className="ms-3",
+                                                style={"width": "200px"},
+                                            ),
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText("Max Groups"),
+                                                    dbc.Input(
+                                                        id="limit-groups",
+                                                        type="number",
+                                                        value=10,
+                                                        min=1,
+                                                    ),
+                                                ],
+                                                className="ms-3",
+                                                style={"width": "200px"},
+                                            ),
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText("Max Rows"),
+                                                    dbc.Input(
+                                                        id="limit-rows",
+                                                        type="number",
+                                                        value=10,
+                                                        min=1,
+                                                    ),
+                                                ],
+                                                className="ms-3",
+                                                style={"width": "200px"},
+                                            ),
+                                        ],
+                                    ),
+                                    # --- Results Summary ---
+                                    html.Div(
+                                        id="results-summary-container",
+                                        className="text-center mb-4",
+                                    ),
+                                    # --- CSS Grid for Headers, Filters, and Data ---
+                                    html.Div(
+                                        style={
+                                            "display": "grid",
+                                            "grid-template-columns": "4fr 3fr 3fr 3fr",
+                                            "row-gap": "0.25rem",
+                                            "column-gap": "1.5rem",
+                                            "grid-auto-rows": "min-content",
+                                        },
+                                        children=[
+                                            # --- Headers ---
+                                            html.Div(
+                                                [
+                                                    html.H4(
+                                                        "According to",
+                                                        className="fw-normal fst-italic mb-0",
+                                                    ),
+                                                    html.H3("Dataset"),
+                                                ]
+                                            ),
+                                            html.Div(
+                                                [
+                                                    html.H4(
+                                                        "Introducing",
+                                                        className="fw-normal fst-italic mb-0",
+                                                    ),
+                                                    html.H3("Perturbation"),
+                                                ]
+                                            ),
+                                            html.Div(
+                                                [
+                                                    html.H4(
+                                                        "Leads to",
+                                                        className="fw-normal fst-italic mb-0",
+                                                    ),
+                                                    html.H3("Change"),
+                                                ]
+                                            ),
+                                            html.Div(
+                                                [
+                                                    html.H4(
+                                                        "Affecting",
+                                                        className="fw-normal fst-italic mb-0",
+                                                    ),
+                                                    html.H3("Phenotype"),
+                                                ]
+                                            ),
+                                            # --- Filter Fields ---
+                                            dbc.Input(
+                                                id="filter-dataset",
+                                                placeholder="Filter by dataset metadata",
+                                            ),
+                                            dbc.Input(
+                                                id="filter-perturbation",
+                                                placeholder="Filter by perturbed gene",
+                                            ),
+                                            dbc.ButtonGroup(
+                                                [
+                                                    dbc.Button(
+                                                        "△ Up",
+                                                        id="filter-change-up-btn",
+                                                        color="light",
+                                                        n_clicks=0,
+                                                    ),
+                                                    dbc.Button(
+                                                        "▽ Down",
+                                                        id="filter-change-down-btn",
+                                                        color="light",
+                                                        n_clicks=0,
+                                                    ),
+                                                    dbc.Button(
+                                                        "△▽ Both",
+                                                        id="filter-change-both-btn",
+                                                        color="secondary",
+                                                        n_clicks=0,
+                                                    ),
+                                                ],
+                                                id="filter-change-group",
+                                            ),
+                                            dbc.Input(
+                                                id="filter-phenotype",
+                                                placeholder="Filter by phenotype gene",
+                                            ),
+                                            # --- Data Grid Container ---
+                                            html.Div(
+                                                style={
+                                                    "grid-column": "1 / -1",
+                                                    "border-top": "2px solid #dee2e6",
+                                                    "margin-top": "2rem",
+                                                    "padding-top": "2rem",
+                                                }
+                                            ),
+                                            html.Div(
+                                                id="data-grid-container",
+                                                style={
+                                                    "grid-column": "1 / -1",
+                                                    "display": "contents",
+                                                },
+                                            ),
+                                        ],
+                                    ),
+                                ],
                             ),
-                            # --- Data Grid Container ---
-                            html.Div(
-                                style={
-                                    "grid-column": "1 / -1",
-                                    "border-top": "2px solid #dee2e6",
-                                    "margin-top": "2rem",
-                                    "padding-top": "2rem",
-                                }
-                            ),
-                            html.Div(
-                                id="data-grid-container",
-                                style={
-                                    "grid-column": "1 / -1",
-                                    "display": "contents",
-                                },
-                            ),
-                        ],
-                    ),
+                        ]
+                    )
                 ],
             ),
         ]
@@ -377,113 +527,168 @@ def layout():
 
 
 @callback(
-    [
-        Output("group-by-perturbation-btn", "color"),
-        Output("group-by-phenotype-btn", "color"),
-    ],
-    [
-        Input("group-by-perturbation-btn", "n_clicks"),
-        Input("group-by-phenotype-btn", "n_clicks"),
-    ],
+    Output("group-by-store", "data"),
+    Output("group-by-perturbation-btn", "color"),
+    Output("group-by-phenotype-btn", "color"),
+    Input("group-by-perturbation-btn", "n_clicks"),
+    Input("group-by-phenotype-btn", "n_clicks"),
 )
 def update_group_by_selection(pert_clicks, pheno_clicks):
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return "primary", "light"
+    if not ctx.triggered or (pert_clicks == 0 and pheno_clicks == 0):
+        return "perturbation_gene_name", "primary", "light"
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
     if button_id == "group-by-perturbation-btn":
-        return "primary", "light"
+        return "perturbation_gene_name", "primary", "light"
     else:
-        return "light", "primary"
+        return "phenotype_gene_name", "light", "primary"
 
 
 @callback(
-    [
-        Output("filter-change-up-btn", "color"),
-        Output("filter-change-down-btn", "color"),
-        Output("filter-change-both-btn", "color"),
-    ],
-    [
-        Input("filter-change-up-btn", "n_clicks"),
-        Input("filter-change-down-btn", "n_clicks"),
-        Input("filter-change-both-btn", "n_clicks"),
-    ],
+    Output("change-direction-store", "data"),
+    Output("filter-change-up-btn", "color"),
+    Output("filter-change-down-btn", "color"),
+    Output("filter-change-both-btn", "color"),
+    Input("filter-change-up-btn", "n_clicks"),
+    Input("filter-change-down-btn", "n_clicks"),
+    Input("filter-change-both-btn", "n_clicks"),
 )
 def update_change_filter_selection(up_clicks, down_clicks, both_clicks):
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return "light", "light", "secondary"
+    if not ctx.triggered or (up_clicks == 0 and down_clicks == 0 and both_clicks == 0):
+        return None, "light", "light", "secondary"
     button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
     if button_id == "filter-change-up-btn":
-        return "secondary", "light", "light"
+        return "increased", "secondary", "light", "light"
     elif button_id == "filter-change-down-btn":
-        return "light", "secondary", "light"
+        return "decreased", "light", "secondary", "light"
     else:  # both
-        return "light", "light", "secondary"
+        return None, "light", "light", "secondary"
 
 
 @callback(
-    Output("data-grid-container", "children"),
+    Output("api-response-store", "data"),
+    Input("filter-dataset", "value"),
+    Input("filter-perturbation", "value"),
+    Input("filter-phenotype", "value"),
+    Input("group-by-store", "data"),
+    Input("change-direction-store", "data"),
+    Input("limit-datasets", "value"),
+    Input("limit-groups", "value"),
+    Input("limit-rows", "value"),
     [
-        Input("filter-dataset", "value"),
-        Input("filter-perturbation", "value"),
-        Input("filter-phenotype", "value"),
-        Input("group-by-perturbation-btn", "color"),
-        Input("filter-change-up-btn", "color"),
-        Input("filter-change-down-btn", "color"),
+        Input({"type": "facet-filter", "index": field}, "value")
+        for field in FACET_FIELDS
     ],
 )
-def update_data_grid(
+def fetch_data_from_be(
     dataset_filter,
     pert_filter,
     pheno_filter,
-    group_by_pert_color,
-    change_up_color,
-    change_down_color,
+    group_by,
+    change_direction,
+    limit_datasets,
+    limit_groups,
+    limit_rows,
+    *facet_values,
 ):
     backend_url = os.getenv("PERTURBATION_CATALOGUE_BE", "http://127.0.0.1:8000")
     api_endpoint = f"{backend_url}/v1/search"
 
-    group_by = (
-        "perturbation_gene_name"
-        if group_by_pert_color == "primary"
-        else "phenotype_gene_name"
-    )
-
-    params = {"group_by": group_by}
+    params = {
+        "group_by": group_by,
+        "max_datasets_per_modality": limit_datasets,
+        "max_top_level": limit_groups,
+        "max_rows": limit_rows,
+    }
     if dataset_filter:
         params["dataset_metadata"] = dataset_filter
     if pert_filter:
         params["perturbation_gene_name"] = pert_filter
     if pheno_filter:
         params["phenotype_gene_name"] = pheno_filter
+    if change_direction:
+        params["change_direction"] = change_direction
 
-    if change_up_color == "primary":
-        params["change_direction"] = "increased"
-    elif change_down_color == "primary":
-        params["change_direction"] = "decreased"
+    for i, field in enumerate(FACET_FIELDS):
+        if facet_values[i]:
+            params[field] = ",".join(facet_values[i])
 
     try:
         response = requests.get(api_endpoint, params=params)
         response.raise_for_status()
-        data = response.json()
+        return response.json()
     except requests.exceptions.RequestException as e:
-        return [
-            html.Div(
-                f"Error fetching data: {e}",
-                style={
-                    "grid-column": "1 / -1",
-                    "text-align": "center",
-                    "padding": "2rem",
-                },
-            )
-        ]
+        return {"error": f"Error fetching data: {e}"}
     except json.JSONDecodeError:
+        return {"error": "Invalid JSON response from server."}
+
+
+@callback(
+    [Output(f"facet-wrapper-{field}", "style") for field in FACET_FIELDS]
+    + [
+        Output({"type": "facet-filter", "index": field}, "options")
+        for field in FACET_FIELDS
+    ],
+    Input("api-response-store", "data"),
+)
+def update_facet_filters(data):
+    if not data or "facet_counts" not in data:
+        return [{"display": "none"}] * len(FACET_FIELDS) + [[]] * len(FACET_FIELDS)
+
+    facet_counts = data["facet_counts"]
+    styles = []
+    options_list = []
+    for field in FACET_FIELDS:
+        if field in facet_counts and facet_counts[field]:
+            styles.append({"display": "block"})
+            options = [
+                {"label": f'{item["value"]} ({item["count"]})', "value": item["value"]}
+                for item in facet_counts[field]
+            ]
+            options_list.append(options)
+        else:
+            styles.append({"display": "none"})
+            options_list.append([])
+    return styles + options_list
+
+
+@callback(
+    Output("results-summary-container", "children"), Input("api-response-store", "data")
+)
+def update_results_summary(data):
+    if not data or "modalities" not in data:
+        return []
+
+    summary_parts = []
+    for modality in data["modalities"]:
+        count = modality.get("total_datasets_count", 0)
+        name = modality.get("modality", "N/A")
+        if count > 0:
+            summary_parts.append(f"{count} {name} datasets")
+
+    return (
+        html.Span(f"Found: {', '.join(summary_parts)}")
+        if summary_parts
+        else "No results found."
+    )
+
+
+@callback(
+    Output("data-grid-container", "children"),
+    Input("api-response-store", "data"),
+    State("group-by-store", "data"),
+    State("limit-datasets", "value"),
+    State("limit-groups", "value"),
+    State("limit-rows", "value"),
+)
+def update_data_grid(data, group_by, limit_datasets, limit_groups, limit_rows):
+    if not data:
+        return []
+    if "error" in data:
         return [
             html.Div(
-                "Error: Invalid JSON response from server.",
+                data["error"],
                 style={
                     "grid-column": "1 / -1",
                     "text-align": "center",
@@ -491,8 +696,7 @@ def update_data_grid(
                 },
             )
         ]
-
-    if not data:
+    if not data.get("modalities"):
         return [
             html.Div(
                 "No results found.",
@@ -505,226 +709,200 @@ def update_data_grid(
         ]
 
     grid_cells = []
-    for item_index, item in enumerate(data):
-        if item_index > 0:
+
+    for modality in data["modalities"]:
+        modality_name = modality["modality"]
+        total_datasets = modality["total_datasets_count"]
+        datasets = modality.get("datasets", [])
+
+        if not datasets:
+            continue
+
+        grid_cells.append(
+            html.Div(
+                html.H2(modality_name.replace("-", " ").title()),
+                style={"grid-column": "1 / -1", "margin-top": "2rem"},
+            )
+        )
+
+        for item_index, item in enumerate(datasets):
+            if item_index > 0:
+                grid_cells.append(
+                    html.Div(
+                        style={
+                            "grid-column": "1 / -1",
+                            "border-top": "2px solid #dee2e6",
+                            "margin-top": "2rem",
+                            "padding-top": "2rem",
+                        }
+                    )
+                )
+
+            if modality_name == "perturb-seq":
+                render_perturb_seq_dataset(
+                    grid_cells, item, group_by, limit_groups, limit_rows
+                )
+            else:  # crispr-screen or mave
+                render_crispr_mave_dataset(grid_cells, item, modality_name, limit_rows)
+
+        if len(datasets) < total_datasets:
+            grid_cells.append(
+                render_truncation_notice(
+                    f"Displaying top {len(datasets)} of {total_datasets} datasets",
+                    "1 / -1",
+                )
+            )
+
+    return (
+        grid_cells
+        if grid_cells
+        else [
+            html.Div(
+                "No results found for the selected modalities.",
+                style={
+                    "grid-column": "1 / -1",
+                    "text-align": "center",
+                    "padding": "2rem",
+                },
+            )
+        ]
+    )
+
+
+def render_perturb_seq_dataset(grid_cells, item, group_by, limit_groups, limit_rows):
+    group_key, sub_item_key = (
+        ("by_perturbation", "change_phenotype")
+        if group_by == "perturbation_gene_name"
+        else ("by_phenotype", "perturbation_change")
+    )
+
+    group_items = item.get(group_key, [])
+    total_groups = 0  # BE doesn't provide this yet
+
+    row_spans = []
+    for g in group_items:
+        sub_items_len = len(g.get(sub_item_key, []))
+        row_span = max(1, sub_items_len)
+        if (
+            sub_items_len == limit_rows
+            and g.get("perturbation", {}).get("n_total", 0) > limit_rows
+        ):
+            row_span += 1  # For truncation notice
+        row_spans.append(row_span)
+
+    dataset_rowspan = sum(row_spans) + max(0, len(group_items) - 1)
+    if (
+        len(group_items) == limit_groups
+    ):  # and total_groups > limit_groups: # BE doesn't provide total_groups
+        dataset_rowspan += 1
+
+    dataset_cell = render_dataset_cell(item)
+    if dataset_rowspan > 0:
+        dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
+    grid_cells.append(dataset_cell)
+
+    for i, group_item in enumerate(group_items):
+        if i > 0:
             grid_cells.append(
                 html.Div(
                     style={
-                        "grid-column": "1 / -1",
-                        "border-top": "2px solid #dee2e6",
-                        "margin-top": "2rem",
-                        "padding-top": "2rem",
+                        "grid-column": "2 / 5",
+                        "border-top": "1px solid #dee2e6",
+                        "margin-top": "1rem",
+                        "margin-bottom": "1rem",
                     }
                 )
             )
 
+        sub_items = group_item.get(sub_item_key, [])
+
         if group_by == "perturbation_gene_name":
-            group_items = item.get("by_perturbation", [])
+            pert = group_item.get("perturbation", {})
+            cell = render_perturbation_cell_perturb_seq(pert, is_grouped=True)
+            total_sub_items = pert.get("n_total", 0)
+            cell.style["grid-row"] = f"span {row_spans[i]}"
+            grid_cells.append(cell)
 
-            group_rowspans = []
-            for g in group_items:
-                sub_items_len = len(g.get("change_phenotype", [])[:5])
-                row_span = max(1, sub_items_len)
-                if sub_items_len == 5:
-                    row_span += 1
-                group_rowspans.append(row_span)
-
-            dataset_rowspan = sum(group_rowspans) + max(0, len(group_items) - 1)
-            if len(group_items) == 3:
-                dataset_rowspan += 1
-
-            dataset_cell = render_dataset_cell(item)
-            if dataset_rowspan > 0:
-                dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
-            grid_cells.append(dataset_cell)
-
-            for i, group_item in enumerate(group_items):
-                if i > 0:
-                    grid_cells.append(
-                        html.Div(
-                            style={
-                                "grid-column": "2 / 5",
-                                "border-top": "1px solid #dee2e6",
-                                "margin-top": "1rem",
-                                "margin-bottom": "1rem",
-                            }
-                        )
-                    )
-
-                pert_cell = render_perturbation_cell(
-                    group_item.get("perturbation", {}), is_grouped=True
-                )
-                sub_items = group_item.get("change_phenotype", [])[:5]
-                pert_rowspan = group_rowspans[i]
-                if pert_rowspan > 0:
-                    pert_cell.style["grid-row"] = f"span {pert_rowspan}"
-
-                grid_cells.append(pert_cell)
-
-                if not sub_items:
-                    grid_cells.extend(
-                        [
-                            html.Div(),
-                            html.Div(),
-                        ]
-                    )
-                else:
-                    grid_cells.append(
-                        render_change_cell(sub_items[0].get("change", {}))
-                    )
-                    grid_cells.append(
-                        render_phenotype_cell(
-                            sub_items[0].get("phenotype", {}), is_grouped=False
-                        )
-                    )
-
-                    for sub_item in sub_items[1:]:
+            if not sub_items:
+                grid_cells.extend([html.Div("-"), html.Div("-")])
+            else:
+                for j, sub_item in enumerate(sub_items):
+                    if j > 0:
                         grid_cells.append(
-                            render_change_cell(sub_item.get("change", {}))
-                        )
-                        grid_cells.append(
-                            render_phenotype_cell(
-                                sub_item.get("phenotype", {}), is_grouped=False
-                            )
-                        )
-
-                if len(sub_items) == 5:
+                            html.Div()
+                        )  # Empty cell for the grouped perturbation
                     grid_cells.append(
-                        html.Div(
-                            [
-                                html.Span("Displaying first 5 entries "),
-                                dcc.Link("View all", href="#"),
-                            ],
-                            style={
-                                "grid-column": "3 / 5",
-                                "text-align": "center",
-                                "background-color": "#f8f9fa",
-                                "padding": "0.25rem",
-                                "border-radius": "0.25rem",
-                                "font-style": "italic",
-                            },
-                        )
+                        render_change_cell_perturb_seq(sub_item.get("change", {}))
                     )
-
-            if len(group_items) == 3:
-                grid_cells.append(
-                    html.Div(
-                        [
-                            html.Span("Displaying first 3 perturbations "),
-                            dcc.Link("View all", href="#"),
-                        ],
-                        style={
-                            "grid-column": "2 / 5",
-                            "text-align": "center",
-                            "background-color": "#f8f9fa",
-                            "padding": "0.25rem",
-                            "border-radius": "0.25rem",
-                            "margin-top": "0.5rem",
-                            "font-style": "italic",
-                        },
+                    grid_cells.append(
+                        render_phenotype_cell_perturb_seq(sub_item.get("phenotype", {}))
                     )
-                )
-
         else:  # group by phenotype
-            group_items = item.get("by_phenotype", [])
+            pheno = group_item.get("phenotype", {})
+            cell = render_phenotype_cell_perturb_seq(pheno, is_grouped=True)
+            total_sub_items = pheno.get("n_total", 0)
+            cell.style["grid-row"] = f"span {row_spans[i]}"
 
-            group_rowspans = []
-            for g in group_items:
-                sub_items_len = len(g.get("perturbation_change", [])[:5])
-                row_span = max(1, sub_items_len)
-                if sub_items_len == 5:
-                    row_span += 1
-                group_rowspans.append(row_span)
-
-            dataset_rowspan = sum(group_rowspans) + max(0, len(group_items) - 1)
-            if len(group_items) == 3:
-                dataset_rowspan += 1
-
-            dataset_cell = render_dataset_cell(item)
-            if dataset_rowspan > 0:
-                dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
-            grid_cells.append(dataset_cell)
-
-            for i, group_item in enumerate(group_items):
-                if i > 0:
+            if not sub_items:
+                grid_cells.extend([html.Div("-"), html.Div("-"), cell])
+            else:
+                for j, sub_item in enumerate(sub_items):
+                    if j > 0:
+                        grid_cells.extend(
+                            [html.Div(), html.Div()]
+                        )  # Empty cells for change and grouped phenotype
                     grid_cells.append(
-                        html.Div(
-                            style={
-                                "grid-column": "2 / 5",
-                                "border-top": "1px solid #dee2e6",
-                                "margin-top": "1rem",
-                                "margin-bottom": "1rem",
-                            }
+                        render_perturbation_cell_perturb_seq(
+                            sub_item.get("perturbation", {})
                         )
                     )
+                    grid_cells.append(
+                        render_change_cell_perturb_seq(sub_item.get("change", {}))
+                    )
+                    if j == 0:
+                        grid_cells.append(cell)
 
-                pheno_cell = render_phenotype_cell(
-                    group_item.get("phenotype", {}), is_grouped=True
+        if len(sub_items) == limit_rows and total_sub_items > limit_rows:
+            grid_cells.append(
+                render_truncation_notice(
+                    f"Displaying top {limit_rows} of {total_sub_items} rows",
+                    "3 / 5" if group_by == "perturbation_gene_name" else "2 / 4",
                 )
-                sub_items = group_item.get("perturbation_change", [])[:5]
-                pheno_rowspan = group_rowspans[i]
-                if pheno_rowspan > 0:
-                    pheno_cell.style["grid-row"] = f"span {pheno_rowspan}"
+            )
 
-                if not sub_items:
-                    grid_cells.extend([html.Div(), html.Div(), pheno_cell])
-                else:
-                    grid_cells.append(
-                        render_perturbation_cell(
-                            sub_items[0].get("perturbation", {}), is_grouped=False
-                        )
-                    )
-                    grid_cells.append(
-                        render_change_cell(sub_items[0].get("change", {}))
-                    )
-                    grid_cells.append(pheno_cell)
+    if len(group_items) == limit_groups:  # and total_groups > limit_groups:
+        grid_cells.append(
+            render_truncation_notice(f"Displaying top {limit_groups} groups", "2 / 5")
+        )
 
-                    for sub_item in sub_items[1:]:
-                        grid_cells.append(
-                            render_perturbation_cell(
-                                sub_item.get("perturbation", {}), is_grouped=False
-                            )
-                        )
-                        grid_cells.append(
-                            render_change_cell(sub_item.get("change", {}))
-                        )
 
-                if len(sub_items) == 5:
-                    grid_cells.append(html.Div())
-                    grid_cells.append(
-                        html.Div(
-                            [
-                                html.Span("Displaying first 5 entries "),
-                                dcc.Link("View all", href="#"),
-                            ],
-                            style={
-                                "grid-column": "2 / 4",
-                                "text-align": "center",
-                                "background-color": "#f8f9fa",
-                                "padding": "0.25rem",
-                                "border-radius": "0.25rem",
-                                "font-style": "italic",
-                            },
-                        )
-                    )
+def render_crispr_mave_dataset(grid_cells, item, modality_name, limit_rows):
+    data_rows = item.get("data", [])
+    total_rows = 0  # BE doesn't provide this
 
-            if len(group_items) == 3:
-                grid_cells.append(
-                    html.Div(
-                        [
-                            html.Span("Displaying first 3 phenotypes "),
-                            dcc.Link("View all", href="#"),
-                        ],
-                        style={
-                            "grid-column": "2 / 5",
-                            "text-align": "center",
-                            "background-color": "#f8f9fa",
-                            "padding": "0.25rem",
-                            "border-radius": "0.25rem",
-                            "margin-top": "0.5rem",
-                            "font-style": "italic",
-                        },
-                    )
-                )
+    dataset_rowspan = max(1, len(data_rows))
+    if len(data_rows) == limit_rows:  # and total_rows > limit_rows:
+        dataset_rowspan += 1
 
-    return grid_cells
+    dataset_cell = render_dataset_cell(item)
+    dataset_cell.style["grid-row"] = f"span {dataset_rowspan}"
+    grid_cells.append(dataset_cell)
+
+    if not data_rows:
+        grid_cells.extend([html.Div("-"), html.Div("-"), html.Div("-")])
+    else:
+        for i, row in enumerate(data_rows):
+            if i > 0:
+                grid_cells.append(html.Div())  # Empty cell for dataset
+            grid_cells.append(
+                render_perturbation_cell_crispr_mave(row.get("perturbation", {}))
+            )
+            grid_cells.append(render_change_cell_crispr_mave(row.get("change", {})))
+            grid_cells.append(
+                render_phenotype_cell_crispr_mave(row.get("phenotype", {}))
+            )
+
+    if len(data_rows) == limit_rows:  # and total_rows > limit_rows:
+        grid_cells.append(
+            render_truncation_notice(f"Displaying top {limit_rows} rows", "2 / 5")
+        )
