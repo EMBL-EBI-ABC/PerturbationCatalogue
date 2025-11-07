@@ -13,6 +13,13 @@ The data is presented grouped by modality, and within each modality, by dataset.
 API endpoint is /v1/search. It accepts the following optional parameters for filtering:
 
 * `dataset_metadata`: string, used to free text search in the dataset metadata.
+* `tissue`: string, used to filter by tissue.
+* `cell_type`: string, used to filter by cell type.
+* `cell_line`: string, used to filter by cell line.
+* `sex`: string, used to filter by sex.
+* `developmental_stage`: string, used to filter by developmental stage.
+* `disease`: string, used to filter by disease.
+* `library_perturbation_type`: string, used to filter by library perturbation type.
 * `perturbation_gene_name`: string, used to filter by a perturbed gene name.
 * `change_direction`: string, used to filter by the direction of the change. Must be "increased" or "decreased". Only applies to Perturb-seq modality. If any value is specified, only Perturb-seq data matching the filter should be returned.
 * `phenotype_gene_name`: string, used to filter by a phenotype gene name.

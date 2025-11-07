@@ -99,7 +99,7 @@ When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` v
 ```
 
 It is crucial to apply filtering **before** aggregation and limiting. The correct order of operations is:
-1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`). The number of datasets returned per modality is limited by `max_datasets_per_modality` (default 10).
+1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `tissue`, `cell_type`, `cell_line`, `sex`, `developmental_stage`, `disease`, `library_perturbation_type`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`). The number of datasets returned per modality is limited by `max_datasets_per_modality` (default 10).
 2.  **Group and Limit:** After filtering, apply grouping and limits as follows:
     *   Return up to `max_top_level` (default 10) top-level entities per dataset (e.g., perturbations or phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
     *   For each of those top-level entities, return up to `max_rows` (default 10) underlying data rows (e.g., `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
