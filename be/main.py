@@ -1,175 +1,71 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
-from typing import List, Dict, Any, Literal, Optional
 
 import asyncpg
 from elasticsearch import AsyncElasticsearch
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+
+# --- Environment Variables ---
+ES_URL = os.getenv("ES_URL")
+ES_USERNAME = os.getenv("ES_USERNAME")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
+PG_HOST = os.getenv("PG_HOST_EXTERNAL")
+PG_PORT = os.getenv("PG_PORT")
+PG_USER = os.getenv("PG_USER")
+PG_PASSWORD = os.getenv("PG_PASSWORD")
+PG_DB = os.getenv("PG_DB")
+
+# --- Global clients ---
+es_client: AsyncElasticsearch | None = None
+pg_pool: asyncpg.Pool | None = None
 
 
-# --- Settings and Configuration ---
-
-
-class Settings(BaseSettings):
-    es_url: str = "http://localhost:9200"
-    es_username: str = "elastic"
-    es_password: str = ""
-    pg_host: str = "localhost"
-    pg_port: int = 5432
-    pg_user: str = "postgres"
-    pg_password: str = ""
-    pg_db: str = "postgres"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
-
-settings = Settings()
-
-# --- Global Clients ---
-
-clients = {}
-
-
+# --- FastAPI Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize clients
-    clients["es"] = AsyncElasticsearch(
-        hosts=[settings.es_url], basic_auth=(settings.es_username, settings.es_password)
+    global es_client, pg_pool
+    es_client = AsyncElasticsearch(
+        [ES_URL],
+        basic_auth=(ES_USERNAME, ES_PASSWORD),
+        verify_certs=True,
+        request_timeout=60,
+        max_retries=3,
+        retry_on_timeout=True,
     )
-    try:
-        clients["pg"] = await asyncpg.create_pool(
-            host=settings.pg_host,
-            port=settings.pg_port,
-            user=settings.pg_user,
-            password=settings.pg_password,
-            database=settings.pg_db,
-        )
-        yield
-    finally:
-        # Shutdown: Close clients
-        if "pg" in clients and clients["pg"]:
-            await clients["pg"].close()
-        if "es" in clients and clients["es"]:
-            await clients["es"].close()
+    pg_pool = await asyncpg.create_pool(
+        user=PG_USER,
+        password=PG_PASSWORD,
+        database=PG_DB,
+        host=PG_HOST,
+        port=PG_PORT,
+    )
+    yield
+    await es_client.close()
+    if pg_pool:
+        await pg_pool.close()
 
 
 app = FastAPI(lifespan=lifespan)
 
-# --- Pydantic Models for Response Structure ---
-
-
-# Dataset
-class Dataset(BaseModel):
-    dataset_id: str
-    tissue: Optional[str] = None
-    cell_type: Optional[str] = None
-    cell_line: Optional[str] = None
-    sex: Optional[str] = None
-    developmental_stage: Optional[str] = None
-    disease: Optional[str] = None
-    library_perturbation_type: Optional[str] = None
-
-
-# Perturb-seq Models
-class PerturbSeqChange(BaseModel):
-    direction: str
-    log2fc: float = Field(..., alias="log2foldchange")
-    padj: float
-
-
-class PerturbSeqPerturbation(BaseModel):
-    perturbation_type: str = "gene_knockout"
-    perturbation_gene_name: str = Field(..., alias="perturbed_target_symbol")
-    n_total: int
-    n_up: int
-    n_down: int
-
-
-class PerturbSeqPhenotype(BaseModel):
-    phenotype_gene_name: str = Field(..., alias="gene")
-    base_mean: Optional[float] = None
-    n_total: Optional[int] = None
-    n_down: Optional[int] = None
-    n_up: Optional[int] = None
-
-
-class ChangePhenotype(BaseModel):
-    change: PerturbSeqChange
-    phenotype: PerturbSeqPhenotype
-
-
-class PerturbationChange(BaseModel):
-    perturbation: PerturbSeqPerturbation
-    change: PerturbSeqChange
-
-
-class ByPerturbation(BaseModel):
-    perturbation: PerturbSeqPerturbation
-    change_phenotype: List[ChangePhenotype]
-
-
-class ByPhenotype(BaseModel):
-    phenotype: PerturbSeqPhenotype
-    perturbation_change: List[PerturbationChange]
-
-
-class PerturbSeqDatasetData(BaseModel):
-    dataset: Dataset
-    by_perturbation: Optional[List[ByPerturbation]] = None
-    by_phenotype: Optional[List[ByPhenotype]] = None
-
-
-# CRISPR/MAVE Models
-class GenericPerturbation(BaseModel):
-    perturbation_type: str
-    perturbation_gene_name: str = Field(..., alias="perturbed_target_symbol")
-    perturbation_name: Optional[str] = None
-
-
-class GenericChange(BaseModel):
-    score_value: float
-
-
-class GenericPhenotype(BaseModel):
-    score_name: str
-
-
-class GenericDataRow(BaseModel):
-    perturbation: GenericPerturbation
-    change: GenericChange
-    phenotype: GenericPhenotype
-
-
-class GenericDatasetData(BaseModel):
-    dataset: Dataset
-    data: List[GenericDataRow]
-
-
-# Top-level Response Models
-class ModalityData(BaseModel):
-    modality: str
-    datasets: List[Any]  # List[PerturbSeqDatasetData] or List[GenericDatasetData]
+# --- Allowed parameters ---
+ALLOWED_PARAMS = {
+    "dataset_metadata",
+    "perturbation_gene_name",
+    "change_direction",
+    "phenotype_gene_name",
+    "modalities",
+    "group_by",
+    "max_datasets_per_modality",
+    "max_top_level",
+    "max_rows",
+}
 
 
 # --- Helper Functions ---
-
-
-def validate_query_params(request: Request):
-    allowed_params = {
-        "dataset_metadata",
-        "perturbation_gene_name",
-        "change_direction",
-        "phenotype_gene_name",
-        "group_by",
-    }
-    unrecognized_params = [
-        key for key in request.query_params if key not in allowed_params
-    ]
+def validate_query_params(query_params):
+    unrecognized_params = set(query_params.keys()) - ALLOWED_PARAMS
     if unrecognized_params:
         raise HTTPException(
             status_code=400,
@@ -177,457 +73,455 @@ def validate_query_params(request: Request):
         )
 
 
-async def get_datasets_from_es(
-    es_client: AsyncElasticsearch,
-    dataset_metadata: Optional[str] = None,
-    dataset_ids: Optional[set] = None,
-) -> Dict[str, List[Dict]]:
-    query_fields = [
-        "dataset_id",
-        "tissue_labels",
-        "cell_type_labels",
-        "cell_line_labels",
-        "sex_labels",
-        "developmental_stage_labels",
-        "disease_labels",
-        "library_perturbation_type_labels",
-    ]
-
-    query = {"bool": {"must": []}}
+async def get_es_datasets(
+    dataset_metadata: str | None,
+    max_datasets_per_modality: int,
+    dataset_ids: list[str] | None = None,
+):
+    es_query = {
+        "size": 0,
+        "query": {"bool": {"must": []}},
+        "aggs": {
+            "modalities": {
+                "terms": {"field": "data_modalities", "size": 10},
+                "aggs": {
+                    "datasets": {
+                        "top_hits": {
+                            "size": max_datasets_per_modality,
+                            "_source": [
+                                "dataset_id",
+                                "tissue_labels",
+                                "cell_type_labels",
+                                "cell_line_labels",
+                                "sex_labels",
+                                "developmental_stage_labels",
+                                "disease_labels",
+                                "library_perturbation_type_labels",
+                            ],
+                        }
+                    }
+                },
+            },
+            "tissue": {"terms": {"field": "tissue_labels", "size": 100}},
+            "cell_type": {"terms": {"field": "cell_type_labels", "size": 100}},
+            "cell_line": {"terms": {"field": "cell_line_labels", "size": 100}},
+            "sex": {"terms": {"field": "sex_labels", "size": 100}},
+            "developmental_stage": {
+                "terms": {"field": "developmental_stage_labels", "size": 100}
+            },
+            "disease": {"terms": {"field": "disease_labels", "size": 100}},
+            "library_perturbation_type": {
+                "terms": {"field": "library_perturbation_type_labels", "size": 100}
+            },
+        },
+    }
 
     if dataset_metadata:
-        query["bool"]["must"].append(
-            {"multi_match": {"query": dataset_metadata, "fields": query_fields}}
+        es_query["query"]["bool"]["must"].append(
+            {"query_string": {"query": dataset_metadata}}
         )
 
     if dataset_ids:
-        query["bool"]["must"].append({"terms": {"dataset_id": list(dataset_ids)}})
+        es_query["query"]["bool"]["must"].append({"terms": {"dataset_id": dataset_ids}})
 
-    if not query["bool"]["must"]:
-        query = {"match_all": {}}
-
-    response = await es_client.search(
-        index="dataset-summary-v2",
-        query=query,
-        source=query_fields + ["data_modalities"],
-        size=1000,  # Fetch a large number to be filtered and limited in code
-    )
+    es_result = await es_client.search(index="dataset-summary-v2", body=es_query)
 
     datasets_by_modality = {}
-    for hit in response["hits"]["hits"]:
-        source = hit["_source"]
-        modality_val = source.get("data_modalities")
-        if not modality_val:
-            continue
+    for bucket in es_result["aggregations"]["modalities"]["buckets"]:
+        modality = bucket["key"].lower().replace(" ", "-")
+        datasets = []
+        for hit in bucket["datasets"]["hits"]["hits"]:
+            source = hit["_source"]
+            dataset = {"dataset_id": source["dataset_id"]}
+            for key, value in source.items():
+                if key.endswith("_labels"):
+                    new_key = key.replace("_labels", "")
+                    assert isinstance(value, list) and len(value) <= 1
+                    dataset[new_key] = value[0] if value else None
+            datasets.append(dataset)
+        datasets_by_modality[modality] = datasets
 
-        # Per spec, data_modalities is a single value, but ES might return a list.
-        modality = modality_val[0] if isinstance(modality_val, list) else modality_val
+    facet_counts = {}
+    facet_fields = [
+        "tissue",
+        "cell_type",
+        "cell_line",
+        "sex",
+        "developmental_stage",
+        "disease",
+        "library_perturbation_type",
+    ]
+    for facet in facet_fields:
+        if facet in es_result["aggregations"]:
+            facet_counts[facet] = [
+                {"value": b["key"], "count": b["doc_count"]}
+                for b in es_result["aggregations"][facet]["buckets"]
+            ]
 
-        # Limit to 10 datasets per modality
-        if len(datasets_by_modality.get(modality, [])) >= 10:
-            continue
+    total_counts = {
+        b["key"].lower().replace(" ", "-"): b["doc_count"]
+        for b in es_result["aggregations"]["modalities"]["buckets"]
+    }
 
-        dataset_info = {
-            "dataset_id": source.get("dataset_id"),
-            "data_modalities": modality,
-            "tissue": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("tissue_labels")), list)
-                else v
-            ),
-            "cell_type": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("cell_type_labels")), list)
-                else v
-            ),
-            "cell_line": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("cell_line_labels")), list)
-                else v
-            ),
-            "sex": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("sex_labels")), list)
-                else v
-            ),
-            "developmental_stage": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("developmental_stage_labels")), list)
-                else v
-            ),
-            "disease": (
-                (v[0] if v else None)
-                if isinstance((v := source.get("disease_labels")), list)
-                else v
-            ),
-            "library_perturbation_type": (
-                (v[0] if v else None)
-                if isinstance(
-                    (v := source.get("library_perturbation_type_labels")), list
-                )
-                else v
-            ),
-        }
+    return datasets_by_modality, facet_counts, total_counts
 
-        if modality not in datasets_by_modality:
-            datasets_by_modality[modality] = []
-        datasets_by_modality[modality].append(dataset_info)
 
-    return datasets_by_modality
+async def get_perturb_seq_dataset_ids(
+    perturbation_gene_name: str | None,
+    phenotype_gene_name: str | None,
+    change_direction: str | None,
+):
+    async with pg_pool.acquire() as conn:
+        query = "SELECT DISTINCT dataset_id FROM perturb_seq_2 WHERE 1=1"
+        params = []
+        param_idx = 1
+        if perturbation_gene_name:
+            query += f" AND perturbed_target_symbol = ${param_idx}"
+            params.append(perturbation_gene_name)
+            param_idx += 1
+        if phenotype_gene_name:
+            query += f" AND gene = ${param_idx}"
+            params.append(phenotype_gene_name)
+            param_idx += 1
+        if change_direction:
+            if change_direction == "increased":
+                query += " AND log2foldchange > 0"
+            elif change_direction == "decreased":
+                query += " AND log2foldchange < 0"
+        rows = await conn.fetch(query, *params)
+        return {row["dataset_id"] for row in rows}
+
+
+async def get_crispr_dataset_ids(perturbation_gene_name: str | None):
+    async with pg_pool.acquire() as conn:
+        query = "SELECT DISTINCT dataset_id FROM crispr_data WHERE 1=1"
+        params = []
+        if perturbation_gene_name:
+            query += " AND perturbed_target_symbol = $1"
+            params.append(perturbation_gene_name)
+        rows = await conn.fetch(query, *params)
+        return {row["dataset_id"] for row in rows}
+
+
+async def get_mave_dataset_ids(perturbation_gene_name: str | None):
+    async with pg_pool.acquire() as conn:
+        query = "SELECT DISTINCT dataset_id FROM mave_data WHERE 1=1"
+        params = []
+        if perturbation_gene_name:
+            query += " AND perturbed_target_symbol = $1"
+            params.append(perturbation_gene_name)
+        rows = await conn.fetch(query, *params)
+        return {row["dataset_id"] for row in rows}
 
 
 async def get_perturb_seq_data(
-    pool: asyncpg.Pool,
-    datasets: List[Dict],
+    datasets: list,
     group_by: str,
-    perturbation_gene_name: Optional[str],
-    phenotype_gene_name: Optional[str],
-    change_direction: Optional[str],
-) -> List[PerturbSeqDatasetData]:
-
-    dataset_ids = [d["dataset_id"] for d in datasets]
-    if not dataset_ids:
+    perturbation_gene_name: str | None,
+    phenotype_gene_name: str | None,
+    change_direction: str | None,
+    max_top_level: int,
+    max_rows: int,
+):
+    if not datasets:
         return []
 
-    # Determine summary view and grouping keys
-    if group_by == "perturbation_gene_name":
-        summary_view = "perturb_seq_summary_perturbation"
-        group_key = "perturbed_target_symbol"
-        detail_key = "gene"
-    else:  # phenotype_gene_name
-        summary_view = "perturb_seq_summary_effect"
-        group_key = "gene"
-        detail_key = "perturbed_target_symbol"
+    results = []
 
-    # 1. Get top 3 entities from the summary view
-    params = [dataset_ids]
-    param_idx = 2
+    async with pg_pool.acquire() as conn:
+        for dataset in datasets:
+            dataset_id = dataset["dataset_id"]
 
-    filter_clauses = ["dataset_id = ANY($1)"]
-    if perturbation_gene_name:
-        # In the new logic, datasets are already pre-filtered, but we still need to filter the summary view.
-        if group_by == "perturbation_gene_name":
-            filter_clauses.append(f"{group_key} = ${param_idx}")
-            params.append(perturbation_gene_name)
-            param_idx += 1
-    if phenotype_gene_name:
-        if group_by == "phenotype_gene_name":
-            filter_clauses.append(f"{group_key} = ${param_idx}")
-            params.append(phenotype_gene_name)
-            param_idx += 1
+            if group_by == "perturbation_gene_name":
+                summary_view = "perturb_seq_summary_perturbation"
+                group_col = "perturbed_target_symbol"
+                detail_group_col = "perturbed_target_symbol"
+                result_key = "by_perturbation"
+                detail_key = "change_phenotype"
 
-    summary_query = f"""
-        WITH ranked_entities AS (
-            SELECT *, ROW_NUMBER() OVER(PARTITION BY dataset_id ORDER BY n_total DESC) as rn
-            FROM {summary_view}
-            WHERE {" AND ".join(filter_clauses)}
-        )
-        SELECT * FROM ranked_entities WHERE rn <= 3;
-    """
-    top_entities = await pool.fetch(summary_query, *params)
+            else:  # phenotype_gene_name
+                summary_view = "perturb_seq_summary_effect"
+                group_col = "gene"
+                detail_group_col = "gene"
+                result_key = "by_phenotype"
+                detail_key = "perturbation_change"
 
-    if not top_entities:
+            summary_query = f"""
+                SELECT {group_col}, n_total
+                FROM {summary_view}
+                WHERE dataset_id = $1
+            """
+            params = [dataset_id]
+            param_idx = 2
+
+            if perturbation_gene_name:
+                summary_query += f" AND perturbed_target_symbol = ${param_idx}"
+                params.append(perturbation_gene_name)
+                param_idx += 1
+
+            if phenotype_gene_name and group_by == "phenotype_gene_name":
+                summary_query += f" AND gene = ${param_idx}"
+                params.append(phenotype_gene_name)
+                param_idx += 1
+
+            summary_query += f" ORDER BY n_total DESC LIMIT ${param_idx}"
+            params.append(max_top_level)
+
+            top_level_entities = await conn.fetch(summary_query, *params)
+
+            if not top_level_entities:
+                continue
+
+            dataset_result = {"dataset": dataset, result_key: []}
+
+            for entity in top_level_entities:
+                group_name = entity[group_col]
+
+                detail_query = f"""
+                    SELECT gene, log2foldchange, padj, basemean, perturbed_target_symbol
+                    FROM perturb_seq_2
+                    WHERE dataset_id = $1 AND {detail_group_col} = $2
+                """
+                detail_params = [dataset_id, group_name]
+                param_idx_detail = 3
+
+                if phenotype_gene_name and group_by == "perturbation_gene_name":
+                    detail_query += f" AND gene = ${param_idx_detail}"
+                    detail_params.append(phenotype_gene_name)
+                    param_idx_detail += 1
+
+                if change_direction:
+                    if change_direction == "increased":
+                        detail_query += " AND log2foldchange > 0"
+                    elif change_direction == "decreased":
+                        detail_query += " AND log2foldchange < 0"
+
+                detail_query += f" ORDER BY padj ASC LIMIT ${param_idx_detail}"
+                detail_params.append(max_rows)
+
+                details = await conn.fetch(detail_query, *detail_params)
+
+                group_items = []
+                for row in details:
+                    item = {
+                        "change": {
+                            "direction": (
+                                "increased"
+                                if row["log2foldchange"] > 0
+                                else "decreased"
+                            ),
+                            "log2fc": row["log2foldchange"],
+                            "padj": row["padj"],
+                        }
+                    }
+                    if group_by == "perturbation_gene_name":
+                        item["phenotype"] = {
+                            "phenotype_gene_name": row["gene"],
+                            "base_mean": row["basemean"],
+                        }
+                    else:  # phenotype_gene_name
+                        item["perturbation"] = {
+                            "perturbation_type": "gene_knockout",
+                            "perturbation_gene_name": row["perturbed_target_symbol"],
+                        }
+                    group_items.append(item)
+
+                if group_items:
+                    top_level_item = {}
+                    if group_by == "perturbation_gene_name":
+                        top_level_item["perturbation"] = {
+                            "perturbation_type": "gene_knockout",
+                            "perturbation_gene_name": group_name,
+                        }
+                    else:  # phenotype_gene_name
+                        top_level_item["phenotype"] = {
+                            "phenotype_gene_name": group_name,
+                        }
+                    top_level_item[detail_key] = group_items
+                    dataset_result[result_key].append(top_level_item)
+
+            if dataset_result[result_key]:
+                results.append(dataset_result)
+
+    return results
+
+
+async def get_crispr_data(
+    datasets: list,
+    perturbation_gene_name: str | None,
+    max_rows: int,
+):
+    if not datasets:
         return []
 
-    # 2. Get up to 10 detail rows for each top entity
-    detail_queries = []
-    for entity in top_entities:
-        change_filter = ""
-        if change_direction == "increased":
-            change_filter = "AND log2foldchange > 0"
-        elif change_direction == "decreased":
-            change_filter = "AND log2foldchange < 0"
+    results = []
+    async with pg_pool.acquire() as conn:
+        for dataset in datasets:
+            query = "SELECT perturbed_target_symbol, score_name, score_value FROM crispr_data WHERE dataset_id = $1"
+            params = [dataset["dataset_id"]]
+            if perturbation_gene_name:
+                query += " AND perturbed_target_symbol = $2"
+                params.append(perturbation_gene_name)
 
-        # Detail query needs to filter by both grouping key and detail key if they are provided
-        detail_filters = ["dataset_id = $1", f"{group_key} = $2"]
-        detail_params = [entity["dataset_id"], entity[group_key]]
-        detail_param_idx = 3
+            query += f" LIMIT ${len(params) + 1}"
+            params.append(max_rows)
 
-        if perturbation_gene_name:
-            detail_filters.append(f"perturbed_target_symbol = ${detail_param_idx}")
-            detail_params.append(perturbation_gene_name)
-            detail_param_idx += 1
-        if phenotype_gene_name:
-            detail_filters.append(f"gene = ${detail_param_idx}")
-            detail_params.append(phenotype_gene_name)
-            detail_param_idx += 1
-
-        detail_query_sql = f"""
-            SELECT * FROM perturb_seq_2
-            WHERE {" AND ".join(detail_filters)} {change_filter}
-            ORDER BY padj ASC
-            LIMIT 10;
-        """
-        detail_queries.append(pool.fetch(detail_query_sql, *detail_params))
-
-    detail_results_list = await asyncio.gather(*detail_queries)
-
-    # 3. Assemble the response structure
-    datasets_map = {d["dataset_id"]: d for d in datasets}
-    results_by_dataset = {}
-
-    for i, entity in enumerate(top_entities):
-        dataset_id = entity["dataset_id"]
-        if dataset_id not in results_by_dataset:
-            results_by_dataset[dataset_id] = {
-                "dataset": Dataset(**datasets_map[dataset_id]),
-                "by_perturbation": [] if group_by == "perturbation_gene_name" else None,
-                "by_phenotype": [] if group_by == "phenotype_gene_name" else None,
-            }
-
-        detail_results = detail_results_list[i]
-        if not detail_results:
-            continue
-
-        if group_by == "perturbation_gene_name":
-            change_phenotypes = [
-                ChangePhenotype(
-                    change=PerturbSeqChange(
-                        direction=(
-                            "increased" if row["log2foldchange"] > 0 else "decreased"
-                        ),
-                        **row,
-                    ),
-                    phenotype=PerturbSeqPhenotype(**row),
-                )
-                for row in detail_results
-            ]
-            if change_phenotypes:  # Only add if there are matching changes
-                results_by_dataset[dataset_id]["by_perturbation"].append(
-                    ByPerturbation(
-                        perturbation=PerturbSeqPerturbation(**entity),
-                        change_phenotype=change_phenotypes,
-                    )
-                )
-        else:  # by phenotype
-            perturbation_changes = [
-                PerturbationChange(
-                    perturbation=PerturbSeqPerturbation(**row),
-                    change=PerturbSeqChange(
-                        direction=(
-                            "increased" if row["log2foldchange"] > 0 else "decreased"
-                        ),
-                        **row,
-                    ),
-                )
-                for row in detail_results
-            ]
-            if perturbation_changes:
-                results_by_dataset[dataset_id]["by_phenotype"].append(
-                    ByPhenotype(
-                        phenotype=PerturbSeqPhenotype(**entity),
-                        perturbation_change=perturbation_changes,
-                    )
-                )
-
-    return [
-        PerturbSeqDatasetData(**data)
-        for data in results_by_dataset.values()
-        if (data.get("by_perturbation") or data.get("by_phenotype"))
-    ]
+            rows = await conn.fetch(query, *params)
+            if rows:
+                data = [
+                    {
+                        "perturbation": {
+                            "perturbation_type": "gene_knockout",
+                            "perturbation_gene_name": row["perturbed_target_symbol"],
+                        },
+                        "change": {"score_value": row["score_value"]},
+                        "phenotype": {"score_name": row["score_name"]},
+                    }
+                    for row in rows
+                ]
+                results.append({"dataset": dataset, "data": data})
+    return results
 
 
-async def get_generic_data(
-    pool: asyncpg.Pool,
-    datasets: List[Dict],
-    table_name: str,
-    modality_type: str,
-    perturbation_gene_name: Optional[str],
-) -> List[GenericDatasetData]:
-
-    dataset_ids = [d["dataset_id"] for d in datasets]
-    if not dataset_ids:
+async def get_mave_data(
+    datasets: list,
+    perturbation_gene_name: str | None,
+    max_rows: int,
+):
+    if not datasets:
         return []
 
-    params = [dataset_ids]
-    param_idx = 2
+    results = []
+    async with pg_pool.acquire() as conn:
+        for dataset in datasets:
+            query = "SELECT perturbed_target_symbol, score_name, score_value, perturbation_name FROM mave_data WHERE dataset_id = $1"
+            params = [dataset["dataset_id"]]
+            if perturbation_gene_name:
+                query += " AND perturbed_target_symbol = $2"
+                params.append(perturbation_gene_name)
 
-    filter_clauses = ["dataset_id = ANY($1)"]
-    if perturbation_gene_name:
-        filter_clauses.append(f"perturbed_target_symbol = ${param_idx}")
-        params.append(perturbation_gene_name)
+            query += f" LIMIT ${len(params) + 1}"
+            params.append(max_rows)
 
-    query = f"""
-        WITH ranked_rows AS (
-            SELECT *, ROW_NUMBER() OVER(PARTITION BY dataset_id ORDER BY perturbed_target_symbol) as rn
-            FROM {table_name}
-            WHERE {" AND ".join(filter_clauses)}
-        )
-        SELECT * FROM ranked_rows WHERE rn <= 10;
-    """
-
-    rows = await pool.fetch(query, *params)
-
-    datasets_map = {d["dataset_id"]: d for d in datasets}
-    results_by_dataset = {}
-
-    for row in rows:
-        dataset_id = row["dataset_id"]
-        if dataset_id not in results_by_dataset:
-            results_by_dataset[dataset_id] = {
-                "dataset": Dataset(**datasets_map[dataset_id]),
-                "data": [],
-            }
-
-        perturbation_type = (
-            "gene_knockout" if modality_type == "CRISPR screen" else "mave"
-        )
-
-        results_by_dataset[dataset_id]["data"].append(
-            GenericDataRow(
-                perturbation=GenericPerturbation(
-                    perturbation_type=perturbation_type, **row
-                ),
-                change=GenericChange(**row),
-                phenotype=GenericPhenotype(**row),
-            )
-        )
-
-    return [GenericDatasetData(**data) for data in results_by_dataset.values()]
+            rows = await conn.fetch(query, *params)
+            if rows:
+                data = [
+                    {
+                        "perturbation": {
+                            "perturbation_type": "mave",
+                            "perturbation_gene_name": row["perturbed_target_symbol"],
+                            "perturbation_name": row["perturbation_name"],
+                        },
+                        "change": {"score_value": row["score_value"]},
+                        "phenotype": {"score_name": row["score_name"]},
+                    }
+                    for row in rows
+                ]
+                results.append({"dataset": dataset, "data": data})
+    return results
 
 
 # --- API Endpoint ---
-
-
-@app.get("/v1/search", response_model=List[ModalityData])
+@app.get("/v1/search")
 async def search(
     request: Request,
-    group_by: Literal["perturbation_gene_name", "phenotype_gene_name"],
-    dataset_metadata: Optional[str] = None,
-    perturbation_gene_name: Optional[str] = None,
-    change_direction: Optional[Literal["increased", "decreased"]] = None,
-    phenotype_gene_name: Optional[str] = None,
+    dataset_metadata: str = Query(None),
+    perturbation_gene_name: str = Query(None),
+    change_direction: str = Query(None, pattern="^(increased|decreased)$"),
+    phenotype_gene_name: str = Query(None),
+    modalities: str = Query("perturb-seq,crispr-screen,mave"),
+    group_by: str = Query(
+        ..., pattern="^(perturbation_gene_name|phenotype_gene_name)$"
+    ),
+    max_datasets_per_modality: int = Query(10, ge=1),
+    max_top_level: int = Query(10, ge=1),
+    max_rows: int = Query(10, ge=1),
 ):
-    validate_query_params(request)
+    validate_query_params(request.query_params)
 
-    es_client = clients["es"]
-    pg_pool = clients["pg"]
+    target_modalities = {m.strip() for m in modalities.split(",")}
 
-    # If any gene/change filters are applied, pre-filter dataset IDs from Postgres
-    pg_filtered_ids = None
-    if perturbation_gene_name or phenotype_gene_name or change_direction:
-        tasks = []
-        # Perturb-seq
-        ps_q = "SELECT DISTINCT dataset_id FROM perturb_seq_2 WHERE 1=1"
-        ps_p = []
-        if perturbation_gene_name:
-            ps_p.append(perturbation_gene_name)
-            ps_q += f" AND perturbed_target_symbol = ${len(ps_p)}"
-        if phenotype_gene_name:
-            ps_p.append(phenotype_gene_name)
-            ps_q += f" AND gene = ${len(ps_p)}"
-        if change_direction == "increased":
-            ps_q += " AND log2foldchange > 0"
-        elif change_direction == "decreased":
-            ps_q += " AND log2foldchange < 0"
-        tasks.append(pg_pool.fetch(ps_q, *ps_p))
-
-        # CRISPR & MAVE (only filter by perturbation_gene_name)
-        if perturbation_gene_name and not phenotype_gene_name:
-            tasks.append(
-                pg_pool.fetch(
-                    "SELECT DISTINCT dataset_id FROM crispr_data WHERE perturbed_target_symbol = $1",
-                    perturbation_gene_name,
-                )
+    # 1. Get dataset IDs from Postgres
+    pg_tasks = []
+    if "perturb-seq" in target_modalities:
+        pg_tasks.append(
+            get_perturb_seq_dataset_ids(
+                perturbation_gene_name, phenotype_gene_name, change_direction
             )
-            tasks.append(
-                pg_pool.fetch(
-                    "SELECT DISTINCT dataset_id FROM mave_data WHERE perturbed_target_symbol = $1",
-                    perturbation_gene_name,
-                )
-            )
+        )
+    if "crispr-screen" in target_modalities:
+        pg_tasks.append(get_crispr_dataset_ids(perturbation_gene_name))
+    if "mave" in target_modalities:
+        pg_tasks.append(get_mave_dataset_ids(perturbation_gene_name))
 
-        list_of_results = await asyncio.gather(*tasks)
-        pg_filtered_ids = {
-            row["dataset_id"] for result_list in list_of_results for row in result_list
-        }
+    pg_results = await asyncio.gather(*pg_tasks)
+    all_dataset_ids = list(set().union(*pg_results))
 
-        if not pg_filtered_ids:
-            return []
-
-    datasets_by_modality = await get_datasets_from_es(
-        es_client, dataset_metadata, pg_filtered_ids
+    # 2. Get datasets from ElasticSearch
+    es_datasets, facet_counts, total_counts = await get_es_datasets(
+        dataset_metadata, max_datasets_per_modality, all_dataset_ids
     )
 
+    # 3. Get data from Postgres for each modality in parallel
     tasks = []
-
-    # Perturb-seq
-    if "Perturb-seq" in datasets_by_modality:
+    if "perturb-seq" in target_modalities:
         tasks.append(
             get_perturb_seq_data(
-                pg_pool,
-                datasets_by_modality["Perturb-seq"],
+                es_datasets.get("perturb-seq", []),
                 group_by,
                 perturbation_gene_name,
                 phenotype_gene_name,
                 change_direction,
+                max_top_level,
+                max_rows,
             )
         )
-
-    # CRISPR screen
-    if "CRISPR screen" in datasets_by_modality and not phenotype_gene_name:
+    if "crispr-screen" in target_modalities:
         tasks.append(
-            get_generic_data(
-                pg_pool,
-                datasets_by_modality["CRISPR screen"],
-                "crispr_data",
-                "CRISPR screen",
+            get_crispr_data(
+                es_datasets.get("crispr-screen", []),
                 perturbation_gene_name,
+                max_rows,
             )
         )
-
-    # MAVE
-    if "MAVE" in datasets_by_modality and not phenotype_gene_name:
+    if "mave" in target_modalities:
         tasks.append(
-            get_generic_data(
-                pg_pool,
-                datasets_by_modality["MAVE"],
-                "mave_data",
-                "MAVE",
+            get_mave_data(
+                es_datasets.get("mave", []),
                 perturbation_gene_name,
+                max_rows,
             )
         )
 
-    results_from_tasks = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks)
 
-    final_response = []
-    task_idx = 0
+    # 4. Assemble the final response
+    response_modalities = []
+    result_idx = 0
 
-    if "Perturb-seq" in datasets_by_modality:
-        if (
-            results_from_tasks
-            and task_idx < len(results_from_tasks)
-            and results_from_tasks[task_idx]
-        ):
-            final_response.append(
-                ModalityData(
-                    modality="perturb-seq", datasets=results_from_tasks[task_idx]
-                )
+    all_modalities = ["perturb-seq", "crispr-screen", "mave"]
+
+    for modality_name in all_modalities:
+        if modality_name in target_modalities:
+            response_modalities.append(
+                {
+                    "modality": modality_name,
+                    "total_datasets_count": total_counts.get(modality_name, 0),
+                    "datasets": (
+                        results[result_idx] if result_idx < len(results) else []
+                    ),
+                }
             )
-        task_idx += 1
-
-    if "CRISPR screen" in datasets_by_modality and not phenotype_gene_name:
-        if (
-            results_from_tasks
-            and task_idx < len(results_from_tasks)
-            and results_from_tasks[task_idx]
-        ):
-            final_response.append(
-                ModalityData(
-                    modality="crispr-screen", datasets=results_from_tasks[task_idx]
-                )
+            result_idx += 1
+        else:
+            response_modalities.append(
+                {
+                    "modality": modality_name,
+                    "total_datasets_count": total_counts.get(modality_name, 0),
+                    "datasets": [],
+                }
             )
-        task_idx += 1
 
-    if "MAVE" in datasets_by_modality and not phenotype_gene_name:
-        if (
-            results_from_tasks
-            and task_idx < len(results_from_tasks)
-            and results_from_tasks[task_idx]
-        ):
-            final_response.append(
-                ModalityData(modality="mave", datasets=results_from_tasks[task_idx])
-            )
-        task_idx += 1
-
-    return final_response
+    return JSONResponse(
+        content={"modalities": response_modalities, "facet_counts": facet_counts}
+    )
