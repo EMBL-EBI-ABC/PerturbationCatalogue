@@ -60,6 +60,13 @@ ALLOWED_PARAMS = {
     "max_datasets_per_modality",
     "max_top_level",
     "max_rows",
+    "tissue",
+    "cell_type",
+    "cell_line",
+    "sex",
+    "developmental_stage",
+    "disease",
+    "library_perturbation_type",
 }
 
 
@@ -75,6 +82,13 @@ def validate_query_params(query_params):
 
 async def get_es_datasets(
     dataset_metadata: str | None,
+    tissue: str | None,
+    cell_type: str | None,
+    cell_line: str | None,
+    sex: str | None,
+    developmental_stage: str | None,
+    disease: str | None,
+    library_perturbation_type: str | None,
     max_datasets_per_modality: int,
     dataset_ids: list[str] | None = None,
 ):
@@ -120,6 +134,32 @@ async def get_es_datasets(
         es_query["query"]["bool"]["must"].append(
             {"query_string": {"query": dataset_metadata}}
         )
+
+    filter_mapping = {
+        "tissue": "tissue_labels",
+        "cell_type": "cell_type_labels",
+        "cell_line": "cell_line_labels",
+        "sex": "sex_labels",
+        "developmental_stage": "developmental_stage_labels",
+        "disease": "disease_labels",
+        "library_perturbation_type": "library_perturbation_type_labels",
+    }
+    filters = {
+        "tissue": tissue,
+        "cell_type": cell_type,
+        "cell_line": cell_line,
+        "sex": sex,
+        "developmental_stage": developmental_stage,
+        "disease": disease,
+        "library_perturbation_type": library_perturbation_type,
+    }
+
+    for param_name, param_value in filters.items():
+        if param_value:
+            es_field_name = filter_mapping[param_name]
+            es_query["query"]["bool"]["must"].append(
+                {"term": {es_field_name: param_value}}
+            )
 
     if dataset_ids:
         es_query["query"]["bool"]["must"].append({"terms": {"dataset_id": dataset_ids}})
@@ -426,6 +466,13 @@ async def get_mave_data(
 async def search(
     request: Request,
     dataset_metadata: str = Query(None),
+    tissue: str = Query(None),
+    cell_type: str = Query(None),
+    cell_line: str = Query(None),
+    sex: str = Query(None),
+    developmental_stage: str = Query(None),
+    disease: str = Query(None),
+    library_perturbation_type: str = Query(None),
     perturbation_gene_name: str = Query(None),
     change_direction: str = Query(None, pattern="^(increased|decreased)$"),
     phenotype_gene_name: str = Query(None),
@@ -459,7 +506,16 @@ async def search(
 
     # 2. Get datasets from ElasticSearch
     es_datasets, facet_counts, total_counts = await get_es_datasets(
-        dataset_metadata, max_datasets_per_modality, all_dataset_ids
+        dataset_metadata,
+        tissue,
+        cell_type,
+        cell_line,
+        sex,
+        developmental_stage,
+        disease,
+        library_perturbation_type,
+        max_datasets_per_modality,
+        all_dataset_ids,
     )
 
     # 3. Get data from Postgres for each modality in parallel
