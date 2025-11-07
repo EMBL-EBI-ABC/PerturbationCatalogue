@@ -24,6 +24,7 @@ with
     base as (
         select
             dataset_id,
+            array_agg(distinct data_modality ignore nulls) as data_modalities,
             array_agg(distinct timepoint ignore nulls) as timepoints,
             array_agg(distinct treatment_label ignore nulls) as treatment_labels,
             array_agg(distinct treatment_id ignore nulls) as treatment_ids,
