@@ -1,220 +1,152 @@
-# Data model
+# Data Model
 
 ## 1. Overview
 
-This document describes model for the data which is being provided by BE and used by FE. It provides a high level contract on data exchange between BE and FE and does not include implementation details, which are provided in separate documents to BE and to FE only.
+This document describes the API contract for the Perturbation Catalogue. The data is represented using a `Dataset/Perturbation/Effect` model, and the API is organized by modality.
 
-The data being represented can be semantically described in the following manner: "According to this DATASET, introducing this PERTURBATION leads to this CHANGE in this PHENOTYPE".
+The core semantic concept is: "According to a `DATASET`, a `PERTURBATION` has an `EFFECT`."
 
-The data is presented grouped by modality, and within each modality, by dataset. There are three modalities: "Perturb-seq", "CRISPR screen", and "MAVE".
+The available modalities are: `perturb-seq`, `crispr-screen`, `mave`.
 
-## 2. API specification
+## 2. API Specification
 
-API endpoint is /v1/search. It accepts the following optional parameters for filtering:
+### 2.1. Common Principles
 
-* `dataset_metadata`: string, used to free text search in the dataset metadata.
-* `tissue`: string, used to filter by tissue.
-* `cell_type`: string, used to filter by cell type.
-* `cell_line`: string, used to filter by cell line.
-* `sex`: string, used to filter by sex.
-* `developmental_stage`: string, used to filter by developmental stage.
-* `disease`: string, used to filter by disease.
-* `library_perturbation_type`: string, used to filter by library perturbation type.
-* `perturbation_gene_name`: string, used to filter by a perturbed gene name.
-* `change_direction`: string, used to filter by the direction of the change. Must be "increased" or "decreased". Only applies to Perturb-seq modality. If any value is specified, only Perturb-seq data matching the filter should be returned.
-* `phenotype_gene_name`: string, used to filter by a phenotype gene name.
-* `modalities`: string, comma-separated list of modalities to return. Default is "perturb-seq,crispr-screen,mave".
+#### 2.1.1. Endpoints
+The API is structured around modality-specific endpoints:
+*   `/v1/{MODALITY}/search`: Search across all datasets within a modality.
+*   `/v1/{MODALITY}/{DATASET_ID}/search`: Search within a specific dataset in a modality.
 
-In order to be returned, the data row must satisfy all specified filter conditions.
+#### 2.1.2. Parameter Prefixes
+All API parameters and response fields are prefixed to indicate which part of the data model they correspond to:
+*   `dataset_`: For dataset metadata.
+*   `perturbation_`: For perturbation attributes.
+*   `effect_`: For effect attributes (a combination of the old "change" and "phenotype" concepts).
 
-The API also accepts the following mandatory parameter for grouping:
+#### 2.1.3. Filtering
+*   **String fields**: Filtered by exact match (e.g., `perturbation_gene_name=SPI1`).
+*   **Numeric (int/float) fields**: Filtered by range using `_min` and `_max` suffixes (e.g., `effect_log2fc_min=0.5`, `effect_log2fc_max=2.0`).
 
-* `group_by`: string, possible values are "perturbation_gene_name" or "phenotype_gene_name". This is used to aggregate the data rows for the "Perturb-seq" modality. For other modalities, no grouping is performed.
+#### 2.1.4. Sorting
+Sorting is controlled by the `sort` parameter, which accepts a comma-separated list of fields. Each field can have a direction specifier (`:asc` or `:desc`).
+*   **Syntax**: `sort=field1:direction,field2:direction`
+*   **Example**: `sort=effect_padj:asc,perturbation_gene_name:desc`
 
-The API also accepts the following optional parameters for limiting the number of results:
+### 2.2. Modality Search: `/v1/{MODALITY}/search`
 
-* `max_datasets_per_modality`: integer, default 10. The maximum number of datasets to return for each modality.
-* `max_top_level`: integer, default 10. For "Perturb-seq" modality, the maximum number of top-level groups (e.g., perturbations or phenotypes) to return per dataset.
-* `max_rows`: integer, default 10. For "Perturb-seq" modality, the maximum number of underlying data rows (e.g., `change_phenotype` items) to return for each top-level group. For other modalities, the maximum number of data records to return per dataset.
+This endpoint searches across multiple datasets for a given modality.
 
-## 3. Data types
+**Parameters:**
+*   **Dataset Filters**:
+    *   `dataset_search`: Free text search across dataset metadata.
+    *   `dataset_tissue`, `dataset_cell_type`, `dataset_cell_line`, `dataset_sex`, `dataset_developmental_stage`, `dataset_disease`, `dataset_library_perturbation_type`: Exact match filters for dataset metadata fields.
+*   **Perturbation/Effect Filters**:
+    *   Any `perturbation_*` or `effect_*` field can be used as a filter, following the string/numeric filtering rules.
+*   **Sorting**:
+    *   `sort`: Sorts the `results` within each dataset. Accepts any filterable `perturbation_*` or `effect_*` field.
+*   **Pagination**:
+    *   `dataset_limit`: Max number of datasets to return (default: 10).
+    *   `dataset_offset`: Offset for dataset pagination (default: 0).
+    *   `rows_per_dataset_limit`: Max number of (perturbation, effect) rows to return per dataset (default: 10).
+
+### 2.3. Single Dataset Search: `/v1/{MODALITY}/{DATASET_ID}/search`
+
+This endpoint searches for data within a single specified dataset.
+
+**Parameters:**
+*   **Perturbation/Effect Filters**:
+    *   Same as the modality search endpoint.
+*   **Sorting**:
+    *   Same as the modality search endpoint.
+*   **Pagination**:
+    *   `limit`: Max number of rows to return (default: 50).
+    *   `offset`: Offset for row pagination (default: 0).
+
+## 3. Data Types
+
+All fields are prefixed as described above.
 
 ### 3.1. Dataset
-* dataset_id
-* tissue
-* cell_type
-* cell_line
-* sex
-* developmental_stage
-* disease
-* library_perturbation_type
-All fields are strings. dataset_id is used to link together Elastic and Postgres data. The rest of the fields are searchable metadata.
+*   `dataset_id`: string
+*   `dataset_tissue`: string
+*   `dataset_cell_type`: string
+*   `dataset_cell_line`: string
+*   `dataset_sex`: string
+*   `dataset_developmental_stage`: string
+*   `dataset_disease`: string
+*   `dataset_library_perturbation_type`: string
 
 ### 3.2. Perturbation
+*   `perturbation_gene_name`: string (All modalities)
+*   `perturbation_name`: string (MAVE only, e.g., "p.Pro73Gln")
 
-#### 3.2.1. For "Perturb-seq" modality
-* perturbation_type: hardcoded to "gene_knockout"
-* perturbation_gene_name, e.g. ABC123
-* n_total, e.g. 120
-* n_up, e.g. 20
-* n_down, e.g. 100
-n_total, n_up, n_down are integers. They show how many phenotypes in the dataset *are affected by* perturbing this gene.
+### 3.3. Effect
+This entity combines attributes of the outcome of a perturbation.
 
-#### 3.2.2. For "CRISPR screen" modality
-* perturbation_type: hardcoded to "gene_knockout"
-* perturbation_gene_name, e.g. ABC123
+*   **For `perturb-seq`:**
+    *   `effect_phenotype_gene_name`: string
+    *   `effect_direction`: string ("increased" or "decreased")
+    *   `effect_log2fc`: float
+    *   `effect_padj`: float
+    *   `effect_base_mean`: float
+*   **For `crispr-screen` and `mave`:**
+    *   `effect_score_name`: string
+    *   `effect_score_value`: float
 
-#### 3.2.3. For "MAVE" modality
-* perturbation_type: hardcoded to "mave"
-* perturbation_gene_name, e.g. ABC123
-* perturbation_name, e.g. p.Pro73Gln
+## 4. Response Structure
 
-### 3.3. Change
-
-#### 3.3.1. For "Perturb-seq" modality
-* direction: string, either "increased" or "decreased" based on log2fc
-* log2fc: double
-* padj: double
-
-#### 3.3.2. For "CRISPR screen" and "MAVE" modalities
-* score_value: double
-
-### 3.4. Phenotype
-
-#### 3.4.1. For "Perturb-seq" modality
-* phenotype_gene_name, e.g. DEF456
-* base_mean, float
-* n_total, e.g. 5
-* n_down, e.g. 1
-* n_up, e.g. 4
-n_total, n_up, n_down are integers. They show how many perturbations in the dataset *affect* this phenotype.
-
-#### 3.4.2. For "CRISPR screen" and "MAVE" modalities
-* score_name: string
-
-## 4. Response structure
-
-The top-level response is an object containing a list of modalities and global facet counts for dataset metadata.
+### 4.1. Modality Search: `/v1/{MODALITY}/search`
 
 ```json
 {
-    "modalities": [
-        {
-            "modality": "perturb-seq",
-            "total_datasets_count": 123,
-            "datasets": [
-                // dataset objects for this modality, limited by max_datasets_per_modality
-            ]
-        },
-        {
-            "modality": "crispr-screen",
-            "total_datasets_count": 45,
-            "datasets": [
-                // dataset objects for this modality
-            ]
-        },
-        {
-            "modality": "mave",
-            "total_datasets_count": 67,
-            "datasets": [
-                // dataset objects for this modality
-            ]
-        }
-    ],
+    "total_datasets_count": 123,
     "facet_counts": {
-        "tissue": [
-            { "value": "blood", "count": 50 },
-            { "value": "liver", "count": 20 }
+        "dataset_tissue": [
+            { "value": "blood", "count": 50 }
         ],
-        "cell_type": [
-            { "value": "T cell", "count": 30 },
-            { "value": "B cell", "count": 15 }
+        "dataset_cell_type": [
+            { "value": "T cell", "count": 30 }
         ]
-    }
-}
-```
-
-### 4.1. For "Perturb-seq" modality (grouping applies)
-
-The number of elements in `by_perturbation` or `by_phenotype` is limited by `max_top_level`. The number of elements in `change_phenotype` or `perturbation_change` is limited by `max_rows`.
-
-#### 4.1.1. Grouped by perturbation
-```json
-{
-    "dataset": {
-        // dataset object fields
     },
-    "by_perturbation": [
+    "datasets": [
         {
-            "perturbation": {
-                // perturbation object fields for "Perturb-seq"
+            "dataset": {
+                // dataset object fields
             },
-            "change_phenotype": [
-                {
-                    "change": {
-                        // change object fields for "Perturb-seq"
-                    },
-                    "phenotype": {
-                        // phenotype object fields for "Perturb-seq"
-                    }
-                }
-                // More change_phenotype elements
-            ]
-        }
-        // More by_perturbation elements
-    ]
-}
-```
-
-#### 4.1.2. Grouped by phenotype
-```json
-{
-    "dataset": {
-        // dataset object fields
-    },
-    "by_phenotype": [
-        {
-            "phenotype": {
-                // phenotype object fields for "Perturb-seq"
-            },
-            "perturbation_change": [
+            "results": [
                 {
                     "perturbation": {
-                        // perturbation object fields for "Perturb-seq"
+                        // perturbation object fields for this modality
                     },
-                    "change": {
-                        // change object fields for "Perturb-seq"
+                    "effect": {
+                        // effect object fields for this modality
                     }
                 }
-                // More perturbation_change elements
+                // ... more results, limited by rows_per_dataset_limit
             ]
         }
-        // More by_phenotype elements
+        // ... more datasets, limited by dataset_limit
     ]
 }
 ```
 
-### 4.2. For "CRISPR screen" and "MAVE" modalities (no grouping)
-For these modalities, the structure is a simple list of records. The number of elements in `data` is limited by `max_rows`.
+### 4.2. Single Dataset Search: `/v1/{MODALITY}/{DATASET_ID}/search`
 
 ```json
 {
-    "dataset": {
-        // dataset object fields
-    },
-    "data": [
+    "total_rows_count": 456,
+    "offset": 0,
+    "limit": 50,
+    "results": [
         {
             "perturbation": {
-                // perturbation object fields for the modality
+                // perturbation object fields
             },
-            "change": {
-                // change object fields for the modality
-            },
-            "phenotype": {
-                // phenotype object fields for the modality
+            "effect": {
+                // effect object fields
             }
         }
-        // More data records
+        // ... more results, limited by limit
     ]
 }
 ```
