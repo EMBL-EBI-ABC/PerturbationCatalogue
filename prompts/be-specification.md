@@ -1,129 +1,118 @@
-# Back-end specification
+# Back-end Specification
 
-First, study the data model specification in @prompts/data-model.md. It describes the API contract between the front-end and the back-end. This document provides the back-end implementation details.
+First, study the updated data model specification in @prompts/data-model.md. This document provides the back-end implementation details for the new API structure.
 
-## 1. Task overview
+## 1. Task Overview
 
-Study @be/Dockerfile and @be/README.md to see BE skeleton for the project. It describes how it's Dockerised and ran locally, as well as which environment variables it relies upon.
+Your job is to implement `be/main.py` to create the API endpoints defined in the data model. The implementation must be asynchronous.
 
-Your job is to implement be/main.py and add any corresponding requirements to be/requirements.txt.
+*   `/v1/{MODALITY}/search`
+*   `/v1/{MODALITY}/{DATASET_ID}/search`
 
-## 2. Input data
+Refer to @be/Dockerfile and @be/README.md for Docker setup and environment variables.
+
+## 2. Data Sources
 
 ### 2.1. Databases
-There are two data sources: Elastic, which contains dataset metadata; and Postgres, which contains perturbation and effect data. All queries performed must be asynchronous for maximum performance.
+Data is split between Elastic (dataset metadata) and Postgres (perturbation/effect data). Use asynchronous libraries for all database interactions. Credentials are provided via environment variables.
 
-Database access credentials are provided as environment variables; use them.
+### 2.2. Dataset Metadata (Elastic)
 
-### 2.2. Dataset metadata in Elastic
-Dataset metadata is stored in Elastic. The data core which you need to use is named dataset-summary-v2. This data source indicates the modality of each dataset via the `data_modalities` field (it is a plain text field, not a list, and always contains just one value).
+*   **Index**: `dataset-summary-v2`
+*   **Modality Field**: `data_modalities` (string, e.g., "Perturb-seq")
+*   **Query Fields**: Use the following fields for filtering and output, mapping them to the `dataset_*` prefixed fields in the API:
+    *   `dataset_id` -> `dataset_id`
+    *   `tissue_labels` -> `dataset_tissue` (flatten list, assert single entry, strip `_labels`)
+    *   `cell_type_labels` -> `dataset_cell_type`
+    *   `cell_line_labels` -> `dataset_cell_line`
+    *   `sex_labels` -> `dataset_sex`
+    *   `developmental_stage_labels` -> `dataset_developmental_stage`
+    *   `disease_labels` -> `dataset_disease`
+    *   `library_perturbation_type_labels` -> `dataset_library_perturbation_type`
 
-This is an example of one row from it. It contains a lot of columns, but here only the relevant fields are kept:
-```json
-{
-    "dataset_id": "datlinger_2017",
-    "data_modalities": "Perturb-seq",
-    "tissue_labels": [
-      "blood"
-    ],
-    "cell_type_labels": [
-      "T cell"
-    ],
-    "cell_line_labels": [
-      "JURKAT cell"
-    ],
-    "sex_labels": [
-      "male"
-    ],
-    "developmental_stage_labels": [
-      "adolescent"
-    ],
-    "disease_labels": [
-      "T-cell acute lymphoblastic leukemia"
-    ],
-    "library_perturbation_type_labels": [
-      "knockout"
-    ]
-}
-```
+### 2.3. Perturbation and Effect Data (Postgres)
 
-You must only use a fixed subset of fields both for search and for returning the results. Here is the subset: `dataset_id`, `tissue_labels`, `cell_type_labels`, `cell_line_labels`, `sex_labels`, `developmental_stage_labels`, `disease_labels`, `library_perturbation_type_labels`.
+Data for each modality is in a separate table within the `$PG_DB` database.
 
-You will see that some of these fields are lists and are named in plural (tissue_labels). You must flatten the list, always assume it only contains a single entry (make an assert), name output in singular, and strip the _label suffix, for example: `tissue_labels` -> `tissue`.
+#### 2.3.1. `perturb-seq`
+*   **Table**: `perturb_seq_2`
+*   **Column Mapping**:
+    *   `perturbed_target_symbol` -> `perturbation_gene_name`
+    *   `gene` -> `effect_phenotype_gene_name`
+    *   `log2foldchange` -> `effect_log2fc` (used to derive `effect_direction`)
+    *   `padj` -> `effect_padj`
+    *   `basemean` -> `effect_base_mean`
 
-To get the `facet_counts` and the `total_datasets_count` for each modality, you should perform an aggregation query on Elastic. This query should be executed once with all the filters applied (`dataset_metadata`, etc.), and it should compute counts for each metadata field and counts per modality.
+#### 2.3.2. `crispr-screen`
+*   **Table**: `crispr_data`
+*   **Column Mapping**:
+    *   `perturbed_target_symbol` -> `perturbation_gene_name`
+    *   `score_name` -> `effect_score_name`
+    *   `score_value` -> `effect_score_value`
 
-### 2.3. Perturbation, change and phenotype data in Postgres
-Inside the $PG_DB database, different tables are used for different modalities.
+#### 2.3.3. `mave`
+*   **Table**: `mave_data`
+*   **Column Mapping**:
+    *   `perturbed_target_symbol` -> `perturbation_gene_name`
+    *   `perturbation_name` -> `perturbation_name`
+    *   `score_name` -> `effect_score_name`
+    *   `score_value` -> `effect_score_value`
 
-#### 2.3.1. For "Perturb-seq" modality
-Use a table named "perturb_seq_2". An example of data row in Postgres:
+#### 2.3.4. `perturb-seq` Summary Views (Postgres)
+To enrich the `perturb-seq` data with summary counts, two materialized views must be used:
 
-```tsv
-dataset_id	perturbed_target_symbol	gene	log2foldchange	padj	basemean	max_ingested_at
-adamson_2016_pilot	SPI1	CHST11	0.23117926187171009	0.50391124972854473	27.0810834104398	2025-09-30T13:37:59.073273
-```
+*   **`perturb_seq_summary_perturbation`**: Provides counts for each perturbation.
+    *   **Key**: `(dataset_id, perturbed_target_symbol)`
+    *   **Columns**: `n_total`, `n_down`, `n_up` (map to `perturbation_n_total`, etc.)
+*   **`perturb_seq_summary_effect`**: Provides counts for each effect/phenotype.
+    *   **Key**: `(dataset_id, gene)`
+    *   **Columns**: `n_total`, `n_down`, `n_up` (map to `effect_n_total`, etc.)
 
-Use the API parameters to filter data from this table:
-* "perturbation_gene_name" filters by "perturbed_target_symbol".
-* "phenotype_gene_name" filters by "gene".
-* "change_direction" filters "log2foldchange" (> 0 for "increased", < 0 for "decreased").
+These lookups are essential for providing context to each `perturb-seq` result.
 
-#### 2.3.2. For "CRISPR screen" modality
-Use a table named "crispr_data". The relevant columns are: `dataset_id`, `perturbed_target_symbol` (maps to `perturbation_gene_name` in the data model), `score_name`, `score_value`.
+## 3. Query Logic
 
-#### 2.3.3. For "MAVE" modality
-Use a table named "mave_data". The relevant columns are: `dataset_id`, `perturbed_target_symbol` (maps to `perturbation_gene_name` in the data model), `score_name`, `score_value`.
+### 3.1. `/v1/{MODALITY}/search`
 
-### 2.4. Query Logic: Filtering, Grouping, and Limits
+The query execution order is critical to ensure accurate facet counts.
 
-First, filter the modalities to be returned based on the `modalities` parameter. If the parameter is not provided, return all three.
+1.  **Pre-filter Datasets (Postgres)**: First, execute a `SELECT DISTINCT dataset_id` query on the appropriate modality table.
+    *   Apply all `perturbation_*` and `effect_*` filters from the API parameters. This will require parsing the numeric filter syntax (e.g., `0.5_2.0`) into the correct SQL conditions.
+    *   This query returns the definitive list of `dataset_id`s that contain relevant data. If this list is empty, the search can terminate and return an empty response.
 
-#### 2.4.1. For "Perturb-seq" modality
-The API uses grouping to structure the output. In order to speed up performance, materialised views for summary statistics are pre-computed.
+2.  **Filter Datasets & Get Facets (Elastic)**: Next, execute a single query against the `dataset-summary-v2` index.
+    *   Filter by `data_modalities` based on the `{MODALITY}` from the URL.
+    *   Apply all `dataset_*` filters from the API parameters, including the `dataset_search` free-text query.
+    *   **Crucially, add a `terms` filter to restrict the query to the list of `dataset_id`s obtained from Postgres in the previous step.**
+    *   Use an aggregation to compute `facet_counts` for all filterable `dataset_*` fields. The facets will now be correctly calculated based only on the datasets that have matching data in both databases.
+    *   This query returns the final, correctly filtered list of datasets and the accurate `total_datasets_count`.
 
-When `group_by` is `perturbation_gene_name`, use the `perturb_seq_summary_perturbation` view. Here is an example of the data in this view:
-```sql
-## View perturb_seq_summary_perturbation
-"dataset_id","perturbed_target_symbol","n_total","n_down","n_up"
-"orion_2025_hek293t","MSRB1","1","1","0"
-"orion_2025_hct116","SPRR4","10","4","6"
-```
+3.  **Paginate Datasets**: Apply `dataset_offset` and `dataset_limit` to the list of datasets returned from Elastic.
 
-When `group_by` is `phenotype_gene_name`, use the `perturb_seq_summary_effect` view to find the top phenotypes (this view is grouped by `gene`, which is the phenotype gene). Here is an example of the data in this view:
-```sql
-## View perturb_seq_summary_effect
-"dataset_id","gene","n_total","n_down","n_up","base_mean"
-"adamson_2016_pilot","ABCB10","1","0","1","44.2341576206527"
-"adamson_2016_pilot","AC005256.1","1","0","1","4.607358250167694"
-```
+4.  **Fetch Data (Postgres)**: For each dataset in the paginated list:
+    *   Construct a `SELECT` query on the appropriate modality table, filtering by `dataset_id`.
+    *   Re-apply all `perturbation_*` and `effect_*` filters.
+    *   Add `ORDER BY` clauses based on the `sort` parameter.
+    *   Apply the `rows_per_dataset_limit`.
+    *   **For `perturb-seq` only**: For each row returned, perform two additional fast lookups on the summary views (`perturb_seq_summary_perturbation` and `perturb_seq_summary_effect`) to fetch the `n_total`, `n_up`, and `n_down` counts.
 
-It is crucial to apply filtering **before** aggregation and limiting. The correct order of operations is:
-1.  **Filter:** Apply all filters specified by the API parameters (`dataset_metadata`, `tissue`, `cell_type`, `cell_line`, `sex`, `developmental_stage`, `disease`, `library_perturbation_type`, `perturbation_gene_name`, `phenotype_gene_name`, `change_direction`). The number of datasets returned per modality is limited by `max_datasets_per_modality` (default 10).
-2.  **Group and Limit:** After filtering, apply grouping and limits as follows:
-    *   Return up to `max_top_level` (default 10) top-level entities per dataset (e.g., perturbations or phenotypes). These must be selected by sorting them by `n_total` **descending** from the appropriate summary view.
-    *   For each of those top-level entities, return up to `max_rows` (default 10) underlying data rows (e.g., `change_phenotype` items). These must be selected by sorting them by `padj` **ascending** from the `perturb_seq` table.
+5.  **Assemble Response**: Combine the dataset metadata from Elastic with the (potentially enriched) rows from Postgres to create the final response structure.
 
-#### 2.4.2. For "CRISPR screen" and "MAVE" modalities
-No grouping is applied. Simply return up to `max_rows` (default 10) data rows from the corresponding tables (`crispr_data` or `mave_data`) that match the filter criteria, for up to `max_datasets_per_modality` (default 10) datasets.
+### 3.2. `/v1/{MODALITY}/{DATASET_ID}/search`
 
-### 2.5. Parameter validation
-The API must reject any requests that include query parameters not explicitly defined in the API specification. A `400 Bad Request` error should be returned with a message listing the unrecognized parameters.
+1.  **Count Rows (Postgres)**: Execute a `SELECT COUNT(*)` query on the appropriate modality table.
+    *   Filter by `dataset_id` from the URL.
+    *   Apply all `perturbation_*` and `effect_*` filters, parsing numeric syntax as needed.
+    *   This provides the `total_rows_count`.
+2.  **Fetch Rows (Postgres)**: Execute a `SELECT` query on the same table.
+    *   Apply the same filters as the count query.
+    *   Add `ORDER BY` clauses based on the `sort` parameter.
+    *   Apply `LIMIT` and `OFFSET` for pagination.
+    *   **For `perturb-seq` only**: Enrich each row with data from the summary views as described in section 3.1.
+3.  **Assemble Response**: Format the results into the specified JSON structure.
 
-## 3. Code style.
-When implementing the BE, it's important to minimise code duplication; to make it as compact, succinct and easy to understand as possible.
+## 4. Implementation Details
 
-Avoid adding too many comments or internal thoughts to the code - it should be compact, concise, simple and the point.
-
-## 4. Query performance
-When constructing the queries, it's extremely important to make sure they are efficient. You must only ever use the quick look up operations, which are:
-* All lookups from Elastic
-* Lookups on the main perturb_seq table which use the following indexes:
-  ```
-  "indexname","indexdef"
-  "idx_dataset_padj","CREATE INDEX idx_dataset_padj ON public.perturb_seq USING btree (dataset_id, padj)"
-  "idx_perturbed_padj","CREATE INDEX idx_perturbed_padj ON public.perturb_seq USING btree (perturbed_target_symbol, padj)"
-  "idx_gene_padj","CREATE INDEX idx_gene_padj ON public.perturb_seq USING btree (gene, padj)"
-  "idx_perturbed_gene_padj","CREATE INDEX idx_perturbed_gene_padj ON public.perturb_seq USING btree (perturbed_target_symbol, gene, padj)"
-  ```
-* All lookups on the summary views are fast.
+*   **Parameter Validation**: The API must reject any requests that include query parameters not explicitly defined in the data model. Return a `400 Bad Request`.
+*   **Code Style**: Minimize code duplication. Write compact, succinct, and easy-to-understand code.
+*   **Performance**: Ensure database queries are efficient. The initial `SELECT DISTINCT` query in Postgres must be fast. All sortable/filterable columns in Postgres should be indexed. The lookups on the summary views must be on their key columns to ensure high performance.
