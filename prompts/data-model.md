@@ -25,7 +25,11 @@ All API parameters and response fields are prefixed to indicate which part of th
 
 #### 2.1.3. Filtering
 *   **String fields**: Filtered by exact match (e.g., `perturbation_gene_name=SPI1`).
-*   **Numeric (int/float) fields**: Filtered by range using `_min` and `_max` suffixes (e.g., `effect_log2fc_min=0.5`, `effect_log2fc_max=2.0`).
+*   **Numeric (int/float) fields**: Filtered by a single parameter with a special syntax:
+    *   `param=value`: Exact match (e.g., `effect_log2fc=1.5`).
+    *   `param=min_max`: Inclusive range (e.g., `effect_log2fc=0.5_2.0`).
+    *   `param=min_`: Greater than or equal to (e.g., `effect_log2fc=0.5_`).
+    *   `param=_max`: Less than or equal to (e.g., `effect_log2fc=_2.0`).
 
 #### 2.1.4. Sorting
 Sorting is controlled by the `sort` parameter, which accepts a comma-separated list of fields. Each field can have a direction specifier (`:asc` or `:desc`).
@@ -37,11 +41,11 @@ Sorting is controlled by the `sort` parameter, which accepts a comma-separated l
 This endpoint searches across multiple datasets for a given modality.
 
 **Parameters:**
-*   **Dataset Filters**:
+*   **Dataset Filters** (see 2.1.3):
     *   `dataset_search`: Free text search across dataset metadata.
-    *   `dataset_tissue`, `dataset_cell_type`, `dataset_cell_line`, `dataset_sex`, `dataset_developmental_stage`, `dataset_disease`, `dataset_library_perturbation_type`: Exact match filters for dataset metadata fields.
-*   **Perturbation/Effect Filters**:
-    *   Any `perturbation_*` or `effect_*` field can be used as a filter, following the string/numeric filtering rules.
+    *   `dataset_tissue`, `dataset_cell_type`, `dataset_cell_line`, `dataset_sex`, `dataset_developmental_stage`, `dataset_disease`, `dataset_library_perturbation_type`.
+*   **Perturbation/Effect Filters** (see 2.1.3):
+    *   Any `perturbation_*` or `effect_*` field can be used as a filter.
 *   **Sorting**:
     *   `sort`: Sorts the `results` within each dataset. Accepts any filterable `perturbation_*` or `effect_*` field.
 *   **Pagination**:
@@ -54,7 +58,7 @@ This endpoint searches across multiple datasets for a given modality.
 This endpoint searches for data within a single specified dataset.
 
 **Parameters:**
-*   **Perturbation/Effect Filters**:
+*   **Perturbation/Effect Filters** (see 2.1.3):
     *   Same as the modality search endpoint.
 *   **Sorting**:
     *   Same as the modality search endpoint.
@@ -79,6 +83,10 @@ All fields are prefixed as described above.
 ### 3.2. Perturbation
 *   `perturbation_gene_name`: string (All modalities)
 *   `perturbation_name`: string (MAVE only, e.g., "p.Pro73Gln")
+*   **For `perturb-seq` only:**
+    *   `perturbation_n_total`: integer (How many phenotypes are affected by this perturbation)
+    *   `perturbation_n_up`: integer
+    *   `perturbation_n_down`: integer
 
 ### 3.3. Effect
 This entity combines attributes of the outcome of a perturbation.
@@ -89,6 +97,9 @@ This entity combines attributes of the outcome of a perturbation.
     *   `effect_log2fc`: float
     *   `effect_padj`: float
     *   `effect_base_mean`: float
+    *   `effect_n_total`: integer (How many perturbations affect this phenotype)
+    *   `effect_n_up`: integer
+    *   `effect_n_down`: integer
 *   **For `crispr-screen` and `mave`:**
     *   `effect_score_name`: string
     *   `effect_score_value`: float
