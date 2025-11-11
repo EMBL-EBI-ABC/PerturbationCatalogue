@@ -1,353 +1,885 @@
 """Home page for Perturbation Search"""
+
+import math
 import dash
-from dash import dcc, html, Input, Output, State, callback_context, ALL, callback
+from dash import dcc, html, Input, Output, State, callback, ALL, callback_context
 import dash_bootstrap_components as dbc
-import json
+import plotly.graph_objects as go
 from utils import (
-    COLORS, FACET_FIELDS, fetch_search_results, results_store,
-    format_value, format_number, create_chart_component,
-    format_rnaseq_stats, format_crispr_stats, format_mave_stats
+    COLORS,
+    DATA_MODALITIES_COLOURS,
+    FACET_FIELDS,
+    fetch_search_results,
+    get_landing_page_summary,
+    results_store,
+    format_value,
 )
+
+SEARCH_RESULTS_PAGE_SIZE = 15
+
 
 # Register this page with Dash Pages
 dash.register_page(__name__, path="/")
 
-# Layout for home page
-layout = dbc.Container([
-    dbc.Row([
-        dbc.Col([
-            html.H1("Perturbation Search", className="text-center mb-4",
-                   style={"color": COLORS["primary"], "fontWeight": "700", "letterSpacing": "-0.5px"}),
-            html.P("Search and explore perturbation data across multiple datasets",
-                  className="text-center text-muted mb-5", style={"fontSize": "1.1rem"})
-        ], width=12)
-    ]),
-    dbc.Row([
-        dbc.Col([
-            html.Div([
-                html.Div([
-                    dbc.InputGroup([
-                        dbc.Input(
-                            id="search-input",
-                            placeholder="Search by target symbol (e.g., BRCA1, TP53)...",
-                            type="text",
-                            value="",
-                            debounce=True,
-                            className="form-control-lg",
-                            style={"borderRadius": "8px 0 0 8px"}
-                        ),
-                        dbc.Button(
-                            [html.I(className="bi bi-search me-2"), "Search"],
-                            id="search-button",
-                            color="primary",
-                            n_clicks=0,
-                            className="btn-lg",
-                            style={
-                                "backgroundColor": COLORS["primary"],
-                                "borderColor": COLORS["primary"],
-                                "borderRadius": "0 8px 8px 0",
-                                "paddingLeft": "2rem",
-                                "paddingRight": "2rem"
-                            }
-                        )
-                    ], className="search-input-group", style={"maxWidth": "600px", "margin": "0 auto"})
-                ], className="mb-4"),
-                html.Div(id="pagination-container", children=[
-                    dbc.Button([
-                        html.I(className="bi bi-arrow-left me-1"),
-                        "Previous"
-                    ], id="prev-page", color="secondary",
-                              disabled=True, className="me-2", size="sm"),
-                    html.Span("", id="pagination-info", className="mx-3"),
-                    dbc.Button([
-                        "Next",
-                        html.I(className="bi bi-arrow-right ms-1")
-                    ], id="next-page", color="secondary",
-                              disabled=True, className="ms-2", size="sm")
-                ], className="pagination-container", style={"display": "none", "margin": "0 auto 2rem"})
-            ], style={"textAlign": "center"})
-        ], width=12)
-    ], className="mb-5"),
-    # Charts section - filters displayed as charts
-    dbc.Row([
-        dbc.Col([
-            html.H4([
-                html.I(className="bi bi-bar-chart me-2"),
-                "Filters"
-            ], className="mb-2", style={"color": COLORS["primary"], "fontWeight": "600", "fontSize": "1.25rem"}),
-            html.Div(id="chart-container"),
-            dbc.Button(
-                "Clear All Filters",
-                id="clear-filters",
-                color="outline-secondary",
-                className="mt-2 w-100",
-                size="sm",
-                style={"borderRadius": "6px"}
-            )
-        ], width=12, className="mb-3")
-    ]),
-    # Results table section - only shown when filters/search are active
-    dbc.Row([
-        dbc.Col([
-            dcc.Loading(
-                id="results-loading",
-                type="default",
-                children=[
-                    html.Div(id="results-container")
-                ]
-            )
-        ], width=12)
-    ]),
 
-    # Store for current filters and search state
-    dcc.Store(id="current-filters", data={}),
-    dcc.Store(id="current-page", data=1),
-    dcc.Store(id="current-query", data=""),
-], fluid=True)
+def _format_count(value):
+    """Format numeric counts for display, falling back to '0' when missing."""
+    if value in (None, "", "N/A"):
+        return "0"
+    if isinstance(value, (int, float)):
+        return f"{int(value):,}" if isinstance(value, int) else format_value(value)
+    return format_value(value)
 
-# Callbacks for home page
-@callback(
-    Output("chart-container", "children"),
-    Output("current-filters", "data"),
-    Input("search-input", "value"),
-    Input({"type": "filter-dropdown", "field": ALL}, "value"),
-    Input("clear-filters", "n_clicks"),
-    State("current-filters", "data"),
-    prevent_initial_call=False
-)
-def update_charts(search_query, filter_values, clear_clicks, current_filters):
-    """Update chart components based on current search results"""
-    ctx = callback_context
 
-    # Initialize filters if not exists
-    if not current_filters:
-        current_filters = {field: [] for field in FACET_FIELDS}
+def _render_search_results(results):
+    """Render the search results table for the provided entries."""
+    # Clear previous cache and repopulate with current results
+    results_store.clear()
 
-    # Handle clear filters button
-    if ctx.triggered and "clear-filters" in ctx.triggered[0]["prop_id"]:
-        current_filters = {field: [] for field in FACET_FIELDS}
-        # Fetch fresh facets (even with empty query to get all facets)
-        # Use size=1 to minimize data transfer since we only need facets
-        data = fetch_search_results(query=search_query or None, filters=current_filters, page=1, size=1)
-    else:
-        # Update filters from dropdown values
-        if ctx.triggered:
-            for prop in ctx.triggered:
-                if "filter-dropdown" in prop["prop_id"]:
-                    try:
-                        prop_id = json.loads(prop["prop_id"].split(".")[0])
-                        field = prop_id["field"]
-                        value = prop["value"] or []
-                        current_filters[field] = value
-                    except:
-                        pass
-
-        # Fetch data with current filters (even with empty query to get all facets)
-        # Use size=1 to minimize data transfer since we only need facets
-        data = fetch_search_results(query=search_query or None, filters=current_filters, page=1, size=1)
-
-    facets = data.get("facets", {})
-
-    # Create chart components - arrange in a grid
-    chart_components = []
-    for field in FACET_FIELDS:
-        facet_values = facets.get(field, [])
-        selected = current_filters.get(field, [])
-        chart_components.append(
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardBody([
-                        create_chart_component(field, facet_values, selected)
-                    ], style={"padding": "0.75rem"})
-                ], className="h-100", style={"borderRadius": "8px", "boxShadow": "0 1px 4px rgba(0,0,0,0.08)"})
-            ], width={"size": 4, "lg": 4, "md": 6, "sm": 12, "xs": 12}, className="mb-2")
+    if not results:
+        return dbc.Alert(
+            [
+                html.I(className="bi bi-info-circle me-2"),
+                "No results found. Try another target name.",
+            ],
+            color="info",
+            className="shadow-sm",
+            style={"borderRadius": "10px"},
         )
 
-    # Wrap charts in a row container for responsive grid layout
-    # Bootstrap will automatically wrap columns when they exceed 12 units
-    chart_container = dbc.Row(chart_components, className="g-2")
+    header = html.Thead(
+        html.Tr(
+            [
+                html.Th("Target name", className="fw-semibold"),
+                html.Th(
+                    "Total number of experiments", className="fw-semibold text-center"
+                ),
+                html.Th(
+                    "Significant Perturb-Seq gene pairs",
+                    className="fw-semibold text-center",
+                ),
+                html.Th(
+                    "Number of MAVE experiments", className="fw-semibold text-center"
+                ),
+                html.Th("Data Modalities", className="fw-semibold"),
+            ],
+            style={"backgroundColor": "#f1f3f5"},
+        )
+    )
 
-    return chart_container, current_filters
+    rows = []
+    for record in results:
+        symbol = record.get("perturbed_target_symbol", "N/A")
+        results_store[symbol] = record
+
+        n_experiments = _format_count(record.get("n_experiments"))
+        n_sig_up = _format_count(record.get("n_sig_perturb_pairs_up"))
+        n_sig_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_mave = _format_count(record.get("n_mave"))
+        data_modalities = record.get("data_modalities") or []
+
+        modalities_badges = []
+        for modality in data_modalities:
+            badge_color = DATA_MODALITIES_COLOURS.get(modality, COLORS["primary"])
+            modalities_badges.append(
+                dbc.Badge(
+                    modality,
+                    color="light",
+                    className="me-1 mb-1",
+                    style={
+                        "fontSize": "0.75rem",
+                        "border": f"1px solid {badge_color}",
+                        "color": badge_color,
+                        "backgroundColor": f"{badge_color}1A",
+                    },
+                )
+            )
+        if not modalities_badges:
+            modalities_badges = [html.Span("N/A", className="text-muted")]
+
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        dcc.Link(
+                            symbol,
+                            href=f"/target/{symbol}",
+                            className="text-decoration-none fw-semibold",
+                            style={"color": COLORS["primary"]},
+                        )
+                    ),
+                    html.Td(n_experiments, className="text-center"),
+                    html.Td(
+                        [
+                            html.Div(
+                                [
+                                    html.Span(
+                                        [
+                                            html.Span(
+                                                "↑",
+                                                style={
+                                                    "color": "#1f9d55",
+                                                    "marginRight": "0.25rem",
+                                                    "fontWeight": "600",
+                                                },
+                                            ),
+                                            html.Span(
+                                                n_sig_up,
+                                                style={
+                                                    "color": "#1f9d55",
+                                                    "fontWeight": "600",
+                                                },
+                                            ),
+                                        ],
+                                        className="d-inline-flex align-items-center me-3",
+                                    ),
+                                    html.Span(
+                                        [
+                                            html.Span(
+                                                "↓",
+                                                style={
+                                                    "color": "#c53030",
+                                                    "marginRight": "0.25rem",
+                                                    "fontWeight": "600",
+                                                },
+                                            ),
+                                            html.Span(
+                                                n_sig_down,
+                                                style={
+                                                    "color": "#c53030",
+                                                    "fontWeight": "600",
+                                                },
+                                            ),
+                                        ],
+                                        className="d-inline-flex align-items-center",
+                                    ),
+                                ],
+                                className="d-flex justify-content-center flex-wrap",
+                            )
+                        ],
+                        className="text-center",
+                    ),
+                    html.Td(n_mave, className="text-center"),
+                    html.Td(modalities_badges),
+                ]
+            )
+        )
+
+    table = dbc.Table(
+        [header, html.Tbody(rows)],
+        bordered=False,
+        hover=True,
+        responsive=True,
+        striped=False,
+        className="align-middle shadow-sm",
+        style={"borderRadius": "12px", "overflow": "hidden"},
+    )
+
+    return table
+
+
+def _filter_placeholder(message="Search to enable filters."):
+    """Placeholder message when filters are unavailable."""
+    return dbc.Alert(
+        [html.I(className="bi bi-funnel me-2"), message],
+        color="light",
+        className="shadow-sm",
+        style={"borderRadius": "10px"},
+    )
+
+
+def _format_summary_number(value):
+    if value is None:
+        return "N/A"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return str(value)
+
+
+SUMMARY_BAR_COLORS = [
+    "#007B53",
+    "#193F90",
+    "#A6093D",
+    "#563D82",
+    "#3B6FB6",
+    "#F0A202",
+    "#0A5032",
+    "#5B7FC7",
+    "#8B6FA8",
+    "#6B9BD4",
+]
+
+
+def _build_summary_list_section(title, items, max_items=6):
+    items = items or []
+    total_count = len(items)
+
+    if total_count == 0:
+        display_items = []
+    elif total_count < 7:
+        display_items = items  # show all when using pie chart
+    else:
+        display_limit = max(max_items, 10)
+        display_items = items[:display_limit]
+
+    if not display_items:
+        content = html.Div("No data available", className="text-muted small")
+    else:
+        labels = [entry.get("value", "N/A") for entry in display_items]
+        values = [entry.get("n_datasets", 0) for entry in display_items]
+
+        # Determine chart type
+        if total_count < 7:
+            fig = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=labels,
+                        values=values,
+                        hole=0.3,
+                        textinfo="label+percent",
+                        hoverinfo="skip",
+                    )
+                ]
+            )
+            fig.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.25,
+                    x=0.5,
+                    xanchor="center",
+                    font=dict(size=10),
+                ),
+                height=360,
+            )
+        else:
+            bar_colors = [
+                SUMMARY_BAR_COLORS[i % len(SUMMARY_BAR_COLORS)]
+                for i in range(len(display_items))
+            ]
+            fig = go.Figure(
+                data=[
+                    go.Bar(
+                        x=values,
+                        y=labels,
+                        orientation="h",
+                        text=[f"{v:,}" for v in values],
+                        textposition="auto",
+                        hoverinfo="skip",
+                        marker=dict(color=bar_colors),
+                    )
+                ]
+            )
+            fig.update_layout(
+                margin=dict(l=120, r=10, t=10, b=10),
+                height=350,
+                yaxis=dict(autorange="reversed"),
+            )
+
+        # Add indicator if we truncated items
+        chart = dcc.Graph(
+            figure=fig, config={"displayModeBar": False}, className="summary-chart"
+        )
+        content = html.Div(chart)
+
+    return dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardHeader(title, className="fw-semibold bg-light"),
+                dbc.CardBody(content, className="summary-card-body"),
+            ],
+            className="h-100 shadow-sm summary-card",
+        ),
+        xs=12,
+        lg=4,
+        className="mb-4",
+    )
+
+
+def _build_summary_component(summary_data):
+    """Build the landing page summary component."""
+    if not summary_data:
+        return dbc.Alert(
+            [
+                html.I(className="bi bi-info-circle me-2"),
+                "Summary data is currently unavailable.",
+            ],
+            color="light",
+            className="shadow-sm",
+            style={"borderRadius": "10px"},
+        )
+
+    stats = [
+        ("Datasets", summary_data.get("n_datasets")),
+        ("Targets", summary_data.get("n_targets")),
+        ("Earliest year", summary_data.get("min_year")),
+        ("Latest year", summary_data.get("max_year")),
+    ]
+
+    stat_cards = dbc.Row(
+        [
+            dbc.Col(
+                dbc.Card(
+                    [
+                        dbc.CardBody(
+                            [
+                                html.H6(
+                                    label, className="text-uppercase text-muted mb-1"
+                                ),
+                                html.H3(
+                                    _format_summary_number(value),
+                                    className="mb-0 fw-bold",
+                                ),
+                            ]
+                        )
+                    ],
+                    className="shadow-sm summary-stat-card",
+                ),
+                xs=6,
+                md=3,
+                lg=3,
+                className="mb-4",
+            )
+            for label, value in stats
+        ]
+    )
+
+    list_sections = [
+        ("Top Modalities", summary_data.get("top_modalities")),
+        ("Top Tissues", summary_data.get("top_tissues")),
+        ("Top Cell Types", summary_data.get("top_cell_types")),
+        ("Top Cell Lines", summary_data.get("top_cell_lines")),
+        ("Top Perturbation Types", summary_data.get("top_perturbation_types")),
+        ("Top Diseases", summary_data.get("top_diseases")),
+        ("Top Sexes", summary_data.get("top_sexes")),
+        ("Top Developmental Stages", summary_data.get("top_dev_stages")),
+    ]
+
+    list_rows = []
+    columns = []
+    for idx, (title, items) in enumerate(list_sections, start=1):
+        columns.append(_build_summary_list_section(title, items))
+        if idx % 3 == 0 or idx == len(list_sections):
+            list_rows.append(dbc.Row(columns, className="gy-4"))
+            columns = []
+
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.H2("Perturbation Catalogue at a glance", className="mb-3"),
+                    html.P(
+                        "Explore high-level statistics across the catalogue before diving into specific targets.",
+                        className="text-muted",
+                    ),
+                ],
+                className="mb-4",
+            ),
+            stat_cards,
+            html.Div(list_rows, className="summary-lists mt-2"),
+        ],
+        className="summary-container",
+    )
+
+
+def _build_filter_controls(facets, selected_filters=None):
+    """Build filter controls for facet fields."""
+    if not facets:
+        return _filter_placeholder()
+
+    normalized_selected_filters = {}
+    if selected_filters:
+        for field, values in selected_filters.items():
+            normalized_selected_filters[field] = [
+                str(v).strip() for v in values if v not in (None, "")
+            ]
+    else:
+        normalized_selected_filters = {}
+
+    controls = []
+    for field in FACET_FIELDS:
+        values = facets.get(field, [])
+        if not values:
+            continue
+
+        display_name = field.replace("_", " ").title()
+        options = []
+        option_value_map = {}
+        for item in values:
+            raw_value = item.get("value")
+            count = item.get("count", 0)
+            if raw_value is None or count <= 0:
+                continue
+            value = str(raw_value).strip()
+            if not value:
+                continue
+            options.append({"label": f"{value} ({count})", "value": value})
+            option_value_map[value.lower()] = value
+
+        if not options:
+            continue
+
+        selected_values = []
+        for item in selected_filters.get(field, []):
+            if item is None:
+                continue
+            cleaned_value = str(item).strip()
+            if not cleaned_value:
+                continue
+            mapped_value = option_value_map.get(cleaned_value.lower())
+            if mapped_value and mapped_value not in selected_values:
+                selected_values.append(mapped_value)
+
+        if len(options) <= 10:
+            control = dcc.Checklist(
+                id={"type": "facet-filter", "field": field},
+                options=options,
+                value=selected_values,
+                inputStyle={"marginRight": "0.5rem"},
+                labelStyle={
+                    "display": "block",
+                    "marginBottom": "0.35rem",
+                    "fontSize": "0.9rem",
+                },
+            )
+        else:
+            control = dcc.Dropdown(
+                id={"type": "facet-filter", "field": field},
+                options=options,
+                value=selected_values,
+                multi=True,
+                placeholder=f"Filter by {display_name}",
+                className="facet-dropdown",
+                style={"fontSize": "0.9rem", "zIndex": 2000, "position": "relative"},
+            )
+
+        controls.append(
+            dbc.Card(
+                [
+                    dbc.CardHeader(
+                        display_name,
+                        className="fw-semibold",
+                        style={"backgroundColor": "#f8f9fa"},
+                    ),
+                    dbc.CardBody(control, style={"padding": "0.75rem"}),
+                ],
+                className="mb-3 shadow-sm facet-filter-card",
+                style={
+                    "borderRadius": "12px",
+                    "overflow": "visible",
+                    "position": "relative",
+                    "zIndex": 1,
+                },
+            )
+        )
+
+    if not controls:
+        return _filter_placeholder("No filters available for these results.")
+
+    return html.Div(controls, className="facet-controls")
+
+
+# Layout for home page
+layout = html.Div(
+    [
+        html.Div(
+            [
+                dbc.Container(
+                    [
+                        html.Div(
+                            [
+                                html.H1(
+                                    "Perturbation Catalogue",
+                                    className="banner-title",
+                                    style={"fontSize": "2.5rem"},
+                                ),
+                                html.Div(
+                                    [
+                                        dbc.InputGroup(
+                                            [
+                                                dbc.Input(
+                                                    id="search-input",
+                                                    placeholder="Search by target name...",
+                                                    type="text",
+                                                    value="",
+                                                    debounce=True,
+                                                    className="form-control-lg",
+                                                    style={
+                                                        "borderRadius": "8px 0 0 8px"
+                                                    },
+                                                ),
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-search me-2"
+                                                        ),
+                                                        "Search",
+                                                    ],
+                                                    id="search-button",
+                                                    color="primary",
+                                                    n_clicks=0,
+                                                    className="btn-lg",
+                                                    style={
+                                                        "backgroundColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderRadius": "0 8px 8px 0",
+                                                        "paddingLeft": "2rem",
+                                                        "paddingRight": "2rem",
+                                                    },
+                                                ),
+                                            ],
+                                            className="search-input-group banner-search",
+                                        )
+                                    ]
+                                ),
+                                html.P(
+                                    "Perturbation Catalogue is a curated database that brings together data from various genetic perturbation experiments, including Perturb-Seq, CRISPR and MAVE screens, making it easier for researchers to study how modifying genes or proteins affects biological function across various biological and molecular contexts.",
+                                    className="banner-description",
+                                ),
+                            ],
+                            className="banner-content",
+                        )
+                    ],
+                    fluid=True,
+                )
+            ],
+            className="homepage-banner",
+        ),
+        dbc.Container(
+            [
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            html.Div(id="homepage-summary", className="mt-4"),
+                            width=12,
+                            className="mb-4",
+                        )
+                    ]
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            html.Div(
+                                id="facet-filters",
+                                className="mt-4",
+                                style={
+                                    "position": "relative",
+                                    "zIndex": 50,
+                                    "overflow": "visible",
+                                    "display": "none",
+                                },
+                            ),
+                            width=12,
+                            lg=3,
+                            className="mb-4",
+                            style={
+                                "overflow": "visible",
+                                "position": "relative",
+                                "zIndex": 50,
+                            },
+                        ),
+                        dbc.Col(
+                            dcc.Loading(
+                                id="search-results-loading",
+                                type="default",
+                                children=html.Div(
+                                    id="search-results",
+                                    className="mt-4",
+                                    children=[
+                                        html.Div(id="search-results-table"),
+                                        html.Div(
+                                            id="search-results-pagination",
+                                            className="mt-3 pagination-bar",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-arrow-left me-1"
+                                                        ),
+                                                        "Previous",
+                                                    ],
+                                                    id="search-page-prev",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    disabled=True,
+                                                    style={"borderRadius": "6px"},
+                                                    className="me-3",
+                                                ),
+                                                html.Span(
+                                                    "Page 1 of 1",
+                                                    id="search-page-info",
+                                                    className="fw-semibold me-3",
+                                                ),
+                                                dbc.Button(
+                                                    [
+                                                        "Next",
+                                                        html.I(
+                                                            className="bi bi-arrow-right ms-1"
+                                                        ),
+                                                    ],
+                                                    id="search-page-next",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    disabled=True,
+                                                    style={"borderRadius": "6px"},
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                ),
+                            ),
+                            width=12,
+                            lg=9,
+                            style={"position": "relative", "zIndex": 10},
+                        ),
+                    ],
+                    className="py-4 g-4",
+                ),
+                dcc.Store(
+                    id="search-results-store",
+                    data={"results": [], "facets": {}, "query": "", "total": 0},
+                ),
+                dcc.Store(id="search-results-page", data=1),
+            ],
+            fluid=True,
+        ),
+    ]
+)
+
 
 @callback(
-    Output("results-container", "children"),
-    Output("pagination-container", "children"),
-    Output("current-page", "data"),
+    Output("search-results-store", "data"),
+    Output("homepage-summary", "children", allow_duplicate=True),
+    Output("facet-filters", "style"),
     Input("search-input", "value"),
     Input("search-button", "n_clicks"),
-    Input("current-filters", "data"),
-    Input("current-page", "data"),
-    State("current-query", "data"),
-    prevent_initial_call=False
+    prevent_initial_call="initial_duplicate",
 )
-def update_results(search_query, search_clicks, filters, page, stored_query):
-    """Update search results based on query and filters - show as table"""
-    ctx = callback_context
+def update_search_results(query, _):
+    """Fetch fuzzy search results and store them."""
+    search_term = (query or "").strip() if query else ""
 
-    # Check if filters or search are active
-    has_search = search_query and search_query.strip()
-    has_filters = filters and any(filters.get(field, []) for field in FACET_FIELDS)
-    should_show_table = has_search or has_filters
+    summary_content = dash.no_update
+    filters_style = dash.no_update
 
-    # Determine if we should reset to page 1
-    if ctx.triggered:
-        trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if trigger_id in ["search-input", "search-button"] or "current-filters" in trigger_id:
-            if search_query != stored_query or filters != {}:
-                page = 1
+    if not search_term:
+        summary_data = get_landing_page_summary()
+        summary_content = _build_summary_component(summary_data)
+        filters_style = {
+            "display": "none",
+            "position": "relative",
+            "zIndex": 50,
+            "overflow": "visible",
+        }
+        return (
+            {
+                "results": [],
+                "facets": {},
+                "query": "",
+                "total": 0,
+                "page": 1,
+                "size": SEARCH_RESULTS_PAGE_SIZE,
+            },
+            summary_content,
+            filters_style,
+        )
 
-    # Only fetch data if we should show the table
-    if not should_show_table:
-        return html.Div([
-            dbc.Alert(
-                [
-                    html.I(className="bi bi-info-circle me-2"),
-                    "Use the search box or select filters above to see results."
-                ],
-                color="info",
-                className="text-center",
-                style={"borderRadius": "8px", "marginTop": "2rem"}
-            )
-        ]), html.Div(), page
-
-    # Fetch data - increase size for table view
-    data = fetch_search_results(query=search_query, filters=filters, page=page, size=20)
+    data = fetch_search_results(
+        query=search_term if search_term else None,
+        page=1,
+        size=SEARCH_RESULTS_PAGE_SIZE,
+    )
     results = data.get("results", [])
-    total = data.get("total", 0)
-    total_pages = data.get("total_pages", 0)
+    facets = data.get("facets", {})
 
-    # Store results by target symbol for navigation to details page
-    results_store.clear()
-    results_store.update({r.get("perturbed_target_symbol"): r for r in results})
+    store_payload = {
+        "results": results,
+        "facets": facets,
+        "query": search_term,
+        "total": data.get("total", len(results)),
+        "page": data.get("page", 1),
+        "size": data.get("size", SEARCH_RESULTS_PAGE_SIZE),
+        "total_pages": data.get("total_pages"),
+    }
 
-    # Create results table
-    if results:
-        table_rows = [
-            html.Tr([
-                html.Th("Perturbed Target Symbol", style={"padding": "12px", "border": "1px solid #ddd",
-                       "backgroundColor": COLORS["primary"], "color": "white", "fontWeight": "600"}),
-                html.Th("Total Experiments", style={"padding": "12px", "border": "1px solid #ddd",
-                       "backgroundColor": COLORS["primary"], "color": "white", "fontWeight": "600"}),
-                html.Th("RNA-seq Statistics", style={"padding": "12px", "border": "1px solid #ddd",
-                       "backgroundColor": COLORS["primary"], "color": "white", "fontWeight": "600"}),
-                html.Th("CRISPR Screen Statistics", style={"padding": "12px", "border": "1px solid #ddd",
-                       "backgroundColor": COLORS["primary"], "color": "white", "fontWeight": "600"}),
-                html.Th("MAVE Statistics", style={"padding": "12px", "border": "1px solid #ddd",
-                       "backgroundColor": COLORS["primary"], "color": "white", "fontWeight": "600"})
-            ])
-        ]
+    summary_content = ""
+    filters_style = {
+        "position": "relative",
+        "zIndex": 50,
+        "overflow": "visible",
+        "display": "block",
+    }
 
-        for result in results:
-            perturbed_target = result.get("perturbed_target_symbol", "N/A")
-            n_experiments = format_value(result.get("n_experiments", "N/A"))
-            rnaseq_stats = format_rnaseq_stats(result)
-            crispr_stats = format_crispr_stats(result)
-            mave_stats = format_mave_stats(result)
+    return store_payload, summary_content, filters_style
 
-            # Create link for perturbed_target_symbol
-            target_link = dcc.Link(
-                perturbed_target,
-                href=f"/target/{perturbed_target}",
-                style={
-                    "color": COLORS["primary"],
-                    "textDecoration": "none",
-                    "fontWeight": "500"
-                },
-                className="target-link"
-            )
 
-            table_rows.append(
-                html.Tr([
-                    html.Td(target_link, style={"padding": "12px", "border": "1px solid #ddd"}),
-                    html.Td(n_experiments, style={"padding": "12px", "border": "1px solid #ddd"}),
-                    html.Td(rnaseq_stats, style={"padding": "12px", "border": "1px solid #ddd"}),
-                    html.Td(crispr_stats, style={"padding": "12px", "border": "1px solid #ddd"}),
-                    html.Td(mave_stats, style={"padding": "12px", "border": "1px solid #ddd"})
-                ], style={"cursor": "pointer"})
-            )
+@callback(
+    Output("search-results-table", "children"),
+    Output("search-results-pagination", "style"),
+    Output("search-page-info", "children"),
+    Output("search-page-prev", "disabled"),
+    Output("search-page-next", "disabled"),
+    Output("search-results-page", "data"),
+    Output("homepage-summary", "children", allow_duplicate=True),
+    Output("facet-filters", "children"),
+    Input("search-results-store", "data"),
+    Input({"type": "facet-filter", "field": ALL}, "value"),
+    Input("search-page-prev", "n_clicks"),
+    Input("search-page-next", "n_clicks"),
+    State({"type": "facet-filter", "field": ALL}, "id"),
+    State("search-results-page", "data"),
+    prevent_initial_call="initial_duplicate",
+)
+def render_filtered_results(
+    store_data, selected_values, prev_clicks, next_clicks, filter_ids, current_page
+):
+    """Render the results table and pagination based on search data and selected filters."""
+    ctx = callback_context
+    trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else None
 
-        table = dbc.Table([
-            html.Thead(table_rows[0]),
-            html.Tbody(table_rows[1:])
-        ], bordered=True, hover=True, responsive=True, striped=True,
-           className="table align-middle", style={"fontSize": "0.9rem", "marginTop": "1rem"})
+    if not store_data or not store_data.get("query"):
+        return (
+            "",
+            {"display": "none"},
+            "Page 1 of 1",
+            True,
+            True,
+            1,
+            dash.no_update,
+            html.Div(),
+        )
 
-        results_display = html.Div([
-            html.H5(f"Results ({total} total)", className="mb-3", style={"color": COLORS["primary"], "fontWeight": "600"}),
-            table
-        ])
+    selected_filters = {}
+    if selected_values and filter_ids:
+        for values, filter_id in zip(selected_values, filter_ids):
+            if values:
+                cleaned = [str(v).strip() for v in values if v not in (None, "")]
+                if cleaned:
+                    selected_filters[filter_id["field"]] = cleaned
+
+    query = store_data.get("query")
+
+    if not query:
+        return (
+            "",
+            {"display": "none"},
+            "Page 1 of 1",
+            True,
+            True,
+            1,
+            dash.no_update,
+            html.Div(),
+        )
+
+    triggered_prop = trigger or ""
+    requested_page = current_page or 1
+
+    if (
+        "search-results-store" in triggered_prop
+        or not triggered_prop
+        or "facet-filter" in triggered_prop
+    ):
+        requested_page = 1
+    elif "search-page-prev" in triggered_prop:
+        requested_page = max(1, requested_page - 1)
+    elif "search-page-next" in triggered_prop:
+        requested_page = requested_page + 1
+
+    api_response = None
+
+    if "search-results-store" in triggered_prop or not triggered_prop:
+        api_response = {
+            "results": store_data.get("results", []),
+            "facets": store_data.get("facets", {}),
+            "total": store_data.get("total", 0),
+            "page": store_data.get("page", 1),
+            "size": store_data.get("size", SEARCH_RESULTS_PAGE_SIZE),
+            "total_pages": store_data.get("total_pages"),
+        }
     else:
-        results_display = html.Div([
+        api_response = fetch_search_results(
+            query=query,
+            filters=selected_filters or None,
+            page=requested_page,
+            size=SEARCH_RESULTS_PAGE_SIZE,
+        )
+
+    total_results = api_response.get("total", 0)
+    page_size = (
+        api_response.get("size", SEARCH_RESULTS_PAGE_SIZE) or SEARCH_RESULTS_PAGE_SIZE
+    )
+    total_pages = api_response.get("total_pages")
+    if not total_pages:
+        total_pages = max(1, math.ceil(total_results / page_size)) if page_size else 1
+
+    current_page_number = api_response.get("page", requested_page)
+    if current_page_number < 1:
+        current_page_number = 1
+
+    if current_page_number > total_pages and total_pages > 0:
+        current_page_number = total_pages
+        api_response = fetch_search_results(
+            query=query,
+            filters=selected_filters or None,
+            page=current_page_number,
+            size=SEARCH_RESULTS_PAGE_SIZE,
+        )
+        total_results = api_response.get("total", 0)
+        page_size = (
+            api_response.get("size", SEARCH_RESULTS_PAGE_SIZE)
+            or SEARCH_RESULTS_PAGE_SIZE
+        )
+        total_pages = api_response.get("total_pages") or (
+            max(1, math.ceil(total_results / page_size)) if page_size else 1
+        )
+
+    results = api_response.get("results", [])
+    facets = api_response.get("facets", {})
+
+    if not results:
+        filters_children = _build_filter_controls(facets, selected_filters)
+        return (
             dbc.Alert(
                 [
                     html.I(className="bi bi-info-circle me-2"),
-                    "No results found. Try adjusting your search terms or filters."
+                    "No results found. Try another target name.",
                 ],
                 color="info",
-                className="text-center",
-                style={"borderRadius": "8px", "marginTop": "2rem"}
-            )
-        ])
+                className="shadow-sm",
+                style={"borderRadius": "10px"},
+            ),
+            {"display": "none"},
+            f"Page 1 of {total_pages} ({total_results} results)",
+            True,
+            True,
+            current_page_number,
+            "",
+            filters_children,
+        )
 
-    # Update pagination
-    prev_disabled = page == 1 or total_pages == 0
-    next_disabled = page >= total_pages or total_pages == 0
+    table = _render_search_results(results)
+    filters_children = _build_filter_controls(facets, selected_filters)
 
-    # Page info
-    if total > 0:
-        pagination_info = f"Page {page} of {total_pages} ({total} total results)"
-    else:
-        pagination_info = "No results"
+    pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
+    page_info = f"Page {current_page_number} of {total_pages} ({total_results} results)"
+    prev_disabled = current_page_number <= 1
+    next_disabled = current_page_number >= total_pages
 
-    # Create updated pagination container with buttons
-    if total > 0:
-        pagination = html.Div([
-            dbc.Button([
-                html.I(className="bi bi-arrow-left me-1"),
-                "Previous"
-            ], id="prev-page", color="secondary",
-                      disabled=prev_disabled, className="me-2", size="sm",
-                      style={"borderRadius": "6px"}),
-            html.Span(pagination_info, id="pagination-info", className="mx-3",
-                     style={"fontWeight": "500", "color": "#495057"}),
-            dbc.Button([
-                "Next",
-                html.I(className="bi bi-arrow-right ms-1")
-            ], id="next-page", color="secondary",
-                      disabled=next_disabled, className="ms-2", size="sm",
-                      style={"borderRadius": "6px"})
-        ], className="pagination-container", style={"display": "inline-flex", "margin": "2rem auto"})
-    else:
-        pagination = html.Div()
-
-    return results_display, pagination, page
-
-@callback(
-    Output("current-page", "data", allow_duplicate=True),
-    Input("prev-page", "n_clicks"),
-    Input("next-page", "n_clicks"),
-    State("current-page", "data"),
-    prevent_initial_call=True
-)
-def update_page(prev_clicks, next_clicks, current_page):
-    """Handle pagination navigation"""
-    ctx = callback_context
-    if not ctx.triggered:
-        return current_page
-
-    trigger_id = ctx.triggered[0]["prop_id"]
-    if "prev-page" in trigger_id and current_page > 1:
-        return current_page - 1
-    elif "next-page" in trigger_id:
-        return current_page + 1
-
-    return current_page
-
-@callback(
-    Output("current-query", "data"),
-    Input("search-input", "value"),
-    prevent_initial_call=False
-)
-def update_stored_query(query):
-    """Update stored query value"""
-    return query or ""
+    return (
+        table,
+        pagination_style,
+        page_info,
+        prev_disabled,
+        next_disabled,
+        current_page_number,
+        "",
+        filters_children,
+    )

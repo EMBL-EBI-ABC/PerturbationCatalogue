@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc
+from dash import html
 import dash_bootstrap_components as dbc
 
 import cookie_banner
@@ -14,7 +14,7 @@ app = dash.Dash(
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
-    url_base_pathname="/perturbation-catalogue/",
+    # url_base_pathname="/perturbation-catalogue/",
 )
 
 # Initialise callbacks for external components. This ensures that interactivity defined
@@ -29,6 +29,8 @@ app = dash.Dash(
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
+
+app.title = "Perturbation Catalogue"
 
 # Footer.
 footer = html.Footer(
@@ -86,23 +88,68 @@ footer = html.Footer(
 # Overall app layout.
 app.layout = html.Div(
     [
-        # URL tracker.
-        dcc.Location(id="url", refresh=False),
         # Cookie banner.
         cookie_banner.store,
         cookie_banner.layout,
-        # Navigation bar.
-        # navbar.layout,
-        # Main content.
-        dbc.Container(
-            dash.page_container,
-            fluid=True,
-            className="p-0 m-0",
+        html.Header(
+            dbc.Container(
+                [
+                    html.A(
+                        [
+                            html.Img(
+                                src="/assets/logo.png",
+                                alt="Perturbation Catalogue logo",
+                                className="header-logo-img",
+                            )
+                        ],
+                        href="/",
+                    ),
+                    html.Nav(
+                        [
+                            html.A(
+                                "API Documentation", href="#", className="header-link"
+                            ),
+                            html.A("About", href="#", className="header-link"),
+                        ],
+                        className="header-links",
+                    ),
+                ],
+                fluid=True,
+                className="header-content",
+            ),
+            className="app-header",
         ),
-        # Footer.
-        footer,
+        html.Main(dash.page_container, className="app-main"),
+        html.Footer(
+            dbc.Container(
+                html.Div(
+                    [
+                        html.Span(
+                            "Perturbation Catalogue is funded by",
+                            className="footer-text",
+                        ),
+                        html.Div(
+                            [
+                                html.Img(
+                                    src="/assets/embl-ebi-logo.png", alt="EMBL-EBI logo"
+                                ),
+                                html.Span("and"),
+                                html.Img(
+                                    src="/assets/open-targets-logo.png",
+                                    alt="Open Targets logo",
+                                ),
+                            ],
+                            className="footer-logos",
+                        ),
+                    ],
+                    className="footer-content",
+                ),
+                fluid=True,
+            ),
+            className="app-footer",
+        ),
     ],
-    className="d-flex flex-column vh-100",
+    className="app-shell",
 )
 
 # Expose the server variable for Gunicorn.
