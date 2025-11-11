@@ -139,11 +139,17 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     elif ES_INDEX == "gene-summary":
         index_name = "gene"
         key = "gene"
+    elif ES_INDEX == "landing-page-summary":
+        index_name = "landing-page"
+        key = "summary"
     else:
         raise ValueError(f"Unknown index name: {ES_INDEX}")
-    symbol = row.get(key)
-    if not symbol:
-        raise ValueError(f"Row missing '{key}'")
+    if key != "summary":
+        symbol = row.get(key)
+        if not symbol:
+            raise ValueError(f"Row missing '{key}'")
+    else:
+        symbol = "summary"
 
     numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(
         index_name
@@ -181,6 +187,7 @@ def actions_generator(rows_iter: Iterable[Dict[str, Any]]) -> Iterable[Dict[str,
     for row in rows_iter:
         try:
             _id, doc = transform_row(row)
+            print({"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc})
             yield {"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc}
         except ValueError:
             pass
@@ -191,10 +198,6 @@ def main() -> int:
     if not ES_URL:
         logging.error("ES_URL is not set")
         return 2
-
-    print(ES_URL)
-    print(ES_USER)
-    print(ES_PASS)
 
     es = make_es_client()
     ensure_index(es, ES_INDEX)
