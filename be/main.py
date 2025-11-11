@@ -1,424 +1,411 @@
-import os
-import urllib.parse
-from contextlib import asynccontextmanager
-import base64
-import json
-import asyncio
-
-from fastapi import FastAPI, HTTPException, Query, Path
-from elasticsearch import AsyncElasticsearch
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from collections import defaultdict
-from typing import Annotated, List
+from typing import Optional, List, Dict, Any
+from elasticsearch import Elasticsearch
+import os
+from dotenv import load_dotenv
+import re
 
-from models import (
-    get_list_of_aggregations,
-    ElasticResponse,
-    ElasticDetailsResponse,
-    MaveDBData,
-    MaveDBSearchParams,
-    MaveDBAggregationResponse,
-    DepMapData,
-    DepMapSearchParams,
-    DepMapAggregationResponse,
-    PerturbSeqData,
-    PerturbSeqSearchParams,
-    PerturbSeqAggregationResponse,
-    Aggregation,
-    RangeAggregation,
-)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize AsyncElasticsearch.
-    es_client = AsyncElasticsearch(
-        [os.getenv("ES_URL")],
-        http_auth=(os.getenv("ES_USERNAME"), os.getenv("ES_PASSWORD")),
-        verify_certs=True,
+try:
+    from .models import (  # type: ignore
+        SearchRequest,
+        SearchResponse,
+        FacetValue,
+        Facets,
+        LandingPageSummary,
     )
-    # Pass the client to the app's state so it's accessible in routes.
-    app.state.es_client = es_client
-    yield
-    # Clean up by closing the Elasticsearch client.
-    await es_client.close()
+except ImportError:  # pragma: no cover - fallback for running as a script
+    from models import (  # type: ignore
+        SearchRequest,
+        SearchResponse,
+        FacetValue,
+        Facets,
+        LandingPageSummary,
+    )
 
+load_dotenv()
 
-# Initialize FastAPI with lifespan manager.
-app = FastAPI(
-    lifespan=lifespan,
-    title="Perturbation Catalogue API",
-    version="0.0.1",
-    contact={
-        "name": "Perturbation Catalogue Helpdesk",
-        "email": "perturbation-catalogue-help@ebi.ac.uk",
-    },
-    license_info={
-        "name": "Apache 2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
-    },
-    root_path="/perturbation-catalogue",
-)
+app = FastAPI(title="Search API", version="1.0.0")
 
-# Allow all origins.
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# Elasticsearch client settings
+ES_HOST = os.getenv("ES_HOST", "localhost")
+ES_INDEX = os.getenv("ES_INDEX", "your_index_name")
+ES_USER = os.getenv("ES_USER", "").strip()
+ES_PASSWORD = os.getenv("ES_PASSWORD", "").strip()
+ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() == "true"
+ES_API_KEY = os.getenv("ES_API_KEY", "").strip()
 
-# Generic search methods.
+# Elasticsearch client
+has_basic_auth = (
+    bool(ES_USER) and bool(ES_PASSWORD) and len(ES_USER) > 0 and len(ES_PASSWORD) > 0
+)
+has_api_key = bool(ES_API_KEY) and len(ES_API_KEY) > 0
+
+host_url = f"https://{ES_HOST}"
+
+es_config = {
+    "hosts": [host_url],
+    "verify_certs": ES_VERIFY_CERTS,
+    "ssl_show_warn": ES_VERIFY_CERTS,
+}
+
+if has_basic_auth:
+    es_config["basic_auth"] = (ES_USER, ES_PASSWORD)
+    print(f"Elasticsearch auth: Using basic authentication for user '{ES_USER}'")
+elif has_api_key:
+    es_config["api_key"] = ES_API_KEY
+    print("Elasticsearch auth: Using API key authentication")
+else:
+    print("WARNING: No Elasticsearch authentication credentials provided!")
+
+print(f"Elasticsearch host: {host_url}")
+es = Elasticsearch(**es_config)
+
+# Test Elasticsearch connection
+try:
+    info = es.info()
+    print(
+        f"✓ Elasticsearch connection successful! Version: {info.get('version', {}).get('number', 'unknown')}"
+    )
+except Exception as e:
+    print(f"✗ Elasticsearch connection test failed: {e}")
 
 
-async def elastic_search(
-    index_name, params, data_class, aggregation_class, nested_query=None
-):
-    # Build the query body based on the search query.
-    if params.q and ":" in params.q:
-        # Syntax for specific field search: "field:value"
-        field, value = params.q.split(":", 1)
-        # Check if the search is on a configured nested field.
-        if nested_query and field.startswith(nested_query["path"]):
-            # This is a targeted search within a nested object.
-            query_body = {
-                "nested": {
-                    "path": nested_query["path"],
-                    "query": {"match": {field: value}},
-                }
-            }
-        else:
-            # This is a targeted search on a top-level field.
-            query_body = {"match": {field: value}}
-    elif params.q:
-        # Full-text search logic.
-        should_clauses = [{"multi_match": {"query": params.q, "fields": ["*"]}}]
-        # If nested query info is provided, add a nested search clause.
-        if nested_query and nested_query.get("path") and nested_query.get("field"):
-            nested_path = nested_query["path"]
-            nested_field = nested_query["field"]
+# Facet fields
+FACET_FIELDS = [
+    "data_modalities",
+    "tissues_tested",
+    "cell_types_tested",
+    "cell_lines_tested",
+    "sex_tested",
+    "developmental_stages_tested",
+    "diseases_tested",
+]
+
+
+# Elasticsearch helper functions
+def _escape_wildcard(value: str) -> str:
+    """Escape characters that have special meaning in wildcard queries."""
+    return re.sub(r"([\\*?])", r"\\\1", value)
+
+
+def build_elasticsearch_query(
+    query: Optional[str], filters: Optional[Dict[str, List[str]]]
+) -> Dict[str, Any]:
+    """Build Elasticsearch query with search and filters"""
+    filter_clauses = []
+    should_clauses = []
+
+    # Text search on perturbed_target_symbol
+    if query:
+        cleaned_query = query.strip()
+        if cleaned_query:
+            # Exact/fuzzy matches with boost
             should_clauses.append(
                 {
-                    "nested": {
-                        "path": nested_path,
-                        "query": {
-                            "match": {
-                                # Construct the full field path: path.field
-                                f"{nested_path}.{nested_field}": params.q
-                            }
-                        },
+                    "multi_match": {
+                        "query": cleaned_query,
+                        "fields": [
+                            "perturbed_target_symbol^2",  # Boost exact match
+                            "perturbed_target_symbol.text^1.5",  # Boost text field
+                        ],
+                        "type": "best_fields",
+                        "fuzziness": "AUTO",
                     }
                 }
             )
-        # A document matches if the term is in the top level OR the nested field.
-        query_body = {"bool": {"should": should_clauses, "minimum_should_match": 1}}
-    else:
-        # No search query, match all documents.
-        query_body = {"match_all": {}}
 
-    # Adding filters.
-    filters = []
-    for field_name, model_field in aggregation_class.model_fields.items():
-        filter_value = getattr(params, field_name, None)
-        if not filter_value:
-            continue
+            # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
+            should_clauses.append(
+                {
+                    "match_phrase_prefix": {
+                        "perturbed_target_symbol.text": {
+                            "query": cleaned_query,
+                            "slop": 1,
+                            "boost": 1.2,
+                        }
+                    }
+                }
+            )
 
-        # Check the type of aggregation to determine the filter logic.
-        # The annotation will be either the Aggregation or RangeAggregation class.
-        if model_field.annotation is Aggregation:  # List filter
-            filters.append({"terms": {field_name: [filter_value]}})
-        elif model_field.annotation is RangeAggregation:  # Slider/range filter
-            try:
-                min_val, max_val = filter_value.split("-", 1)
-                range_query = {"gte": float(min_val), "lte": float(max_val)}
-                filters.append({"range": {field_name: range_query}})
-            except:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid range format for '{field_name}'. Expected 'min-max' with numbers.",
+            # Wildcard for partial/infix search (case-insensitive)
+            wildcard_terms = []
+            for term in cleaned_query.split():
+                safe_term = _escape_wildcard(term.lower())
+                if safe_term:
+                    wildcard_terms.append(f"*{safe_term}*")
+
+            # Include whole query if no spaces
+            if not wildcard_terms:
+                safe_term = _escape_wildcard(cleaned_query.lower())
+                if safe_term:
+                    wildcard_terms.append(f"*{safe_term}*")
+
+            for wildcard_value in wildcard_terms:
+                should_clauses.append(
+                    {
+                        "wildcard": {
+                            "perturbed_target_symbol.keyword": {
+                                "value": wildcard_value,
+                                "case_insensitive": True,
+                                "boost": 0.8,
+                            }
+                        }
+                    }
+                )
+                should_clauses.append(
+                    {
+                        "wildcard": {
+                            "perturbed_target_symbol": {
+                                "value": wildcard_value,
+                                "case_insensitive": True,
+                                "boost": 0.6,
+                            }
+                        }
+                    }
                 )
 
-    # Base search body, without pagination fields yet.
-    search_body = {
-        "query": {"bool": {"must": query_body, "filter": filters}},
-        "aggs": defaultdict(dict),
+    # Filters for facet fields
+    if filters:
+        for field, values in filters.items():
+            if field in FACET_FIELDS and values:
+                filter_clauses.append({"terms": {field: values}})
+
+    bool_query: Dict[str, Any] = {}
+
+    if filter_clauses:
+        bool_query["filter"] = filter_clauses
+
+    if should_clauses:
+        bool_query["should"] = should_clauses
+        bool_query["minimum_should_match"] = 1
+
+    if bool_query:
+        return {"bool": bool_query}
+
+    return {"match_all": {}}
+
+
+def build_aggregations() -> Dict[str, Any]:
+    """Build aggregations for all facet fields"""
+    aggs = {}
+    for field in FACET_FIELDS:
+        aggs[field] = {
+            "terms": {
+                "field": field,
+                "size": 100,  # Adjust if you need more facet values
+            }
+        }
+    return aggs
+
+
+def parse_filters_from_params(
+    data_modalities: Optional[str] = None,
+    tissues_tested: Optional[str] = None,
+    cell_types_tested: Optional[str] = None,
+    cell_lines_tested: Optional[str] = None,
+    sex_tested: Optional[str] = None,
+    developmental_stages_tested: Optional[str] = None,
+    diseases_tested: Optional[str] = None,
+) -> Optional[Dict[str, List[str]]]:
+    """Parse filters from query parameters"""
+    filters = {}
+    if data_modalities:
+        filters["data_modalities"] = [v.strip() for v in data_modalities.split(",")]
+    if tissues_tested:
+        filters["tissues_tested"] = [v.strip() for v in tissues_tested.split(",")]
+    if cell_types_tested:
+        filters["cell_types_tested"] = [v.strip() for v in cell_types_tested.split(",")]
+    if cell_lines_tested:
+        filters["cell_lines_tested"] = [v.strip() for v in cell_lines_tested.split(",")]
+    if sex_tested:
+        filters["sex_tested"] = [v.strip() for v in sex_tested.split(",")]
+    if developmental_stages_tested:
+        filters["developmental_stages_tested"] = [
+            v.strip() for v in developmental_stages_tested.split(",")
+        ]
+    if diseases_tested:
+        filters["diseases_tested"] = [v.strip() for v in diseases_tested.split(",")]
+
+    return filters if filters else None
+
+
+async def perform_search(
+    query: Optional[str], filters: Optional[Dict[str, List[str]]], page: int, size: int
+) -> SearchResponse:
+    """Perform the actual search operation"""
+    # Build Elasticsearch query
+    es_query = build_elasticsearch_query(query, filters)
+    aggs = build_aggregations()
+
+    # Calculate from/size for pagination
+    from_ = (page - 1) * size
+
+    # Execute search
+    try:
+        response = es.search(
+            index=ES_INDEX, query=es_query, aggs=aggs, from_=from_, size=size
+        )
+    except Exception as e:
+        error_detail = str(e)
+        safe_config = {
+            k: v for k, v in es_config.items() if k not in ["basic_auth", "api_key"]
+        }
+        safe_config["has_auth"] = "basic_auth" in es_config or "api_key" in es_config
+        print(f"Elasticsearch config: {safe_config}")
+        print(f"Elasticsearch error: {error_detail}")
+        raise HTTPException(
+            status_code=500, detail=f"Elasticsearch error: {error_detail}"
+        )
+
+    # Process results
+    hits = response.get("hits", {})
+    total = hits.get("total", {}).get("value", 0)
+    results = [hit["_source"] for hit in hits.get("hits", [])]
+
+    # Process facets
+    facets_dict = {}
+    aggregations = response.get("aggregations", {})
+    for field in FACET_FIELDS:
+        buckets = aggregations.get(field, {}).get("buckets", [])
+        facets_dict[field] = [
+            FacetValue(value=bucket["key"], count=bucket["doc_count"])
+            for bucket in buckets
+        ]
+
+    facets = Facets(**facets_dict)
+
+    # Calculate total pages
+    total_pages = (total + size - 1) // size if total > 0 else 0
+
+    return SearchResponse(
+        total=total,
+        page=page,
+        size=size,
+        total_pages=total_pages,
+        results=results,
+        facets=facets,
+    )
+
+
+@app.get("/")
+async def root():
+    return {"message": "Search API", "version": "1.0.0"}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    es_status = "unknown"
+    es_error = None
+
+    # Check Elasticsearch
+    try:
+        if es.ping():
+            es_status = "connected"
+        else:
+            es_status = "not_connected"
+    except Exception as e:
+        es_status = "not_connected"
+        es_error = str(e)
+
+    overall_status = "healthy" if es_status == "connected" else "unhealthy"
+
+    return {
+        "status": overall_status,
+        "elasticsearch": {
+            "status": es_status,
+            "host": ES_HOST,
+            "index": ES_INDEX,
+            "error": es_error,
+        },
     }
 
-    # Adding aggregation fields.
-    for field_name, model_field in aggregation_class.model_fields.items():
-        if model_field.annotation is Aggregation:
-            search_body["aggs"][field_name] = {
-                "terms": {"field": field_name, "size": 1000000}
-            }
-        elif model_field.annotation is RangeAggregation:
-            # Use a stats aggregation to get min and max for the range.
-            search_body["aggs"][field_name] = {"stats": {"field": field_name}}
 
-    # Adding sort field and sort order. This must be deterministic for search_after.
-    sort_config = [{params.sort_field: {"order": params.sort_order}}]
-    # Add a tie-breaker for consistent sorting, required for search_after.
-    if params.sort_field != "_id":
-        sort_config.append({"_id": "asc"})
-    search_body["sort"] = sort_config
-
-    # Pagination Logic
-    MAX_WINDOW = 10000
-
-    if params.start + params.size <= MAX_WINDOW:
-        # Use efficient 'from' for shallow pages
-        search_body["from"] = params.start
-    else:
-        # Deep pagination using search_after.
-        docs_to_skip = params.start
-        last_hit_sort_values = None
-        while docs_to_skip > 0:
-            batch_size = min(docs_to_skip, MAX_WINDOW)
-            preflight_body = {
-                "query": search_body["query"],
-                "sort": search_body["sort"],
-                "size": batch_size,
-                "_source": False,
-                "track_total_hits": False,
-            }
-            if last_hit_sort_values:
-                preflight_body["search_after"] = last_hit_sort_values
-            try:
-                preflight_response = await app.state.es_client.search(
-                    index=index_name, body=preflight_body
-                )
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Search error during deep pagination: {str(e)}",
-                )
-
-            preflight_hits = preflight_response["hits"]["hits"]
-            if not preflight_hits:
-                # The requested page is out of bounds. To return a valid response,
-                # we run one final query to get total count and aggregations.
-                agg_query_body = {
-                    "query": search_body["query"],
-                    "aggs": search_body["aggs"],
-                    "size": 0,
-                    "track_total_hits": True,
-                }
-                final_response = await app.state.es_client.search(
-                    index=index_name, body=agg_query_body
-                )
-                return ElasticResponse[data_class, aggregation_class](
-                    total=final_response["hits"]["total"]["value"],
-                    start=params.start,
-                    size=params.size,
-                    results=[],
-                    aggregations=final_response["aggregations"],
-                )
-            last_hit_sort_values = preflight_hits[-1].get("sort")
-            docs_to_skip -= len(preflight_hits)
-        if last_hit_sort_values:
-            search_body["search_after"] = last_hit_sort_values
-
-    search_body["size"] = params.size
-
-    # Performing the search.
+@app.get("/summary", response_model=LandingPageSummary)
+async def get_landing_page_summary():
+    """
+    Retrieve the landing page summary document from Elasticsearch.
+    """
     try:
-        # Execute the async search request.
-        response = await app.state.es_client.search(
-            index=index_name, body=search_body, track_total_hits=True
-        )
-        # Extract total count and hits.
-        total = response["hits"]["total"]["value"]
-        hits = response["hits"]["hits"]
-        aggregations = response["aggregations"]
+        response = es.get(index="landing-page-summary", id="summary")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Elasticsearch error: {exc}"
+        ) from exc
 
-        # Return the results.
-        return ElasticResponse[data_class, aggregation_class](
-            total=total,
-            start=params.start,
-            size=params.size,
-            results=[r["_source"] for r in hits],
-            aggregations=aggregations,
-        )
+    source = response.get("_source")
+    if not source:
+        raise HTTPException(status_code=404, detail="Summary document not found")
 
-    except Exception as e:
-        # Handle Elasticsearch errors.
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+    return LandingPageSummary(**source)
 
 
-async def elastic_details(index_name, record_id, data_class):
-    try:
-        # Quote the request, except for colons; they might appear in IDs.
-        quoted_id = urllib.parse.quote(record_id).replace("%3A", ":")
-        response = await app.state.es_client.search(
-            index=index_name, query={"term": {"_id": quoted_id}}
-        )
-        hits = [r["_source"] for r in response["hits"]["hits"]]
-        return ElasticDetailsResponse[data_class](results=hits)
-    except Exception as e:
-        # Handle Elasticsearch errors.
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+@app.get("/search", response_model=SearchResponse)
+async def search_get(
+    query: Optional[str] = Query(
+        None, description="Search query for perturbed_target_symbol"
+    ),
+    data_modalities: Optional[str] = Query(
+        None, description="Comma-separated list of data_modalities"
+    ),
+    tissues_tested: Optional[str] = Query(
+        None, description="Comma-separated list of tissues_tested"
+    ),
+    cell_types_tested: Optional[str] = Query(
+        None, description="Comma-separated list of cell_types_tested"
+    ),
+    cell_lines_tested: Optional[str] = Query(
+        None, description="Comma-separated list of cell_lines_tested"
+    ),
+    sex_tested: Optional[str] = Query(
+        None, description="Comma-separated list of sex_tested"
+    ),
+    developmental_stages_tested: Optional[str] = Query(
+        None, description="Comma-separated list of developmental_stages_tested"
+    ),
+    diseases_tested: Optional[str] = Query(
+        None, description="Comma-separated list of diseases_tested"
+    ),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    size: int = Query(6, ge=1, le=100, description="Number of results per page"),
+):
+    """
+    Search endpoint (GET) with pagination, facets, filtering, and text search.
+    """
+    filters = parse_filters_from_params(
+        data_modalities,
+        tissues_tested,
+        cell_types_tested,
+        cell_lines_tested,
+        sex_tested,
+        developmental_stages_tested,
+        diseases_tested,
+    )
+    return await perform_search(query, filters, page, size)
 
 
-async def get_all_unique_terms_paginated(
-    index_name: str,
-    field: str,
-    nested_path: str | None = None,
-) -> set[str]:
-    """Performs a paginated composite aggregation to retrieve all unique terms from a field."""
-    unique_terms = set()
-    after_key = None
-    es_client = app.state.es_client
-    sources = [{"term": {"terms": {"field": field}}}]
-    while True:
-        composite_agg = {"sources": sources, "size": 1000}
-        if after_key:
-            composite_agg["after"] = after_key
-        agg_name = "paginated_terms"
-        aggs_query = {agg_name: {"composite": composite_agg}}
-        if nested_path:
-            nested_agg_name = "nested_agg"
-            aggs_query = {
-                nested_agg_name: {
-                    "nested": {"path": nested_path},
-                    "aggs": aggs_query,
-                }
-            }
-        search_body = {"size": 0, "aggs": aggs_query}
-        try:
-            response = await es_client.search(
-                index=index_name, body=search_body, track_total_hits=False
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Aggregation error: {str(e)}")
-        agg_result = response["aggregations"]
-        if nested_path:
-            agg_result = agg_result.get(nested_agg_name, {})
-        agg_result = agg_result.get(agg_name, {})
-        buckets = agg_result.get("buckets", [])
-        if not buckets:
-            break
-        for bucket in buckets:
-            # The key in a composite agg is a dictionary of values.
-            # Since we have one source, it will have one value.
-            for value in bucket["key"].values():
-                if value is not None:
-                    unique_terms.add(str(value))
-        if "after_key" in agg_result and agg_result["buckets"]:
-            after_key = agg_result["after_key"]
-        else:
-            # No more pages
-            break
-    return unique_terms
-
-
-# MaveDB.
-
-
-@app.get("/mavedb/search")
-async def mavedb_search(
-    params: Annotated[MaveDBSearchParams, Query()],
-) -> ElasticResponse[MaveDBData, MaveDBAggregationResponse]:
-    return await elastic_search(
-        index_name="mavedb",
-        params=params,
-        data_class=MaveDBData,
-        aggregation_class=MaveDBAggregationResponse,
+@app.post("/search", response_model=SearchResponse)
+async def search_post(request: SearchRequest):
+    """
+    Search endpoint (POST) with pagination, facets, filtering, and text search.
+    Accepts JSON body with search parameters.
+    """
+    return await perform_search(
+        request.query, request.filters, request.page, request.size
     )
 
 
-@app.get("/mavedb/search/{record_id}")
-async def mavedb_details(
-    record_id: Annotated[str, Path(description="Record ID")],
-) -> ElasticDetailsResponse[MaveDBData]:
-    return await elastic_details(
-        index_name="mavedb",
-        record_id=record_id,
-        data_class=MaveDBData,
-    )
+if __name__ == "__main__":
+    import uvicorn
 
-
-@app.get("/mavedb/genes", response_model=list[str])
-async def mavedb_genes():
-    """Returns the complete set of all genes which have any information for MaveDB."""
-    terms = await get_all_unique_terms_paginated(
-        index_name="mavedb", field="normalisedGeneName"
-    )
-    return sorted(list(terms))
-
-
-# DepMap.
-
-
-@app.get("/depmap/search")
-async def depmap_search(
-    params: Annotated[DepMapSearchParams, Query()],
-) -> ElasticResponse[DepMapData, DepMapAggregationResponse]:
-    nested_query_config = {"path": "high_dependency_genes", "field": "name"}
-    return await elastic_search(
-        index_name="depmap",
-        params=params,
-        data_class=DepMapData,
-        aggregation_class=DepMapAggregationResponse,
-        nested_query=nested_query_config,
-    )
-
-
-@app.get("/depmap/search/{record_id}")
-async def depmap_details(
-    record_id: Annotated[str, Path(description="Record ID")],
-) -> ElasticDetailsResponse[DepMapData]:
-    return await elastic_details(
-        index_name="depmap",
-        record_id=record_id,
-        data_class=DepMapData,
-    )
-
-
-@app.get("/depmap/genes", response_model=list[str])
-async def depmap_genes():
-    """Returns the complete set of all genes which have any information for DepMap."""
-    terms = await get_all_unique_terms_paginated(
-        index_name="depmap",
-        field="high_dependency_genes.name",
-        nested_path="high_dependency_genes",
-    )
-    return sorted(list(terms))
-
-
-# Perturb-Seq.
-
-
-@app.get("/perturb-seq/search")
-async def perturb_seq_search(
-    params: Annotated[PerturbSeqSearchParams, Query()],
-) -> ElasticResponse[PerturbSeqData, PerturbSeqAggregationResponse]:
-    return await elastic_search(
-        index_name="perturb-seq",
-        params=params,
-        data_class=PerturbSeqData,
-        aggregation_class=PerturbSeqAggregationResponse,
-    )
-
-
-@app.get("/perturb-seq/search/{record_id}")
-async def perturb_seq_details(
-    record_id: Annotated[str, Path(description="Record ID")],
-) -> ElasticDetailsResponse[PerturbSeqData]:
-    return await elastic_details(
-        index_name="perturb-seq",
-        record_id=record_id,
-        data_class=PerturbSeqData,
-    )
-
-
-@app.get("/perturb-seq/genes", response_model=list[str])
-async def perturb_seq_genes():
-    """Returns the complete set of all genes which have any information for Perturb-Seq."""
-    perturbation_task = get_all_unique_terms_paginated(
-        index_name="perturb-seq", field="perturbation"
-    )
-    gene_task = get_all_unique_terms_paginated(index_name="perturb-seq", field="gene")
-    perturbation_terms, gene_terms = await asyncio.gather(perturbation_task, gene_task)
-    all_terms = perturbation_terms.union(gene_terms)
-    return sorted(list(all_terms))
+    uvicorn.run(app, host="0.0.0.0", port=8000)
