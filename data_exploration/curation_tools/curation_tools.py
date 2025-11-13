@@ -93,7 +93,7 @@ class CuratedDataset:
     # Get the path to the ontologies directory relative to this file
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
 
-    gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "genes.parquet").drop_duplicates()
+    gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "gene_ont.parquet").drop_duplicates()
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
     tis_ont = pd.read_parquet(ONTOLOGIES_DIR / "tissues.parquet").drop_duplicates()
