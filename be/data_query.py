@@ -394,9 +394,7 @@ async def search_modality(
     for key, value in request.query_params.items():
         if key in ELASTIC_FIELD_MAPPING:
             es_field = ELASTIC_FIELD_MAPPING[key]
-            es_query_body["query"]["bool"]["filter"].append(
-                {"term": {f"{es_field}.keyword": value}}
-            )
+            es_query_body["query"]["bool"]["filter"].append({"term": {es_field: value}})
         elif key == "dataset_search" and value:
             es_query_body["query"]["bool"]["must"] = [
                 {"query_string": {"query": value}}
