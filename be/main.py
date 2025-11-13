@@ -24,11 +24,11 @@ except ImportError:  # pragma: no cover - fallback for running as a script
     )
 
 # Import data query APIs.
-from data_query import search_modality, search_dataset
+from data_query import lifespan as data_query_lifespan, router as data_query_router
 
 load_dotenv()
 
-app = FastAPI(title="Search API", version="1.0.0")
+app = FastAPI(title="Search API", version="1.0.0", lifespan=data_query_lifespan)
 
 # CORS middleware
 app.add_middleware(
@@ -39,7 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Elasticsearch client settings
+app.include_router(data_query_router)
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")

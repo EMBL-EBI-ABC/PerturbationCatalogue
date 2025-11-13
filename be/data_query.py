@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
 from elasticsearch import AsyncElasticsearch
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     await db_pools["es"].close()
 
 
-app = FastAPI(lifespan=lifespan)
+router = APIRouter()
 
 # --- Constants and Mappings ---
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
@@ -308,7 +308,7 @@ async def enrich_perturb_seq_rows(
 # --- API Endpoints ---
 
 
-@app.get(
+@router.get(
     "/v1/{modality}/search",
     response_model=ModalitySearchResponse,
     response_model_by_alias=False,
@@ -516,7 +516,7 @@ async def search_modality(
     }
 
 
-@app.get(
+@router.get(
     "/v1/{modality}/{dataset_id}/search",
     response_model=DatasetSearchResponse,
     response_model_by_alias=False,
@@ -621,9 +621,3 @@ async def search_dataset(
         "limit": limit,
         "results": results,
     }
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
