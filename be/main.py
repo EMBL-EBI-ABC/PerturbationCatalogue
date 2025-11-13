@@ -40,47 +40,20 @@ app.add_middleware(
 )
 
 # Elasticsearch client settings
-ES_HOST = os.getenv("ES_HOST", "localhost")
-ES_INDEX = os.getenv("ES_INDEX", "your_index_name")
-ES_USER = os.getenv("ES_USER", "").strip()
-ES_PASSWORD = os.getenv("ES_PASSWORD", "").strip()
-ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() == "true"
-ES_API_KEY = os.getenv("ES_API_KEY", "").strip()
+ES_URL = os.getenv("ES_URL")
+ES_USERNAME = os.getenv("ES_USERNAME")
+ES_PASSWORD = os.getenv("ES_PASSWORD")
+ES_INDEX = "target-summary-v2"
 
-# Elasticsearch client
-has_basic_auth = (
-    bool(ES_USER) and bool(ES_PASSWORD) and len(ES_USER) > 0 and len(ES_PASSWORD) > 0
-)
-has_api_key = bool(ES_API_KEY) and len(ES_API_KEY) > 0
 
-host_url = f"https://{ES_HOST}"
-
-es_config = {
-    "hosts": [host_url],
-    "verify_certs": ES_VERIFY_CERTS,
-    "ssl_show_warn": ES_VERIFY_CERTS,
-}
-
-if has_basic_auth:
-    es_config["basic_auth"] = (ES_USER, ES_PASSWORD)
-    print(f"Elasticsearch auth: Using basic authentication for user '{ES_USER}'")
-elif has_api_key:
-    es_config["api_key"] = ES_API_KEY
-    print("Elasticsearch auth: Using API key authentication")
+es = None
+if ES_URL and ES_USERNAME and ES_PASSWORD:
+    es_config = {"hosts": [ES_URL], "basic_auth": (ES_USERNAME, ES_PASSWORD)}
+    es = Elasticsearch(**es_config)
 else:
-    print("WARNING: No Elasticsearch authentication credentials provided!")
-
-print(f"Elasticsearch host: {host_url}")
-es = Elasticsearch(**es_config)
-
-# Test Elasticsearch connection
-try:
-    info = es.info()
     print(
-        f"✓ Elasticsearch connection successful! Version: {info.get('version', {}).get('number', 'unknown')}"
+        "WARNING: Missing one or more Elasticsearch environment variables (ES_URL, ES_USERNAME, ES_PASSWORD). Elasticsearch client not created."
     )
-except Exception as e:
-    print(f"✗ Elasticsearch connection test failed: {e}")
 
 
 # Facet fields
