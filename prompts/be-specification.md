@@ -4,7 +4,7 @@ First, study the updated data model specification in @prompts/data-model.md. Thi
 
 ## 1. Task Overview
 
-Your job is to implement `be/main.py` to create the API endpoints defined in the data model. The implementation must be asynchronous.
+Your job is to implement `be/data_query.py` to create the API endpoints defined in the data model. It will then be imported into the existing `be/main.py`. The implementation must be asynchronous.
 
 *   `/v1/{MODALITY}/search`
 *   `/v1/{MODALITY}/{DATASET_ID}/search`
