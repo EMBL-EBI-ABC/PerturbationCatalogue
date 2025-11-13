@@ -5,6 +5,7 @@ from elasticsearch import Elasticsearch
 import os
 from dotenv import load_dotenv
 import re
+from urllib.parse import urlparse
 
 try:
     from .models import (  # type: ignore
@@ -300,7 +301,7 @@ async def health_check():
         "status": overall_status,
         "elasticsearch": {
             "status": es_status,
-            "host": ES_HOST,
+            "host": urlparse(ES_URL).hostname,
             "index": ES_INDEX,
             "error": es_error,
         },
