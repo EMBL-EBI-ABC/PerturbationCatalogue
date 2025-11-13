@@ -92,7 +92,7 @@ All fields are prefixed as described above.
 This entity combines attributes of the outcome of a perturbation.
 
 *   **For `perturb-seq`:**
-    *   `effect_phenotype_gene_name`: string
+    *   `effect_gene_name`: string
     *   `effect_direction`: string ("increased" or "decreased")
     *   `effect_log2fc`: float
     *   `effect_padj`: float

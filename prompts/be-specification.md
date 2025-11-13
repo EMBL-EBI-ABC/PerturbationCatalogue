@@ -20,9 +20,10 @@ Data is split between Elastic (dataset metadata) and Postgres (perturbation/effe
 
 *   **Index**: `dataset-summary-v2`
 *   **Modality Field**: `data_modalities` (string, e.g., "Perturb-seq")
-*   **Query Fields**: Use the following fields for filtering and output, mapping them to the `dataset_*` prefixed fields in the API:
+    *   **Note on Casing**: The values in the `data_modalities` field are case-sensitive and may not match the lowercase modality names from the API URL. The implementation must handle this mapping. For example: `perturb-seq` -> `Perturb-seq`, `crispr-screen` -> `CRISPR screen`, `mave` -> `MAVE`.
+*   **Query Fields**: Use the following fields for filtering and output, mapping them to the `dataset_*` prefixed fields in the API. For all `*_labels` fields, take the first element from the source list to produce a single string value in the response.
     *   `dataset_id` -> `dataset_id`
-    *   `tissue_labels` -> `dataset_tissue` (flatten list, assert single entry, strip `_labels`)
+    *   `tissue_labels` -> `dataset_tissue`
     *   `cell_type_labels` -> `dataset_cell_type`
     *   `cell_line_labels` -> `dataset_cell_line`
     *   `sex_labels` -> `dataset_sex`
@@ -38,7 +39,7 @@ Data for each modality is in a separate table within the `$PG_DB` database.
 *   **Table**: `perturb_seq_2`
 *   **Column Mapping**:
     *   `perturbed_target_symbol` -> `perturbation_gene_name`
-    *   `gene` -> `effect_phenotype_gene_name`
+    *   `gene` -> `effect_gene_name`
     *   `log2foldchange` -> `effect_log2fc` (used to derive `effect_direction`)
     *   `padj` -> `effect_padj`
     *   `basemean` -> `effect_base_mean`
