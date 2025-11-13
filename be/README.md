@@ -3,9 +3,16 @@
 ## Environment variables
 
 For deploying any of the options below, set the following environmental variables:
-- ES_URL
-- ES_USERNAME
-- ES_PASSWORD
+- Elastic
+  - ES_URL
+  - ES_USERNAME
+  - ES_PASSWORD
+- Postgres
+  - PG_HOST
+  - PG_PORT
+  - PG_USER
+  - PG_PASSWORD
+  - PG_DB
 
 ## Local deployment
 
@@ -25,6 +32,11 @@ docker run \
   -e ES_URL=${ES_URL} \
   -e ES_USERNAME=${ES_USERNAME} \
   -e ES_PASSWORD=${ES_PASSWORD} \
+  -e PS_HOST=${PS_HOST} \
+  -e PS_PORT=${PS_PORT} \
+  -e PS_USER=${PS_USER} \
+  -e PS_PASSWORD=${PS_PASSWORD} \
+  -e PS_DB=${PS_DB} \
   perturbation-catalogue-be
 ```
 
@@ -40,6 +52,7 @@ docker run \
 1. Pick: Allow unauthenticated invokations.
 1. Billing: Request-based.
 1. Container(s), volumes, networking, security → Containers → Variables & Secrets → fill in environment variables: (see the environment variables section above)
+1. Networking → Enable checkbox for "Connect to VPC for outbound traffic". Leave default settings, namely; Send traffic directly to a VPC; default network and subnet.
 1. Click: Create.
 
 The deployment can then be accessed at the URL shown on the build page.
