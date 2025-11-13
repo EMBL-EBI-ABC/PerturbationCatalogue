@@ -381,6 +381,7 @@ class ObsSchema(DataFrameModel):
         isin=[
             "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
             "10x Genomics Single Cell 3-prime",
+            "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
         ],
     )
