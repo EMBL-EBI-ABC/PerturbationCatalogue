@@ -1611,6 +1611,249 @@ class CuratedDataset:
         return df
 
     @staticmethod
+    def convert_excel_date_to_gene(symbol):
+        """
+        Converts Excel-corrupted gene names (e.g. '03-Mar', 'Mar-03', '1-Sep', '01-Mar-23')
+        into their correct gene symbols (e.g. 'MARCH3', 'SEPT1').
+
+        If the input does not match a date-like corruption pattern, it
+        returns None (so it can be easily filtered out).
+
+        Args:
+            symbol (str): The potentially corrupted gene symbol.
+
+        Returns:
+            str or None: Corrected gene symbol, or None if not date corruption.
+        """
+
+        month_to_gene = {
+            "JAN": "JAN",
+            "FEB": "FEB",
+            "MAR": "MARCH",
+            "APR": "APRIL",
+            "MAY": "MAY",
+            "JUN": "JUN",
+            "JUL": "JULY",
+            "AUG": "AUG",
+            "SEP": "SEPT",
+            "OCT": "OCT",
+            "NOV": "NOV",
+            "DEC": "DEC",
+        }
+
+        if not isinstance(symbol, str) or not symbol.strip():
+            return None  # skip empty or non-string inputs
+
+        s = symbol.strip().upper()
+
+        # Pattern 1: day-month (e.g., '03-Mar', '3-Mar', '03_Mar', '3/Mar')
+        match1 = re.match(r"^(\d{1,2})[-_/ ]([A-Z]{3})$", s, re.IGNORECASE)
+
+        # Pattern 2: month-day (e.g., 'Mar-03', 'Sep-1')
+        match2 = re.match(r"^([A-Z]{3})[-_/ ](\d{1,2})$", s, re.IGNORECASE)
+
+        # Case 1: numeric day before month abbreviation
+        if match1:
+            num, month = match1.groups()
+            if month in month_to_gene:
+                return f"{month_to_gene[month]}{int(num)}"
+
+        # Case 2: month before numeric day
+        if match2:
+            month, num = match2.groups()
+            if month in month_to_gene:
+                return f"{month_to_gene[month]}{int(num)}"
+
+        # Case 3: full Excel-style date (e.g. '01-Mar-23')
+        try:
+            dt = datetime.strptime(s, "%d-%b-%y")
+            month = dt.strftime("%b").upper()
+            day = dt.day
+            if month in month_to_gene:
+                return f"{month_to_gene[month]}{day}"
+        except Exception:
+            pass
+
+        # Default: not a corrupted date pattern
+        return None
+
+    @staticmethod
+    def merge_gene_ont_ensg(conv_list, gene_ont):
+        """
+        Maps a list of Ensembl gene IDs to a gene ontology dataframe.
+        Handles non-targeting controls and fetches the latest Ensembl IDs for missing ones.
+        Args:
+            conv_list: List of Ensembl gene IDs to map.
+            gene_ont: DataFrame containing gene ontology information with columns 'ensembl_gene_id', 'gene_symbol', etc.
+        Returns:
+            DataFrame with original input Ensembl IDs and their mapped gene ontology information.
+        """
+        # --- Preprocess gene ontology dataframe ---
+        gene_ont_subset = gene_ont.drop(columns=["synonym", "synonym_type"]).copy()
+        gene_ont_subset = gene_ont_subset.drop_duplicates().dropna(
+            subset=["ensembl_gene_id"]
+        )
+        gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
+
+        # Add the non-targeting control row
+        gene_ont_subset = pd.concat(
+            [
+                pd.DataFrame.from_dict(
+                    {k: "non-targeting" for k in gene_ont_subset.columns},
+                    orient="index",
+                ).T,
+                gene_ont_subset,
+            ],
+            ignore_index=True,
+        )
+
+        # --- Identify missing Ensembl IDs ---
+        missing_ensg = list(
+            set(conv_list) - set(gene_ont_subset["ensembl_gene_id"].unique())
+        )
+
+        # --- Fetch latest Ensembl IDs for missing ones ---
+        if missing_ensg:
+            print(
+                f"Missing Ensembl IDs: {missing_ensg}; attempting to fetch latest IDs..."
+            )
+            missing_ensg_map = fetch_latest_ensg_id(missing_ensg)
+            print(f"Fetched latest Ensembl IDs: {missing_ensg_map}")
+            missing_ensg_df = pd.DataFrame.from_dict(
+                missing_ensg_map, orient="index"
+            ).reset_index()
+            missing_ensg_df = missing_ensg_df.rename(
+                columns={"index": "original_input", 0: "ensembl_gene_id"}
+            )
+            missing_ensg_df = missing_ensg_df.merge(
+                gene_ont_subset, how="left", on="ensembl_gene_id"
+            )
+
+        # --- Main mapping ---
+        # Initialize mapped DataFrame
+        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
+        # Map using gene_ont_subset on 'ensembl_gene_id'
+        mapped_df = mapped_df.merge(
+            gene_ont_subset,
+            how="left",
+            left_on="original_input",
+            right_on="ensembl_gene_id",
+        )
+        # Fill in missing mappings with fetched latest Ensembl IDs
+        if missing_ensg:
+            mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)] = (
+                missing_ensg_df.values
+            )
+
+        print(
+            f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
+        )
+
+        return mapped_df
+
+    @classmethod
+    def merge_gene_ont_symbol(cls, conv_list, gene_ont):
+        """
+        Maps a list of gene symbols to a gene ontology dataframe using both direct symbol matches and synonym matches.
+        Handles Excel-corrupted gene symbols and non-targeting controls.
+        Args:
+            conv_list: List of gene symbols to map.
+            gene_ont: DataFrame containing gene ontology information with columns 'gene_symbol', 'synonym', 'synonym_type', 'ensembl_gene_id', etc.
+        Returns:
+            DataFrame with original input gene symbols and their mapped gene ontology information.
+        """
+
+        # --- Preprocess gene ontology dataframe ---
+        gene_ont = gene_ont.dropna(subset=["synonym"]).copy()
+        gene_ont["synonym"] = gene_ont["synonym"].str.upper()
+        gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
+
+        # --- Split symbol and synonym dataframes ---
+        gene_ont_symbol_df = gene_ont.query("synonym_type == 'symbol_syn'")
+        gene_ont_synonym_df = gene_ont.query("synonym_type != 'symbol_syn'")
+
+        # --- Index for instant lookups ---
+        symbol_lookup = {
+            syn: df for syn, df in gene_ont_symbol_df.groupby("synonym", sort=False)
+        }
+        synonym_lookup = {
+            syn: df for syn, df in gene_ont_synonym_df.groupby("synonym", sort=False)
+        }
+
+        # --- Allowed chromosomes for filtering ---
+        allowed_chromosomes = {str(e) for e in range(1, 23)} | {"X", "Y", "MT"}
+
+        # --- Function to select the best match ---
+        def select_best_match(mapped_df, query):
+
+            # If only one match, return it
+            if len(mapped_df) == 1:
+                return mapped_df.iloc[0].to_dict()
+            # If multiple matches, first filter by allowed chromosomes
+            chrom_filtered = mapped_df[
+                mapped_df["chromosome_name"].isin(allowed_chromosomes)
+            ]
+            # If filtering yields one match, return it
+            if len(chrom_filtered) == 1:
+                return chrom_filtered.iloc[0].to_dict()
+            # Otherwise, use fuzzy matching to select the best match
+            best_match = process.extractOne(query, mapped_df["gene_symbol"].tolist())
+            return (
+                mapped_df.loc[mapped_df["gene_symbol"] == best_match[0]]
+                .iloc[0]
+                .to_dict()
+            )
+
+        # --- Main mapping ---
+        map_dict = {}
+        unique_genes = list(
+            dict.fromkeys(conv_list)
+        )  # preserves order but removes dups
+
+        # Iterate through unique gene symbols and map them
+        for e in tqdm(unique_genes, desc="Mapping gene symbols", ncols=100):
+            e_upper = e.upper()
+            # Check direct symbol match
+            if e_upper in symbol_lookup:
+                map_dict[e] = select_best_match(symbol_lookup[e_upper], e_upper)
+            # Check synonym match
+            elif e_upper in synonym_lookup:
+                map_dict[e] = select_best_match(synonym_lookup[e_upper], e_upper)
+            # Check if non-targeting
+            elif e_upper == "NON-TARGETING":
+                map_dict[e] = {col: "NON-TARGETING" for col in gene_ont.columns}
+            # Check if the gene symbol is an Excel-corrupted date
+            elif (corrected := cls.convert_excel_date_to_gene(e_upper)) is not None:
+                corrected_upper = corrected.upper()
+                if corrected_upper in symbol_lookup:
+                    map_dict[e] = select_best_match(
+                        symbol_lookup[corrected_upper], corrected_upper
+                    )
+                elif corrected_upper in synonym_lookup:
+                    map_dict[e] = select_best_match(
+                        synonym_lookup[corrected_upper], corrected_upper
+                    )
+            # If no match found, keep the original gene symbol and set other columns to None
+            else:
+                map_dict[e] = {
+                    k: (e if k == "gene_symbol" else None) for k in gene_ont.columns
+                }
+
+        # --- Convert mapping dictionary to DataFrame ---
+        matched_df = pd.DataFrame.from_dict(map_dict, orient="index").reset_index(
+            names=["original_input"]
+        )
+
+        print(
+            f"{'-'*50}\nSuccessfully mapped {len(matched_df['ensembl_gene_id'].dropna())} out of {len(matched_df['original_input'].dropna())} gene symbols.\n{'-'*50}"
+        )
+        print(
+            f"Couldn't map gene symbols: {matched_df[matched_df['ensembl_gene_id'].isna()]['original_input'].tolist()}\n{'-'*50}"
+        )
+
+        return matched_df
+
+    @staticmethod
     def get_schema_dtype_map(schema_cls):
             """
             Create a mapping from pandera schema field names to pandas dtypes.
@@ -1900,3 +2143,168 @@ def concatenate_parquet_files(parquet_dir: str = None, output_path: str = None, 
 
     writer.close()
 
+
+def get_synonyms(ensembl_data: dict = None) -> pd.DataFrame:
+    synonyms_dict = {}
+    for gene in ensembl_data["genes"]:
+        xrefs = gene.get("xrefs")
+        for e in xrefs:
+            synonyms = e.get("synonyms")
+            if synonyms:
+                synonyms_dict[gene.get("id")] = [synonyms]
+                continue
+
+    return pd.DataFrame.from_dict(
+        synonyms_dict, orient="index", columns=["synonyms"]
+    ).reset_index(names="id")
+
+
+def fetch_latest_ensg_id(ensg_list: list = None):
+    """
+    Fetch the latest ENSG id from Ensembl REST API for a list of ENSG ids.
+
+    Parameters
+    ----------
+    ensg_list : list of str
+        List of gene symbols/ensembl IDs to query.
+
+    Returns
+    -------
+    dict
+        Decoded JSON response from Ensembl containing gene information.
+    """
+    import requests
+    import sys
+
+    if ensg_list is None or len(ensg_list) == 0:
+        raise ValueError("ensg_list cannot be empty.")
+
+    server = "https://rest.ensembl.org"
+    ext = "/archive/id"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    data = {"id": ensg_list}
+
+    r = requests.post(server + ext, headers=headers, json=data)
+
+    if not r.ok:
+        r.raise_for_status()
+        sys.exit()
+
+    df = pd.DataFrame.from_dict(r.json())
+    df = df.explode("possible_replacement")
+    df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
+        columns=["possible_replacement"]
+    )
+    df = df[df["is_current"] == ""]
+    df = df[["id", "stable_id"]]
+
+    mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
+
+    return mapping_dict
+
+
+def generate_gene_ont(
+    json_url: str = "https://ftp.ensembl.org/pub/current/json/homo_sapiens/homo_sapiens.json",
+    json_path: str = "data/homo_sapiens.json",
+    save_parquet_path: str = "data/gene_ont.parquet",
+):
+
+    download_file(url=json_url, dest_path=json_path)
+
+    # load the file
+    print(f"Reading the json file: {json_path}")
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # create the df
+    colnames = [
+        "id",
+        "name",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "GeneCards",
+        "EntrezGene",
+        "HGNC",
+        "EMBL",
+        "seq_region_name",
+        "start",
+        "end",
+        "strand",
+        "biotype",
+        "genome",
+        "description",
+    ]
+    main_df = pd.DataFrame.from_dict(data["genes"])[colnames]
+
+    # get synonyms
+    synonyms_df = get_synonyms(data)
+
+    # merge synonyms
+    main_df = main_df.merge(synonyms_df, how="left", on="id")
+
+    # rename the columns
+    main_df = main_df.rename(
+        columns={
+            "id": "ensembl_gene_id",
+            "name": "gene_symbol",
+            "seq_region_name": "chromosome_name",
+        }
+    )
+
+    # create a symbol_syn column
+    main_df["symbol_syn"] = main_df["gene_symbol"].copy()
+
+    # replace nan values with [] in synonym columns
+    syn_cols = [
+        "symbol_syn",
+        "synonyms",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "EMBL",
+        "HGNC",
+        "EntrezGene",
+        "GeneCards",
+    ]
+    main_df[syn_cols] = main_df[syn_cols].map(
+        lambda x: [] if (not isinstance(x, list) and pd.isna(x)) else x
+    )
+
+    # add gene_coord column
+    main_df["gene_coord"] = main_df.apply(
+        lambda x: f"chr{x['chromosome_name']}:{x['start']}-{x['end']};{x['strand']}",
+        axis=1,
+    )
+
+    # pivot the df to create a long form df with a single "synonym" column
+    main_df_long = main_df.melt(
+        id_vars=[
+            "ensembl_gene_id",
+            "gene_symbol",
+            "chromosome_name",
+            "gene_coord",
+            "biotype",
+            "description",
+        ],
+        value_vars=syn_cols,
+        var_name="synonym_type",
+        value_name="synonym",
+    )
+    main_df_long = main_df_long.explode("synonym")
+
+    # remove dashes and add as additional synonyms
+    dash_long = main_df_long[main_df_long["synonym"].str.contains("-", na=False)]
+    dash_long["synonym"] = dash_long["synonym"].str.replace("-", "")
+    main_df_long = pd.concat([main_df_long, dash_long])
+
+    # make symbols and synonyms upper case
+    main_df_long["synonym"] = main_df_long["synonym"].str.upper()
+    main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
+
+    # save as parquet
+    if save_parquet_path:
+        os.makedirs(os.path.dirname(save_parquet_path), exist_ok=True)
+        print(f"Saving to {save_parquet_path}")
+        main_df_long.to_parquet(save_parquet_path)
+        print("Done!")
+
+    return
