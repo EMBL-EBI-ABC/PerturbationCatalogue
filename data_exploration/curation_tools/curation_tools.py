@@ -31,6 +31,10 @@ from IPython.display import display  # type: ignore
 from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
 from curation_tools.unified_metadata_schema.unified_metadata_schema import Experiment
 
+# Module-level logger
+logger = logging.getLogger(__name__)
+
+
 # function to add a new synonym to the ontology
 def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"], ref_column=str, syn_column=str, syn_map=dict, save=True):
     """
@@ -1377,12 +1381,8 @@ class CuratedDataset:
             self.print_data(validated.model_dump())
         except ValidationError as e:
             print(f"Validation error: {e}")
-        
-    def validate_data(
-        self,
-        slot=Literal["var", "obs"],
-        verbose = True
-    ):
+
+    def validate_data(self, slot=Literal["var", "obs"], verbose=True):
         """
         Validate the data in the specified slot of the adata object against the schema.
         Parameters
@@ -1397,30 +1397,56 @@ class CuratedDataset:
 
         df = getattr(self.adata, slot)
         if df.empty:
-            raise ValueError(f"adata.{slot} is empty")        
-        
+            raise ValueError(f"adata.{slot} is empty")
+
         if slot == "obs":
             schema = self.obs_schema
-            dtype_map = self.get_schema_dtype_map(schema_cls = schema)
+            dtype_map = self.get_schema_dtype_map(schema_cls=schema)
             # Only cast columns present in the dataframe
-            dtype_map = {col: dtype for col, dtype in dtype_map.items() if col in df.columns}
-            df = df.astype(dtype_map)
+            dtype_map = {
+                col: dtype for col, dtype in dtype_map.items() if col in df.columns
+            }
+            if dtype_map:
+                logger.debug(
+                    "Applying dtype casting on adata.%s for columns: %s",
+                    slot,
+                    list(dtype_map.keys()),
+                )
+                df = df.astype(dtype_map)
         else:
-            schema = self.var_schema            
+            schema = self.var_schema
 
         try:
             validated_obs = schema.validate(df, lazy=True)
 
             setattr(self.adata, slot, validated_obs)
 
-            print(f"adata.{slot} is valid according to the {slot}_schema.")
+            logger.info("adata.%s is valid according to the %s_schema.", slot, slot)
             if verbose:
-                print("Validated data:")
-                display(validated_obs)
+                # Log a concise preview to avoid huge logs
+                try:
+                    logger.debug(
+                        "Validated adata.%s preview (shape=%s):\n%s",
+                        slot,
+                        validated_obs.shape,
+                        validated_obs.head(5).to_string(),
+                    )
+                except Exception:
+                    logger.debug("Validated adata.%s (shape=%s)", slot, validated_obs.shape)
+                # Keep notebook-friendly display for interactive use, if available
+                try:
+                    display(validated_obs)
+                except Exception:
+                    # If display is unavailable, we've already logged a preview
+                    pass
 
         except pa.errors.SchemaErrors as e:
-            print(json.dumps(e.message, indent=2))
-        
+            try:
+                msg = json.dumps(e.message, indent=2)
+            except Exception:
+                msg = str(e)
+            logger.error("Validation errors for adata.%s: %s", slot, msg)
+
     def _get_vals(self, column):
         """
         Get the unique values of a column and convert them to a list.
