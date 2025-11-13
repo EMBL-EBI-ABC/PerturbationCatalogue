@@ -36,10 +36,16 @@ logger = logging.getLogger(__name__)
 
 
 # function to add a new synonym to the ontology
-def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"], ref_column=str, syn_column=str, syn_map=dict, save=True):
+def add_synonym(
+    ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"],
+    ref_column=str,
+    syn_column=str,
+    syn_map=dict,
+    save=True,
+):
     """
     Add a new synonym to the specified ontology term.
-    
+
     Parameters
     ----------
     ontology_type : str
@@ -53,36 +59,48 @@ def add_synonym(ontology_type=Literal["genes", "cell_types", "cell_lines", "tiss
     save : bool
         Whether to save the updated ontology DataFrame to a parquet file. Default is True.
     """
-    
-    if ontology_type not in ["genes", "cell_types", "cell_lines", "tissues", "diseases"]:
-        raise ValueError("ontology_type must be one of 'genes', 'cell_types', 'cell_lines', 'tissues', 'diseases'")
-    
+
+    if ontology_type not in [
+        "genes",
+        "cell_types",
+        "cell_lines",
+        "tissues",
+        "diseases",
+    ]:
+        raise ValueError(
+            "ontology_type must be one of 'genes', 'cell_types', 'cell_lines', 'tissues', 'diseases'"
+        )
+
     # Get the path to the ontologies directory relative to this file
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
-    
+
     ont = pd.read_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet").drop_duplicates()
-    
+
     if ref_column not in ont.columns:
-        raise ValueError(f"Column `{ref_column}` not found in `{ontology_type}` ontology")
+        raise ValueError(
+            f"Column `{ref_column}` not found in `{ontology_type}` ontology"
+        )
     if syn_column not in ont.columns:
-        raise ValueError(f"Column `{syn_column}` not found in `{ontology_type}` ontology")
-    
+        raise ValueError(
+            f"Column `{syn_column}` not found in `{ontology_type}` ontology"
+        )
+
     # map the synonyms to the ontology terms
     for term, synonyms in syn_map.items():
         if term not in ont[ref_column].values:
             raise ValueError(f"Term `{term}` not found in `{ontology_type}` ontology")
         if not isinstance(synonyms, list):
             raise ValueError("`syn_map` values must be a list of synonyms")
-        
+
         # add the synonyms to the ontology
         for synonym in synonyms:
             if synonym not in ont[syn_column].values:
                 ont.loc[ont[ref_column] == term, syn_column] += f"|{synonym}"
-                
+
     # Display the updated terms
     print(f"Updated terms in `{ontology_type}` ontology:")
-    display(ont.loc[ont[ref_column].isin(syn_map.keys()),:])
-                
+    display(ont.loc[ont[ref_column].isin(syn_map.keys()), :])
+
     # Save the updated ontology
     if save:
         ont.to_parquet(ONTOLOGIES_DIR / f"{ontology_type}.parquet", index=False)
@@ -106,7 +124,7 @@ class CuratedDataset:
         exp_metadata_schema,
         data_source_link=None,
         noncurated_path=None,
-        curated_path=None
+        curated_path=None,
     ):
         """Initialize the CuratedDataset class.
         Parameters
@@ -120,9 +138,9 @@ class CuratedDataset:
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
-            The path to the non-curated h5ad data. The default is None.
+            The path to the non-curated .h5ad data. The default is None.
         curated_path : str, optional
-            The path to the curated h5ad data. The default is None.
+            The path to the curated .h5ad data. The default is None.
         """
 
         self.obs_schema = obs_schema
@@ -153,16 +171,20 @@ class CuratedDataset:
         self.curated_path = curated_path
 
         if self.noncurated_path and not self.curated_path:
-            self.curated_path = noncurated_path.replace("non_curated", "curated").replace(
-                ".h5ad", "_curated.h5ad"
-            )
+            self.curated_path = noncurated_path.replace(
+                "non_curated", "curated"
+            ).replace(".h5ad", "_curated.h5ad")
         elif self.curated_path:
-            self.noncurated_path = curated_path.replace("curated", "non_curated").replace(
-                "_curated.h5ad", ".h5ad"
-            )
+            self.noncurated_path = curated_path.replace(
+                "curated", "non_curated"
+            ).replace("_curated.h5ad", ".h5ad")
 
-        self.curated_parquet_data_path = self.curated_path.replace(".h5ad", "_data.parquet").replace('h5ad', 'parquet')
-        self.curated_parquet_metadata_path = self.curated_path.replace(".h5ad", "_metadata.parquet").replace('h5ad', 'parquet')
+        self.curated_parquet_data_path = self.curated_path.replace(
+            ".h5ad", "_data.parquet"
+        ).replace("h5ad", "parquet")
+        self.curated_parquet_metadata_path = self.curated_path.replace(
+            ".h5ad", "_metadata.parquet"
+        ).replace("h5ad", "parquet")
 
         # Initialise adata object
         self.adata = None
@@ -249,14 +271,16 @@ class CuratedDataset:
 
     def load_data(self, curated=False):
         """
-        Load the adata from curated or non-curated path.
+        Load the adata from a curated or non-curated path.
         """
         if curated:
             if os.path.exists(self.curated_path):
                 print(f"Loading data from {self.curated_path}")
                 self.adata = sc.read_h5ad(self.curated_path)
             else:
-                raise ValueError(f"File {self.curated_path} does not exist. Check the path.")
+                raise ValueError(
+                    f"File {self.curated_path} does not exist. Check the path."
+                )
         else:
             if os.path.exists(self.noncurated_path):
                 print(f"Loading data from {self.noncurated_path}")
@@ -276,25 +300,27 @@ class CuratedDataset:
         Add the experiment metadata to the adata.uns dictionary.
         """
         if self.adata is None:
-            raise ValueError("adata is not loaded. Please load the data first.")    
+            raise ValueError("adata is not loaded. Please load the data first.")
 
         # Add the experiment metadata to the adata.uns dictionary
 
-        self.adata.uns['experiment_metadata'] = json.dumps(self.exp_metadata)
+        self.adata.uns["experiment_metadata"] = json.dumps(self.exp_metadata)
 
         print("Experiment metadata added to adata.uns")
 
     def save_curated_data_h5ad(self):
-        """Save the curated data to a h5ad file."""
+        """Save the curated data to an .h5ad file."""
 
-        ad.settings.allow_write_nullable_strings = True  # Allow nullable strings in adata
-        
+        ad.settings.allow_write_nullable_strings = (
+            True  # Allow nullable strings in adata
+        )
+
         adata = self.adata
 
         if adata is None:
             raise ValueError("adata is not loaded. Please load the data first.")
 
-        # check if the base directory exists, if not create it
+        # check if the base directory exists, if not, create it
         if not os.path.exists(os.path.dirname(self.curated_path)):
             os.makedirs(os.path.dirname(self.curated_path))
         # Replace None with np.nan in adata.obs and adata.var
@@ -303,42 +329,42 @@ class CuratedDataset:
 
         adata.write_h5ad(self.curated_path)
         print(f"✅ Curated h5ad data saved to {self.curated_path}")
-    
-    def polars_schema_from_pandera_model(self):
-            """
-            Extract a Polars schema dictionary from a Pandera Polars DataFrameModel.
-            The dictionary maps column names to Polars data types.
-            Uses isinstance() to check column dtype properly.
-            """
-            pandera_model = self.obs_schema
-            schema_dict = {}
-            for col_name, column in pandera_model.to_schema().columns.items():
-                pandera_dtype = column.dtype
-                
-                if isinstance(pandera_dtype, String):
-                    polars_dtype = pl.String
-                elif isinstance(pandera_dtype, Int64):
-                    polars_dtype = pl.Int64
-                elif isinstance(pandera_dtype, float):
-                    polars_dtype = pl.Float64
-                elif isinstance(pandera_dtype, bool):
-                    polars_dtype = pl.Boolean
-                else:
-                    # Default to Utf8 for unknown or unhandled dtypes
-                    polars_dtype = pl.Utf8
-                
-                schema_dict[col_name] = polars_dtype
 
-            return schema_dict
+    def polars_schema_from_pandera_model(self):
+        """
+        Extract a Polars schema dictionary from a Pandera Polars DataFrameModel.
+        The dictionary maps column names to Polars data types.
+        Uses isinstance() to check column dtype properly.
+        """
+        pandera_model = self.obs_schema
+        schema_dict = {}
+        for col_name, column in pandera_model.to_schema().columns.items():
+            pandera_dtype = column.dtype
+
+            if isinstance(pandera_dtype, String):
+                polars_dtype = pl.String
+            elif isinstance(pandera_dtype, Int64):
+                polars_dtype = pl.Int64
+            elif isinstance(pandera_dtype, float):
+                polars_dtype = pl.Float64
+            elif isinstance(pandera_dtype, bool):
+                polars_dtype = pl.Boolean
+            else:
+                # Default to Utf8 for unknown or unhandled dtypes
+                polars_dtype = pl.Utf8
+
+            schema_dict[col_name] = polars_dtype
+
+        return schema_dict
 
     def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
         ----------
-        split_metadata : bool, optional
+        split_metadata : bool
             Whether to split the data and metadata into two separate files (default is False).
-        save_metadata_only : bool, optional
+        save_metadata_only : bool
             Whether to save only the metadata and skip saving the data (default is False).
         """
 
@@ -347,7 +373,7 @@ class CuratedDataset:
         if adata is None:
             raise ValueError("adata is not loaded. Please load the data first.")
 
-        # check if the base directory exists, if not create it
+        # check if the base directory exists, if not, create it
         if not os.path.exists(os.path.dirname(self.curated_path)):
             os.makedirs(os.path.dirname(self.curated_path))
 
@@ -355,30 +381,45 @@ class CuratedDataset:
 
         # Concatenate the adata.obs and uns_df DataFrames
         full_metadata_df = adata.obs
-        
+
         metadata_columns = full_metadata_df.columns.to_list()
         id_columns = metadata_columns[0:2]
-        
+
         # Process features (e.g. genes or scores) in chunks
         feature_colnames = adata.var_names.tolist()
 
         if not split_metadata:
-            parquet_path = self.curated_path.replace(".h5ad", "_unified.parquet").replace('h5ad', 'parquet')
+            parquet_path = self.curated_path.replace(
+                ".h5ad", "_unified.parquet"
+            ).replace("h5ad", "parquet")
             if os.path.exists(parquet_path):
-                raise FileExistsError(f"File {parquet_path} already exists. Skipping write.")
+                raise FileExistsError(
+                    f"File {parquet_path} already exists. Skipping write."
+                )
             if not os.path.exists(os.path.dirname(parquet_path)):
                 os.makedirs(os.path.dirname(parquet_path))
             else:
                 X_df = adata.to_df()
 
-                full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
-                full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
+                full_data_df = pd.concat(
+                    [
+                        full_metadata_df.reset_index(drop=True),
+                        X_df.reset_index(drop=True),
+                    ],
+                    axis=1,
+                    ignore_index=False,
+                )
+                full_data_df = pl.from_pandas(
+                    full_data_df, schema_overrides=polars_schema
+                )
 
                 # convert to pyarrow for efficient streaming to parquet
                 full_data_df = full_data_df.to_arrow()
-                #TODO: if this works, try also using polars native parquet writer pl.write_parquet
+                # TODO: if this works, try also using polars native parquet writer pl.write_parquet
                 writer = pq.ParquetWriter(parquet_path, full_data_df.schema)
-                print(f"Created ParquetWriter and started writing full data to {parquet_path}")
+                print(
+                    f"Created ParquetWriter and started writing full data to {parquet_path}"
+                )
                 writer.write_table(full_data_df)
                 writer.close()
                 print(f"✅ Unified data saved to {parquet_path}")
@@ -390,21 +431,29 @@ class CuratedDataset:
             if not os.path.exists(os.path.dirname(self.curated_parquet_metadata_path)):
                 os.makedirs(os.path.dirname(self.curated_parquet_metadata_path))
 
-            if os.path.exists(self.curated_parquet_data_path) or os.path.exists(self.curated_parquet_metadata_path):
-                print(f"Files {self.curated_parquet_data_path} or {self.curated_parquet_metadata_path} already exist. Skipping write.")
+            if os.path.exists(self.curated_parquet_data_path) or os.path.exists(
+                self.curated_parquet_metadata_path
+            ):
+                print(
+                    f"Files {self.curated_parquet_data_path} or {self.curated_parquet_metadata_path} already exist. Skipping write."
+                )
                 return
             # if save_metadata_only is True, save only the metadata and skip saving the data
             if save_metadata_only:
                 # Convert metadata_only_df to Polars DataFrame
-                metadata_only_df = pl.from_pandas(full_metadata_df, schema_overrides=polars_schema)
+                metadata_only_df = pl.from_pandas(
+                    full_metadata_df, schema_overrides=polars_schema
+                )
                 # Write metadata_only_df to parquet
                 metadata_only_df.write_parquet(self.curated_parquet_metadata_path)
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
                 return
-                
+
             else:
                 # Convert metadata_only_df to Polars DataFrame
-                metadata_only_df = pl.from_pandas(full_metadata_df, schema_overrides=polars_schema)
+                metadata_only_df = pl.from_pandas(
+                    full_metadata_df, schema_overrides=polars_schema
+                )
                 # Write metadata_only_df to parquet
                 metadata_only_df.write_parquet(self.curated_parquet_metadata_path)
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
@@ -412,17 +461,26 @@ class CuratedDataset:
                 print("Processing data...")
                 X_df = adata.to_df()
 
-                full_data_df = pd.concat([full_metadata_df.reset_index(drop=True), X_df.reset_index(drop=True)], axis=1, ignore_index=False)
-                full_data_df = pl.from_pandas(full_data_df, schema_overrides=polars_schema)
+                full_data_df = pd.concat(
+                    [
+                        full_metadata_df.reset_index(drop=True),
+                        X_df.reset_index(drop=True),
+                    ],
+                    axis=1,
+                    ignore_index=False,
+                )
+                full_data_df = pl.from_pandas(
+                    full_data_df, schema_overrides=polars_schema
+                )
 
-                # Select only the ID and feature columns for data file
+                # Select only the ID and feature columns for the data file
                 data_subset_df = full_data_df.select(id_columns + feature_colnames)
 
                 data_subset_df = data_subset_df.unpivot(
                     on=feature_colnames,
                     index=id_columns,
                     variable_name="score_name",
-                    value_name="score_value"
+                    value_name="score_value",
                 )
 
                 # save data_subset_df to parquet
@@ -440,7 +498,7 @@ class CuratedDataset:
         """
         if chromosome_col not in self.adata.obs.columns:
             raise ValueError(f"Column {chromosome_col} not found in adata.obs")
-        
+
         # Create a mapping for chromosome encoding
         chromosome_encoding_dict = {
             **{str(i): i for i in range(1, 23)},
@@ -448,12 +506,17 @@ class CuratedDataset:
             "Y": 24,
             "MT": 25
         }
-        
+
         # Apply the mapping to the chromosome column
-        self.adata.obs["perturbed_target_chromosome_encoding"] = [chromosome_encoding_dict[x] if x in chromosome_encoding_dict else 0 for x in self.adata.obs[chromosome_col]]
-        
-        print(f"Chromosome encoding applied to {chromosome_col} in adata.obs and stored as 'perturbed_target_chromosome_encoding'.")
-    
+        self.adata.obs["perturbed_target_chromosome_encoding"] = [
+            chromosome_encoding_dict[x] if x in chromosome_encoding_dict else 0
+            for x in self.adata.obs[chromosome_col]
+        ]
+
+        print(
+            f"Chromosome encoding applied to {chromosome_col} in adata.obs and stored as 'perturbed_target_chromosome_encoding'."
+        )
+
     def create_columns(self, col_dict, slot=Literal["var", "obs"], overwrite=False):
         """
         Create new columns in the specified slot of the adata object based on the provided dictionary.
@@ -464,7 +527,7 @@ class CuratedDataset:
         slot : str
             The slot to create columns in. Can be either "obs" or "var".
         overwrite : bool
-            Whether to overwrite existing columns. If False, raises an error if any column already exists.
+            Whether to overwrite existing columns. If False, it raises an error if any column already exists.
             Default is False.
         """
         if slot not in ["obs", "var"]:
@@ -519,14 +582,9 @@ class CuratedDataset:
 
         setattr(self.adata, slot, df)
 
-    def replace_entries(
-        self,
-        slot=Literal["var", "obs"],
-        column=None,
-        map_dict=None
-    ):
+    def replace_entries(self, slot=Literal["var", "obs"], column=None, map_dict=None):
         """
-        Replace entries in a column of the named slot of adata object. Note that values are replaced in the defined order.
+        Replace entries in a column of the named slot of the adata object. Note that values are replaced in the defined order.
         Parameters
         ----------
         slot : str
@@ -550,7 +608,11 @@ class CuratedDataset:
 
         for old_val, new_val in map_dict.items():
             if df[column].str.upper().str.contains(old_val.upper()).any():
-                df[column] = df[column].str.upper().str.replace(old_val.upper(), new_val, regex=True)
+                df[column] = (
+                    df[column]
+                    .str.upper()
+                    .str.replace(old_val.upper(), new_val, regex=True)
+                )
                 print(
                     f"Replaced '{old_val}' with '{new_val}' in column {column} of adata.{slot}"
                 )
@@ -577,7 +639,7 @@ class CuratedDataset:
             df[target_col] = np.nan  # Create target_col if it doesn't exist
             print(f"Column {target_col} created in adata.obs")
 
-        # Ensure target_col is string type
+        # Ensure target_col is a string type
         df[target_col] = df[target_col].astype(str)
 
         for ref_value, target_value in map_dict.items():
@@ -596,7 +658,7 @@ class CuratedDataset:
 
     def remove_entries(self, slot=Literal["var", "obs"], column=None, to_remove=None):
         """
-        Remove entries in a column of the named slot of adata object.
+        Remove entries in a column of the named slot of the adata object.
         Parameters
         ----------
         slot : str
@@ -629,7 +691,7 @@ class CuratedDataset:
 
     def remove_na(self, slot=Literal["var", "obs"], column=None):
         """
-        Remove NA entries in a column of the named slot of adata object.
+        Remove NA entries in a column of the named slot of the adata object.
         Parameters
         ----------
         slot : str
@@ -688,7 +750,7 @@ class CuratedDataset:
 
         Args:
             slot: Which AnnData attribute to use: "var" or "obs".
-            column: Name of column containing gene symbols/ENSG IDs.
+            column: Name of the column containing gene symbols/ENSG IDs.
             sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".").
         """
         if slot not in ["var", "obs"]:
@@ -713,7 +775,7 @@ class CuratedDataset:
         sep="|",
     ):
         """
-        Count the number of entries (e.g. number of perturbations in a cell) in a column of the named slot of adata object.
+        Count the number of entries (e.g. number of perturbations in a cell) in a column of the named slot of the adata object.
         Parameters
         ----------
         slot : str
@@ -723,7 +785,7 @@ class CuratedDataset:
         count_column_name : str
             The name of the column to store the count of entries.
         sep : str
-            The separator used to split the entries in the column. Default is '|'.
+            The separator used to split the entries in the column. The default is '|'.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
@@ -746,7 +808,9 @@ class CuratedDataset:
         ]
 
         # if the entry contains "untreated", set the count to 0
-        df.loc[df[input_column].str.contains("untreated", na=False), count_column_name] = 0
+        df.loc[
+            df[input_column].str.contains("untreated", na=False), count_column_name
+        ] = 0
 
         setattr(self.adata, slot, df)
         print(
@@ -1021,7 +1085,9 @@ class CuratedDataset:
 
         # if inpjt column has all None values, skip the mapping
         if df[input_column].isnull().all():
-            print(f"Column {input_column} contains only None values. Skipping ontology mapping.")
+            print(
+                f"Column {input_column} contains only None values. Skipping ontology mapping."
+            )
             return
 
         # get the original column values for mapping
@@ -1034,11 +1100,13 @@ class CuratedDataset:
         conv_df["input_column_lower"] = conv_df["input_column"].str.lower()
 
         # replace underscores with colons in the input column for matching
-        if '_' in conv_df['input_column_lower'][0]:
-            conv_df["input_column_lower"] = conv_df["input_column_lower"].str.replace('_', ':', regex=False)
+        if "_" in conv_df["input_column_lower"][0]:
+            conv_df["input_column_lower"] = conv_df["input_column_lower"].str.replace(
+                "_", ":", regex=False
+            )
 
         if column_type == "term_id":
-            # create lower `ontology_id` column for case-insensitive matching
+            # create the lower `ontology_id` column for case-insensitive matching
             ont_df["ontology_id_lower"] = ont_df["ontology_id"].str.lower()
 
             # map the ontology IDs to the input column
@@ -1055,7 +1123,7 @@ class CuratedDataset:
             ont_df["name_lower"] = ont_df["name"].str.lower()
             ont_df["synonyms_lower"] = ont_df["synonyms"].str.lower()
 
-            # create pluralised version of the term names
+            # create a pluralised version of the term names
             ont_df["name_lower_plural"] = ont_df["name_lower"] + "s"
             ont_df["synonyms_lower_plural"] = ont_df["synonyms_lower"] + "s"
 
@@ -1444,7 +1512,7 @@ class CuratedDataset:
         if term_label not in df.columns:
             raise ValueError(f"{term_label} is not a column in adata.obs")
 
-        # get the values from adata object
+        # get the values from the adata object
         df = df[[term_id, term_label]].drop_duplicates()
         # rename the columns
         df = df.rename(columns={term_id: "term_id", term_label: "term_label"})
@@ -1508,7 +1576,7 @@ class CuratedDataset:
 
         # remove entries with no synonyms
         map_df = gene_ont[~gene_ont["synonyms"].isna()]
-        # explode the synonyms column
+        # explode the synonym column
         map_df["synonyms"] = map_df["synonyms"].str.split("|")
         map_df = map_df.explode("synonyms")
         # remove unnecessary columns
@@ -1555,7 +1623,8 @@ class CuratedDataset:
         if df[unique_val_column].empty:
             raise ValueError(f"Column {unique_val_column} is empty")
 
-        exploded_cols = ["incoming", "converted", "name", "biotype", "gene_coord", "chromosome_name"]
+        exploded_cols = df.columns.tolist()
+        exploded_cols.remove(unique_val_column)
 
         df = df.groupby([unique_val_column]).agg(
             {
@@ -1813,54 +1882,55 @@ class CuratedDataset:
 
     @staticmethod
     def get_schema_dtype_map(schema_cls):
-            """
-            Create a mapping from pandera schema field names to pandas dtypes.
-            Args:
-                schema_cls: The schema class to extract annotations from.
-            """
-            dtype_map = {}
-            for attr, annotation in schema_cls.__annotations__.items():
-                # Get type info: Series[String], Series[Int64], Int64, etc.
-                t = annotation
-                # Handle Series[...] (pandera.typing.Series)
-                if hasattr(t, "__origin__") and t.__origin__ == Series:
-                    dtype = t.__args__[0]
-                else:
-                    dtype = t
-                ## Map to pandas-accepted strings
-                if dtype in [pa.String, str]:
-                    dtype_map[attr] = "string"
-                elif dtype in [pa.Int64, Int64, int]:
-                    dtype_map[attr] = "Int64"
-                elif dtype in [pa.Float64, float]:
-                    dtype_map[attr] = "float"
-                elif dtype in [pa.Bool, bool]:
-                    dtype_map[attr] = "boolean"
-                else:
-                    dtype_map[attr] = "object"
-            return dtype_map
+        """
+        Create a mapping from pandera schema field names to pandas dtypes.
+        Args:
+            schema_cls: The schema class to extract annotations from.
+        """
+        dtype_map = {}
+        for attr, annotation in schema_cls.__annotations__.items():
+            # Get type info: Series[String], Series[Int64], Int64, etc.
+            t = annotation
+            # Handle Series[...] (pandera.typing.Series)
+            if hasattr(t, "__origin__") and t.__origin__ == Series:
+                dtype = t.__args__[0]
+            else:
+                dtype = t
+            ## Map to pandas-accepted strings
+            if dtype in [pa.String, str]:
+                dtype_map[attr] = "string"
+            elif dtype in [pa.Int64, Int64, int]:
+                dtype_map[attr] = "Int64"
+            elif dtype in [pa.Float64, float]:
+                dtype_map[attr] = "float"
+            elif dtype in [pa.Bool, bool]:
+                dtype_map[attr] = "boolean"
+            else:
+                dtype_map[attr] = "object"
+        return dtype_map
 
 
 def parquet_to_bq_type(parquet_dtype):
     """Map parquet datatypes to BigQuery SQL types."""
     # This mapping can be extended based on your schema
     parquet_str = str(parquet_dtype).lower()
-    if 'int' in parquet_str:
-        return 'INT64'
-    if 'float' in parquet_str or 'double' in parquet_str or 'decimal' in parquet_str:
-        return 'FLOAT64'
-    if 'string' in parquet_str or 'text' in parquet_str:
-        return 'STRING'
-    if 'boolean' in parquet_str or 'bool' in parquet_str:
-        return 'BOOL'
-    if 'timestamp' in parquet_str:
-        return 'TIMESTAMP'
-    if 'date' in parquet_str:
-        return 'DATE'
-    if 'time' in parquet_str:
-        return 'TIME'
+    if "int" in parquet_str:
+        return "INT64"
+    if "float" in parquet_str or "double" in parquet_str or "decimal" in parquet_str:
+        return "FLOAT64"
+    if "string" in parquet_str or "text" in parquet_str:
+        return "STRING"
+    if "boolean" in parquet_str or "bool" in parquet_str:
+        return "BOOL"
+    if "timestamp" in parquet_str:
+        return "TIMESTAMP"
+    if "date" in parquet_str:
+        return "DATE"
+    if "time" in parquet_str:
+        return "TIME"
     # fallback
-    return 'STRING'
+    return "STRING"
+
 
 def generate_create_table_sql(
     table_name: str,
@@ -1872,14 +1942,14 @@ def generate_create_table_sql(
     partition_range_interval: int = None,
     cluster_columns: list = None,
 ):
-    # Compose full table name with dataset if provided
+    # Compose the full table name with dataset if provided
     full_table_name = f"{dataset_name}.{table_name}" if dataset_name else table_name
     # Generate column definitions
     columns_sql = []
     for col_name, col_type in schema.items():
         bq_type = parquet_to_bq_type(col_type)
         # BigQuery reserved keywords or spaces require backticks
-        safe_col_name = f"`{col_name}`" if re.match(r'\W', col_name) else col_name
+        safe_col_name = f"`{col_name}`" if re.match(r"\W", col_name) else col_name
         columns_sql.append(f"{safe_col_name} {bq_type}")
     columns_def = ",\n  ".join(columns_sql)
 
@@ -1887,10 +1957,20 @@ def generate_create_table_sql(
     partition_clause = ""
     if partition_column:
         # Validate partition range parameters
-        if partition_range_start is None or partition_range_end is None or partition_range_interval is None:
-            raise ValueError("For integer range partitioning, you must specify start, end, and interval.")
+        if (
+            partition_range_start is None
+            or partition_range_end is None
+            or partition_range_interval is None
+        ):
+            raise ValueError(
+                "For integer range partitioning, you must specify start, end, and interval."
+            )
         # BigQuery requires partition column identifier to be backticked if needed
-        partition_col_safe = f"`{partition_column}`" if re.match(r'\W', partition_column) else partition_column
+        partition_col_safe = (
+            f"`{partition_column}`"
+            if re.match(r"\W", partition_column)
+            else partition_column
+        )
         partition_clause = (
             f"\nPARTITION BY RANGE_BUCKET({partition_col_safe}, GENERATE_ARRAY("
             f"{partition_range_start}, {partition_range_end}, {partition_range_interval}))"
@@ -1901,7 +1981,7 @@ def generate_create_table_sql(
     if cluster_columns:
         cluster_cols_safe = []
         for ccol in cluster_columns:
-            cluster_cols_safe.append(f"`{ccol}`" if re.match(r'\W', ccol) else ccol)
+            cluster_cols_safe.append(f"`{ccol}`" if re.match(r"\W", ccol) else ccol)
         cluster_clause = f"\nCLUSTER BY {', '.join(cluster_cols_safe)}"
 
     create_table_sql = (
@@ -1921,7 +2001,7 @@ def create_bq_table(
     partition_range_start=0,
     partition_range_end=25,
     partition_range_interval=1,
-    cluster_columns=['dataset_id', 'sample_id', 'perturbed_target_symbol']
+    cluster_columns=["dataset_id", "sample_id", "perturbed_target_symbol"],
 ):
     """Create a BigQuery table using the provided DDL SQL."""
     client = ibis.bigquery.connect(
@@ -1945,16 +2025,22 @@ def create_bq_table(
     except Exception as e:
         print(f"Error creating table: {e}")
 
+
 def add_bq_upload_timestamp(bq_dest_table):
     """Add a timestamp column to the BigQuery table to track when data was ingested."""
     client = bigquery.Client()
-    queries = [f"ALTER TABLE `{bq_dest_table}` ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMP",
-                f"ALTER TABLE `{bq_dest_table}` ALTER COLUMN ingested_at SET DEFAULT CURRENT_TIMESTAMP()",
-                f"UPDATE `{bq_dest_table}` SET ingested_at = CURRENT_TIMESTAMP() WHERE TRUE"]
+    queries = [
+        f"ALTER TABLE `{bq_dest_table}` ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMP",
+        f"ALTER TABLE `{bq_dest_table}` ALTER COLUMN ingested_at SET DEFAULT CURRENT_TIMESTAMP()",
+        f"UPDATE `{bq_dest_table}` SET ingested_at = CURRENT_TIMESTAMP() WHERE TRUE",
+    ]
     for sql in queries:
         client.query(sql).result()
 
-def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns, verbose=True):
+
+def upload_parquet_to_bq(
+    parquet_path, bq_dataset_id, bq_table_name, key_columns, verbose=True
+):
     client = bigquery.Client()
     target_table_base = f"{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
@@ -1962,10 +2048,12 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        )
+    )
 
     if verbose:
-        print(f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}...")
+        print(
+            f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
+        )
 
     # create the staging table
     with open(parquet_path, "rb") as parquet_file:
@@ -1973,7 +2061,7 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
             file_obj=parquet_file,
             destination=staging_table_id,
             job_config=job_config,
-            rewind=True
+            rewind=True,
         )
     load_job.result()
 
@@ -1985,7 +2073,9 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
     # add a timestamp column to the staging table
     add_bq_upload_timestamp(staging_table_id)
     if verbose:
-        print(f"Staging table: added ingested_at timestamp column to {staging_table_id}")
+        print(
+            f"Staging table: added ingested_at timestamp column to {staging_table_id}"
+        )
 
     # proceed to merge
     dest_table = client.get_table(target_table_base)
@@ -1994,7 +2084,9 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
     key_columns = [key.lower() for key in key_columns]
     update_columns = [col for col in dest_table.schema if col.name not in key_columns]
     update_columns = [col.name for col in update_columns if col.name != "row_id"]
-    merge_staging_to_target(client, staging_table_id, target_table_base, key_columns, update_columns)
+    merge_staging_to_target(
+        client, staging_table_id, target_table_base, key_columns, update_columns
+    )
 
     # delete the staging table
     client.delete_table(staging_table_id, not_found_ok=True)
@@ -2002,8 +2094,9 @@ def upload_parquet_to_bq(parquet_path, bq_dataset_id, bq_table_name, key_columns
         print(f"Staging table: deleted {staging_table_id}")
 
 
-
-def merge_staging_to_target(client, staging_table_id, target_table_id, key_columns, update_columns):
+def merge_staging_to_target(
+    client, staging_table_id, target_table_id, key_columns, update_columns
+):
     """
     Merge staging table into target table using BigQuery MERGE statement.
 
@@ -2034,8 +2127,9 @@ def merge_staging_to_target(client, staging_table_id, target_table_id, key_colum
     print(f"Merge completed: staging data merged into {target_table_id}")
 
 
-
-def download_file(url: str = None, dest_path: str = None, overwrite=False, unarchive: bool = False) -> None:
+def download_file(
+    url: str = None, dest_path: str = None, overwrite=False, unarchive: bool = False
+) -> None:
     """
     Download a file from a URL to a local destination.
 
@@ -2061,20 +2155,23 @@ def download_file(url: str = None, dest_path: str = None, overwrite=False, unarc
     # if the destination directory does not exist, create it
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     # write the content to the destination file
-    with open(dest_path, 'wb') as f:
+    with open(dest_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     if unarchive:
-        if dest_path.endswith('.zip'):
-            subprocess.run(['unzip', '-o', dest_path, '-d', os.path.dirname(dest_path)])
-        elif dest_path.endswith(('.tar.gz', '.tgz')):
-            subprocess.run(['tar', '-xzf', dest_path, '-C', os.path.dirname(dest_path)])
+        if dest_path.endswith(".zip"):
+            subprocess.run(["unzip", "-o", dest_path, "-d", os.path.dirname(dest_path)])
+        elif dest_path.endswith((".tar.gz", ".tgz")):
+            subprocess.run(["tar", "-xzf", dest_path, "-C", os.path.dirname(dest_path)])
         else:
             print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
 
     print(f"Downloaded {url} to {dest_path}")
 
-def concatenate_parquet_files(parquet_dir: str = None, output_path: str = None, pattern:str = None) -> None:
+
+def concatenate_parquet_files(
+    parquet_dir: str = None, output_path: str = None, pattern: str = None
+) -> None:
     """
     Concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`.
 
