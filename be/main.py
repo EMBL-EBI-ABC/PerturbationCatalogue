@@ -23,6 +23,9 @@ except ImportError:  # pragma: no cover - fallback for running as a script
         LandingPageSummary,
     )
 
+# Import data query APIs.
+from data_query import search_modality, search_dataset
+
 load_dotenv()
 
 app = FastAPI(title="Search API", version="1.0.0")
