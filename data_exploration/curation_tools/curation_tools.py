@@ -881,7 +881,7 @@ class CuratedDataset:
 
         df = getattr(self.adata, slot)
 
-        # Check if the column is gene symbol or ENSG
+        # Check if the column is the gene symbol or ENSG
         if input_column_type not in ["gene_symbol", "ensembl_gene_id"]:
             raise ValueError(
                 "Input column type must be either 'gene_symbol' or 'ensembl_gene_id'"
@@ -893,9 +893,10 @@ class CuratedDataset:
         if df[input_column].empty:
             raise ValueError(f"Column {input_column} is empty")
 
-        # inititalise the converted DataFrame
+        # initialize the converted DataFrame
         conv_df = df[[input_column]].copy()
-        conv_df.index = conv_df.index.rename("index")
+        conv_df_index = conv_df.index.copy()
+        conv_list = conv_df[input_column].unique().tolist()
 
         # Explode the column if it contains multiple entries
         if multiple_entries:
@@ -914,60 +915,22 @@ class CuratedDataset:
                 slot=slot, column=input_column, sep=version_sep
             )
 
-        # map the synonyms to the gene symbols
-        if input_column_type == "gene_symbol":
-            conv_df = self.map_synonyms_to_symbols(
-                df=conv_df, symbol_column=input_column, gene_ont=self.gene_ont
+        # map the ENSG or gene symbols to the gene ontology
+        if input_column_type == "ensembl_gene_id":
+            matched_df = self.merge_gene_ont_ensg(
+                conv_list=conv_list, gene_ont=self.gene_ont
             )
 
-        # Convert the gene symbols/ENSG IDs to the target namespace (ENSG)
-        gp = GProfiler(return_dataframe=True)
-        gp_result = gp.convert(
-            organism="hsapiens",
-            query=list(set(conv_df[input_column])),
-            target_namespace="ENSG",
-        )
-
-        # Filter the converted DataFrame to keep only the rows with a single conversion
-        gp_result = gp_result[gp_result["n_converted"] == 1].drop(
-            columns=["n_incoming", "n_converted"]
-        )
-
-        # Replace "None" with control entries
-        gp_result.loc[gp_result["incoming"].str.contains("control"), "converted"] = gp_result.loc[gp_result["incoming"].str.contains("control"), "incoming"]
-        gp_result.loc[gp_result["incoming"].str.contains("control"), "name"] = gp_result.loc[gp_result["incoming"].str.contains("control"), "incoming"]
-
-        print(
-            f"Converted {len(gp_result[gp_result['converted'] != 'None'])}/{len(gp_result)} gene symbols/ENSG IDs to standardized gene symbols/ENSG IDs\n{'-' * 50}"
-        )
-
-        # merge the converted DataFrame with the original DataFrame
-        conv_df_idx = conv_df.index
-        conv_df = (
-            conv_df.merge(
-                gp_result[["incoming", "converted", "name"]].drop_duplicates(),
-                how="left",
-                left_on=input_column,
-                right_on="incoming",
-                indicator=True,
+        elif input_column_type == "gene_symbol":
+            matched_df = self.merge_gene_ont_symbol(
+                conv_list=conv_list, gene_ont=self.gene_ont
             )
-            .drop(columns=[input_column])
-            .set_index(conv_df_idx)
-        )
 
-        # add the biotype and gene_coord columns
-        conv_df = (
-            conv_df.merge(
-                self.gene_ont[["ensembl_gene_id", "biotype", "gene_coord", "chromosome_name"]]
-                .drop_duplicates()
-                .dropna(subset=["ensembl_gene_id"]),
-                how="left",
-                left_on="converted",
-                right_on="ensembl_gene_id",
-            )
-            .drop(columns=["ensembl_gene_id"])
-            .set_index(conv_df_idx)
+        # merge the matched DataFrame to the original input column values
+        conv_df = conv_df.merge(
+            matched_df, how="left", left_on=input_column, right_on="original_input"
         )
+        conv_df.index = conv_df_index
 
         if multiple_entries:
             # collapse the DataFrame to get the original column back
@@ -976,37 +939,33 @@ class CuratedDataset:
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
             raise ValueError(
-                f"Length of converted DataFrame ({len(conv_df)}) does not match length of original DataFrame ({len(df)})"
+                f"Length of converted DataFrame ({len(matched_df)}) does not match length of original DataFrame ({len(df)})"
             )
-
-        # if some incoming ENSGs were not converted, keep them as is
-        if (
-            input_column_type == "ensembl_gene_id"
-            and (conv_df["converted"] == "None").any()
-        ):
-            conv_df.loc[conv_df["converted"] == "None", "converted"] = conv_df.loc[
-                conv_df["converted"] == "None", "incoming"
-            ]
 
         # rename the columns depending on the slot
         if slot == "obs":
             new_colnames_map = {
-                "converted": "perturbed_target_ensg",
-                "name": "perturbed_target_symbol",
+                "ensembl_gene_id": "perturbed_target_ensg",
+                "gene_symbol": "perturbed_target_symbol",
                 "biotype": "perturbed_target_biotype",
                 "gene_coord": "perturbed_target_coord",
                 "chromosome_name": "perturbed_target_chromosome",
             }
         elif slot == "var":
-            new_colnames_map = {"converted": "ensembl_gene_id", "name": "gene_symbol"}
+            new_colnames_map = {
+                "ensembl_gene_id": "ensembl_gene_id",
+                "gene_symbol": "gene_symbol",
+            }
 
         conv_df = conv_df.rename(columns=new_colnames_map)
 
-        # drop irrelevant columns
+        # keep only the relevant columns
         conv_df = conv_df[new_colnames_map.values()]
 
-        # drop overlapping columns in original df to avoid conflicts when merging
+        # drop overlapping columns in the original df to avoid conflicts when merging
         df = df[list(set(df.columns) - set(conv_df.columns))]
+
+        # merge the converted DataFrame to the original DataFrame
         df = df.merge(conv_df, "left", left_index=True, right_index=True)
 
         # replace "None" strings returned by gprofiler with None
