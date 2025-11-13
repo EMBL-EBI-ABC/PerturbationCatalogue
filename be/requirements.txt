@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+asyncpg
+elasticsearch
+aiohttp
+pydantic
+pydantic-settings
+python-dotenv
