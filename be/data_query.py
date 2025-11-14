@@ -298,9 +298,15 @@ async def enrich_perturb_seq_rows(
         row["effect_n_up"] = effect_summary.get("n_up")
         row["effect_n_down"] = effect_summary.get("n_down")
 
-        row["effect_direction"] = (
-            "increased" if row["log2foldchange"] > 0 else "decreased"
-        )
+        log2fc = row.get("log2foldchange")
+        if log2fc is None:
+            row["effect_direction"] = "not available"
+        elif log2fc > 0:
+            row["effect_direction"] = "increased"
+        elif log2fc < 0:
+            row["effect_direction"] = "decreased"
+        else:
+            row["effect_direction"] = "no change"
 
     return rows
 
