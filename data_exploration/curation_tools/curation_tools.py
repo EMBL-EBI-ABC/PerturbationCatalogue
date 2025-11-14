@@ -446,22 +446,14 @@ class CuratedDataset:
                 return
             # if save_metadata_only is True, save only the metadata and skip saving the data
             if save_metadata_only:
-                # Convert metadata_only_df to Polars DataFrame
-                metadata_only_df = pl.from_pandas(
-                    full_metadata_df, schema_overrides=polars_schema
-                )
-                # Write metadata_only_df to parquet
-                metadata_only_df.write_parquet(self.curated_parquet_metadata_path)
+                # Write metadata to parquet
+                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
                 return
 
             else:
-                # Convert metadata_only_df to Polars DataFrame
-                metadata_only_df = pl.from_pandas(
-                    full_metadata_df, schema_overrides=polars_schema
-                )
-                # Write metadata_only_df to parquet
-                metadata_only_df.write_parquet(self.curated_parquet_metadata_path)
+                # Write metadata to parquet
+                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
 
                 print("Processing data...")
