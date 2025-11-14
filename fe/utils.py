@@ -225,6 +225,76 @@ def fetch_target_details(perturbation_gene_name: str) -> Dict[str, Any]:
         return {"datasets": [], "error": error_message}
 
 
+def fetch_modality_datasets(
+    modality: str,
+    filters: Optional[Dict[str, Any]] = None,
+    dataset_limit: int = 4,
+    dataset_offset: int = 0,
+    rows_per_dataset_limit: int = 5,
+    sort: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Call /v1/{modality}/search with the provided filters."""
+    try:
+        params: Dict[str, Any] = {
+            "dataset_limit": dataset_limit,
+            "dataset_offset": dataset_offset,
+            "rows_per_dataset_limit": rows_per_dataset_limit,
+        }
+        if sort:
+            params["sort"] = sort
+
+        if filters:
+            for key, value in filters.items():
+                if value is None:
+                    continue
+                params[key] = value
+
+        response = requests.get(
+            f"{BACKEND_URL}/v1/{modality}/search", params=params, timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        error_message = f"Error fetching {modality} datasets: {exc}"
+        print(error_message)
+        return {"datasets": [], "error": error_message}
+
+
+def fetch_dataset_rows(
+    modality: str,
+    dataset_id: str,
+    filters: Optional[Dict[str, Any]] = None,
+    limit: int = 5,
+    offset: int = 0,
+    sort: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Call /v1/{modality}/{dataset_id}/search to fetch more rows."""
+    try:
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        if sort:
+            params["sort"] = sort
+
+        if filters:
+            for key, value in filters.items():
+                if value is None:
+                    continue
+                params[key] = value
+
+        response = requests.get(
+            f"{BACKEND_URL}/v1/{modality}/{dataset_id}/search",
+            params=params,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        error_message = (
+            f"Error fetching dataset {dataset_id} for modality {modality}: {exc}"
+        )
+        print(error_message)
+        return {"results": [], "error": error_message, "total_rows_count": 0}
+
+
 # Helper function to format value for display
 def format_value(value: Any) -> str:
     """Format a value for display"""
