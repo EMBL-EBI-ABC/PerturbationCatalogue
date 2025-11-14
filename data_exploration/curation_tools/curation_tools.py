@@ -2137,32 +2137,36 @@ def merge_staging_to_target(
     client, staging_table_id, target_table_id, key_columns, update_columns
 ):
     """
-    Merge staging table into target table, auto-casting all staging columns to STRING
-    to avoid Parquet/BigQuery type mismatches.
+    Merge staging table (all STRING columns) into target table (typed columns).
 
-    Args:
-        client: BigQuery client
-        staging_table_id (str): fully qualified staging table id (project.dataset.table)
-        target_table_id (str): fully qualified target table id
-        key_columns (list[str]): list of column names used as unique keys
-        update_columns (list[str]): list of columns to update on match
+    Staging table is assumed to contain only STRING-typed columns.
+    Columns are CAST into the correct types defined in the target table schema
+    during INSERT and UPDATE.
     """
 
-    # Always cast key columns to STRING to guarantee join compatibility
+    # Fetch target table schema from BigQuery
+    target_schema = {field.name.lower(): field for field in client.get_table(target_table_id).schema}
+
+    def cast_expression(col):
+        """Return CAST(S.col AS <typename>) based on target schema."""
+        target_field = target_schema[col.lower()]
+        bq_type = target_field.field_type  # e.g., STRING, INT64, FLOAT64, BOOL, DATE
+        return f"CAST(S.{col} AS {bq_type})"
+
+    # Join condition always cast key columns to their target types
     join_condition = " AND ".join(
-        [f"CAST(T.{col} AS STRING) = CAST(S.{col} AS STRING)" for col in key_columns]
+        [f"T.{col} = {cast_expression(col)}" for col in key_columns]
     )
 
-    # UPDATE SET T.col = CAST(S.col AS STRING)
+    # Update set — cast each column into its target type
     update_set = ", ".join(
-        [f"T.{col} = CAST(S.{col} AS STRING)" for col in update_columns]
+        [f"T.{col} = {cast_expression(col)}" for col in update_columns]
     )
 
-    # INSERT (col1, col2, ...) VALUES (CAST(S.col1 AS STRING), CAST(S.col2 AS STRING), ...)
-    insert_columns = ", ".join(key_columns + update_columns)
-    insert_values = ", ".join(
-        [f"CAST(S.{col} AS STRING)" for col in key_columns + update_columns]
-    )
+    # Insert columns and properly casted values
+    all_columns = key_columns + update_columns
+    insert_columns = ", ".join(all_columns)
+    insert_values = ", ".join([cast_expression(col) for col in all_columns])
 
     merge_sql = f"""
     MERGE `{target_table_id}` T
@@ -2171,12 +2175,14 @@ def merge_staging_to_target(
     WHEN MATCHED THEN
       UPDATE SET {update_set}
     WHEN NOT MATCHED THEN
-      INSERT ({insert_columns}) VALUES ({insert_values})
+      INSERT ({insert_columns})
+      VALUES ({insert_values})
     """
 
     query_job = client.query(merge_sql)
     query_job.result()
-    print(f"Merge completed: staging data merged into {target_table_id}")
+    print(f"Merge completed: staging → {target_table_id} with type-safe casting.")
+
 
 
 
