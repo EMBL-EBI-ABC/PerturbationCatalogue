@@ -2047,10 +2047,13 @@ def upload_parquet_to_bq(
     
     # get the target table schema
     target_table = client.get_table(target_table_base)
+    # define the staging table schema (all STRING except ingested_at - it's added later)
     target_schema = [
         bigquery.SchemaField(col.name, "STRING")
         for col in target_table.schema
+        if col.name != "ingested_at"
     ]
+
 
     if verbose:
         print(
