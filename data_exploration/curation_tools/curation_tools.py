@@ -2047,7 +2047,10 @@ def upload_parquet_to_bq(
     
     # get the target table schema
     target_table = client.get_table(target_table_base)
-    target_schema = {c.name: c.field_type for c in target_table.schema}
+    target_schema = [
+        bigquery.SchemaField(col.name, "STRING")
+        for col in target_table.schema
+    ]
 
     if verbose:
         print(
@@ -2057,7 +2060,7 @@ def upload_parquet_to_bq(
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        schema=target_table.schema
+        schema=target_schema
         )
 
     # create the staging table
