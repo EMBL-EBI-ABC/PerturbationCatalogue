@@ -2044,15 +2044,20 @@ def upload_parquet_to_bq(
     client = bigquery.Client()
     target_table_base = f"{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
-
-    job_config = bigquery.LoadJobConfig(
-        source_format=bigquery.SourceFormat.PARQUET,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-    )
+    
+    # get the target table schema
+    target_table = client.get_table(target_table_base)
+    target_schema = {c.name: c.field_type for c in target_table.schema}
 
     if verbose:
         print(
             f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
+        )
+    
+    job_config = bigquery.LoadJobConfig(
+        source_format=bigquery.SourceFormat.PARQUET,
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        schema=target_table.schema
         )
 
     # create the staging table
