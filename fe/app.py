@@ -20,10 +20,12 @@ app = dash.Dash(
 # Initialise callbacks for external components. This ensures that interactivity defined
 # in the sub-modules can work across the app. Note that these have to be imported
 # *after* app initialisation.
-import navbar
+# from pages import data_portal
+# import navbar
 
-cookie_banner.register_callbacks(app)
-navbar.register_callbacks(app)
+# cookie_banner.register_callbacks(app)
+# navbar.register_callbacks(app)
+# data_portal.register_callbacks(app)
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
