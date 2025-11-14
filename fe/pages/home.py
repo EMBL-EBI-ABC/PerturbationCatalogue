@@ -299,8 +299,21 @@ def _build_summary_list_section(title, items, max_items=6):
     )
 
 
-def _build_summary_component(summary_data):
+def _build_summary_component(summary_data, error=None):
     """Build the landing page summary component."""
+    if error:
+        return dbc.Alert(
+            [
+                html.H4("Error", className="alert-heading"),
+                html.P("Summary data is currently unavailable due to an error:"),
+                html.Hr(),
+                html.P(error, className="mb-0"),
+            ],
+            color="danger",
+            className="shadow-sm",
+            style={"borderRadius": "10px"},
+        )
+
     if not summary_data:
         return dbc.Alert(
             [
@@ -671,8 +684,8 @@ def update_search_results(query, _):
     filters_style = dash.no_update
 
     if not search_term:
-        summary_data = get_landing_page_summary()
-        summary_content = _build_summary_component(summary_data)
+        summary_data, error = get_landing_page_summary()
+        summary_content = _build_summary_component(summary_data, error)
         filters_style = {
             "display": "none",
             "position": "relative",

@@ -1,7 +1,7 @@
 """Shared utilities for the Dash app"""
 
 import requests
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import json
 from dash import html, dcc
 import dash_bootstrap_components as dbc
@@ -72,12 +72,14 @@ _summary_cache = {"data": None, "timestamp": 0.0}
 results_store = {}
 
 
-def get_landing_page_summary(ttl: int = SUMMARY_CACHE_TTL) -> Optional[Dict[str, Any]]:
+def get_landing_page_summary(
+    ttl: int = SUMMARY_CACHE_TTL,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """Fetch and cache landing page summary from backend."""
     now = time.time()
     cached_summary = _summary_cache.get("data")
     if cached_summary is not None and now - _summary_cache.get("timestamp", 0.0) < ttl:
-        return cached_summary
+        return cached_summary, None
 
     try:
         response = requests.get(f"{BACKEND_URL}/summary", timeout=10)
@@ -85,10 +87,11 @@ def get_landing_page_summary(ttl: int = SUMMARY_CACHE_TTL) -> Optional[Dict[str,
         summary = response.json()
         _summary_cache["data"] = summary
         _summary_cache["timestamp"] = now
-        return summary
+        return summary, None
     except Exception as exc:
-        print(f"Error fetching summary: {exc}")
-        return None
+        error_message = f"Error fetching summary: {exc}"
+        print(error_message)
+        return None, error_message
 
 
 # Helper function to fetch data from backend
