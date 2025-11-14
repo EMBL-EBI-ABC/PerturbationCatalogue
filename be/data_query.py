@@ -210,7 +210,7 @@ def validate_query_params(
 ):
     """Validates that all query params are known for the endpoint."""
     valid_params = {
-        "dataset_search",
+        "dataset_metadata",
         "dataset_tissue",
         "dataset_cell_type",
         "dataset_cell_line",
@@ -401,7 +401,7 @@ async def search_modality(
         if key in ELASTIC_FIELD_MAPPING:
             es_field = ELASTIC_FIELD_MAPPING[key]
             es_query_body["query"]["bool"]["filter"].append({"term": {es_field: value}})
-        elif key == "dataset_search" and value:
+        elif key == "dataset_metadata" and value:
             es_query_body["query"]["bool"]["must"] = [
                 {"query_string": {"query": value}}
             ]
