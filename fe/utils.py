@@ -11,7 +11,10 @@ import os
 import time
 
 # Backend API URL - can be set via environment variable for production
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("PERTURBATION_CATALOGUE_BE")
+
+if not BACKEND_URL:
+    raise ValueError("PERTURBATION_CATALOGUE_BE environment variable is not set.")
 
 # Facet fields to exclude from stats display
 FACET_FIELDS = [
