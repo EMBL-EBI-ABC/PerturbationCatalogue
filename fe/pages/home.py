@@ -59,6 +59,10 @@ def _render_search_results(results):
                     className="fw-semibold text-center",
                 ),
                 html.Th(
+                    "Number of Significant CRISPR experiments",
+                    className="fw-semibold text-center",
+                ),
+                html.Th(
                     "Number of MAVE experiments", className="fw-semibold text-center"
                 ),
                 html.Th("Data Modalities", className="fw-semibold"),
@@ -75,6 +79,7 @@ def _render_search_results(results):
         n_experiments = _format_count(record.get("n_experiments"))
         n_sig_up = _format_count(record.get("n_sig_perturb_pairs_up"))
         n_sig_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_sig_crispr = _format_count(record.get("n_sig_crispr"))
         n_mave = _format_count(record.get("n_mave"))
         data_modalities = record.get("data_modalities") or []
 
@@ -159,6 +164,7 @@ def _render_search_results(results):
                         ],
                         className="text-center",
                     ),
+                    html.Td(n_sig_crispr, className="text-center"),
                     html.Td(n_mave, className="text-center"),
                     html.Td(modalities_badges),
                 ]

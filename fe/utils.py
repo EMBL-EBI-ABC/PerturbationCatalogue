@@ -11,7 +11,7 @@ import os
 import time
 
 # Backend API URL - can be set via environment variable for production
-BACKEND_URL = os.getenv("PERTURBATION_CATALOGUE_BE")
+BACKEND_URL = os.getenv("PERTURBATION_CATALOGUE_BE", "http://localhost:8000")
 
 if not BACKEND_URL:
     raise ValueError("PERTURBATION_CATALOGUE_BE environment variable is not set.")
@@ -203,6 +203,26 @@ def fetch_crispr_data(
     except Exception as e:
         print(f"Error fetching crispr_data: {e}")
         return {"total": 0, "page": 1, "size": size, "total_pages": 0, "results": []}
+
+
+def fetch_target_details(perturbation_gene_name: str) -> Dict[str, Any]:
+    """Fetch detailed perturb-seq datasets for a target"""
+    if not perturbation_gene_name:
+        return {"datasets": []}
+
+    try:
+        params = {"perturbation_gene_name": perturbation_gene_name}
+        response = requests.get(
+            f"{BACKEND_URL}/v1/perturb-seq/search", params=params, timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        error_message = (
+            f"Error fetching target details for {perturbation_gene_name}: {exc}"
+        )
+        print(error_message)
+        return {"datasets": [], "error": error_message}
 
 
 # Helper function to format value for display
