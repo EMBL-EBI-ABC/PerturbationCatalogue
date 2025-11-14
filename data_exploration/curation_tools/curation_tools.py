@@ -2102,11 +2102,43 @@ def upload_parquet_to_bq(
         print(f"Staging table: deleted {staging_table_id}")
 
 
+# def merge_staging_to_target(
+#     client, staging_table_id, target_table_id, key_columns, update_columns
+# ):
+#     """
+#     Merge staging table into target table using BigQuery MERGE statement.
+
+#     Args:
+#         client: BigQuery client
+#         staging_table_id (str): fully qualified staging table id (project.dataset.table)
+#         target_table_id (str): fully qualified target table id
+#         key_columns (list[str]): list of column names used as unique keys
+#         update_columns (list[str]): list of columns to update on match
+#     """
+#     join_condition = " AND ".join([f"T.{col} = S.{col}" for col in key_columns])
+#     update_set = ", ".join([f"T.{col} = S.{col}" for col in update_columns])
+#     insert_columns = ", ".join(key_columns + update_columns)
+#     insert_values = ", ".join([f"S.{col}" for col in key_columns + update_columns])
+
+#     merge_sql = f"""
+#     MERGE `{target_table_id}` T
+#     USING `{staging_table_id}` S
+#     ON {join_condition}
+#     WHEN MATCHED THEN
+#       UPDATE SET {update_set}
+#     WHEN NOT MATCHED THEN
+#       INSERT ({insert_columns}) VALUES ({insert_values})
+#     """
+
+#     query_job = client.query(merge_sql)
+#     query_job.result()  # Wait for completion
+#     print(f"Merge completed: staging data merged into {target_table_id}")
 def merge_staging_to_target(
     client, staging_table_id, target_table_id, key_columns, update_columns
 ):
     """
-    Merge staging table into target table using BigQuery MERGE statement.
+    Merge staging table into target table, auto-casting all staging columns to STRING
+    to avoid Parquet/BigQuery type mismatches.
 
     Args:
         client: BigQuery client
@@ -2115,10 +2147,22 @@ def merge_staging_to_target(
         key_columns (list[str]): list of column names used as unique keys
         update_columns (list[str]): list of columns to update on match
     """
-    join_condition = " AND ".join([f"T.{col} = S.{col}" for col in key_columns])
-    update_set = ", ".join([f"T.{col} = S.{col}" for col in update_columns])
+
+    # Always cast key columns to STRING to guarantee join compatibility
+    join_condition = " AND ".join(
+        [f"CAST(T.{col} AS STRING) = CAST(S.{col} AS STRING)" for col in key_columns]
+    )
+
+    # UPDATE SET T.col = CAST(S.col AS STRING)
+    update_set = ", ".join(
+        [f"T.{col} = CAST(S.{col} AS STRING)" for col in update_columns]
+    )
+
+    # INSERT (col1, col2, ...) VALUES (CAST(S.col1 AS STRING), CAST(S.col2 AS STRING), ...)
     insert_columns = ", ".join(key_columns + update_columns)
-    insert_values = ", ".join([f"S.{col}" for col in key_columns + update_columns])
+    insert_values = ", ".join(
+        [f"CAST(S.{col} AS STRING)" for col in key_columns + update_columns]
+    )
 
     merge_sql = f"""
     MERGE `{target_table_id}` T
@@ -2131,8 +2175,9 @@ def merge_staging_to_target(
     """
 
     query_job = client.query(merge_sql)
-    query_job.result()  # Wait for completion
+    query_job.result()
     print(f"Merge completed: staging data merged into {target_table_id}")
+
 
 
 def download_file(
