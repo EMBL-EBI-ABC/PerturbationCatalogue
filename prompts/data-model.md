@@ -100,7 +100,12 @@ This entity combines attributes of the outcome of a perturbation.
     *   `effect_n_total`: integer (How many perturbations affect this phenotype)
     *   `effect_n_up`: integer
     *   `effect_n_down`: integer
-*   **For `crispr-screen` and `mave`:**
+*   **For `crispr-screen`:**
+    *   `effect_score_name`: string
+    *   `effect_score_value`: float
+    *   `effect_significant`: boolean
+    *   `effect_significance_criteria`: string
+*   **For `mave`:**
     *   `effect_score_name`: string
     *   `effect_score_value`: float
 
