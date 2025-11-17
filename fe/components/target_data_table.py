@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional
 
 from dash import html
+import dash_bootstrap_components as dbc
 
 from utils import format_number
 
@@ -47,6 +48,17 @@ GREEN = "#2acc06"
 RED = "#ff4824"
 MINUS = "−"
 
+# Color mapping for metadata field badges
+METADATA_FIELD_COLORS = {
+    "Tissue": "primary",
+    "Cell type": "info",
+    "Cell line": "secondary",
+    "Library perturbation": "warning",
+    "Disease": "danger",
+    "Sex": "success",
+    "Developmental stage": "dark",
+}
+
 
 def TargetDataTable(
     data: Optional[List[Dict[str, Any]]],
@@ -57,12 +69,13 @@ def TargetDataTable(
     error_message: Optional[str] = None,
     dataset_control_factory: GridControlFactory = None,
     effect_gene_source: str = "effect",
+    section_id: Optional[str] = None,
 ):
     """Render the reusable data table."""
     datasets = data or []
 
     grid_children: List[Any] = []
-    grid_children.extend(_build_header_cells())
+    grid_children.extend(_build_header_cells(effect_gene_source, section_id))
 
     if error_message:
         grid_children.append(_grid_message(error_message, tone="error"))
@@ -78,6 +91,7 @@ def TargetDataTable(
                     rows_per_dataset_limit,
                     dataset_control_factory,
                     effect_gene_source,
+                    section_id,
                 )
             )
 
@@ -92,11 +106,16 @@ def TargetDataTable(
     return html.Div(**div_kwargs)
 
 
-def _build_header_cells() -> List[html.Div]:
+def _build_header_cells(effect_gene_source: str = "effect", section_id: Optional[str] = None) -> List[html.Div]:
     """Create the table header with compact titles."""
+    # For both Perturb-Seq sections, always show "Effect" header
+    if section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
+        header_titles = ["Dataset", "Effect"]
+    else:
+        header_titles = ["Dataset", "Perturbation" if effect_gene_source == "perturbation" else "Effect"]
     return [
         html.Div(html.H3(title, className="fw-semibold mb-1"), className="pb-1")
-        for title in HEADER_TITLES
+        for title in header_titles
     ]
 
 
@@ -106,6 +125,7 @@ def _build_dataset_rows(
     rows_per_dataset_limit: Optional[int],
     dataset_control_factory: GridControlFactory,
     effect_gene_source: str,
+    section_id: Optional[str],
 ) -> List[Any]:
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
@@ -118,7 +138,7 @@ def _build_dataset_rows(
 
     if results:
         for result in results:
-            children.append(_render_result_cell(result, modality, effect_gene_source))
+            children.append(_render_result_cell(result, modality, effect_gene_source, section_id))
     else:
         children.append(
             _grid_message(
@@ -174,12 +194,13 @@ def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
     )
 
 
-def _render_result_cell(result: Dict[str, Any], modality: str, effect_gene_source: str):
+def _render_result_cell(result: Dict[str, Any], modality: str, effect_gene_source: str, section_id: Optional[str] = None):
     if modality == "perturb-seq":
         return _perturb_seq_effect(
             result.get("perturbation") or {},
             result.get("effect") or {},
             effect_gene_source,
+            section_id,
         )
     return _score_effect(
         result.get("perturbation") or {},
@@ -189,12 +210,11 @@ def _render_result_cell(result: Dict[str, Any], modality: str, effect_gene_sourc
 
 
 def _perturb_seq_effect(
-    perturbation: Dict[str, Any], effect: Dict[str, Any], effect_gene_source: str
+    perturbation: Dict[str, Any], effect: Dict[str, Any], effect_gene_source: str, section_id: Optional[str] = None
 ) -> html.Div:
-    if effect_gene_source == "perturbation":
-        gene_name = perturbation.get("gene_name") or "N/A"
-    else:
-        gene_name = effect.get("gene_name") or "N/A"
+    perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+    effect_gene_name = effect.get("gene_name") or "N/A"
+    
     log2fc_value = effect.get("log2fc")
     padj_value = _format_numeric(effect.get("padj"))
     base_mean_value = _format_numeric(effect.get("base_mean"))
@@ -224,15 +244,46 @@ def _perturb_seq_effect(
         },
     )
 
+    # For both Perturb-Seq sections, show both Perturbation and Effect gene
+    if section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
+        gene_section = html.Div(
+            [
+                html.Div(
+                    [
+                        html.Span("Perturbation", className="fw-light text-muted me-2"),
+                        html.Span(perturbation_gene_name, className="h4 fw-bold mb-0 text-break"),
+                    ],
+                    className="d-flex flex-column flex-md-row gap-1 mb-2",
+                ),
+                html.Div(
+                    [
+                        html.Span("Effect gene", className="fw-light text-muted me-2"),
+                        html.Span(effect_gene_name, className="h4 fw-bold mb-0 text-break"),
+                    ],
+                    className="d-flex flex-column flex-md-row gap-1 mb-2",
+                ),
+            ],
+            className="mb-2",
+        )
+    else:
+        # For other sections, show only one gene based on effect_gene_source
+        if effect_gene_source == "perturbation":
+            gene_name = perturbation_gene_name
+            gene_label = "Perturbation gene"
+        else:
+            gene_name = effect_gene_name
+            gene_label = "Effect gene"
+        gene_section = html.Div(
+            [
+                html.Span(gene_label, className="fw-light text-muted me-2"),
+                html.Span(gene_name, className="h4 fw-bold mb-0 text-break"),
+            ],
+            className="d-flex flex-column flex-md-row gap-1 mb-2",
+        )
+    
     return html.Div(
         [
-            html.Div(
-                [
-                    html.Span("Effect gene", className="fw-light text-muted me-2"),
-                    html.Span(gene_name, className="h4 fw-bold mb-0 text-break"),
-                ],
-                className="d-flex flex-column flex-md-row gap-1 mb-2",
-            ),
+            gene_section,
             grid,
         ],
         className="effect-column px-2 py-2 border rounded-3 bg-white",
@@ -296,14 +347,19 @@ def _dataset_meta_line(label: str, value: Optional[Any]) -> html.Div:
     if value is None:
         return html.Div()
     pretty_value = _capitalize_value(str(value))
+    # Get badge color for this field, default to "secondary" if not found
+    badge_color = METADATA_FIELD_COLORS.get(label, "secondary")
     return html.Div(
         [
-            html.Span(
+            dbc.Badge(
                 label,
-                className="fw-light text-muted text-uppercase small me-2",
+                color=badge_color,
+                className="me-2 text-uppercase small",
+                style={"fontSize": "0.7rem"},
             ),
             html.Span(pretty_value, className="fw-semibold small text-break"),
-        ]
+        ],
+        className="d-flex align-items-center",
     )
 
 
