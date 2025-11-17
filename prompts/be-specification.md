@@ -50,6 +50,8 @@ Data for each modality is in a separate table within the `$PG_DB` database.
     *   `perturbed_target_symbol` -> `perturbation_gene_name`
     *   `score_name` -> `effect_score_name`
     *   `score_value` -> `effect_score_value`
+    *   `significant` -> `effect_significant`
+    *   `significance_criteria` -> `effect_significance_criteria`
 
 #### 2.3.3. `mave`
 *   **Table**: `mave_data`
