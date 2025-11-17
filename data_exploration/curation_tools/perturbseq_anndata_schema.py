@@ -392,7 +392,15 @@ class ObsSchema(DataFrameModel):
     sequencing_platform_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing platform.",
-        isin=["Illumina NovaSeq X Plus", "Illumina HiSeq 4000", "Illumina HiSeq 2500", "Illumina HiSeq 2000", "Illumina NovaSeq 6000", "Illumina NextSeq 500"],
+        isin=[
+            "Illumina NovaSeq X Plus",
+            "Illumina HiSeq 4000",
+            "Illumina HiSeq 2500",
+            "Illumina HiSeq 2000",
+            "Illumina NovaSeq 6000",
+            "Illumina NextSeq 500",
+            "Ultima Genomics UG100",
+        ],
     )
     sequencing_strategy_id: Series[String] = Field(
         nullable=True,
