@@ -381,15 +381,14 @@ class CuratedDataset:
 
         # Concatenate the adata.obs and uns_df DataFrames
         full_metadata_df = adata.obs
-        ###
+        
         # replace NaN with with None
-        # full_metadata_df = full_metadata_df.replace({pd.NA: None})
-        # # cast all columns to string type to match BigQuery schema
-        # full_metadata_df = full_metadata_df.astype(str)
-        # # replace 'None' strings with None
-        # full_metadata_df = full_metadata_df.replace({"None": None})
         full_metadata_df = full_metadata_df.astype(object).mask(pd.isna(full_metadata_df), None)
-        ###
+        # convert to string
+        full_metadata_df = full_metadata_df.astype(str)
+        # convert "None" to None
+        full_metadata_df = full_metadata_df.mask(full_metadata_df.eq("None"), None)
+        
         metadata_columns = full_metadata_df.columns.to_list()
         id_columns = metadata_columns[0:2]
 
