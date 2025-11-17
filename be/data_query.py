@@ -70,6 +70,8 @@ CRISPR_PG_MAPPING = {
     "perturbation_gene_name": "perturbed_target_symbol",
     "effect_score_name": "score_name",
     "effect_score_value": "score_value",
+    "effect_significant": "significant",
+    "effect_significance_criteria": "significance_criteria",
 }
 MAVE_PG_MAPPING = {
     "perturbation_gene_name": "perturbed_target_symbol",
