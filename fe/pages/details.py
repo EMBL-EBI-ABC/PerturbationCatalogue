@@ -215,6 +215,7 @@ def _empty_store(config: Dict[str, Any], error: Optional[str] = None) -> Dict[st
         "title": config["title"],
         "datasets": [],
         "total_datasets_count": 0,
+        "dataset_offset": 0,
         "filters": {},
         "rows_per_dataset_limit": ROWS_PER_DATASET_LIMIT,
         "error": error,
@@ -230,14 +231,80 @@ def _empty_store(config: Dict[str, Any], error: Optional[str] = None) -> Dict[st
 def render_section(store_data: Optional[Dict[str, Any]]):
     """Render each section's summary plus data table."""
     triggered = _get_triggered_id()
-    section_id = triggered.get("section") if isinstance(triggered, dict) else None
+    triggered_section_id = (
+        triggered.get("section") if isinstance(triggered, dict) else None
+    )
 
     if not store_data:
         return html.Div("No data available.", className="text-muted fst-italic")
 
+    section_id = store_data.get("section")
     datasets = store_data.get("datasets") or []
     total_datasets = store_data.get("total_datasets_count", len(datasets))
     rows_limit = store_data.get("rows_per_dataset_limit", ROWS_PER_DATASET_LIMIT)
+
+    # Dataset pagination info
+    dataset_offset = store_data.get("dataset_offset", 0)
+    current_dataset_page = (dataset_offset // DATASET_LIMIT) + 1
+    total_dataset_pages = (
+        (total_datasets + DATASET_LIMIT - 1) // DATASET_LIMIT
+        if total_datasets > 0
+        else 1
+    )
+    has_previous_datasets = dataset_offset > 0
+    has_next_datasets = dataset_offset + len(datasets) < total_datasets
+
+    # Dataset pagination controls
+    dataset_pagination = []
+    if total_datasets > DATASET_LIMIT:
+        dataset_pagination_buttons = []
+
+        if has_previous_datasets:
+            dataset_pagination_buttons.append(
+                dbc.Button(
+                    "← Previous Datasets",
+                    id={
+                        "type": "dataset-paginate",
+                        "section": section_id,
+                        "direction": "previous",
+                    },
+                    color="primary",
+                    outline=True,
+                    size="sm",
+                    className="me-2",
+                )
+            )
+
+        dataset_pagination_buttons.append(
+            html.Span(
+                f"Datasets {dataset_offset + 1}-{min(dataset_offset + len(datasets), total_datasets)} of {total_datasets} (Page {current_dataset_page} of {total_dataset_pages})",
+                className="align-self-center me-2",
+                style={"fontSize": "0.875rem"},
+            )
+        )
+
+        if has_next_datasets:
+            dataset_pagination_buttons.append(
+                dbc.Button(
+                    "Next Datasets →",
+                    id={
+                        "type": "dataset-paginate",
+                        "section": section_id,
+                        "direction": "next",
+                    },
+                    color="primary",
+                    outline=True,
+                    size="sm",
+                )
+            )
+
+        if dataset_pagination_buttons:
+            dataset_pagination = [
+                html.Div(
+                    dataset_pagination_buttons,
+                    className="d-flex align-items-center justify-content-start mt-3",
+                )
+            ]
 
     summary = html.Div(
         [
@@ -325,8 +392,6 @@ def render_section(store_data: Optional[Dict[str, Any]]):
             className="d-flex align-items-center",
         )
 
-    section_id = store_data.get("section")
-
     table = TargetDataTable(
         data=datasets,
         modality=store_data.get("modality", ""),
@@ -339,7 +404,7 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         section_id=section_id,
     )
 
-    return html.Div([summary, table])
+    return html.Div([summary, table] + dataset_pagination)
 
 
 @callback(
@@ -511,6 +576,14 @@ def update_section_visibility(is_expanded):
         },
         "n_clicks",
     ),
+    Input(
+        {
+            "type": "dataset-paginate",
+            "section": MATCH,
+            "direction": ALL,
+        },
+        "n_clicks",
+    ),
     Input({"type": "dataset-search", "section": MATCH}, "value"),
     State({"type": "target-section-store", "section": MATCH}, "data"),
     State({"type": "target-section-store", "section": MATCH}, "id"),
@@ -518,6 +591,7 @@ def update_section_visibility(is_expanded):
 def update_section_store(
     target_name: Optional[str],
     _paginate_clicks,
+    _dataset_paginate_clicks,
     search_value: Optional[str],
     store_data: Optional[Dict[str, Any]],
     store_id: Optional[Dict[str, Any]],
@@ -551,6 +625,19 @@ def update_section_store(
     if isinstance(triggered, dict) and triggered.get("type") == "dataset-search":
         should_refresh = True
 
+    # Handle dataset pagination
+    if isinstance(triggered, dict) and triggered.get("type") == "dataset-paginate":
+        direction = triggered.get("direction")
+        if not direction:
+            raise PreventUpdate
+        return _paginate_datasets(
+            store_data,
+            config,
+            target_name,
+            direction,
+            previous_query,
+        )
+
     if should_refresh or search_changed:
         current_search = (search_value or "") if search_changed else previous_query
         return _fetch_section_payload(config, target_name, current_search)
@@ -569,6 +656,7 @@ def _fetch_section_payload(
     config: Dict[str, Any],
     target_name: str,
     dataset_search: Optional[str] = None,
+    dataset_offset: int = 0,
 ) -> Dict[str, Any]:
     filters = {config["filter_field"]: target_name}
     if dataset_search:
@@ -579,6 +667,7 @@ def _fetch_section_payload(
         config["modality"],
         filters=filters,
         dataset_limit=DATASET_LIMIT,
+        dataset_offset=dataset_offset,
         rows_per_dataset_limit=ROWS_PER_DATASET_LIMIT,
     )
     datasets = response.get("datasets") or []
@@ -609,12 +698,33 @@ def _fetch_section_payload(
         "title": config["title"],
         "datasets": datasets,
         "total_datasets_count": response.get("total_datasets_count", 0),
+        "dataset_offset": dataset_offset,
         "filters": filters,
         "rows_per_dataset_limit": ROWS_PER_DATASET_LIMIT,
         "error": response.get("error"),
         "target_name": target_name,
         "dataset_search": dataset_search or "",
     }
+
+
+def _paginate_datasets(
+    store_data: Dict[str, Any],
+    config: Dict[str, Any],
+    target_name: str,
+    direction: str,
+    dataset_search: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Paginate datasets by updating dataset_offset and fetching new data."""
+    current_offset = store_data.get("dataset_offset", 0)
+
+    if direction == "next":
+        new_offset = current_offset + DATASET_LIMIT
+    elif direction == "previous":
+        new_offset = max(0, current_offset - DATASET_LIMIT)
+    else:
+        return store_data
+
+    return _fetch_section_payload(config, target_name, dataset_search, new_offset)
 
 
 def _paginate_dataset_rows(

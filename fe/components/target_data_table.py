@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
-from dash import html
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 from utils import format_number
@@ -106,17 +106,27 @@ def TargetDataTable(
     return html.Div(**div_kwargs)
 
 
-def _build_header_cells(effect_gene_source: str = "effect", section_id: Optional[str] = None) -> List[html.Div]:
+def _build_header_cells(
+    effect_gene_source: str = "effect",
+    section_id: Optional[str] = None,
+) -> List[html.Div]:
     """Create the table header with compact titles."""
     # For both Perturb-Seq sections, always show "Effect" header
     if section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
         header_titles = ["Dataset", "Effect"]
     else:
-        header_titles = ["Dataset", "Perturbation" if effect_gene_source == "perturbation" else "Effect"]
-    return [
-        html.Div(html.H3(title, className="fw-semibold mb-1"), className="pb-1")
-        for title in header_titles
-    ]
+        header_titles = [
+            "Dataset",
+            "Perturbation" if effect_gene_source == "perturbation" else "Effect",
+        ]
+
+    headers = []
+    for title in header_titles:
+        headers.append(
+            html.Div(html.H3(title, className="fw-semibold mb-1"), className="pb-1")
+        )
+
+    return headers
 
 
 def _build_dataset_rows(
@@ -138,7 +148,9 @@ def _build_dataset_rows(
 
     if results:
         for result in results:
-            children.append(_render_result_cell(result, modality, effect_gene_source, section_id))
+            children.append(
+                _render_result_cell(result, modality, effect_gene_source, section_id)
+            )
     else:
         children.append(
             _grid_message(
@@ -194,7 +206,12 @@ def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
     )
 
 
-def _render_result_cell(result: Dict[str, Any], modality: str, effect_gene_source: str, section_id: Optional[str] = None):
+def _render_result_cell(
+    result: Dict[str, Any],
+    modality: str,
+    effect_gene_source: str,
+    section_id: Optional[str] = None,
+):
     if modality == "perturb-seq":
         return _perturb_seq_effect(
             result.get("perturbation") or {},
@@ -210,11 +227,14 @@ def _render_result_cell(result: Dict[str, Any], modality: str, effect_gene_sourc
 
 
 def _perturb_seq_effect(
-    perturbation: Dict[str, Any], effect: Dict[str, Any], effect_gene_source: str, section_id: Optional[str] = None
+    perturbation: Dict[str, Any],
+    effect: Dict[str, Any],
+    effect_gene_source: str,
+    section_id: Optional[str] = None,
 ) -> html.Div:
     perturbation_gene_name = perturbation.get("gene_name") or "N/A"
     effect_gene_name = effect.get("gene_name") or "N/A"
-    
+
     log2fc_value = effect.get("log2fc")
     padj_value = _format_numeric(effect.get("padj"))
     base_mean_value = _format_numeric(effect.get("base_mean"))
@@ -251,14 +271,19 @@ def _perturb_seq_effect(
                 html.Div(
                     [
                         html.Span("Perturbation", className="fw-light text-muted me-2"),
-                        html.Span(perturbation_gene_name, className="h4 fw-bold mb-0 text-break"),
+                        html.Span(
+                            perturbation_gene_name,
+                            className="h4 fw-bold mb-0 text-break",
+                        ),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
                 html.Div(
                     [
                         html.Span("Effect gene", className="fw-light text-muted me-2"),
-                        html.Span(effect_gene_name, className="h4 fw-bold mb-0 text-break"),
+                        html.Span(
+                            effect_gene_name, className="h4 fw-bold mb-0 text-break"
+                        ),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
@@ -280,7 +305,7 @@ def _perturb_seq_effect(
             ],
             className="d-flex flex-column flex-md-row gap-1 mb-2",
         )
-    
+
     return html.Div(
         [
             gene_section,
@@ -297,6 +322,8 @@ def _score_effect(
     variant = perturbation.get("name")
     score_name = effect.get("score_name")
     score_value = _format_numeric(effect.get("score_value"))
+    significant = effect.get("significant")
+    significance_criteria = effect.get("significance_criteria")
 
     headline_children = [
         html.Div(
@@ -323,6 +350,26 @@ def _score_effect(
         grid_items.append(_field_tile("Effect score", score_name))
     if score_value is not None:
         grid_items.append(_field_tile("Value", score_value))
+
+    # Add significant field with conditional coloring
+    if significant is not None:
+        significant_str = str(significant).lower()
+        if significant_str == "true":
+            significant_display = html.Span(
+                str(significant), style={"color": GREEN, "fontWeight": "bold"}
+            )
+        else:
+            significant_display = html.Span(
+                str(significant), style={"color": RED, "fontWeight": "bold"}
+            )
+        grid_items.append(_field_tile("Significant", significant_display))
+
+    # Add significance_criteria field
+    if significance_criteria is not None:
+        grid_items.append(
+            _field_tile("Significance criteria", str(significance_criteria))
+        )
+
     if not grid_items:
         grid_items.append(
             _field_tile("Value", html.Span("N/A", className="text-muted"))
@@ -370,7 +417,10 @@ def _grid_message(
     columns: Optional[str] = None,
 ) -> html.Div:
     color = {"error": "#dc3545", "info": "#6c757d"}.get(tone, "#6c757d")
-    style = {"gridColumn": columns or ("1 / -1" if span_all else "auto"), "color": color}
+    style = {
+        "gridColumn": columns or ("1 / -1" if span_all else "auto"),
+        "color": color,
+    }
     return html.Div(message, className="fst-italic py-2", style=style)
 
 
@@ -447,5 +497,3 @@ def _arrow_value(symbol: str, value: str, color: str) -> html.Span:
 
 def _capitalize_value(value: str) -> str:
     return value[:1].upper() + value[1:] if value else value
-
-
