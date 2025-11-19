@@ -108,7 +108,7 @@ def _render_search_results(results):
                     html.Td(
                         dcc.Link(
                             symbol,
-                            href=f"/target/{symbol}",
+                            href=f"/perturbation-catalogue/target/{symbol}",
                             className="text-decoration-none fw-semibold",
                             style={"color": COLORS["primary"]},
                         )

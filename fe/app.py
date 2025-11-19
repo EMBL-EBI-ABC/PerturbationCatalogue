@@ -14,7 +14,7 @@ app = dash.Dash(
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
-    # url_base_pathname="/perturbation-catalogue/",
+    url_base_pathname="/perturbation-catalogue/",
 )
 
 # Initialise callbacks for external components. This ensures that interactivity defined
@@ -32,59 +32,6 @@ app.index_string = google_analytics.inject
 
 app.title = "Perturbation Catalogue"
 
-# Footer.
-footer = html.Footer(
-    html.Div(
-        [
-            html.Div(
-                "Perturbation Catalogue is funded by ",
-                style={"display": "inline", "margin-right": "3px", "color": "black"},
-            ),
-            html.A(
-                href="https://www.ebi.ac.uk/",
-                target="_blank",
-                children=[
-                    html.Img(
-                        src="/perturbation-catalogue/assets/embl-ebi-logo.png",
-                        height="30px",
-                        style={
-                            "display": "inline",
-                            "vertical-align": "top",
-                            "margin-right": "10px",
-                            "margin-top": "-2px",
-                        },
-                    ),
-                ],
-            ),
-            html.Div(
-                "and ",
-                style={"display": "inline", "margin-right": "5px", "color": "black"},
-            ),
-            html.A(
-                href="https://www.opentargets.org/",
-                target="_blank",
-                children=[
-                    html.Img(
-                        src="/perturbation-catalogue/assets/open-targets-logo.png",
-                        height="32px",
-                        style={
-                            "display": "inline",
-                            "vertical-align": "top",
-                            "margin-top": "-3px",
-                        },
-                    ),
-                ],
-            ),
-        ],
-        className="text-left py-3",
-        style={"padding-left": "20px", "color": "black"},
-    ),
-    style={
-        "backgroundColor": "#f0f0f0",
-        "position": "relative",
-    },
-)
-
 # Overall app layout.
 app.layout = html.Div(
     [
@@ -97,19 +44,23 @@ app.layout = html.Div(
                     html.A(
                         [
                             html.Img(
-                                src="/assets/logo.png",
+                                src="/perturbation-catalogue/assets/logo.png",
                                 alt="Perturbation Catalogue logo",
                                 className="header-logo-img",
                             )
                         ],
-                        href="/",
+                        href="/perturbation-catalogue/",
                     ),
                     html.Nav(
                         [
                             html.A(
                                 "API Documentation", href="#", className="header-link"
                             ),
-                            html.A("About", href="#", className="header-link"),
+                            html.A(
+                                "About",
+                                href="/perturbation-catalogue/about",
+                                className="header-link",
+                            ),
                         ],
                         className="header-links",
                     ),
@@ -130,13 +81,26 @@ app.layout = html.Div(
                         ),
                         html.Div(
                             [
-                                html.Img(
-                                    src="/assets/embl-ebi-logo.png", alt="EMBL-EBI logo"
+                                html.A(
+                                    href="https://www.ebi.ac.uk/",
+                                    target="_blank",
+                                    children=[
+                                        html.Img(
+                                            src="/perturbation-catalogue/assets/embl-ebi-logo.png",
+                                            alt="EMBL-EBI logo",
+                                        )
+                                    ],
                                 ),
                                 html.Span("and"),
-                                html.Img(
-                                    src="/assets/open-targets-logo.png",
-                                    alt="Open Targets logo",
+                                html.A(
+                                    href="https://www.opentargets.org/",
+                                    target="_blank",
+                                    children=[
+                                        html.Img(
+                                            src="/perturbation-catalogue/assets/open-targets-logo.png",
+                                            alt="Open Targets logo",
+                                        )
+                                    ],
                                 ),
                             ],
                             className="footer-logos",
