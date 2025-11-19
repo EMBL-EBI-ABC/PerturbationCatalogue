@@ -4,7 +4,7 @@
 
 This monorepo contains data processing, back-end, and front-end facilities for the Perturbation Catalogue project. Try it out:
 
-* **API** → [https://www.ebi.ac.uk/perturbation-catalogue/mavedb/search](https://www.ebi.ac.uk/perturbation-catalogue/mavedb/search)
+* **API** → [https://www.ebi.ac.uk/perturbation-catalogue/mavedb/search](https://www.ebi.ac.uk/perturbation-catalogue/v1/crispr-screen/search?perturbation_gene_name=BRCA2)
 * **Website** → [https://www.ebi.ac.uk/perturbation-catalogue](https://www.ebi.ac.uk/perturbation-catalogue)
 
 ## Set up
