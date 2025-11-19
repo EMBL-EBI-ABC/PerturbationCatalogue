@@ -72,6 +72,12 @@ app.layout = html.Div(
                                 href="/perturbation-catalogue/about",
                                 className="header-link",
                             ),
+                            html.A(
+                                "Request dataset",
+                                href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                                target="_blank",
+                                className="header-link",
+                            ),
                         ],
                         className="header-links",
                     ),
