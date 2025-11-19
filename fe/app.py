@@ -1,6 +1,7 @@
 import dash
 from dash import html
 import dash_bootstrap_components as dbc
+import os
 
 import cookie_banner
 import google_analytics
@@ -58,7 +59,12 @@ app.layout = html.Div(
                         [
                             html.A(
                                 "API Documentation",
-                                href="/perturbation-catalogue/api",
+                                href=os.getenv(
+                                    "PERTURBATION_CATALOGUE_BE",
+                                    "https://perturbation-catalogue-be-november-prototype-959149465821.europe-west2.run.app",
+                                )
+                                + "/docs",
+                                target="_blank",
                                 className="header-link",
                             ),
                             html.A(
