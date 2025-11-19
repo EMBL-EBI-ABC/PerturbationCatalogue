@@ -2,7 +2,7 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, callback, html
 
-from pages._order import get_pages, get_home_page, REQUEST_DATASET_PAGE
+from pages._order import get_pages, get_home_page
 
 
 def nav_item(page):
@@ -22,20 +22,6 @@ def nav_item(page):
 layout = dbc.NavbarSimple(
     children=[
         nav_item(page) for page in get_pages(include_home=False, require_icon=True)
-    ]
-    + [
-        dbc.NavItem(
-            dbc.NavLink(
-                [
-                    html.I(className=f"bi {REQUEST_DATASET_PAGE['icon']} me-2"),
-                    REQUEST_DATASET_PAGE["name"],
-                ],
-                href=REQUEST_DATASET_PAGE["href"],
-                className="nav-link-custom text-white",
-                external_link=True,
-                target="_blank",
-            )
-        )
     ],
     brand=nav_item(get_home_page()),
     brand_href=get_home_page()["relative_path"],
