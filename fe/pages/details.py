@@ -182,6 +182,11 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         id={"type": "section-header", "section": config["id"]},
                         className="d-flex align-items-center mb-3",
                     ),
+                    # Dataset count summary - always visible under header
+                    html.Div(
+                        id={"type": "dataset-summary", "section": config["id"]},
+                        className="mb-2",
+                    ),
                     # Search boxes row: Search datasets, Search by perturbed gene, and Search by effect gene
                     html.Div(
                         [
@@ -328,6 +333,24 @@ def _empty_store(config: Dict[str, Any], error: Optional[str] = None) -> Dict[st
 
 
 @callback(
+    Output({"type": "dataset-summary", "section": MATCH}, "children"),
+    Input({"type": "target-section-store", "section": MATCH}, "data"),
+)
+def render_dataset_summary(store_data: Optional[Dict[str, Any]]):
+    """Render the dataset count summary that's always visible under the header."""
+    if not store_data:
+        return html.Div()
+
+    datasets = store_data.get("datasets") or []
+    total_datasets = store_data.get("total_datasets_count", len(datasets))
+
+    return html.Span(
+        f"{len(datasets)} dataset(s) shown (of {total_datasets})",
+        className="fw-semibold text-muted",
+    )
+
+
+@callback(
     Output({"type": "target-table-container", "section": MATCH}, "children"),
     Input({"type": "target-section-store", "section": MATCH}, "data"),
 )
@@ -409,19 +432,7 @@ def render_section(store_data: Optional[Dict[str, Any]]):
                 )
             ]
 
-    summary = html.Div(
-        [
-            html.Span(
-                f"{len(datasets)} dataset(s) shown (of {total_datasets})",
-                className="fw-semibold text-muted",
-            ),
-            html.Span(
-                f"Top {rows_limit} rows per dataset shown by default",
-                className="text-muted small",
-            ),
-        ],
-        className="d-flex flex-column flex-md-row gap-2 justify-content-between mb-3",
-    )
+    # Summary moved to separate callback - no longer included here
 
     def control_factory(dataset_id: str, dataset_entry: Dict[str, Any]):
         if not dataset_id or not section_id:
@@ -507,7 +518,7 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         section_id=section_id,
     )
 
-    return html.Div([summary, table] + dataset_pagination)
+    return html.Div([table] + dataset_pagination)
 
 
 @callback(
