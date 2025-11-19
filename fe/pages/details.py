@@ -7,7 +7,17 @@ import json
 from typing import Any, Dict, List, Optional
 
 import dash
-from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
+from dash import (
+    ALL,
+    MATCH,
+    Input,
+    Output,
+    State,
+    callback,
+    dcc,
+    html,
+    clientside_callback,
+)
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
@@ -78,7 +88,12 @@ def layout(target_name: Optional[str] = None, **kwargs):
     stores.extend(
         dcc.Store(
             id={"type": "target-section-store", "section": config["id"]},
-            data={"section": config["id"], "dataset_search": ""},
+            data={
+                "section": config["id"],
+                "dataset_search": "",
+                "gene_search": "",
+                "perturbed_gene_search": "",
+            },
         )
         for config in SECTION_CONFIGS
     )
@@ -94,6 +109,54 @@ def layout(target_name: Optional[str] = None, **kwargs):
 
     sections = []
     for config in SECTION_CONFIGS:
+        # Add gene search box for Perturb-Seq (Perturbed) section header
+        # For other sections, create hidden input to satisfy MATCH callback
+        if config["id"] == "perturb_seq_perturbed":
+            gene_search_input = dcc.Input(
+                id={"type": "gene-search", "section": config["id"]},
+                type="text",
+                placeholder="Search by effect gene…",
+                debounce=True,
+                className="form-control form-control-sm",
+                style={
+                    "maxWidth": "200px",
+                },
+            )
+        else:
+            # Hidden input for other sections to satisfy MATCH callback
+            gene_search_input = dcc.Input(
+                id={"type": "gene-search", "section": config["id"]},
+                type="text",
+                placeholder="Search by effect gene…",
+                debounce=True,
+                className="form-control form-control-sm",
+                style={"display": "none"},
+            )
+
+        # Add perturbed gene search box for Perturb-Seq (Affected) section
+        # For other sections, create hidden input to satisfy MATCH callback
+        if config["id"] == "perturb_seq_affected":
+            perturbed_gene_search_input = dcc.Input(
+                id={"type": "perturbed-gene-search", "section": config["id"]},
+                type="text",
+                placeholder="Search by perturbed gene…",
+                debounce=True,
+                className="form-control form-control-sm",
+                style={
+                    "maxWidth": "200px",
+                },
+            )
+        else:
+            # Hidden input for other sections to satisfy MATCH callback
+            perturbed_gene_search_input = dcc.Input(
+                id={"type": "perturbed-gene-search", "section": config["id"]},
+                type="text",
+                placeholder="Search by perturbed gene…",
+                debounce=True,
+                className="form-control form-control-sm",
+                style={"display": "none"},
+            )
+
         sections.append(
             html.Section(
                 [
@@ -119,23 +182,63 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         id={"type": "section-header", "section": config["id"]},
                         className="d-flex align-items-center mb-3",
                     ),
+                    # Search boxes row: Search datasets, Search by perturbed gene, and Search by effect gene
                     html.Div(
                         [
-                            dcc.Input(
-                                id={"type": "dataset-search", "section": config["id"]},
-                                type="text",
-                                placeholder="Search datasets…",
-                                debounce=True,
-                                className="form-control form-control-sm",
-                                style={
-                                    "maxWidth": "240px",
-                                    "position": "absolute",
-                                    "top": "2.5rem",
-                                    "left": "0.75rem",
-                                    "zIndex": 5,
-                                    "marginLeft": "15rem",
-                                },
+                            html.Div(
+                                dcc.Input(
+                                    id={
+                                        "type": "dataset-search",
+                                        "section": config["id"],
+                                    },
+                                    type="text",
+                                    placeholder="Search datasets…",
+                                    debounce=True,
+                                    className="form-control form-control-sm",
+                                    style={
+                                        "maxWidth": "240px",
+                                    },
+                                ),
+                                style={"marginRight": "1rem"},
                             ),
+                            html.Div(
+                                perturbed_gene_search_input,
+                                id={
+                                    "type": "perturbed-gene-search-wrapper",
+                                    "section": config["id"],
+                                },
+                                **(
+                                    {"data-stop-propagation": "true"}
+                                    if config["id"] == "perturb_seq_affected"
+                                    else {}
+                                ),
+                                style=(
+                                    {"marginRight": "1rem"}
+                                    if config["id"] == "perturb_seq_affected"
+                                    else {}
+                                ),
+                            ),
+                            html.Div(
+                                gene_search_input,
+                                id={
+                                    "type": "gene-search-wrapper",
+                                    "section": config["id"],
+                                },
+                                **(
+                                    {"data-stop-propagation": "true"}
+                                    if config["id"] == "perturb_seq_perturbed"
+                                    else {}
+                                ),
+                            ),
+                        ],
+                        style={
+                            "display": "flex",
+                            "alignItems": "center",
+                            "marginBottom": "1rem",
+                        },
+                    ),
+                    html.Div(
+                        [
                             dcc.Loading(
                                 html.Div(
                                     id={
@@ -148,8 +251,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                             ),
                         ],
                         id={"type": "section-content", "section": config["id"]},
-                        className="position-relative",
-                        style={"paddingTop": "2.5rem", "display": "none"},
+                        style={"display": "none"},
                     ),
                 ],
                 id=f"section-{config['id']}",
@@ -221,6 +323,7 @@ def _empty_store(config: Dict[str, Any], error: Optional[str] = None) -> Dict[st
         "error": error,
         "target_name": None,
         "dataset_search": "",
+        "gene_search": "",
     }
 
 
@@ -520,6 +623,51 @@ def toggle_scroll_button(visible: bool):
     return style
 
 
+# Prevent click propagation from gene search wrapper to section header
+# This uses a MutationObserver to watch for when the wrapper elements are added to the DOM
+clientside_callback(
+    """
+    function() {
+        // Use MutationObserver to watch for when search wrapper elements are added
+        const observer = new MutationObserver(function(mutations) {
+            const wrappers = document.querySelectorAll('[data-stop-propagation="true"]');
+            wrappers.forEach(function(wrapper) {
+                // Check if listener already added
+                if (!wrapper.dataset.listenerAdded) {
+                    wrapper.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                    }, true);
+                    wrapper.dataset.listenerAdded = 'true';
+                }
+            });
+        });
+        
+        // Start observing
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Also run immediately in case elements already exist
+        const wrappers = document.querySelectorAll('[data-stop-propagation="true"]');
+        wrappers.forEach(function(wrapper) {
+            if (!wrapper.dataset.listenerAdded) {
+                wrapper.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                }, true);
+                wrapper.dataset.listenerAdded = 'true';
+            }
+        });
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output(TARGET_NAME_STORE, "data"),
+    Input(TARGET_NAME_STORE, "data"),
+    prevent_initial_call=False,
+)
+
+
 @callback(
     Output({"type": "section-collapse-store", "section": MATCH}, "data"),
     Input({"type": "section-header", "section": MATCH}, "n_clicks"),
@@ -529,6 +677,15 @@ def toggle_scroll_button(visible: bool):
 )
 def toggle_section_collapse(header_clicks, arrow_clicks, is_expanded):
     """Toggle section collapse state when header or arrow is clicked."""
+    ctx = dash.callback_context
+    if ctx.triggered:
+        # Check if the click came from gene-search-wrapper
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        # If click came from section-header, check if it was actually from gene-search-wrapper
+        if "section-header" in triggered_id:
+            # We can't directly check the event target in Python, so we'll rely on the clientside callback
+            # to stop propagation. If it didn't work, this is a fallback.
+            pass
     if header_clicks or arrow_clicks:
         return not is_expanded
     return is_expanded
@@ -585,6 +742,8 @@ def update_section_visibility(is_expanded):
         "n_clicks",
     ),
     Input({"type": "dataset-search", "section": MATCH}, "value"),
+    Input({"type": "gene-search", "section": MATCH}, "value"),
+    Input({"type": "perturbed-gene-search", "section": MATCH}, "value"),
     State({"type": "target-section-store", "section": MATCH}, "data"),
     State({"type": "target-section-store", "section": MATCH}, "id"),
 )
@@ -593,6 +752,8 @@ def update_section_store(
     _paginate_clicks,
     _dataset_paginate_clicks,
     search_value: Optional[str],
+    gene_search_value: Optional[str],
+    perturbed_gene_search_value: Optional[str],
     store_data: Optional[Dict[str, Any]],
     store_id: Optional[Dict[str, Any]],
 ):
@@ -616,6 +777,20 @@ def update_section_store(
         previous_query = store_data.get("dataset_search", "")
         search_changed = (search_value or "") != (previous_query or "")
 
+    gene_search_changed = False
+    previous_gene_query = ""
+    if store_data is not None:
+        previous_gene_query = store_data.get("gene_search", "")
+        gene_search_changed = (gene_search_value or "") != (previous_gene_query or "")
+
+    perturbed_gene_search_changed = False
+    previous_perturbed_gene_query = ""
+    if store_data is not None:
+        previous_perturbed_gene_query = store_data.get("perturbed_gene_search", "")
+        perturbed_gene_search_changed = (perturbed_gene_search_value or "") != (
+            previous_perturbed_gene_query or ""
+        )
+
     should_refresh = (
         triggered == TARGET_NAME_STORE
         or not store_data
@@ -623,6 +798,12 @@ def update_section_store(
     )
 
     if isinstance(triggered, dict) and triggered.get("type") == "dataset-search":
+        should_refresh = True
+
+    if isinstance(triggered, dict) and triggered.get("type") == "gene-search":
+        should_refresh = True
+
+    if isinstance(triggered, dict) and triggered.get("type") == "perturbed-gene-search":
         should_refresh = True
 
     # Handle dataset pagination
@@ -636,11 +817,32 @@ def update_section_store(
             target_name,
             direction,
             previous_query,
+            previous_gene_query,
+            previous_perturbed_gene_query,
         )
 
-    if should_refresh or search_changed:
+    if (
+        should_refresh
+        or search_changed
+        or gene_search_changed
+        or perturbed_gene_search_changed
+    ):
         current_search = (search_value or "") if search_changed else previous_query
-        return _fetch_section_payload(config, target_name, current_search)
+        current_gene_search = (
+            (gene_search_value or "") if gene_search_changed else previous_gene_query
+        )
+        current_perturbed_gene_search = (
+            (perturbed_gene_search_value or "")
+            if perturbed_gene_search_changed
+            else previous_perturbed_gene_query
+        )
+        return _fetch_section_payload(
+            config,
+            target_name,
+            current_search,
+            current_gene_search,
+            current_perturbed_gene_search,
+        )
 
     if isinstance(triggered, dict) and triggered.get("type") == "target-table-paginate":
         dataset_id = triggered.get("dataset")
@@ -656,6 +858,8 @@ def _fetch_section_payload(
     config: Dict[str, Any],
     target_name: str,
     dataset_search: Optional[str] = None,
+    gene_search: Optional[str] = None,
+    perturbed_gene_search: Optional[str] = None,
     dataset_offset: int = 0,
 ) -> Dict[str, Any]:
     filters = {config["filter_field"]: target_name}
@@ -663,6 +867,16 @@ def _fetch_section_payload(
         cleaned = dataset_search.strip()
         if cleaned:
             filters["dataset_metadata"] = cleaned
+    # Add effect_gene_name filter for Perturb-Seq (Perturbed) section
+    if config["id"] == "perturb_seq_perturbed" and gene_search:
+        cleaned_gene = gene_search.strip()
+        if cleaned_gene:
+            filters["effect_gene_name"] = cleaned_gene
+    # Add perturbation_gene_name filter for Perturb-Seq (Affected) section
+    if config["id"] == "perturb_seq_affected" and perturbed_gene_search:
+        cleaned_perturbed_gene = perturbed_gene_search.strip()
+        if cleaned_perturbed_gene:
+            filters["perturbation_gene_name"] = cleaned_perturbed_gene
     response = fetch_modality_datasets(
         config["modality"],
         filters=filters,
@@ -704,6 +918,8 @@ def _fetch_section_payload(
         "error": response.get("error"),
         "target_name": target_name,
         "dataset_search": dataset_search or "",
+        "gene_search": gene_search or "",
+        "perturbed_gene_search": perturbed_gene_search or "",
     }
 
 
@@ -713,6 +929,8 @@ def _paginate_datasets(
     target_name: str,
     direction: str,
     dataset_search: Optional[str] = None,
+    gene_search: Optional[str] = None,
+    perturbed_gene_search: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Paginate datasets by updating dataset_offset and fetching new data."""
     current_offset = store_data.get("dataset_offset", 0)
@@ -724,7 +942,14 @@ def _paginate_datasets(
     else:
         return store_data
 
-    return _fetch_section_payload(config, target_name, dataset_search, new_offset)
+    return _fetch_section_payload(
+        config,
+        target_name,
+        dataset_search,
+        gene_search,
+        perturbed_gene_search,
+        new_offset,
+    )
 
 
 def _paginate_dataset_rows(
