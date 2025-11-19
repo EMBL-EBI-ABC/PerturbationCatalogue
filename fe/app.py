@@ -27,7 +27,7 @@ app = dash.Dash(
 # Import pages to ensure they are registered
 from pages import api, about
 
-# cookie_banner.register_callbacks(app)
+cookie_banner.register_callbacks(app)
 # navbar.register_callbacks(app)
 # data_portal.register_callbacks(app)
 
