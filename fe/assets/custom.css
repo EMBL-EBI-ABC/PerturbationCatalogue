@@ -114,7 +114,7 @@ body {
 
 .homepage-banner {
     position: relative;
-    background-image: url("/assets/pc-logo.jpg");
+    background-image: url("/perturbation-catalogue/assets/pc-logo.jpg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
