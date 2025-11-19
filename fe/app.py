@@ -23,6 +23,9 @@ app = dash.Dash(
 # from pages import data_portal
 # import navbar
 
+# Import pages to ensure they are registered
+from pages import api, about
+
 # cookie_banner.register_callbacks(app)
 # navbar.register_callbacks(app)
 # data_portal.register_callbacks(app)
@@ -54,7 +57,9 @@ app.layout = html.Div(
                     html.Nav(
                         [
                             html.A(
-                                "API Documentation", href="#", className="header-link"
+                                "API Documentation",
+                                href="/perturbation-catalogue/api",
+                                className="header-link",
                             ),
                             html.A(
                                 "About",
