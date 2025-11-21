@@ -318,6 +318,7 @@ def make_adata_depmap(
     OBS_df["significant"] = X_df[score_name] > 0.5
 
     metadata_dict = {
+        "score_interpretation": "Higher values indicate a higher likelihood that the gene is essential for cell survival.",
         "significance_criteria": "Gene dependency probability estimate > 0.5",
         "data_modality": "CRISPR screen",
         "guide_sequence": None,
