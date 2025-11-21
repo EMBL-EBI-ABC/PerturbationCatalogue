@@ -1843,9 +1843,15 @@ def download_file(url: str = None, dest_path: str = None, overwrite=False, unarc
 
     print(f"Downloaded {url} to {dest_path}")
 
-def concatenate_parquet_files(parquet_dir: str = None, output_path: str = None, pattern:str = None) -> None:
+def concatenate_parquet_files(
+    parquet_dir: str,
+    output_path: str,
+    pattern: str = "*_curated_metadata.parquet",
+    verbose: bool = True
+) -> None:
     """
-    Concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`.
+    Stream-concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`
+    without loading entire tables into memory.
 
     Parameters
     ----------
@@ -1853,20 +1859,35 @@ def concatenate_parquet_files(parquet_dir: str = None, output_path: str = None, 
         Directory containing the Parquet files to concatenate.
     output_path : str
         Path to save the concatenated Parquet file.
-    pattern : str, optional
-        Pattern to match Parquet files (default is "*_curated_metadata.parquet").
+    pattern : str
+        Glob pattern to match Parquet files (default "*_curated_metadata.parquet").
+    verbose : bool
+        Whether to print progress.
     """
-
     parquet_files = sorted(glob.glob(f"{parquet_dir}/{pattern}"))
     if not parquet_files:
-        raise ValueError("No parquet files found to concatenate.")
+        raise ValueError(f"No parquet files found with pattern {pattern} in {parquet_dir}")
 
-    first_table = pq.read_table(parquet_files[0])
-    writer = pq.ParquetWriter(output_path, first_table.schema)
+    if verbose:
+        print(f"Found {len(parquet_files)} files. Initializing writer...")
 
-    for pq_file in parquet_files:
-        table = pq.read_table(pq_file)
-        writer.write_table(table)
+    # Base schema from first file
+    first_pf = pq.ParquetFile(parquet_files[0])
+    base_schema = first_pf.schema_arrow
+    writer = pq.ParquetWriter(output_path, base_schema)
 
-    writer.close()
-
+    total_rows = 0
+    try:
+        for idx, fpath in enumerate(parquet_files, start=1):
+            pf = pq.ParquetFile(fpath)
+            if pf.schema_arrow != base_schema:
+                raise ValueError(f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output.")
+            for batch in pf.iter_batches():
+                writer.write_batch(batch)
+                total_rows += batch.num_rows
+            if verbose:
+                print(f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})")
+    finally:
+        writer.close()
+        if verbose:
+            print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")
