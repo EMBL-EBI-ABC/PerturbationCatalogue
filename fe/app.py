@@ -1,6 +1,7 @@
 import dash
-from dash import html, dcc
+from dash import html
 import dash_bootstrap_components as dbc
+import os
 
 import cookie_banner
 import google_analytics
@@ -20,89 +21,116 @@ app = dash.Dash(
 # Initialise callbacks for external components. This ensures that interactivity defined
 # in the sub-modules can work across the app. Note that these have to be imported
 # *after* app initialisation.
-from pages import data_portal
-import navbar
+# from pages import data_portal
+# import navbar
+
+# Import pages to ensure they are registered
+from pages import api, about
 
 cookie_banner.register_callbacks(app)
-navbar.register_callbacks(app)
-data_portal.register_callbacks(app)
+# navbar.register_callbacks(app)
+# data_portal.register_callbacks(app)
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
 
-# Footer.
-footer = html.Footer(
-    html.Div(
-        [
-            html.Div(
-                "Perturbation Catalogue is funded by ",
-                style={"display": "inline", "margin-right": "3px", "color": "black"},
-            ),
-            html.A(
-                href="https://www.ebi.ac.uk/",
-                target="_blank",
-                children=[
-                    html.Img(
-                        src="/perturbation-catalogue/assets/embl-ebi-logo.png",
-                        height="30px",
-                        style={
-                            "display": "inline",
-                            "vertical-align": "top",
-                            "margin-right": "10px",
-                            "margin-top": "-2px",
-                        },
-                    ),
-                ],
-            ),
-            html.Div(
-                "and ",
-                style={"display": "inline", "margin-right": "5px", "color": "black"},
-            ),
-            html.A(
-                href="https://www.opentargets.org/",
-                target="_blank",
-                children=[
-                    html.Img(
-                        src="/perturbation-catalogue/assets/open-targets-logo.png",
-                        height="32px",
-                        style={
-                            "display": "inline",
-                            "vertical-align": "top",
-                            "margin-top": "-3px",
-                        },
-                    ),
-                ],
-            ),
-        ],
-        className="text-left py-3",
-        style={"padding-left": "20px", "color": "black"},
-    ),
-    style={
-        "backgroundColor": "#f0f0f0",
-        "position": "relative",
-    },
-)
+app.title = "Perturbation Catalogue"
 
 # Overall app layout.
 app.layout = html.Div(
     [
-        # URL tracker.
-        dcc.Location(id="url", refresh=False),
         # Cookie banner.
         cookie_banner.store,
         cookie_banner.layout,
-        # Navigation bar.
-        navbar.layout,
-        # Main content.
-        dbc.Container(
-            dash.page_container,
-            fluid=True,
-            className="p-0 m-0",
+        html.Header(
+            dbc.Container(
+                [
+                    html.A(
+                        [
+                            html.Img(
+                                src="/perturbation-catalogue/assets/logo.png",
+                                alt="Perturbation Catalogue logo",
+                                className="header-logo-img",
+                            )
+                        ],
+                        href="/perturbation-catalogue/",
+                    ),
+                    html.Nav(
+                        [
+                            html.A(
+                                "API Documentation",
+                                href=os.getenv(
+                                    "PERTURBATION_CATALOGUE_BE",
+                                    "https://perturbation-catalogue-be-november-prototype-959149465821.europe-west2.run.app",
+                                )
+                                + "/docs",
+                                target="_blank",
+                                className="header-link",
+                            ),
+                            html.A(
+                                "About",
+                                href="/perturbation-catalogue/about",
+                                className="header-link",
+                            ),
+                            html.A(
+                                "Request dataset",
+                                href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
+                                target="_blank",
+                                className="header-link",
+                            ),
+                        ],
+                        className="header-links",
+                    ),
+                ],
+                fluid=True,
+                className="header-content",
+            ),
+            className="app-header",
         ),
-        # Footer.
-        footer,
+        html.Main(dash.page_container, className="app-main"),
+        html.Footer(
+            dbc.Container(
+                html.Div(
+                    [
+                        html.Span(
+                            "Perturbation Catalogue is funded by",
+                            className="footer-text",
+                        ),
+                        html.Div(
+                            [
+                                html.A(
+                                    href="https://www.ebi.ac.uk/",
+                                    target="_blank",
+                                    children=[
+                                        html.Img(
+                                            src="/perturbation-catalogue/assets/embl-ebi-logo.png",
+                                            alt="EMBL-EBI logo",
+                                        )
+                                    ],
+                                ),
+                                html.Span("and"),
+                                html.A(
+                                    href="https://www.opentargets.org/",
+                                    target="_blank",
+                                    children=[
+                                        html.Img(
+                                            src="/perturbation-catalogue/assets/open-targets-logo.png",
+                                            alt="Open Targets logo",
+                                        )
+                                    ],
+                                ),
+                            ],
+                            className="footer-logos",
+                        ),
+                    ],
+                    className="footer-content",
+                ),
+                fluid=True,
+            ),
+            className="app-footer",
+        ),
     ],
-    className="d-flex flex-column vh-100",
+    className="app-shell",
 )
 
 # Expose the server variable for Gunicorn.

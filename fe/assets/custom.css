@@ -1,0 +1,329 @@
+.summary-container {
+    padding: 2rem 0;
+}
+
+.summary-stat-card {
+    border-radius: 12px;
+}
+
+.summary-card {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.summary-card-body {
+    padding: 1.25rem;
+}
+
+.summary-chart {
+    width: 100%;
+}
+
+.pagination-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1rem;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.app-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-header {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e9ecef;
+    padding: 0.75rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+}
+
+.header-logo-img {
+    height: 56px;
+    width: auto;
+    display: block;
+}
+
+.header-links {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.header-link {
+    color: #0A5032;
+    font-weight: 500;
+    text-decoration: none;
+    font-size: 1rem;
+}
+
+.header-link:hover {
+    color: #064024;
+    text-decoration: underline;
+}
+
+.app-main {
+    flex: 1 0 auto;
+    width: 100%;
+}
+
+.app-footer {
+    background-color: rgb(240, 240, 240);
+    border-top: 1px solid #dee2e6;
+    padding: 1.5rem 0;
+}
+
+.footer-content {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.footer-text {
+    font-weight: 500;
+    color: #343a40;
+}
+
+.footer-logos {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.footer-logos img {
+    height: 32px;
+    width: auto;
+    display: block;
+}
+
+.homepage-banner {
+    position: relative;
+    background-image: url("/perturbation-catalogue/assets/pc-logo.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    padding: 5rem 0;
+    margin-bottom: 2rem;
+    color: #ffffff;
+    overflow: hidden;
+}
+
+.homepage-banner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+}
+
+.banner-content {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.banner-title {
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.banner-search {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.banner-description {
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.home-section {
+    padding-bottom: 3rem;
+}
+
+/* Smooth transitions */
+* {
+    transition: all 0.3s ease;
+}
+
+/* Card hover effects */
+.card {
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Navigation bar */
+/* Search bar enhancements */
+.search-input-group {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Table improvements */
+.table {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table thead th {
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Button improvements */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    padding: 0.5rem 1.25rem;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* Filter panel */
+.filter-panel {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Input improvements */
+.form-control, .form-select {
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #007B53;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 83, 0.25);
+}
+
+/* Loading spinner */
+.dash-spinner {
+    margin: 2rem auto;
+}
+
+/* Pagination styling */
+.pagination-container {
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Stats display boxes */
+.stats-box {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+/* Table link hover effect */
+.target-link:hover {
+    text-decoration: underline !important;
+    color: #0A5032 !important;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* ===== Facet dropdown stacking fixes ===== */
+
+.facet-controls {
+    position: relative;
+    isolation: isolate;
+}
+
+.facet-controls .facet-filter-card {
+    position: relative;
+    overflow: visible !important;
+    z-index: 1;
+}
+
+/* Stop hover lift (transforms) from creating a new stacking context */
+.facet-controls .facet-filter-card.card:hover {
+    transform: none !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+/* Raise the active card while it's focused (dropdown open clicks focus the control) */
+.facet-controls .facet-filter-card:focus-within {
+    z-index: 5000;
+}
+
+.facet-controls .facet-filter-card:has(.facet-dropdown.is-open) {
+    z-index: 6500;
+}
+
+.facet-controls .facet-filter-card .card-body {
+    overflow: visible;
+}
+
+/* Dropdown shell */
+.facet-controls .facet-dropdown {
+    position: relative;
+}
+
+/* When the dropdown is open, elevate its wrapper and ensure menu sits above siblings */
+.facet-controls .facet-dropdown.is-open {
+    z-index: 6000;
+}
+
+.facet-controls .facet-dropdown.is-open .Select-menu-outer {
+    z-index: 7000;
+}
+
+.facet-controls .facet-dropdown.is-open .Select-menu-outer,
+.facet-controls .facet-dropdown.is-open .Select-menu {
+    overflow: visible !important;
+}
+
+/* Global safety net so menus elsewhere aren't clipped */
+.Select-menu-outer {
+    position: relative;
+    z-index: 8000;
+}

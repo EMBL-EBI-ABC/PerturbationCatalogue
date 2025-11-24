@@ -2198,12 +2198,15 @@ def download_file(
 
     print(f"Downloaded {url} to {dest_path}")
 
-
 def concatenate_parquet_files(
-    parquet_dir: str = None, output_path: str = None, pattern: str = None
+    parquet_dir: str,
+    output_path: str,
+    pattern: str = "*_curated_metadata.parquet",
+    verbose: bool = True
 ) -> None:
     """
-    Concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`.
+    Stream-concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`
+    without loading entire tables into memory.
 
     Parameters
     ----------
@@ -2211,185 +2214,35 @@ def concatenate_parquet_files(
         Directory containing the Parquet files to concatenate.
     output_path : str
         Path to save the concatenated Parquet file.
-    pattern : str, optional
-        Pattern to match Parquet files (default is "*_curated_metadata.parquet").
+    pattern : str
+        Glob pattern to match Parquet files (default "*_curated_metadata.parquet").
+    verbose : bool
+        Whether to print progress.
     """
-
     parquet_files = sorted(glob.glob(f"{parquet_dir}/{pattern}"))
     if not parquet_files:
-        raise ValueError("No parquet files found to concatenate.")
+        raise ValueError(f"No parquet files found with pattern {pattern} in {parquet_dir}")
 
-    first_table = pq.read_table(parquet_files[0])
-    writer = pq.ParquetWriter(output_path, first_table.schema)
+    if verbose:
+        print(f"Found {len(parquet_files)} files. Initializing writer...")
 
-    for pq_file in parquet_files:
-        table = pq.read_table(pq_file)
-        writer.write_table(table)
+    # Base schema from first file
+    first_pf = pq.ParquetFile(parquet_files[0])
+    base_schema = first_pf.schema_arrow
+    writer = pq.ParquetWriter(output_path, base_schema)
 
-    writer.close()
-
-
-def get_synonyms(ensembl_data: dict = None) -> pd.DataFrame:
-    synonyms_dict = {}
-    for gene in ensembl_data["genes"]:
-        xrefs = gene.get("xrefs")
-        for e in xrefs:
-            synonyms = e.get("synonyms")
-            if synonyms:
-                synonyms_dict[gene.get("id")] = [synonyms]
-                continue
-
-    return pd.DataFrame.from_dict(
-        synonyms_dict, orient="index", columns=["synonyms"]
-    ).reset_index(names="id")
-
-
-def fetch_latest_ensg_id(ensg_list: list = None):
-    """
-    Fetch the latest ENSG id from Ensembl REST API for a list of ENSG ids.
-
-    Parameters
-    ----------
-    ensg_list : list of str
-        List of gene symbols/ensembl IDs to query.
-
-    Returns
-    -------
-    dict
-        Decoded JSON response from Ensembl containing gene information.
-    """
-    import requests
-    import sys
-
-    if ensg_list is None or len(ensg_list) == 0:
-        raise ValueError("ensg_list cannot be empty.")
-
-    server = "https://rest.ensembl.org"
-    ext = "/archive/id"
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    data = {"id": ensg_list}
-
-    r = requests.post(server + ext, headers=headers, json=data)
-
-    if not r.ok:
-        r.raise_for_status()
-        sys.exit()
-
-    df = pd.DataFrame.from_dict(r.json())
-    df = df.explode("possible_replacement")
-    df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
-        columns=["possible_replacement"]
-    )
-    df = df[df["is_current"] == ""]
-    df = df[["id", "stable_id"]]
-
-    mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
-
-    return mapping_dict
-
-
-def generate_gene_ont(
-    json_url: str = "https://ftp.ensembl.org/pub/current/json/homo_sapiens/homo_sapiens.json",
-    json_path: str = "data/homo_sapiens.json",
-    save_parquet_path: str = "data/gene_ont.parquet",
-):
-
-    download_file(url=json_url, dest_path=json_path)
-
-    # load the file
-    print(f"Reading the json file: {json_path}")
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    # create the df
-    colnames = [
-        "id",
-        "name",
-        "Interpro",
-        "Uniprot/SWISSPROT",
-        "GeneCards",
-        "EntrezGene",
-        "HGNC",
-        "EMBL",
-        "seq_region_name",
-        "start",
-        "end",
-        "strand",
-        "biotype",
-        "genome",
-        "description",
-    ]
-    main_df = pd.DataFrame.from_dict(data["genes"])[colnames]
-
-    # get synonyms
-    synonyms_df = get_synonyms(data)
-
-    # merge synonyms
-    main_df = main_df.merge(synonyms_df, how="left", on="id")
-
-    # rename the columns
-    main_df = main_df.rename(
-        columns={
-            "id": "ensembl_gene_id",
-            "name": "gene_symbol",
-            "seq_region_name": "chromosome_name",
-        }
-    )
-
-    # create a symbol_syn column
-    main_df["symbol_syn"] = main_df["gene_symbol"].copy()
-
-    # replace nan values with [] in synonym columns
-    syn_cols = [
-        "symbol_syn",
-        "synonyms",
-        "Interpro",
-        "Uniprot/SWISSPROT",
-        "EMBL",
-        "HGNC",
-        "EntrezGene",
-        "GeneCards",
-    ]
-    main_df[syn_cols] = main_df[syn_cols].map(
-        lambda x: [] if (not isinstance(x, list) and pd.isna(x)) else x
-    )
-
-    # add gene_coord column
-    main_df["gene_coord"] = main_df.apply(
-        lambda x: f"chr{x['chromosome_name']}:{x['start']}-{x['end']};{x['strand']}",
-        axis=1,
-    )
-
-    # pivot the df to create a long form df with a single "synonym" column
-    main_df_long = main_df.melt(
-        id_vars=[
-            "ensembl_gene_id",
-            "gene_symbol",
-            "chromosome_name",
-            "gene_coord",
-            "biotype",
-            "description",
-        ],
-        value_vars=syn_cols,
-        var_name="synonym_type",
-        value_name="synonym",
-    )
-    main_df_long = main_df_long.explode("synonym")
-
-    # remove dashes and add as additional synonyms
-    dash_long = main_df_long[main_df_long["synonym"].str.contains("-", na=False)]
-    dash_long["synonym"] = dash_long["synonym"].str.replace("-", "")
-    main_df_long = pd.concat([main_df_long, dash_long])
-
-    # make symbols and synonyms upper case
-    main_df_long["synonym"] = main_df_long["synonym"].str.upper()
-    main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
-
-    # save as parquet
-    if save_parquet_path:
-        os.makedirs(os.path.dirname(save_parquet_path), exist_ok=True)
-        print(f"Saving to {save_parquet_path}")
-        main_df_long.to_parquet(save_parquet_path)
-        print("Done!")
-
-    return
+    total_rows = 0
+    try:
+        for idx, fpath in enumerate(parquet_files, start=1):
+            pf = pq.ParquetFile(fpath)
+            if pf.schema_arrow != base_schema:
+                raise ValueError(f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output.")
+            for batch in pf.iter_batches():
+                writer.write_batch(batch)
+                total_rows += batch.num_rows
+            if verbose:
+                print(f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})")
+    finally:
+        writer.close()
+        if verbose:
+            print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")

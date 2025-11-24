@@ -1,3 +1,4 @@
 apache-beam
 dbt-bigquery
 shandy-sqlfmt[jinjafmt]
+elasticsearch
