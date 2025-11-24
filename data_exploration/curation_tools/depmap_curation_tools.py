@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from anndata import AnnData
 
-from CRISPR.supplementary.depmap import depmap_mapping as dm
+from curation_tools import depmap_mapping as dm
 from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
@@ -318,6 +318,7 @@ def make_adata_depmap(
     OBS_df["significant"] = X_df[score_name] > 0.5
 
     metadata_dict = {
+        "score_interpretation": "Higher values indicate a higher likelihood that the gene is essential for cell survival.",
         "significance_criteria": "Gene dependency probability estimate > 0.5",
         "data_modality": "CRISPR screen",
         "guide_sequence": None,
@@ -391,7 +392,7 @@ def make_adata_depmap(
         "associated_datasets": json.dumps(
             [
                 {
-                    "dataset_accession": None,
+                    "dataset_accession": depmap_model_id,
                     "dataset_uri": "https://depmap.org/portal/data_page/?tab=allData&releasename=DepMap%20Public%2025Q3&filename=CRISPRGeneDependency.csv",
                     "dataset_description": "Post-Chronos gene dependency probability estimates for all models in the integrated gene effect.",
                     "dataset_file_name": "CRISPRGeneDependency.csv",
