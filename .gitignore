@@ -5,6 +5,7 @@
 .venv
 *.h5ad
 *.parquet
+*.log
 __pycache__
 data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump
