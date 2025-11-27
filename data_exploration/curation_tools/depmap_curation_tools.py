@@ -389,6 +389,8 @@ def make_adata_depmap(
         "software_analysis_id": None,
         "reference_genome_label": "GRCh38",
         "reference_genome_id": None,
+        "license_label": "CC BY 4.0",
+        "license_id": "SWO:1000065",
         "associated_datasets": json.dumps(
             [
                 {

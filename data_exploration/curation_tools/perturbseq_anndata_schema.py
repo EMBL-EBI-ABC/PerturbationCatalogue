@@ -447,6 +447,14 @@ class ObsSchema(DataFrameModel):
         coerce=True,
         description="List of associated datasets with each dataset having 'dataset_accession', 'dataset_uri', 'dataset_description', 'dataset_file_name' keys.",
     )
+    license_label: Series[String] = Field(
+        nullable=False,
+        description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+    )
+    license_id: Series[String] = Field(
+        nullable=True,
+        description="License ontology term ID for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+    )
 
     class Config:
         strict = True
