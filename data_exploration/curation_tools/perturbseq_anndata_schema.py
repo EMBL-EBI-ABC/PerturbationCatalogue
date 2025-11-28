@@ -106,6 +106,12 @@ class ObsSchema(DataFrameModel):
         str_contains=":",
         description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
     )
+    technical_replicate: Series[String] = Field(
+        nullable=True, description="Technical replicate id."
+    )
+    biological_replicate: Series[String] = Field(
+        nullable=True, description="Biological replicate id."
+    )
     # model system details
     model_system_label: Series[String] = Field(
         nullable=False,
