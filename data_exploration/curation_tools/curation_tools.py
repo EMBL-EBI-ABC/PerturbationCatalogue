@@ -2246,3 +2246,46 @@ def concatenate_parquet_files(
         writer.close()
         if verbose:
             print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")
+
+def fetch_latest_ensg_id(ensg_list: list = None):
+    """
+    Fetch the latest ENSG id from Ensembl REST API for a list of ENSG ids.
+
+    Parameters
+    ----------
+    ensg_list : list of str
+        List of gene symbols/ensembl IDs to query.
+
+    Returns
+    -------
+    dict
+        Decoded JSON response from Ensembl containing gene information.
+    """
+    import requests
+    import sys
+
+    if ensg_list is None or len(ensg_list) == 0:
+        raise ValueError("ensg_list cannot be empty.")
+
+    server = "https://rest.ensembl.org"
+    ext = "/archive/id"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    data = {"id": ensg_list}
+
+    r = requests.post(server + ext, headers=headers, json=data)
+
+    if not r.ok:
+        r.raise_for_status()
+        sys.exit()
+
+    df = pd.DataFrame.from_dict(r.json())
+    df = df.explode("possible_replacement")
+    df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
+        columns=["possible_replacement"]
+    )
+    df = df[df["is_current"] == ""]
+    df = df[["id", "stable_id"]]
+
+    mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
+
+    return mapping_dict
