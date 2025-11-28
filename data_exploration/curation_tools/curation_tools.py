@@ -1737,6 +1737,7 @@ class CuratedDataset:
         missing_ensg = list(
             set(conv_list) - set(gene_ont_subset["ensembl_gene_id"].unique())
         )
+        missing_ensg = [e for e in missing_ensg if e!='nan']
 
         # --- Fetch latest Ensembl IDs for missing ones ---
         if missing_ensg:
