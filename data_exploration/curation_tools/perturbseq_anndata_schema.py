@@ -433,7 +433,7 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles"],
+        isin=["custom", "MAGeCK", "Achilles", "TRADE"],
     )
     score_interpretation: Series[String] = Field(
         nullable=True,
