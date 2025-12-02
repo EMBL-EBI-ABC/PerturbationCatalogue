@@ -331,38 +331,188 @@ def _build_summary_component(summary_data, error=None):
             style={"borderRadius": "10px"},
         )
 
-    stats = [
-        ("Datasets", summary_data.get("n_datasets")),
-        ("Targets", summary_data.get("n_targets")),
-        ("Earliest year", summary_data.get("min_year")),
-        ("Latest year", summary_data.get("max_year")),
-    ]
+    # Build Datasets card with year range
+    datasets_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            ["Datasets ", html.I(className="bi bi-database")],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.Div(
+                            [
+                                html.H3(
+                                    _format_summary_number(
+                                        summary_data.get("n_datasets")
+                                    ),
+                                    className="mb-0 fw-bold d-inline-block me-2",
+                                ),
+                                html.Span(
+                                    f"(spanning {_format_summary_number(summary_data.get('min_year'))} - {_format_summary_number(summary_data.get('max_year'))})",
+                                    className="text-muted",
+                                    style={"fontSize": "0.9rem"},
+                                ),
+                            ],
+                            className="d-flex align-items-baseline",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Targets card
+    targets_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            ["Targets ", html.I(className="bi bi-bullseye")],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_targets")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique tissues card
+    tissues_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            [
+                                "Unique tissues ",
+                                html.I(className="bi bi-universal-access-circle"),
+                            ],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_tissues")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique cell types card
+    cell_types_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            [
+                                "Unique cell types ",
+                                html.I(className="bi bi-puzzle"),
+                            ],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_cell_types")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique cell lines card
+    cell_lines_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            [
+                                "Unique cell lines ",
+                                html.I(className="bi bi-puzzle-fill"),
+                            ],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_cell_lines")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique diseases card
+    diseases_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.H6(
+                            [
+                                "Unique diseases ",
+                                html.I(className="bi bi-virus2"),
+                            ],
+                            className="text-uppercase text-muted mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_diseases")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
 
     stat_cards = dbc.Row(
         [
-            dbc.Col(
-                dbc.Card(
-                    [
-                        dbc.CardBody(
-                            [
-                                html.H6(
-                                    label, className="text-uppercase text-muted mb-1"
-                                ),
-                                html.H3(
-                                    _format_summary_number(value),
-                                    className="mb-0 fw-bold",
-                                ),
-                            ]
-                        )
-                    ],
-                    className="shadow-sm summary-stat-card",
-                ),
-                xs=6,
-                md=3,
-                lg=3,
-                className="mb-4",
-            )
-            for label, value in stats
+            datasets_card,
+            targets_card,
+            tissues_card,
+            cell_types_card,
+            cell_lines_card,
+            diseases_card,
         ]
     )
 

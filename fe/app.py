@@ -11,7 +11,7 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[
         dbc.themes.BOOTSTRAP,
-        "https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css",
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css"
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
