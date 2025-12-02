@@ -11,6 +11,12 @@
     overflow: hidden;
 }
 
+.summary-card .card-header {
+    background-color: #007B53 !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+
 .summary-card-body {
     padding: 1.25rem;
 }
@@ -115,51 +121,59 @@ body {
 .homepage-banner {
     position: relative;
     background-image: url("/perturbation-catalogue/assets/pc-logo.jpg");
-    background-size: cover;
-    background-position: center;
+    background-size: 100% auto;
+    background-position: center -5px;
     background-repeat: no-repeat;
     padding: 5rem 0;
     margin-bottom: 2rem;
     color: #ffffff;
     overflow: hidden;
-}
-
-.homepage-banner::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 0;
+    width: 100%;
 }
 
 .banner-content {
     position: relative;
     z-index: 1;
-    max-width: 720px;
-    margin: 0 auto;
-    text-align: center;
+    width: 100%;
+    margin: 0;
+    text-align: left;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1rem;
+}
+
+.banner-container {
+    display: flex;
+    justify-content: flex-start;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.banner-container .row {
+    width: 100%;
+}
+
+.banner-card {
+    max-width: 700px;
+    width: 100%;
+    margin-left: 0;
 }
 
 .banner-title {
     font-weight: 700;
     letter-spacing: -0.5px;
+    color: #212529;
 }
 
 .banner-search {
     max-width: 600px;
-    margin: 0 auto;
+    margin: 0;
 }
 
 .banner-description {
     font-size: 1rem;
     line-height: 1.6;
-}
-
-.home-section {
-    padding-bottom: 3rem;
+    color: #495057;
 }
 
 /* Smooth transitions */
@@ -179,7 +193,6 @@ body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-/* Navigation bar */
 /* Search bar enhancements */
 .search-input-group {
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -216,13 +229,6 @@ body {
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 
-/* Filter panel */
-.filter-panel {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-
 /* Input improvements */
 .form-control, .form-select {
     border-radius: 6px;
@@ -239,17 +245,6 @@ body {
     margin: 2rem auto;
 }
 
-/* Pagination styling */
-.pagination-container {
-    background: white;
-    padding: 1rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    display: inline-flex;
-    align-items: center;
-    gap: 1rem;
-}
-
 /* Stats display boxes */
 .stats-box {
     background: white;
@@ -258,16 +253,129 @@ body {
     box-shadow: 0 2px 4px rgba(0,0,0,0.08);
 }
 
-/* Table link hover effect */
-.target-link:hover {
-    text-decoration: underline !important;
-    color: #0A5032 !important;
+.content-container {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.content-container > .row {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
 }
 
 /* Responsive improvements */
 @media (max-width: 768px) {
     .card {
         margin-bottom: 1rem;
+    }
+    
+    .banner-card {
+        margin: 0 auto;
+        padding: 0.75rem !important;
+    }
+    
+    .banner-title {
+        font-size: 1.75rem !important;
+    }
+    
+    .banner-description {
+        font-size: 0.9rem !important;
+    }
+    
+    .homepage-banner {
+        background-size: cover;
+        background-position: center;
+        padding: 2rem 0;
+    }
+    
+    .banner-search {
+        max-width: 100%;
+    }
+    
+    .content-container {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+    
+    .content-container > .row {
+        margin-left: 0;
+        margin-right: 0;
+    }
+    
+    .banner-container {
+        justify-content: center;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    .banner-card {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    /* Make table responsive on mobile */
+    .table {
+        font-size: 0.85rem;
+    }
+    
+    .table th,
+    .table td {
+        padding: 0.5rem;
+    }
+    
+    /* Pagination adjustments for mobile */
+    .pagination-bar {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 0.5rem;
+    }
+    
+    .pagination-bar .btn {
+        width: 100%;
+    }
+    
+    .pagination-bar span {
+        text-align: center;
+        width: 100%;
+    }
+    
+    /* Summary cards on mobile */
+    .summary-stat-card .card-body {
+        padding: 0.75rem;
+    }
+    
+    .summary-stat-card h3 {
+        font-size: 1.5rem;
+    }
+    
+    .summary-stat-card h6 {
+        font-size: 0.75rem;
+    }
+}
+
+/* Additional mobile improvements for very small screens */
+@media (max-width: 480px) {
+    .banner-title {
+        font-size: 1.5rem !important;
+    }
+    
+    .banner-description {
+        font-size: 0.85rem !important;
+    }
+    
+    .search-input-group .btn-lg {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    .search-input-group .btn-lg span {
+        display: none;
+    }
+    
+    .search-input-group .btn-lg i {
+        margin-right: 0 !important;
     }
 }
 
@@ -282,6 +390,12 @@ body {
     position: relative;
     overflow: visible !important;
     z-index: 1;
+}
+
+.facet-controls .facet-filter-card .card-header {
+    background-color: #007B53 !important;
+    color: #ffffff !important;
+    font-weight: 600;
 }
 
 /* Stop hover lift (transforms) from creating a new stacking context */

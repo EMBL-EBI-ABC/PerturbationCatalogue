@@ -507,66 +507,83 @@ layout = html.Div(
         html.Div(
             [
                 dbc.Container(
-                    [
-                        html.Div(
-                            [
-                                html.H1(
-                                    "Perturbation Catalogue",
-                                    className="banner-title",
-                                    style={"fontSize": "2.5rem"},
-                                ),
-                                html.Div(
-                                    [
-                                        dbc.InputGroup(
-                                            [
-                                                dbc.Input(
-                                                    id="search-input",
-                                                    placeholder="Search by target name...",
-                                                    type="text",
-                                                    value="",
-                                                    debounce=True,
-                                                    className="form-control-lg",
-                                                    style={
-                                                        "borderRadius": "8px 0 0 8px"
-                                                    },
-                                                ),
-                                                dbc.Button(
-                                                    [
-                                                        html.I(
-                                                            className="bi bi-search me-2"
-                                                        ),
-                                                        "Search",
-                                                    ],
-                                                    id="search-button",
-                                                    color="primary",
-                                                    n_clicks=0,
-                                                    className="btn-lg",
-                                                    style={
-                                                        "backgroundColor": COLORS[
-                                                            "primary"
+                    dbc.Row(
+                        dbc.Col(
+                            dbc.Card(
+                                [
+                                    html.Div(
+                                        [
+                                            html.H1(
+                                                "Perturbation Catalogue",
+                                                className="banner-title",
+                                                style={
+                                                    "fontSize": "2.5rem",
+                                                    "color": "#212529",
+                                                },
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dbc.InputGroup(
+                                                        [
+                                                            dbc.Input(
+                                                                id="search-input",
+                                                                placeholder="Search by target name...",
+                                                                type="text",
+                                                                value="",
+                                                                debounce=True,
+                                                                className="form-control-lg",
+                                                                style={
+                                                                    "borderRadius": "8px 0 0 8px"
+                                                                },
+                                                            ),
+                                                            dbc.Button(
+                                                                [
+                                                                    html.I(
+                                                                        className="bi bi-search me-2"
+                                                                    ),
+                                                                    "Search",
+                                                                ],
+                                                                id="search-button",
+                                                                color="primary",
+                                                                n_clicks=0,
+                                                                className="btn-lg",
+                                                                style={
+                                                                    "backgroundColor": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "borderColor": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "borderRadius": "0 8px 8px 0",
+                                                                    "paddingLeft": "2rem",
+                                                                    "paddingRight": "2rem",
+                                                                },
+                                                            ),
                                                         ],
-                                                        "borderColor": COLORS[
-                                                            "primary"
-                                                        ],
-                                                        "borderRadius": "0 8px 8px 0",
-                                                        "paddingLeft": "2rem",
-                                                        "paddingRight": "2rem",
-                                                    },
-                                                ),
-                                            ],
-                                            className="search-input-group banner-search",
-                                        )
-                                    ]
-                                ),
-                                html.P(
-                                    "Perturbation Catalogue is a curated database that brings together data from various genetic perturbation experiments, including Perturb-Seq, CRISPR and MAVE screens, making it easier for researchers to study how modifying genes or proteins affects biological function across various biological and molecular contexts.",
-                                    className="banner-description",
-                                ),
-                            ],
-                            className="banner-content",
+                                                        className="search-input-group banner-search",
+                                                    )
+                                                ]
+                                            ),
+                                            html.P(
+                                                "Perturbation Catalogue is a curated database that brings together data from various genetic perturbation experiments, including Perturb-Seq, CRISPR and MAVE screens, making it easier for researchers to study how modifying genes or proteins affects biological function across various biological and molecular contexts.",
+                                                className="banner-description",
+                                                style={"color": "#495057"},
+                                            ),
+                                        ],
+                                        className="banner-content",
+                                    )
+                                ],
+                                className="banner-card",
+                                style={
+                                    "backgroundColor": "#ffffff",
+                                    "borderRadius": "0",
+                                    "boxShadow": "0 4px 20px rgba(0, 0, 0, 0.15)",
+                                    "padding": "1rem",
+                                },
+                            ),
                         )
-                    ],
-                    fluid=True,
+                    ),
+                    className="banner-container",
                 )
             ],
             className="homepage-banner",
@@ -574,13 +591,10 @@ layout = html.Div(
         dbc.Container(
             [
                 dbc.Row(
-                    [
-                        dbc.Col(
-                            html.Div(id="homepage-summary", className="mt-4"),
-                            width=12,
-                            className="mb-4",
-                        )
-                    ]
+                    dbc.Col(
+                        html.Div(id="homepage-summary", className="mt-4"),
+                        xs=12,
+                    )
                 ),
                 dbc.Row(
                     [
@@ -595,7 +609,9 @@ layout = html.Div(
                                     "display": "none",
                                 },
                             ),
-                            width=12,
+                            xs=12,
+                            sm=12,
+                            md=12,
                             lg=3,
                             className="mb-4",
                             style={
@@ -655,7 +671,9 @@ layout = html.Div(
                                     ],
                                 ),
                             ),
-                            width=12,
+                            xs=12,
+                            sm=12,
+                            md=12,
                             lg=9,
                             style={"position": "relative", "zIndex": 10},
                         ),
@@ -668,7 +686,7 @@ layout = html.Div(
                 ),
                 dcc.Store(id="search-results-page", data=1),
             ],
-            fluid=True,
+            className="content-container",
         ),
     ]
 )

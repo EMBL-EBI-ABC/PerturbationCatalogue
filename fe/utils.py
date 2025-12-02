@@ -11,7 +11,7 @@ import os
 import time
 
 # Backend API URL - can be set via environment variable for production
-BACKEND_URL = os.getenv("PERTURBATION_CATALOGUE_BE", "https://perturbation-catalogue-be-november-prototype-959149465821.europe-west2.run.app")
+BACKEND_URL = os.getenv("PERTURBATION_CATALOGUE_BE", "https://perturbation-catalogue-be-328296435987.europe-west2.run.app")
 
 if not BACKEND_URL:
     raise ValueError("PERTURBATION_CATALOGUE_BE environment variable is not set.")
