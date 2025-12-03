@@ -44,7 +44,6 @@ app.include_router(data_query_router)
 ES_URL = os.getenv("ES_URL")
 ES_USERNAME = os.getenv("ES_USERNAME")
 ES_PASSWORD = os.getenv("ES_PASSWORD")
-ES_INDEX = "target-summary-v2"
 
 
 es = None
@@ -59,6 +58,7 @@ else:
 
 # Facet fields
 FACET_FIELDS = [
+    "licenses_tested",
     "data_modalities",
     "tissues_tested",
     "cell_types_tested",
@@ -186,6 +186,7 @@ def build_aggregations() -> Dict[str, Any]:
 
 
 def parse_filters_from_params(
+    licenses_tested: Optional[str] = None,
     data_modalities: Optional[str] = None,
     tissues_tested: Optional[str] = None,
     cell_types_tested: Optional[str] = None,
@@ -196,6 +197,8 @@ def parse_filters_from_params(
 ) -> Optional[Dict[str, List[str]]]:
     """Parse filters from query parameters"""
     filters = {}
+    if licenses_tested:
+        filters["licenses_tested"] = [v.strip() for v in licenses_tested.split(",")]
     if data_modalities:
         filters["data_modalities"] = [v.strip() for v in data_modalities.split(",")]
     if tissues_tested:
@@ -230,7 +233,7 @@ async def perform_search(
     # Execute search
     try:
         response = es.search(
-            index=ES_INDEX, query=es_query, aggs=aggs, from_=from_, size=size
+            index="target", query=es_query, aggs=aggs, from_=from_, size=size
         )
     except Exception as e:
         error_detail = str(e)
@@ -302,7 +305,6 @@ async def health_check():
         "elasticsearch": {
             "status": es_status,
             "host": urlparse(ES_URL).hostname,
-            "index": ES_INDEX,
             "error": es_error,
         },
     }
@@ -314,7 +316,7 @@ async def get_landing_page_summary():
     Retrieve the landing page summary document from Elasticsearch.
     """
     try:
-        response = es.get(index="landing-page-summary", id="summary")
+        response = es.get(index="summary", id="summary")
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {exc}"
@@ -331,6 +333,9 @@ async def get_landing_page_summary():
 async def search_get(
     query: Optional[str] = Query(
         None, description="Search query for perturbed_target_symbol"
+    ),
+    licenses_tested: Optional[str] = Query(
+        None, description="Comma-separated list of licenses_tested"
     ),
     data_modalities: Optional[str] = Query(
         None, description="Comma-separated list of data_modalities"
@@ -360,6 +365,7 @@ async def search_get(
     Search endpoint (GET) with pagination, facets, filtering, and text search.
     """
     filters = parse_filters_from_params(
+        licenses_tested,
         data_modalities,
         tissues_tested,
         cell_types_tested,

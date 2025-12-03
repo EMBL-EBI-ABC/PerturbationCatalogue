@@ -12,7 +12,7 @@ class SearchRequest(BaseModel):
     filters: Optional[Dict[str, List[str]]] = Field(
         None,
         description=(
-            "Filter by facet values. Keys: data_modalities, tissues_tested, "
+            "Filter by facet values. Keys: licenses_tested, data_modalities, tissues_tested, "
             "cell_types_tested, cell_lines_tested, sex_tested, "
             "developmental_stages_tested, diseases_tested"
         ),
@@ -27,6 +27,7 @@ class FacetValue(BaseModel):
 
 
 class Facets(BaseModel):
+    licenses_tested: List[FacetValue]
     data_modalities: List[FacetValue]
     tissues_tested: List[FacetValue]
     cell_types_tested: List[FacetValue]
@@ -56,7 +57,10 @@ class LandingPageSummary(BaseModel):
     min_year: int
     max_year: int
     n_targets: int
-    n_significant: int
+    n_tissues: int
+    n_cell_types: int
+    n_cell_lines: int
+    n_diseases: int
     top_modalities: List[SummaryTopEntry]
     top_tissues: List[SummaryTopEntry]
     top_cell_types: List[SummaryTopEntry]
