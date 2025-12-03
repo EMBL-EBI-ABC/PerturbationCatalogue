@@ -1,9 +1,19 @@
 {
   "settings": {
     "analysis": {
+      "normalizer": {
+        "lc_ascii": {
+          "type": "custom",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        }
+      },
       "analyzer": {
-        "default": {
-          "type": "standard"
+        "en": {
+          "type": "standard",
+          "stopwords": "_english_"
         }
       }
     }
@@ -11,37 +21,125 @@
   "mappings": {
     "properties": {
       "dataset_id": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "data_modalities": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "tissue_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "cell_type_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "cell_line_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "sex_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "developmental_stage_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "disease_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "library_perturbation_type_labels": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "license_ids": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       },
       "license_values": {
-        "type": "keyword"
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       }
     }
   }
