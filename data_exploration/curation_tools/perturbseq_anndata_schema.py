@@ -247,7 +247,7 @@ class ObsSchema(DataFrameModel):
     enzyme_delivery_method_label: Series[String] = Field(
         nullable=True,
         description="Enzyme delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation"]
+        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
     )
     library_delivery_method_id: Series[String] = Field(
         nullable=True, description="Library delivery method ontology term ID."
@@ -255,7 +255,7 @@ class ObsSchema(DataFrameModel):
     library_delivery_method_label: Series[String] = Field(
         nullable=True,
         description="Library delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation"]
+        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
     )
     enzyme_integration_state_id: Series[String] = Field(
         nullable=True, description="Enzyme integration state ontology term ID."
