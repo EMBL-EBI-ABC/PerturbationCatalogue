@@ -158,6 +158,11 @@ class DatasetMetadata(BaseModel):
     library_perturbation_type: Optional[str] = Field(
         None, alias="dataset_library_perturbation_type"
     )
+    license_id: Optional[str] = Field(None, alias="dataset_license_id")
+    license_label: Optional[str] = Field(None, alias="dataset_license_label")
+    score_interpretation: Optional[str] = Field(
+        None, alias="dataset_score_interpretation"
+    )
 
 
 class DatasetResult(BaseModel):
