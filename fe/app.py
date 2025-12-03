@@ -18,18 +18,10 @@ app = dash.Dash(
     url_base_pathname="/perturbation-catalogue/",
 )
 
-# Initialise callbacks for external components. This ensures that interactivity defined
-# in the sub-modules can work across the app. Note that these have to be imported
-# *after* app initialisation.
-# from pages import data_portal
-# import navbar
-
 # Import pages to ensure they are registered
 from pages import api, about
 
 cookie_banner.register_callbacks(app)
-# navbar.register_callbacks(app)
-# data_portal.register_callbacks(app)
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
