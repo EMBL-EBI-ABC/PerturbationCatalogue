@@ -401,12 +401,12 @@ def _dataset_meta_line(label: str, value: Optional[Any]) -> html.Div:
             dbc.Badge(
                 label,
                 color=badge_color,
-                className="me-2 text-uppercase small",
-                style={"fontSize": "0.7rem"},
+                className="text-uppercase small",
+                style={"fontSize": "0.7rem", "width": "fit-content"},
             ),
             html.Span(pretty_value, className="fw-semibold small text-break"),
         ],
-        className="d-flex align-items-center",
+        className="d-flex flex-column flex-md-row align-items-md-center gap-1 gap-md-2",
     )
 
 

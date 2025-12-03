@@ -21,73 +21,19 @@
           "text": { "type": "text", "analyzer": "en" }
         }
       },
-
       "n_experiments": { "type": "integer" },
       "n_sig_perturb_pairs_up": { "type": "integer" },
       "n_sig_perturb_pairs_down": { "type": "integer" },
       "n_sig_crispr": { "type": "integer" },
       "n_mave": { "type": "integer" },
+      "license": { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "data_modalities":             { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "tissues_tested":              { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "cell_types_tested":           { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "cell_lines_tested":           { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "sex_tested":                  { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "developmental_stages_tested": { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
-      "diseases_tested":             { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
-      "lfc_q25": { "type": "float"},
-      "lfc_median": { "type": "float"},
-      "lfc_q75": { "type": "float"},
-
-      "sig_gene_pairs_up": {
-        "type": "nested",
-        "properties": {
-          "gene":             {
-            "type": "keyword",
-            "ignore_above": 256,
-            "normalizer": "lc_ascii",
-            "fields": { "text": { "type": "text", "analyzer": "en" } }
-          },
-          "padj":             { "type": "float" },
-          "log2FoldChange":   { "type": "float" }
-        }
-      },
-      "sig_gene_pairs_down": {
-        "type": "nested",
-        "properties": {
-          "gene":             {
-            "type": "keyword",
-            "ignore_above": 256,
-            "normalizer": "lc_ascii",
-            "fields": { "text": { "type": "text", "analyzer": "en" } }
-          },
-          "padj":             { "type": "float" },
-          "log2FoldChange":   { "type": "float" }
-        }
-      },
-      "mave_scores_up": {
-        "type": "nested",
-        "properties": {
-          "perturbation_name":             {
-            "type": "keyword",
-            "ignore_above": 256,
-            "normalizer": "lc_ascii",
-            "fields": { "text": { "type": "text", "analyzer": "en" } }
-          },
-          "score_value":             { "type": "float" }
-        }
-      },
-      "mave_scores_down": {
-        "type": "nested",
-        "properties": {
-          "perturbation_name":             {
-            "type": "keyword",
-            "ignore_above": 256,
-            "normalizer": "lc_ascii",
-            "fields": { "text": { "type": "text", "analyzer": "en" } }
-          },
-          "score_value":             { "type": "float" }
-        }
-      }
+      "diseases_tested":             { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 }
     }
   }
 }

@@ -331,38 +331,230 @@ def _build_summary_component(summary_data, error=None):
             style={"borderRadius": "10px"},
         )
 
-    stats = [
-        ("Datasets", summary_data.get("n_datasets")),
-        ("Targets", summary_data.get("n_targets")),
-        ("Earliest year", summary_data.get("min_year")),
-        ("Latest year", summary_data.get("max_year")),
-    ]
+    # Build Datasets card with year range
+    datasets_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Datasets",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-database",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.Div(
+                            [
+                                html.H3(
+                                    _format_summary_number(
+                                        summary_data.get("n_datasets")
+                                    ),
+                                    className="mb-0 fw-bold d-inline-block me-2",
+                                ),
+                                html.Span(
+                                    f"(spanning {_format_summary_number(summary_data.get('min_year'))} - {_format_summary_number(summary_data.get('max_year'))})",
+                                    className="text-muted",
+                                    style={"fontSize": "0.9rem"},
+                                ),
+                            ],
+                            className="d-flex align-items-baseline",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Targets card
+    targets_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Targets",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-bullseye",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_targets")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique tissues card
+    tissues_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Unique tissues",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-universal-access-circle",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_tissues")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique cell types card
+    cell_types_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Unique cell types",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-puzzle",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_cell_types")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique cell lines card
+    cell_lines_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Unique cell lines",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-puzzle-fill",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_cell_lines")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
+
+    # Build Unique diseases card
+    diseases_card = dbc.Col(
+        dbc.Card(
+            [
+                dbc.CardBody(
+                    [
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Unique diseases",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-virus2",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
+                        ),
+                        html.H3(
+                            _format_summary_number(summary_data.get("n_diseases")),
+                            className="mb-0 fw-bold",
+                        ),
+                    ]
+                )
+            ],
+            className="shadow-sm summary-stat-card",
+        ),
+        xs=6,
+        md=3,
+        lg=3,
+        className="mb-4",
+    )
 
     stat_cards = dbc.Row(
         [
-            dbc.Col(
-                dbc.Card(
-                    [
-                        dbc.CardBody(
-                            [
-                                html.H6(
-                                    label, className="text-uppercase text-muted mb-1"
-                                ),
-                                html.H3(
-                                    _format_summary_number(value),
-                                    className="mb-0 fw-bold",
-                                ),
-                            ]
-                        )
-                    ],
-                    className="shadow-sm summary-stat-card",
-                ),
-                xs=6,
-                md=3,
-                lg=3,
-                className="mb-4",
-            )
-            for label, value in stats
+            datasets_card,
+            targets_card,
+            tissues_card,
+            cell_types_card,
+            cell_lines_card,
+            diseases_card,
         ]
     )
 
@@ -418,13 +610,29 @@ def _build_filter_controls(facets, selected_filters=None):
     else:
         normalized_selected_filters = {}
 
+    # Icon mapping for facet fields
+    field_icons = {
+        "license": "bi-award-fill",
+        "data_modalities": "bi-database",
+        "tissues_tested": "bi-universal-access-circle",
+        "cell_types_tested": "bi-puzzle",
+        "cell_lines_tested": "bi-puzzle-fill",
+        "diseases_tested": "bi-virus2",
+        "sex_tested": "bi-gender-ambiguous",
+        "developmental_stages_tested": "bi-graph-up-arrow",
+    }
+
     controls = []
     for field in FACET_FIELDS:
         values = facets.get(field, [])
         if not values:
             continue
 
-        display_name = field.replace("_", " ").title()
+        # Custom display names for specific fields
+        if field == "license":
+            display_name = "License"
+        else:
+            display_name = field.replace("_", " ").title()
         options = []
         option_value_map = {}
         for item in values:
@@ -475,11 +683,26 @@ def _build_filter_controls(facets, selected_filters=None):
                 style={"fontSize": "0.9rem", "zIndex": 2000, "position": "relative"},
             )
 
+        # Build header with icon
+        icon_class = field_icons.get(field)
+        if icon_class:
+            header_content = html.Div(
+                [
+                    html.I(
+                        className=f"bi {icon_class} me-2",
+                    ),
+                    html.Span(display_name),
+                ],
+                className="d-flex align-items-center",
+            )
+        else:
+            header_content = display_name
+
         controls.append(
             dbc.Card(
                 [
                     dbc.CardHeader(
-                        display_name,
+                        header_content,
                         className="fw-semibold",
                         style={"backgroundColor": "#f8f9fa"},
                     ),
@@ -507,66 +730,83 @@ layout = html.Div(
         html.Div(
             [
                 dbc.Container(
-                    [
-                        html.Div(
-                            [
-                                html.H1(
-                                    "Perturbation Catalogue",
-                                    className="banner-title",
-                                    style={"fontSize": "2.5rem"},
-                                ),
-                                html.Div(
-                                    [
-                                        dbc.InputGroup(
-                                            [
-                                                dbc.Input(
-                                                    id="search-input",
-                                                    placeholder="Search by target name...",
-                                                    type="text",
-                                                    value="",
-                                                    debounce=True,
-                                                    className="form-control-lg",
-                                                    style={
-                                                        "borderRadius": "8px 0 0 8px"
-                                                    },
-                                                ),
-                                                dbc.Button(
-                                                    [
-                                                        html.I(
-                                                            className="bi bi-search me-2"
-                                                        ),
-                                                        "Search",
-                                                    ],
-                                                    id="search-button",
-                                                    color="primary",
-                                                    n_clicks=0,
-                                                    className="btn-lg",
-                                                    style={
-                                                        "backgroundColor": COLORS[
-                                                            "primary"
+                    dbc.Row(
+                        dbc.Col(
+                            dbc.Card(
+                                [
+                                    html.Div(
+                                        [
+                                            html.H1(
+                                                "Perturbation Catalogue",
+                                                className="banner-title",
+                                                style={
+                                                    "fontSize": "2.5rem",
+                                                    "color": "#212529",
+                                                },
+                                            ),
+                                            html.Div(
+                                                [
+                                                    dbc.InputGroup(
+                                                        [
+                                                            dbc.Input(
+                                                                id="search-input",
+                                                                placeholder="Search by target name...",
+                                                                type="text",
+                                                                value="",
+                                                                debounce=True,
+                                                                className="form-control-lg",
+                                                                style={
+                                                                    "borderRadius": "8px 0 0 8px"
+                                                                },
+                                                            ),
+                                                            dbc.Button(
+                                                                [
+                                                                    html.I(
+                                                                        className="bi bi-search me-2"
+                                                                    ),
+                                                                    "Search",
+                                                                ],
+                                                                id="search-button",
+                                                                color="primary",
+                                                                n_clicks=0,
+                                                                className="btn-lg",
+                                                                style={
+                                                                    "backgroundColor": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "borderColor": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "borderRadius": "0 8px 8px 0",
+                                                                    "paddingLeft": "2rem",
+                                                                    "paddingRight": "2rem",
+                                                                },
+                                                            ),
                                                         ],
-                                                        "borderColor": COLORS[
-                                                            "primary"
-                                                        ],
-                                                        "borderRadius": "0 8px 8px 0",
-                                                        "paddingLeft": "2rem",
-                                                        "paddingRight": "2rem",
-                                                    },
-                                                ),
-                                            ],
-                                            className="search-input-group banner-search",
-                                        )
-                                    ]
-                                ),
-                                html.P(
-                                    "Perturbation Catalogue is a curated database that brings together data from various genetic perturbation experiments, including Perturb-Seq, CRISPR and MAVE screens, making it easier for researchers to study how modifying genes or proteins affects biological function across various biological and molecular contexts.",
-                                    className="banner-description",
-                                ),
-                            ],
-                            className="banner-content",
+                                                        className="search-input-group banner-search",
+                                                    )
+                                                ]
+                                            ),
+                                            html.P(
+                                                "Perturbation Catalogue is a curated database that brings together data from various genetic perturbation experiments, including Perturb-Seq, CRISPR and MAVE screens, making it easier for researchers to study how modifying genes or proteins affects biological function across various biological and molecular contexts.",
+                                                className="banner-description",
+                                                style={"color": "#495057"},
+                                            ),
+                                        ],
+                                        className="banner-content",
+                                    )
+                                ],
+                                className="banner-card",
+                                style={
+                                    "backgroundColor": "#ffffff",
+                                    "borderRadius": "0",
+                                    "boxShadow": "0 4px 20px rgba(0, 0, 0, 0.15)",
+                                    "padding": "1rem",
+                                },
+                            ),
                         )
-                    ],
-                    fluid=True,
+                    ),
+                    className="banner-container",
                 )
             ],
             className="homepage-banner",
@@ -574,13 +814,10 @@ layout = html.Div(
         dbc.Container(
             [
                 dbc.Row(
-                    [
-                        dbc.Col(
-                            html.Div(id="homepage-summary", className="mt-4"),
-                            width=12,
-                            className="mb-4",
-                        )
-                    ]
+                    dbc.Col(
+                        html.Div(id="homepage-summary", className="mt-4"),
+                        xs=12,
+                    )
                 ),
                 dbc.Row(
                     [
@@ -595,7 +832,9 @@ layout = html.Div(
                                     "display": "none",
                                 },
                             ),
-                            width=12,
+                            xs=12,
+                            sm=12,
+                            md=12,
                             lg=3,
                             className="mb-4",
                             style={
@@ -655,7 +894,9 @@ layout = html.Div(
                                     ],
                                 ),
                             ),
-                            width=12,
+                            xs=12,
+                            sm=12,
+                            md=12,
                             lg=9,
                             style={"position": "relative", "zIndex": 10},
                         ),
@@ -668,7 +909,7 @@ layout = html.Div(
                 ),
                 dcc.Store(id="search-results-page", data=1),
             ],
-            fluid=True,
+            className="content-container",
         ),
     ]
 )

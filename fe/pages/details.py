@@ -295,7 +295,6 @@ def layout(target_name: Optional[str] = None, **kwargs):
                 style=SCROLL_TOP_STYLE,
             ),
         ],
-        fluid=True,
         className="py-4 target-details-v2",
     )
 
