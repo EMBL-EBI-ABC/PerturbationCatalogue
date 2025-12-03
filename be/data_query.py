@@ -400,7 +400,7 @@ async def search_modality(
         "aggs": {
             field: {"terms": {"field": es_field, "size": 100}}
             for field, es_field in ELASTIC_FIELD_MAPPING.items()
-            if field != "dataset_id"
+            if field not in ("dataset_id", "dataset_score_interpretation")
         },
     }
 
