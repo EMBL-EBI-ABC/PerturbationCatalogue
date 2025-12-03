@@ -19,7 +19,7 @@ First, load environment variables using `dev_secrets`.
 
 Then, additionally set the following variables:
 * BQ_TABLE: which BQ table to ingest from, for example `dataset_summary`.
-* ES_INDEX: which Elastic index to ingest to, for example `dataset-summary-v3`.
+* ES_INDEX: which Elastic index to ingest to, for example `2025-12-03-v3-dataset-summary`. Note that the name of the index must be at the end of the string.
 
 Optional parameters that can also be set using environmental variables include:
 ```bash
