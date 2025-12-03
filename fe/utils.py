@@ -18,6 +18,7 @@ if not BACKEND_URL:
 
 # Facet fields to exclude from stats display
 FACET_FIELDS = [
+    "licenses_tested",
     "data_modalities",
     "tissues_tested",
     "cell_types_tested",
@@ -46,6 +47,7 @@ DATA_MODALITIES_COLOURS = {
 
 # Color mapping for each filter category (for bar charts)
 FACET_COLORS = {
+    "licenses_tested": "#F0A202",  # orange/gold
     "data_modalities": "#007B53",  # primary green
     "tissues_tested": "#193F90",  # secondary blue
     "cell_types_tested": "#563D82",  # accent1 purple
@@ -57,6 +59,7 @@ FACET_COLORS = {
 
 # Lighter versions for unselected bars (for better contrast)
 FACET_COLORS_LIGHT = {
+    "licenses_tested": "#F5C55A",  # lighter orange/gold
     "data_modalities": "#4CAF7A",  # lighter green
     "tissues_tested": "#5B7FC7",  # lighter blue
     "cell_types_tested": "#8B6FA8",  # lighter purple

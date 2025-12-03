@@ -337,9 +337,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
-                            ["Datasets ", html.I(className="bi bi-database")],
-                            className="text-uppercase text-muted mb-1",
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Datasets",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-database",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.Div(
                             [
@@ -374,9 +383,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
-                            ["Targets ", html.I(className="bi bi-bullseye")],
-                            className="text-uppercase text-muted mb-1",
+                        html.Div(
+                            [
+                                html.H6(
+                                    "Targets",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-bullseye",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
+                            ],
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.H3(
                             _format_summary_number(summary_data.get("n_targets")),
@@ -399,12 +417,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
+                        html.Div(
                             [
-                                "Unique tissues ",
-                                html.I(className="bi bi-universal-access-circle"),
+                                html.H6(
+                                    "Unique tissues",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-universal-access-circle",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
                             ],
-                            className="text-uppercase text-muted mb-1",
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.H3(
                             _format_summary_number(summary_data.get("n_tissues")),
@@ -427,12 +451,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
+                        html.Div(
                             [
-                                "Unique cell types ",
-                                html.I(className="bi bi-puzzle"),
+                                html.H6(
+                                    "Unique cell types",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-puzzle",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
                             ],
-                            className="text-uppercase text-muted mb-1",
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.H3(
                             _format_summary_number(summary_data.get("n_cell_types")),
@@ -455,12 +485,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
+                        html.Div(
                             [
-                                "Unique cell lines ",
-                                html.I(className="bi bi-puzzle-fill"),
+                                html.H6(
+                                    "Unique cell lines",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-puzzle-fill",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
                             ],
-                            className="text-uppercase text-muted mb-1",
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.H3(
                             _format_summary_number(summary_data.get("n_cell_lines")),
@@ -483,12 +519,18 @@ def _build_summary_component(summary_data, error=None):
             [
                 dbc.CardBody(
                     [
-                        html.H6(
+                        html.Div(
                             [
-                                "Unique diseases ",
-                                html.I(className="bi bi-virus2"),
+                                html.H6(
+                                    "Unique diseases",
+                                    className="text-uppercase text-muted mb-0",
+                                ),
+                                html.I(
+                                    className="bi bi-virus2",
+                                    style={"fontSize": "1.5rem", "color": "#6c757d"},
+                                ),
                             ],
-                            className="text-uppercase text-muted mb-1",
+                            className="d-flex justify-content-between align-items-center mb-1",
                         ),
                         html.H3(
                             _format_summary_number(summary_data.get("n_diseases")),
@@ -568,13 +610,29 @@ def _build_filter_controls(facets, selected_filters=None):
     else:
         normalized_selected_filters = {}
 
+    # Icon mapping for facet fields
+    field_icons = {
+        "licenses_tested": "bi-award-fill",
+        "data_modalities": "bi-database",
+        "tissues_tested": "bi-universal-access-circle",
+        "cell_types_tested": "bi-puzzle",
+        "cell_lines_tested": "bi-puzzle-fill",
+        "diseases_tested": "bi-virus2",
+        "sex_tested": "bi-gender-ambiguous",
+        "developmental_stages_tested": "bi-graph-up-arrow",
+    }
+
     controls = []
     for field in FACET_FIELDS:
         values = facets.get(field, [])
         if not values:
             continue
 
-        display_name = field.replace("_", " ").title()
+        # Custom display names for specific fields
+        if field == "licenses_tested":
+            display_name = "License"
+        else:
+            display_name = field.replace("_", " ").title()
         options = []
         option_value_map = {}
         for item in values:
@@ -625,11 +683,26 @@ def _build_filter_controls(facets, selected_filters=None):
                 style={"fontSize": "0.9rem", "zIndex": 2000, "position": "relative"},
             )
 
+        # Build header with icon
+        icon_class = field_icons.get(field)
+        if icon_class:
+            header_content = html.Div(
+                [
+                    html.I(
+                        className=f"bi {icon_class} me-2",
+                    ),
+                    html.Span(display_name),
+                ],
+                className="d-flex align-items-center",
+            )
+        else:
+            header_content = display_name
+
         controls.append(
             dbc.Card(
                 [
                     dbc.CardHeader(
-                        display_name,
+                        header_content,
                         className="fw-semibold",
                         style={"backgroundColor": "#f8f9fa"},
                     ),
