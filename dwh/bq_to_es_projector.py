@@ -127,19 +127,13 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     Ensures numerics are numeric and nested arrays are cleaned.
     """
     doc: Dict[str, Any] = {}
-    if ES_INDEX == "contrast-summary":
-        key = "contrast_id"
-        index_name = "contrast"
-    elif ES_INDEX == "dataset-summary":
+    if "dataset-summary" in ES_INDEX:
         key = "dataset_id"
         index_name = "dataset"
-    elif ES_INDEX == "target-summary" or ES_INDEX == "target-summary-v2":
+    elif "target-summary" in ES_INDEX:
         key = "perturbed_target_symbol"
         index_name = "target"
-    elif ES_INDEX == "gene-summary":
-        index_name = "gene"
-        key = "gene"
-    elif ES_INDEX == "landing-page-summary":
+    elif "landing-page-summary" in ES_INDEX:
         index_name = "landing-page"
         key = "summary"
     else:
@@ -159,24 +153,25 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
             doc[k] = _coerce_num(v)
         elif k in numeric_float_fields:
             doc[k] = _coerce_num(v, True)
+        elif k in nested_fields and isinstance(v, list):
+            # Handle nested objects: clean and coerce numeric fields
+            cleaned = []
+            for item in v:
+                if not isinstance(item, dict):
+                    continue
+                obj = dict(item)
+                for fields_list, is_float in (
+                    (numeric_int_fields, False),
+                    (numeric_float_fields, True),
+                ):
+                    for nf in fields_list:
+                        if nf in obj and obj[nf] is not None:
+                            obj[nf] = _coerce_num(obj[nf], is_float)
+                cleaned.append(obj)
+            doc[k] = cleaned
         elif isinstance(v, list):
-            if v and isinstance(v[0], dict):
-                cleaned = []
-                for item in v:
-                    if not isinstance(item, dict):
-                        continue
-                    obj = dict(item)
-                    for fields_list, is_float in (
-                        (numeric_int_fields, False),
-                        (numeric_float_fields, True),
-                    ):
-                        for nf in fields_list:
-                            if nf in obj and obj[nf] is not None:
-                                obj[nf] = _coerce_num(obj[nf], is_float)
-                    cleaned.append(obj)
-                doc[k] = cleaned
-            else:
-                doc[k] = [x for x in v if x not in (None, "")]
+            # Handle regular lists: filter out None and empty strings
+            doc[k] = [x for x in v if x not in (None, "")]
         else:
             doc[k] = v
 
@@ -187,7 +182,6 @@ def actions_generator(rows_iter: Iterable[Dict[str, Any]]) -> Iterable[Dict[str,
     for row in rows_iter:
         try:
             _id, doc = transform_row(row)
-            print({"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc})
             yield {"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc}
         except ValueError:
             pass
