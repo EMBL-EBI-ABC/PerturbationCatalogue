@@ -56,15 +56,15 @@ def get_index_metadata(es_index_name: str) -> Tuple[str, str]:
     """
     Returns (index_prefix, key_field_name) for a given ES index name.
     """
-    if es_index_name.startswith("contrast-summary"):
+    if es_index_name.endswith("contrast-summary"):
         return "contrast", "contrast_id"
-    elif es_index_name.startswith("dataset-summary"):
+    elif es_index_name.endswith("dataset-summary"):
         return "dataset", "dataset_id"
-    elif es_index_name.startswith("target-summary"):
+    elif es_index_name.endswith("target-summary"):
         return "target", "perturbed_target_symbol"
-    elif es_index_name.startswith("gene-summary"):
+    elif es_index_name.endswith("gene-summary"):
         return "gene", "gene"
-    elif es_index_name.startswith("landing-page-summary"):
+    elif es_index_name.endswith("landing-page-summary"):
         return "landing-page", "summary"
     else:
         raise ValueError(f"Unknown index name: {es_index_name}")
