@@ -8,21 +8,6 @@ Reads rows from:
 
 Writes to ES index:
   <contrast|dataset|target|gene>-summary
-
-Env:
-  BQ_PROJECT=prj-ext-dev-pertcat-437314
-  BQ_DATASET=perturb_seq
-  BQ_TABLE=<contrast|dataset|target|gene>_summary
-
-  ES_URL=https://<your-es-endpoint>      # e.g., Elastic Cloud endpoint
-  ES_USERNAME=elastic
-  ES_PASSWORD=<password>
-
-Optional:
-  ES_INDEX=<contrast|dataset|target|gene>-summary
-  BULK_CHUNK_SIZE=2000
-  BULK_MAX_RETRIES=5
-  BULK_TIMEOUT=120
 """
 
 import os
@@ -35,14 +20,13 @@ from google.cloud import bigquery
 from elasticsearch import Elasticsearch, helpers, ApiError
 
 # ---------------- Config ----------------
-BQ_PROJECT = os.getenv("BQ_PROJECT", "prj-ext-dev-pertcat-437314")
-BQ_DATASET = os.getenv("BQ_DATASET", "perturb_seq")
-BQ_TABLE = os.getenv("BQ_TABLE", "target_summary")
+BQ_PROJECT = os.getenv("GCLOUD_PROJECT")
+BQ_DATASET = os.getenv("BQ_DATASET")
+BQ_TABLE = os.getenv("BQ_TABLE")
 
 ES_URL = (os.getenv("ES_URL") or "").rstrip("/")
-ES_INDEX = os.getenv("ES_INDEX", "target-summary-v1")
+ES_INDEX = os.getenv("ES_INDEX")
 
-ES_API_KEY = os.getenv("ES_API_KEY")
 ES_USER = os.getenv("ES_USERNAME")
 ES_PASS = os.getenv("ES_PASSWORD")
 
@@ -68,14 +52,45 @@ def make_es_client() -> Elasticsearch:
     return es
 
 
+def get_index_metadata(es_index_name: str) -> Tuple[str, str]:
+    """
+    Returns (index_prefix, key_field_name) for a given ES index name.
+    """
+    if es_index_name.startswith("contrast-summary"):
+        return "contrast", "contrast_id"
+    elif es_index_name.startswith("dataset-summary"):
+        return "dataset", "dataset_id"
+    elif es_index_name.startswith("target-summary"):
+        return "target", "perturbed_target_symbol"
+    elif es_index_name.startswith("gene-summary"):
+        return "gene", "gene"
+    elif es_index_name.startswith("landing-page-summary"):
+        return "landing-page", "summary"
+    else:
+        raise ValueError(f"Unknown index name: {es_index_name}")
+
+
 def ensure_index(es: Elasticsearch, index: str) -> None:
     try:
-        exists = es.indices.exists(index=index)
-        if exists:
+        if es.indices.exists(index=index):
             logging.info("Index %s exists.", index)
             return
+
+        logging.info("Index %s does not exist. Creating...", index)
+        prefix, _ = get_index_metadata(index)
+        mapping_file = f"{prefix}-summary_settings+mapping.json"
+
+        if not os.path.exists(mapping_file):
+            raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+
+        with open(mapping_file, "r") as f:
+            mapping_body = json.load(f)
+
+        es.indices.create(index=index, body=mapping_body)
+        logging.info("Index %s created successfully.", index)
+
     except ApiError as e:
-        logging.info(f"Elasticsearch ApiError: {e}", index)
+        logging.error(f"Elasticsearch ApiError: {e}")
         raise
 
 
@@ -95,6 +110,8 @@ def get_typed_fields(index_name: str) -> tuple[list[str], list[str], list[str]]:
     int_fields: list[str] = []
     float_fields: list[str] = []
     nested_fields: list[str] = []
+    # We use the prefix to find the mapping file
+    # e.g. index_name="dataset" -> "dataset-summary_settings+mapping.json"
     with open(f"{index_name}-summary_settings+mapping.json") as f:
         settings_mapping = json.load(f)
     for k, v in settings_mapping["mappings"]["properties"].items():
@@ -127,32 +144,18 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     Ensures numerics are numeric and nested arrays are cleaned.
     """
     doc: Dict[str, Any] = {}
-    if ES_INDEX == "contrast-summary":
-        key = "contrast_id"
-        index_name = "contrast"
-    elif ES_INDEX == "dataset-summary":
-        key = "dataset_id"
-        index_name = "dataset"
-    elif ES_INDEX == "target-summary" or ES_INDEX == "target-summary-v2":
-        key = "perturbed_target_symbol"
-        index_name = "target"
-    elif ES_INDEX == "gene-summary":
-        index_name = "gene"
-        key = "gene"
-    elif ES_INDEX == "landing-page-summary":
-        index_name = "landing-page"
-        key = "summary"
-    else:
-        raise ValueError(f"Unknown index name: {ES_INDEX}")
-    if key != "summary":
-        symbol = row.get(key)
+
+    index_prefix, key_field = get_index_metadata(ES_INDEX)
+
+    if key_field != "summary":
+        symbol = row.get(key_field)
         if not symbol:
-            raise ValueError(f"Row missing '{key}'")
+            raise ValueError(f"Row missing '{key_field}'")
     else:
         symbol = "summary"
 
     numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(
-        index_name
+        index_prefix
     )
     for k, v in row.items():
         if k in numeric_int_fields:
