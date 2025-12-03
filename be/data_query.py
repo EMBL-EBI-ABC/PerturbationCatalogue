@@ -517,6 +517,11 @@ async def search_modality(
             "dataset_library_perturbation_type": get_first_or_none(
                 es_dataset.get("library_perturbation_type_labels")
             ),
+            "dataset_license_id": get_first_or_none(es_dataset.get("license_ids")),
+            "dataset_license_label": get_first_or_none(
+                es_dataset.get("license_labels")
+            ),
+            "dataset_score_interpretation": es_dataset.get("score_interpretation"),
         }
 
         final_datasets.append({"dataset": dataset_meta, "results": results})
