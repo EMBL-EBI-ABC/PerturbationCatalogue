@@ -130,7 +130,7 @@
           }
         }
       },
-      "license_values": {
+      "license_labels": {
         "type": "keyword",
         "ignore_above": 256,
         "normalizer": "lc_ascii",
