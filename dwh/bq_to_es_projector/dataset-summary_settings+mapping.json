@@ -140,6 +140,17 @@
             "analyzer": "en"
           }
         }
+      },
+      "score_interpretation": {
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "en"
+          }
+        }
       }
     }
   }
