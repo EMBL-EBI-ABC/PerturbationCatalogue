@@ -240,19 +240,6 @@ body {
     box-shadow: 0 0 0 0.2rem rgba(0, 123, 83, 0.25);
 }
 
-/* Loading spinner */
-.dash-spinner {
-    margin: 2rem auto;
-}
-
-/* Stats display boxes */
-.stats-box {
-    background: white;
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-}
-
 .content-container {
     padding-left: 0;
     padding-right: 0;
