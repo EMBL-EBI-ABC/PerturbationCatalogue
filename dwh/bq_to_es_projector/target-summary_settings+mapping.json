@@ -26,7 +26,7 @@
       "n_sig_perturb_pairs_down": { "type": "integer" },
       "n_sig_crispr": { "type": "integer" },
       "n_mave": { "type": "integer" },
-      "licenses_tested": { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
+      "license": { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "data_modalities":             { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "tissues_tested":              { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },
       "cell_types_tested":           { "type": "keyword", "normalizer": "lc_ascii", "ignore_above": 256 },

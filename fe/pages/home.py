@@ -612,7 +612,7 @@ def _build_filter_controls(facets, selected_filters=None):
 
     # Icon mapping for facet fields
     field_icons = {
-        "licenses_tested": "bi-award-fill",
+        "license": "bi-award-fill",
         "data_modalities": "bi-database",
         "tissues_tested": "bi-universal-access-circle",
         "cell_types_tested": "bi-puzzle",
@@ -629,7 +629,7 @@ def _build_filter_controls(facets, selected_filters=None):
             continue
 
         # Custom display names for specific fields
-        if field == "licenses_tested":
+        if field == "license":
             display_name = "License"
         else:
             display_name = field.replace("_", " ").title()

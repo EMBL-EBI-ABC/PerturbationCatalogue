@@ -27,7 +27,7 @@ class FacetValue(BaseModel):
 
 
 class Facets(BaseModel):
-    licenses_tested: List[FacetValue]
+    license: List[FacetValue]
     data_modalities: List[FacetValue]
     tissues_tested: List[FacetValue]
     cell_types_tested: List[FacetValue]

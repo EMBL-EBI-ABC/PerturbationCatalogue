@@ -18,7 +18,7 @@ if not BACKEND_URL:
 
 # Facet fields to exclude from stats display
 FACET_FIELDS = [
-    "licenses_tested",
+    "license",
     "data_modalities",
     "tissues_tested",
     "cell_types_tested",

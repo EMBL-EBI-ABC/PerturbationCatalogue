@@ -58,7 +58,7 @@ else:
 
 # Facet fields
 FACET_FIELDS = [
-    "licenses_tested",
+    "license",
     "data_modalities",
     "tissues_tested",
     "cell_types_tested",
@@ -186,7 +186,7 @@ def build_aggregations() -> Dict[str, Any]:
 
 
 def parse_filters_from_params(
-    licenses_tested: Optional[str] = None,
+    license: Optional[str] = None,
     data_modalities: Optional[str] = None,
     tissues_tested: Optional[str] = None,
     cell_types_tested: Optional[str] = None,
@@ -197,8 +197,8 @@ def parse_filters_from_params(
 ) -> Optional[Dict[str, List[str]]]:
     """Parse filters from query parameters"""
     filters = {}
-    if licenses_tested:
-        filters["licenses_tested"] = [v.strip() for v in licenses_tested.split(",")]
+    if license:
+        filters["license"] = [v.strip() for v in license.split(",")]
     if data_modalities:
         filters["data_modalities"] = [v.strip() for v in data_modalities.split(",")]
     if tissues_tested:
@@ -334,8 +334,8 @@ async def search_get(
     query: Optional[str] = Query(
         None, description="Search query for perturbed_target_symbol"
     ),
-    licenses_tested: Optional[str] = Query(
-        None, description="Comma-separated list of licenses_tested"
+    license: Optional[str] = Query(
+        None, description="Comma-separated list of licenses"
     ),
     data_modalities: Optional[str] = Query(
         None, description="Comma-separated list of data_modalities"
@@ -365,7 +365,7 @@ async def search_get(
     Search endpoint (GET) with pagination, facets, filtering, and text search.
     """
     filters = parse_filters_from_params(
-        licenses_tested,
+        license,
         data_modalities,
         tissues_tested,
         cell_types_tested,

@@ -39,7 +39,7 @@ with
                 distinct developmental_stage_label ignore nulls
             ) as developmental_stages_tested,
             array_agg(distinct disease_label ignore nulls) as diseases_tested,
-            array_agg(distinct license_label ignore nulls) as licenses_tested
+            array_agg(distinct license_label ignore nulls) as license
         from base
         group by perturbed_target_symbol
     )
@@ -50,7 +50,7 @@ select
     m.n_sig_perturb_pairs_down,
     m.n_sig_crispr,
     m.n_mave,
-    m.licenses_tested,
+    m.license,
     m.data_modalities,
     m.tissues_tested,
     m.cell_types_tested,

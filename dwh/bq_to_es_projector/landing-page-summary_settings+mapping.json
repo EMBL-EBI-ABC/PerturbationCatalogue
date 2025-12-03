@@ -18,7 +18,10 @@
       "min_year": { "type": "integer" },
       "max_year": { "type": "integer" },
       "n_targets": { "type": "integer" },
-      "n_significant": { "type": "integer" },
+      "n_tissues": { "type": "integer" },
+      "n_cell_types": { "type": "integer" },
+      "n_cell_lines": { "type": "integer" },
+      "n_diseases": { "type": "integer" },
       "top_modalities": {
         "type": "nested",
         "properties": {
