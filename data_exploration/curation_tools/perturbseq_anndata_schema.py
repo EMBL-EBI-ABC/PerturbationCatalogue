@@ -23,7 +23,9 @@ class ObsSchema(DataFrameModel):
         description="Unique identifier for the dataset, follows the format <firstauthor_year>",
     )
     sample_id: Series[String] = Field(
-        nullable=False, description="Unique identifier for the sample."
+        nullable=False, 
+        coerce=True,
+        description="Unique identifier for the sample."
     )
     data_modality: Series[String] = Field(
         nullable=False,
@@ -52,10 +54,14 @@ class ObsSchema(DataFrameModel):
     perturbed_target_chromosome_encoding: Int64 = Field(
         nullable=True,
         ge=0,
+        coerce=True,
         description="Numeric encoding of the chromosome of the perturbed target. Required for data partitioning in BigQuery.",
     )
     perturbed_target_number: Series[Int64] = Field(
-        nullable=False, ge=0, description="Number of perturbed targets in the samples."
+        nullable=False, 
+        ge=0, 
+        coerce=True,
+        description="Number of perturbed targets in the samples."
     )
     perturbed_target_ensg: Series[String] = Field(
         nullable=True, description="Ensembl gene ID(s) of the perturbed target."
