@@ -94,6 +94,9 @@ ELASTIC_FIELD_MAPPING = {
     "dataset_developmental_stage": "developmental_stage_labels",
     "dataset_disease": "disease_labels",
     "dataset_library_perturbation_type": "library_perturbation_type_labels",
+    "dataset_license_id": "license_ids",
+    "dataset_license_label": "license_labels",
+    "dataset_score_interpretation": "score_interpretation",
 }
 
 # --- Pydantic Models for API Response ---
