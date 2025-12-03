@@ -1,18 +1,14 @@
 # Perturbation Catalogue back-end
 
 ## Environment variables
+Before running either of the deployment options below, run `dev_secrets`.
 
-For deploying any of the options below, set the following environmental variables:
-- Elastic
-  - ES_URL
-  - ES_USERNAME
-  - ES_PASSWORD
-- Postgres
-  - PG_HOST
-  - PG_PORT
-  - PG_USER
-  - PG_PASSWORD
-  - PG_DB
+If you are running locally and as such connecting to Postges externally, allow connections from your IP:
+* https://console.cloud.google.com/sql/instances
+* Go to instance
+* Connections
+* Networking
+* Authorised networks → Use my IP → Save
 
 ## Local deployment
 

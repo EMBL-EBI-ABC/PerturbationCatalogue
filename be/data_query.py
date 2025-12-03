@@ -94,6 +94,9 @@ ELASTIC_FIELD_MAPPING = {
     "dataset_developmental_stage": "developmental_stage_labels",
     "dataset_disease": "disease_labels",
     "dataset_library_perturbation_type": "library_perturbation_type_labels",
+    "dataset_license_id": "license_ids",
+    "dataset_license_label": "license_labels",
+    "dataset_score_interpretation": "score_interpretation",
 }
 
 # --- Pydantic Models for API Response ---
@@ -154,6 +157,11 @@ class DatasetMetadata(BaseModel):
     disease: Optional[str] = Field(None, alias="dataset_disease")
     library_perturbation_type: Optional[str] = Field(
         None, alias="dataset_library_perturbation_type"
+    )
+    license_id: Optional[str] = Field(None, alias="dataset_license_id")
+    license_label: Optional[str] = Field(None, alias="dataset_license_label")
+    score_interpretation: Optional[str] = Field(
+        None, alias="dataset_score_interpretation"
     )
 
 
@@ -220,6 +228,9 @@ def validate_query_params(
         "dataset_developmental_stage",
         "dataset_disease",
         "dataset_library_perturbation_type",
+        "dataset_license_id",
+        "dataset_license_label",
+        "dataset_score_interpretation",
         "sort",
         "dataset_limit",
         "dataset_offset",
@@ -394,7 +405,7 @@ async def search_modality(
         "aggs": {
             field: {"terms": {"field": es_field, "size": 100}}
             for field, es_field in ELASTIC_FIELD_MAPPING.items()
-            if field != "dataset_id"
+            if field not in ("dataset_id", "dataset_score_interpretation")
         },
     }
 
@@ -409,7 +420,7 @@ async def search_modality(
             ]
 
     es_result = await es_client.search(
-        index="dataset-summary-v2",
+        index="dataset-summary-v3",
         body=es_query_body,
         size=10000,  # Get all matching datasets to apply pagination later
     )
@@ -511,6 +522,11 @@ async def search_modality(
             "dataset_library_perturbation_type": get_first_or_none(
                 es_dataset.get("library_perturbation_type_labels")
             ),
+            "dataset_license_id": get_first_or_none(es_dataset.get("license_ids")),
+            "dataset_license_label": get_first_or_none(
+                es_dataset.get("license_labels")
+            ),
+            "dataset_score_interpretation": es_dataset.get("score_interpretation"),
         }
 
         final_datasets.append({"dataset": dataset_meta, "results": results})
