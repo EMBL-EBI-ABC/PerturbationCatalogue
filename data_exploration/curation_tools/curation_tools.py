@@ -959,6 +959,7 @@ class CuratedDataset:
         conv_df = df[[input_column]].copy()
         conv_df_index = conv_df.index.copy()
         conv_list = conv_df[input_column].unique().tolist()
+        conv_list = [e for e in conv_list if e is not None]
 
         # Explode the column if it contains multiple entries
         if multiple_entries:
@@ -987,6 +988,9 @@ class CuratedDataset:
             matched_df = self.merge_gene_ont_symbol(
                 conv_list=conv_list, gene_ont=self.gene_ont
             )
+
+        # drop nas
+        matched_df = matched_df.dropna(subset=["original_input"])
 
         # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
@@ -1769,8 +1773,11 @@ class CuratedDataset:
         # Fill in missing mappings with fetched latest Ensembl IDs
         if missing_ensg:
             mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)] = (
-                missing_ensg_df.values
+                mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)].merge(
+                    missing_ensg_df, how="left", on="original_input"
+                )
             )
+
 
         print(
             f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
