@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 
@@ -154,6 +154,169 @@ class DatasetSearchResponse(BaseModel):
     results: List[Result]
 
 
+# --- Dependency Classes for Query Parameters ---
+
+
+class CommonModalitySearchParams:
+    def __init__(
+        self,
+        dataset_metadata: Optional[str] = Query(
+            None, description="Search term for dataset metadata"
+        ),
+        dataset_tissue: Optional[str] = Query(None, description="Filter by tissue"),
+        dataset_cell_type: Optional[str] = Query(
+            None, description="Filter by cell type"
+        ),
+        dataset_cell_line: Optional[str] = Query(
+            None, description="Filter by cell line"
+        ),
+        dataset_sex: Optional[str] = Query(None, description="Filter by sex"),
+        dataset_developmental_stage: Optional[str] = Query(
+            None, description="Filter by developmental stage"
+        ),
+        dataset_disease: Optional[str] = Query(None, description="Filter by disease"),
+        dataset_library_perturbation_type: Optional[str] = Query(
+            None, description="Filter by library perturbation type"
+        ),
+        dataset_license_id: Optional[str] = Query(
+            None, description="Filter by license ID"
+        ),
+        dataset_license_label: Optional[str] = Query(
+            None, description="Filter by license label"
+        ),
+        dataset_score_interpretation: Optional[str] = Query(
+            None, description="Filter by score interpretation"
+        ),
+        dataset_limit: int = Query(10, description="Number of datasets to return"),
+        dataset_offset: int = Query(0, description="Offset for datasets"),
+        rows_per_dataset_limit: int = Query(
+            10, description="Number of rows per dataset to return"
+        ),
+        sort: Optional[str] = Query(
+            None, description="Sort order (e.g., 'field:asc,other:desc')"
+        ),
+    ):
+        self.dataset_metadata = dataset_metadata
+        self.dataset_tissue = dataset_tissue
+        self.dataset_cell_type = dataset_cell_type
+        self.dataset_cell_line = dataset_cell_line
+        self.dataset_sex = dataset_sex
+        self.dataset_developmental_stage = dataset_developmental_stage
+        self.dataset_disease = dataset_disease
+        self.dataset_library_perturbation_type = dataset_library_perturbation_type
+        self.dataset_license_id = dataset_license_id
+        self.dataset_license_label = dataset_license_label
+        self.dataset_score_interpretation = dataset_score_interpretation
+        self.dataset_limit = dataset_limit
+        self.dataset_offset = dataset_offset
+        self.rows_per_dataset_limit = rows_per_dataset_limit
+        self.sort = sort
+
+    def dict(self):
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+class CommonDatasetSearchParams:
+    def __init__(
+        self,
+        limit: int = Query(50, description="Number of rows to return"),
+        offset: int = Query(0, description="Offset for rows"),
+        sort: Optional[str] = Query(
+            None, description="Sort order (e.g., 'field:asc,other:desc')"
+        ),
+    ):
+        self.limit = limit
+        self.offset = offset
+        self.sort = sort
+
+    def dict(self):
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+class MaveParams:
+    def __init__(
+        self,
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name"
+        ),
+        perturbation_name: Optional[str] = Query(
+            None, description="Filter by perturbation name"
+        ),
+        effect_score_name: Optional[str] = Query(
+            None, description="Filter by effect score name"
+        ),
+        effect_score_value: Optional[str] = Query(
+            None,
+            description="Filter by effect score value (supports ranges e.g., '1_10', '1_', '_10')",
+        ),
+    ):
+        self.perturbation_gene_name = perturbation_gene_name
+        self.perturbation_name = perturbation_name
+        self.effect_score_name = effect_score_name
+        self.effect_score_value = effect_score_value
+
+    def dict(self):
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+class CrisprScreenParams:
+    def __init__(
+        self,
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name"
+        ),
+        effect_score_name: Optional[str] = Query(
+            None, description="Filter by effect score name"
+        ),
+        effect_score_value: Optional[str] = Query(
+            None, description="Filter by effect score value (supports ranges)"
+        ),
+        effect_significant: Optional[str] = Query(
+            None, description="Filter by effect significant (true/false)"
+        ),
+        effect_significance_criteria: Optional[str] = Query(
+            None, description="Filter by effect significance criteria"
+        ),
+    ):
+        self.perturbation_gene_name = perturbation_gene_name
+        self.effect_score_name = effect_score_name
+        self.effect_score_value = effect_score_value
+        self.effect_significant = effect_significant
+        self.effect_significance_criteria = effect_significance_criteria
+
+    def dict(self):
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+class PerturbSeqParams:
+    def __init__(
+        self,
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name"
+        ),
+        effect_gene_name: Optional[str] = Query(
+            None, description="Filter by effect gene name"
+        ),
+        effect_log2fc: Optional[str] = Query(
+            None, description="Filter by effect log2fc (supports ranges)"
+        ),
+        effect_padj: Optional[str] = Query(
+            None, description="Filter by effect padj (supports ranges)"
+        ),
+        effect_base_mean: Optional[str] = Query(
+            None, description="Filter by effect base mean (supports ranges)"
+        ),
+    ):
+        self.perturbation_gene_name = perturbation_gene_name
+        self.effect_gene_name = effect_gene_name
+        self.effect_log2fc = effect_log2fc
+        self.effect_padj = effect_padj
+        self.effect_base_mean = effect_base_mean
+
+    def dict(self):
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
 # --- Helper Functions ---
 
 
@@ -180,7 +343,7 @@ def get_api_to_db_mapping(modality: MODALITIES) -> Dict[str, str]:
 
 
 def validate_query_params(
-    request: Request, modality: MODALITIES, dataset_id: Optional[str] = None
+    query_params: Dict[str, Any], modality: MODALITIES, dataset_id: Optional[str] = None
 ):
     """Validates that all query params are known for the endpoint."""
     valid_params = {
@@ -199,6 +362,8 @@ def validate_query_params(
         "dataset_limit",
         "dataset_offset",
         "rows_per_dataset_limit",
+        "limit",
+        "offset",
     }
     if dataset_id:
         valid_params = {"sort", "limit", "offset"}
@@ -207,7 +372,7 @@ def validate_query_params(
     pg_mapping = get_api_to_db_mapping(modality)
     valid_params.update(pg_mapping.keys())
 
-    for param in request.query_params:
+    for param in query_params:
         if param not in valid_params:
             raise HTTPException(
                 status_code=400, detail=f"Invalid query parameter: {param}"
@@ -288,24 +453,20 @@ async def enrich_perturb_seq_rows(
     return rows
 
 
-# --- API Endpoints ---
+# --- Shared Implementation Functions ---
 
 
-@router.get(
-    "/v1/{modality}/search",
-    response_model=ModalitySearchResponse,
-    response_model_by_alias=False,
-)
-async def search_modality(
-    request: Request,
+async def _search_modality_impl(
     modality: MODALITIES,
-    dataset_limit: int = 10,
-    dataset_offset: int = 0,
-    rows_per_dataset_limit: int = 10,
-    sort: Optional[str] = None,
+    query_params: Dict[str, Any],
 ):
-    """Search across all datasets within a modality."""
-    validate_query_params(request, modality)
+    """Search across all datasets within a modality (Shared Implementation)."""
+    dataset_limit = query_params.get("dataset_limit", 10)
+    dataset_offset = query_params.get("dataset_offset", 0)
+    rows_per_dataset_limit = query_params.get("rows_per_dataset_limit", 10)
+    sort = query_params.get("sort")
+
+    validate_query_params(query_params, modality)
 
     pg_conn = db_pools["pg"]
     es_client = db_pools["es"]
@@ -317,7 +478,7 @@ async def search_modality(
     pg_filters = []
     pg_params: List[Any] = []
 
-    for key, value in request.query_params.items():
+    for key, value in query_params.items():
         if key in api_to_db:
             db_field = api_to_db[key]
             # Simple string filter
@@ -374,7 +535,7 @@ async def search_modality(
     }
 
     # Add dataset_* filters to ES query
-    for key, value in request.query_params.items():
+    for key, value in query_params.items():
         if key in ELASTIC_FIELD_MAPPING:
             es_field = ELASTIC_FIELD_MAPPING[key]
             es_query_body["query"]["bool"]["filter"].append({"term": {es_field: value}})
@@ -502,21 +663,17 @@ async def search_modality(
     }
 
 
-@router.get(
-    "/v1/{modality}/{dataset_id}/search",
-    response_model=DatasetSearchResponse,
-    response_model_by_alias=False,
-)
-async def search_dataset(
-    request: Request,
+async def _search_dataset_impl(
     modality: MODALITIES,
     dataset_id: str,
-    limit: int = 50,
-    offset: int = 0,
-    sort: Optional[str] = None,
+    query_params: Dict[str, Any],
 ):
-    """Search within a specific dataset in a modality."""
-    validate_query_params(request, modality, dataset_id)
+    """Search within a specific dataset in a modality (Shared Implementation)."""
+    limit = query_params.get("limit", 50)
+    offset = query_params.get("offset", 0)
+    sort = query_params.get("sort")
+
+    validate_query_params(query_params, modality, dataset_id)
 
     pg_conn = db_pools["pg"]
     pg_table = PG_TABLES[modality]
@@ -526,7 +683,7 @@ async def search_dataset(
     pg_filters = [f"dataset_id = ${1}"]
     pg_params: List[Any] = [dataset_id]
 
-    for key, value in request.query_params.items():
+    for key, value in query_params.items():
         if key in api_to_db:
             db_field = api_to_db[key]
             if isinstance(value, str) and "_" not in value:
@@ -607,3 +764,93 @@ async def search_dataset(
         "limit": limit,
         "results": results,
     }
+
+
+# --- API Endpoints ---
+
+
+@router.get(
+    "/v1/mave/search",
+    response_model=ModalitySearchResponse,
+    response_model_by_alias=False,
+)
+async def search_mave(
+    common: CommonModalitySearchParams = Depends(),
+    modality_params: MaveParams = Depends(),
+):
+    """Search across all MAVE datasets."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_modality_impl("mave", params)
+
+
+@router.get(
+    "/v1/crispr-screen/search",
+    response_model=ModalitySearchResponse,
+    response_model_by_alias=False,
+)
+async def search_crispr_screen(
+    common: CommonModalitySearchParams = Depends(),
+    modality_params: CrisprScreenParams = Depends(),
+):
+    """Search across all CRISPR Screen datasets."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_modality_impl("crispr-screen", params)
+
+
+@router.get(
+    "/v1/perturb-seq/search",
+    response_model=ModalitySearchResponse,
+    response_model_by_alias=False,
+)
+async def search_perturb_seq(
+    common: CommonModalitySearchParams = Depends(),
+    modality_params: PerturbSeqParams = Depends(),
+):
+    """Search across all Perturb-seq datasets."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_modality_impl("perturb-seq", params)
+
+
+@router.get(
+    "/v1/mave/{dataset_id}/search",
+    response_model=DatasetSearchResponse,
+    response_model_by_alias=False,
+)
+async def search_mave_dataset(
+    dataset_id: str,
+    common: CommonDatasetSearchParams = Depends(),
+    modality_params: MaveParams = Depends(),
+):
+    """Search within a specific MAVE dataset."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_dataset_impl("mave", dataset_id, params)
+
+
+@router.get(
+    "/v1/crispr-screen/{dataset_id}/search",
+    response_model=DatasetSearchResponse,
+    response_model_by_alias=False,
+)
+async def search_crispr_screen_dataset(
+    dataset_id: str,
+    common: CommonDatasetSearchParams = Depends(),
+    modality_params: CrisprScreenParams = Depends(),
+):
+    """Search within a specific CRISPR Screen dataset."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_dataset_impl("crispr-screen", dataset_id, params)
+
+
+@router.get(
+    "/v1/perturb-seq/{dataset_id}/search",
+    response_model=DatasetSearchResponse,
+    response_model_by_alias=False,
+)
+async def search_perturb_seq_dataset(
+    dataset_id: str,
+    common: CommonDatasetSearchParams = Depends(),
+    modality_params: PerturbSeqParams = Depends(),
+):
+    """Search within a specific Perturb-seq dataset."""
+    params = {**common.dict(), **modality_params.dict()}
+    return await _search_dataset_impl("perturb-seq", dataset_id, params)
