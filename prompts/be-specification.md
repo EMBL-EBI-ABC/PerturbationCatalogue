@@ -36,7 +36,7 @@ Data is split between Elastic (dataset metadata) and Postgres (perturbation/effe
 Data for each modality is in a separate table within the `$PG_DB` database.
 
 #### 2.3.1. `perturb-seq`
-*   **Table**: `perturb_seq_2`
+*   **Table**: `perturb_seq_data`
 *   **Column Mapping**:
     *   `perturbed_target_symbol` -> `perturbation_gene_name`
     *   `gene` -> `effect_gene_name`
