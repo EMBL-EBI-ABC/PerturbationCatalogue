@@ -66,13 +66,12 @@ Run `psql $PG_CONN` and create the indexes.
 
 ## Perturb-Seq
 ```sql
-\timing on
 CREATE INDEX CONCURRENTLY idx_perturbation
   ON public.perturb_seq_data (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
 CREATE INDEX CONCURRENTLY idx_phenotype
   ON public.perturb_seq_data (gene, dataset_id, padj, basemean, log2foldchange);
 CREATE INDEX CONCURRENTLY idx_perturbation_phenotype
-  ON public.perturb_seq_data (perturbed_target_symbol, gene, dataset_id, padj, basemean, log2foldchange)
+  ON public.perturb_seq_data (perturbed_target_symbol, gene, dataset_id, padj, basemean, log2foldchange);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
@@ -100,7 +99,6 @@ GROUP BY dataset_id, gene;
 
 ## CRISPR
 ```sql
-\timing on
 CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
   ON public.crispr_data (dataset_id);
 CREATE INDEX CONCURRENTLY idx_crispr_data_target
