@@ -977,16 +977,23 @@ class CuratedDataset:
             self.remove_version_from_genes(
                 slot=slot, column=input_column, sep=version_sep
             )
+        
+        # filter out all non-standard chromosome names from gene_ont
+        gene_ont = self.gene_ont[
+            self.gene_ont["chromosome_name"].isin(
+                [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
+            )
+        ].copy()
 
         # map the ENSG or gene symbols to the gene ontology
         if input_column_type == "ensembl_gene_id":
             matched_df = self.merge_gene_ont_ensg(
-                conv_list=conv_list, gene_ont=self.gene_ont
+                conv_list=conv_list, gene_ont=gene_ont
             )
 
         elif input_column_type == "gene_symbol":
             matched_df = self.merge_gene_ont_symbol(
-                conv_list=conv_list, gene_ont=self.gene_ont
+                conv_list=conv_list, gene_ont=gene_ont
             )
 
         # drop nas
