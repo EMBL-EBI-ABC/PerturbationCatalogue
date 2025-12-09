@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict, Any
-from elasticsearch import Elasticsearch
+from elasticsearch import AsyncElasticsearch
+import asyncpg
 import os
 from dotenv import load_dotenv
 import re
 from urllib.parse import urlparse
+from contextlib import asynccontextmanager
+from pydantic_settings import BaseSettings
 
 try:
     from .models import (  # type: ignore
@@ -25,11 +28,46 @@ except ImportError:  # pragma: no cover - fallback for running as a script
     )
 
 # Import data query APIs.
-from data_query import lifespan as data_query_lifespan, router as data_query_router
+from data_query import router as data_query_router, db_pools
 
 load_dotenv()
 
-app = FastAPI(title="Search API", version="1.0.0", lifespan=data_query_lifespan)
+
+# Configuration
+class Settings(BaseSettings):
+    pg_host: str
+    pg_port: int
+    pg_user: str
+    pg_password: str
+    pg_db: str
+    es_url: str
+    es_username: str
+    es_password: str
+
+
+settings = Settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize connections
+    db_pools["pg"] = await asyncpg.create_pool(
+        user=settings.pg_user,
+        password=settings.pg_password,
+        database=settings.pg_db,
+        host=settings.pg_host,
+        port=settings.pg_port,
+    )
+    db_pools["es"] = AsyncElasticsearch(
+        [settings.es_url], basic_auth=(settings.es_username, settings.es_password)
+    )
+    yield
+    # Shutdown: Close connections
+    await db_pools["pg"].close()
+    await db_pools["es"].close()
+
+
+app = FastAPI(title="Search API", version="1.0.0", lifespan=lifespan)
 
 # CORS middleware
 app.add_middleware(
@@ -41,19 +79,6 @@ app.add_middleware(
 )
 
 app.include_router(data_query_router)
-ES_URL = os.getenv("ES_URL")
-ES_USERNAME = os.getenv("ES_USERNAME")
-ES_PASSWORD = os.getenv("ES_PASSWORD")
-
-
-es = None
-if ES_URL and ES_USERNAME and ES_PASSWORD:
-    es_config = {"hosts": [ES_URL], "basic_auth": (ES_USERNAME, ES_PASSWORD)}
-    es = Elasticsearch(**es_config)
-else:
-    print(
-        "WARNING: Missing one or more Elasticsearch environment variables (ES_URL, ES_USERNAME, ES_PASSWORD). Elasticsearch client not created."
-    )
 
 
 # Facet fields
@@ -232,16 +257,11 @@ async def perform_search(
 
     # Execute search
     try:
-        response = es.search(
+        response = await db_pools["es"].search(
             index="target", query=es_query, aggs=aggs, from_=from_, size=size
         )
     except Exception as e:
         error_detail = str(e)
-        safe_config = {
-            k: v for k, v in es_config.items() if k not in ["basic_auth", "api_key"]
-        }
-        safe_config["has_auth"] = "basic_auth" in es_config or "api_key" in es_config
-        print(f"Elasticsearch config: {safe_config}")
         print(f"Elasticsearch error: {error_detail}")
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {error_detail}"
@@ -290,7 +310,7 @@ async def health_check():
 
     # Check Elasticsearch
     try:
-        if es.ping():
+        if await db_pools["es"].ping():
             es_status = "connected"
         else:
             es_status = "not_connected"
@@ -304,7 +324,7 @@ async def health_check():
         "status": overall_status,
         "elasticsearch": {
             "status": es_status,
-            "host": urlparse(ES_URL).hostname,
+            "host": urlparse(settings.es_url).hostname,
             "error": es_error,
         },
     }
@@ -316,7 +336,7 @@ async def get_landing_page_summary():
     Retrieve the landing page summary document from Elasticsearch.
     """
     try:
-        response = es.get(index="summary", id="summary")
+        response = await db_pools["es"].get(index="summary", id="summary")
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {exc}"

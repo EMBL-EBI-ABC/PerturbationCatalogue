@@ -1,50 +1,14 @@
 import os
 import re
-from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
-from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 
-
-# --- Configuration ---
-class Settings(BaseSettings):
-    pg_host: str
-    pg_port: int
-    pg_user: str
-    pg_password: str
-    pg_db: str
-    es_url: str
-    es_username: str
-    es_password: str
-
-
-settings = Settings()
 
 # --- Database Connection Management ---
 db_pools: Dict[str, Any] = {}
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize connections
-    db_pools["pg"] = await asyncpg.create_pool(
-        user=settings.pg_user,
-        password=settings.pg_password,
-        database=settings.pg_db,
-        host=settings.pg_host,
-        port=settings.pg_port,
-    )
-    db_pools["es"] = AsyncElasticsearch(
-        [settings.es_url], basic_auth=(settings.es_username, settings.es_password)
-    )
-    yield
-    # Shutdown: Close connections
-    await db_pools["pg"].close()
-    await db_pools["es"].close()
 
 
 router = APIRouter()
