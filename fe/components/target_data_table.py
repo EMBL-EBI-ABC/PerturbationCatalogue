@@ -29,6 +29,7 @@ DATASET_METADATA_FIELDS = [
     ("dataset_disease", "Disease"),
     ("dataset_sex", "Sex"),
     ("dataset_developmental_stage", "Developmental stage"),
+    ("dataset_score_interpretation", "Score interpretation"),
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
@@ -42,6 +43,7 @@ DATASET_FIELD_FALLBACKS = {
     "dataset_disease": ["disease"],
     "dataset_sex": ["sex"],
     "dataset_developmental_stage": ["developmental_stage"],
+    "dataset_score_interpretation": ["score_interpretation"],
 }
 
 GREEN = "#2acc06"
@@ -57,6 +59,7 @@ METADATA_FIELD_COLORS = {
     "Disease": "danger",
     "Sex": "success",
     "Developmental stage": "dark",
+    "Score interpretation": "light",
 }
 
 
