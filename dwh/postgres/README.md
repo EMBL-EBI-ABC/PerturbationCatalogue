@@ -20,6 +20,7 @@ Change the settings:
 
 ## 1. Create a Google Cloud VM
 ```bash
+dev_secrets
 gcloud compute instances create bq-to-pg-projector \
     --project=${GCLOUD_PROJECT} \
     --zone=${GCLOUD_ZONE} \
@@ -30,15 +31,16 @@ gcloud compute instances create bq-to-pg-projector \
 
 ## 2. Copy files and SSH into the VM
 ```bash
-gcloud compute scp --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE} postgres/requirements.txt postgres/bq_to_postgres.py bq-to-pg-projector:~
+gcloud compute scp --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE} dwh/postgres/requirements.txt dwh/postgres/bq_to_postgres.py bq-to-pg-projector:~
 gcloud compute ssh bq-to-pg-projector --project=${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
 ## 3. Create permanent session
-Run `screen` so that the commands above can run for a long time and will not be interrupted by a connection failure.
+Run `screen` so that the commands above can run for a long time and will not be interrupted by a connection failure. (If you are getting a terminfo issue, which can happen with newer terminals such as `foot`, run `export TERM=xterm-256color` before running `screen`.)
 
 ## 4. Install dependencies
 ```bash
+sudo apt update
 sudo apt install -y python3-pip python3-venv postgresql-client
 python3 -m venv env
 source env/bin/activate
@@ -59,30 +61,48 @@ python3 bq_to_postgres.py \
     --gcs-bucket ${GCLOUD_TMP_BUCKET}
 ```
 
-## 6. Remove the VM
-Once the ingestion is complete (including any index creation as described below), remove the instance:
-```bash
-gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
-```
-
-# Create indexes
-After running the command above, run `psql $PG_CONN` and create the indexes.
+## 6. Create indexes and summary views (only when the table is fully ingested)
+Run `psql $PG_CONN` and create the indexes.
 
 ## Perturb-Seq
 ```sql
-\timing on
 CREATE INDEX CONCURRENTLY idx_perturbation
-  ON perturb_seq (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
-
+  ON public.perturb_seq_data (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
 CREATE INDEX CONCURRENTLY idx_phenotype
-  ON perturb_seq (gene, dataset_id, padj, basemean, log2foldchange);
+  ON public.perturb_seq_data (gene, dataset_id, padj, basemean, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_perturbation_phenotype
+  ON public.perturb_seq_data (perturbed_target_symbol, gene, dataset_id, padj, basemean, log2foldchange);
+
+CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
+SELECT
+    dataset_id,
+    perturbed_target_symbol,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+FROM public.perturb_seq_data
+WHERE padj <= 0.05
+GROUP BY dataset_id, perturbed_target_symbol;
+
+CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
+SELECT
+    dataset_id,
+    gene,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+    AVG(basemean) AS base_mean
+FROM public.perturb_seq_data
+WHERE padj <= 0.05
+GROUP BY dataset_id, gene;
 ```
 
 ## CRISPR
 ```sql
-\timing on
-CREATE INDEX idx_crispr_data_dataset ON public.crispr_data (dataset_id);
-CREATE INDEX idx_crispr_data_target ON public.crispr_data (perturbed_target_symbol);
+CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
+  ON public.crispr_data (dataset_id);
+CREATE INDEX CONCURRENTLY idx_crispr_data_target
+  ON public.crispr_data (perturbed_target_symbol);
 ```
 
 ## Monitoring
@@ -101,6 +121,12 @@ FROM pg_stat_progress_create_index p
 JOIN pg_class c ON p.relid = c.oid
 LEFT JOIN pg_class i ON p.index_relid = i.oid;
 \watch 10
+```
+
+## 7. Remove the VM
+Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
+```bash
+gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
 # Migrate tables and indexes from development to production

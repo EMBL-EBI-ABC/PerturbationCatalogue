@@ -17,7 +17,7 @@ router = APIRouter()
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
 PG_TABLES = {
-    "perturb-seq": "perturb_seq_2",
+    "perturb-seq": "perturb_seq_data",
     "crispr-screen": "crispr_data",
     "mave": "mave_data",
 }

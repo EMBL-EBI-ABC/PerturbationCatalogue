@@ -30,3 +30,4 @@ These commands should be run from this directory, `bq_dbt`.
 - Only listed models: `dbt run --select target_summary gene_summary`
 - A specific model and its upstream dependencies: `dbt run --select +dataset_summary`
 - A specific model and its upstream dependencies with full refresh: `dbt run --full-refresh --select +dataset_summary`. For example, this is needed if the schema has changed and all data needs to be reingested, not only the new rows.
+- Full refresh of all models (non-incremental): `dbt run --full-refresh`
