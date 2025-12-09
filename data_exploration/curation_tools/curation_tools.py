@@ -2304,3 +2304,125 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
 
     return mapping_dict
+
+
+def get_synonyms(ensembl_data: dict = None) -> pd.DataFrame:
+    synonyms_dict = {}
+    for gene in ensembl_data["genes"]:
+        xrefs = gene.get("xrefs")
+        for e in xrefs:
+            synonyms = e.get("synonyms")
+            if synonyms:
+                synonyms_dict[gene.get("id")] = [synonyms]
+                continue
+
+    return pd.DataFrame.from_dict(
+        synonyms_dict, orient="index", columns=["synonyms"]
+    ).reset_index(names="id")
+
+
+def generate_gene_ont(
+    json_url: str = "https://ftp.ensembl.org/pub/current/json/homo_sapiens/homo_sapiens.json",
+    json_path: str = "data/homo_sapiens.json",
+    save_parquet_path: str = "data/gene_ont.parquet",
+):
+
+    download_file(url=json_url, dest_path=json_path)
+
+    # load the file
+    print(f"Reading the json file: {json_path}")
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # create the df
+    colnames = [
+        "id",
+        "name",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "GeneCards",
+        "EntrezGene",
+        "HGNC",
+        "EMBL",
+        "seq_region_name",
+        "start",
+        "end",
+        "strand",
+        "biotype",
+        "genome",
+        "description",
+    ]
+    main_df = pd.DataFrame.from_dict(data["genes"])[colnames]
+
+    # get synonyms
+    synonyms_df = get_synonyms(data)
+
+    # merge synonyms
+    main_df = main_df.merge(synonyms_df, how="left", on="id")
+
+    # rename the columns
+    main_df = main_df.rename(
+        columns={
+            "id": "ensembl_gene_id",
+            "name": "gene_symbol",
+            "seq_region_name": "chromosome_name",
+        }
+    )
+
+    # create a symbol_syn column
+    main_df["symbol_syn"] = main_df["gene_symbol"].copy()
+
+    # replace nan values with [] in synonym columns
+    syn_cols = [
+        "symbol_syn",
+        "synonyms",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "EMBL",
+        "HGNC",
+        "EntrezGene",
+        "GeneCards",
+    ]
+    main_df[syn_cols] = main_df[syn_cols].map(
+        lambda x: [] if (not isinstance(x, list) and pd.isna(x)) else x
+    )
+
+    # add gene_coord column
+    main_df["gene_coord"] = main_df.apply(
+        lambda x: f"chr{x['chromosome_name']}:{x['start']}-{x['end']};{x['strand']}",
+        axis=1,
+    )
+
+    # pivot the df to create a long form df with a single "synonym" column
+    main_df_long = main_df.melt(
+        id_vars=[
+            "ensembl_gene_id",
+            "gene_symbol",
+            "chromosome_name",
+            "gene_coord",
+            "biotype",
+            "description",
+        ],
+        value_vars=syn_cols,
+        var_name="synonym_type",
+        value_name="synonym",
+    )
+    main_df_long = main_df_long.explode("synonym")
+
+    # remove dashes and add as additional synonyms
+    dash_long = main_df_long[main_df_long["synonym"].str.contains("-", na=False)]
+    dash_long["synonym"] = dash_long["synonym"].str.replace("-", "")
+    main_df_long = pd.concat([main_df_long, dash_long])
+
+    # make symbols and synonyms upper case
+    main_df_long["synonym"] = main_df_long["synonym"].str.upper()
+    main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
+
+    # save as parquet
+    if save_parquet_path:
+        os.makedirs(os.path.dirname(save_parquet_path), exist_ok=True)
+        print(f"Saving to {save_parquet_path}")
+        main_df_long.to_parquet(save_parquet_path)
+        print("Done!")
+
+    return
