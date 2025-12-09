@@ -2417,6 +2417,12 @@ def generate_gene_ont(
     # make symbols and synonyms upper case
     main_df_long["synonym"] = main_df_long["synonym"].str.upper()
     main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
+    
+    # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+    control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive", "control_guideonly", "control_casonly"]
+    for term in control_terms:
+        control_row = {col: term for col in main_df_long.columns}
+        main_df_long = pd.concat([main_df_long, pd.DataFrame([control_row])], ignore_index=True)
 
     # save as parquet
     if save_parquet_path:
