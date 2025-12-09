@@ -59,7 +59,7 @@ METADATA_FIELD_COLORS = {
     "Disease": "danger",
     "Sex": "success",
     "Developmental stage": "dark",
-    "Score interpretation": "light",
+    "Score interpretation": "secondary",
 }
 
 
