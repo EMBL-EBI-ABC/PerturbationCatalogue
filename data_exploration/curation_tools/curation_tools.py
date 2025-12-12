@@ -743,28 +743,27 @@ class CuratedDataset:
         else:
             print(f"Column {symbol_column} not found in adata.obs")
 
-    def remove_version_from_genes(self, slot, column, sep="."):
+    @staticmethod
+    def remove_version_from_genes(df, column, sep="."):
         """
         Remove version numbers from gene symbols or ENSG IDs in a column of adata.var or adata.obs.
 
         Args:
-            slot: Which AnnData attribute to use: "var" or "obs".
+            df: DataFrame with gene symbols.
             column: Name of the column containing gene symbols/ENSG IDs.
             sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".").
         """
-        if slot not in ["var", "obs"]:
-            raise ValueError('slot must be either "var" or "obs"')
-        df = getattr(self.adata, slot)
+
         if column not in df.columns:
-            raise ValueError(f"Column {column} not found in adata.{slot}")
+            raise ValueError(f"Column {column} not found in the df")
         if df[column].empty:
-            raise ValueError(f"Column {column} is empty in adata.{slot}")
+            raise ValueError(f"Column {column} is empty in the df")
 
         df[column] = df[column].str.split(sep).str[0]
+        
+        print(f"Removed version numbers from {column}")
 
-        setattr(self.adata, slot, df)
-
-        print(f"Removed version numbers from {column} in adata.{slot}")
+        return df
 
     def count_entries(
         self,
@@ -816,6 +815,24 @@ class CuratedDataset:
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
         )
 
+    @staticmethod
+    def get_chebi_compound(compound_name):
+        """
+        Search for a compound in ChEBI and return its standardized name and ChEBI ID.
+        Parameters:
+            compound_name (str): The name of the compound to search for.
+        Returns:
+            dict: A dictionary containing the response from ChEBI.
+        """
+        
+        r = requests.get(f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1")
+        
+        if r.ok:
+            return r.json().get('results')[0].get('_source')
+        else:
+            print(f"Error: {r.status_code} - {r.text}")
+            return None
+
     def standardize_compounds(self, column=None, overwrite=False):
         """
         Standardize compound names in a DataFrame column using ChEBI.
@@ -843,62 +860,38 @@ class CuratedDataset:
         search_results_df = pd.DataFrame(
             columns=["original_name", "treatment_label", "treatment_id"]
         )
+        mapped_compounds = []
+        unmapped_compounds = []
 
         # Iterate over each compound name
         for compound_name in compound_names:
-
             # Search for the compound in ChEBI
-            chebi_results = search(compound_name)
-
-            # Iterate over the search results
-            for chebi_entity in chebi_results:
-                for chebi_name_entry in chebi_entity.get_names():
-                    standardized_name = chebi_name_entry.get_name()
-                    # Check if the standardized name matches the input compound name (case-insensitive)
-                    if standardized_name.lower() == compound_name.lower():
-                        # Append the result to the list
-                        compound_result_df = pd.DataFrame(
-                            {
-                                "original_name": compound_name,  # Original input compound name
-                                "treatment_label": chebi_entity.get_name(),  # Standardized compound name
-                                "treatment_id": chebi_entity.get_id(),  # ChEBI ID
-                            },
-                            index=[0],
-                        )
-                        search_results_df = pd.concat(
-                            [search_results_df, compound_result_df], ignore_index=True
-                        )
-
-                        # If a match is found, print the standardized name and break the loop
-                        if not compound_result_df.empty:
-                            print(
-                                f"Found standardized name for compound '{compound_name}': {chebi_entity.get_name()} (ChEBI ID: {chebi_entity.get_id()})"
-                            )
-                            break
-                        else:
-                            print(
-                                f"No standardized name found for compound '{compound_name}'"
-                            )
-
-        # if any results were found, merge them back to the original DataFrame
-        if not search_results_df.empty:
-            if overwrite:
-                if "treatment_label" in df.columns or "treatment_id" in df.columns:
-                    print(
-                        "Warning: Overwriting existing 'treatment_label' and 'treatment_id' columns."
-                    )
-                    temp_col = f"temp_{column}"
-                    df[temp_col] = df[column]
-                    for col in ["treatment_label", "treatment_id"]:
-                        if col in df.columns:
-                            df = df.drop(columns=[col])
-                    column = temp_col
+            chebi_results = self.get_chebi_compound(compound_name)
+            if chebi_results is None:
+                print(f"No results found for compound '{compound_name}'")
+                unmapped_compounds.append(compound_name)
+                continue
             else:
-                if "treatment_label" in df.columns or "treatment_id" in df.columns:
-                    raise ValueError(
-                        "'treatment_label' and/or 'treatment_id' columns already exist. Set overwrite=True to replace them."
-                    )
-            # Merge the search results with the original DataFrame
+                # Merge the search results with the original DataFrame
+                chebi_results_df = pd.DataFrame(chebi_results)[['name', 'chebi_accession']]
+                chebi_results_df['original_name'] = compound_name
+                chebi_results_df = chebi_results_df.rename(
+                    columns={
+                        "name": "treatment_label",
+                        "chebi_accession": "treatment_id",
+                    }
+                )
+                search_results_df = pd.concat(
+                    [search_results_df, chebi_results_df], ignore_index=True
+                )
+                mapped_compounds.append(compound_name)
+
+        search_results_df = search_results_df.drop_duplicates()
+        # Add the mapped results to the DataFrame
+        if search_results_df.empty:
+            print(f"None of the compounds in column {column} found in ChEBI.")
+            print(f"Unmapped compounds: {unmapped_compounds}")
+        else:
             df = df.merge(
                 search_results_df,
                 how="left",
@@ -906,16 +899,11 @@ class CuratedDataset:
                 right_on="original_name",
             ).drop(columns=["original_name"])
 
-            # Update the adata.obs with the standardized DataFrame
             setattr(self.adata, "obs", df)
-
-            print(
-                f"Standardized compound names in column '{column}' and added 'treatment_label' and 'treatment_id' columns."
-            )
-        else:
-            raise ValueError(
-                f"No standardized names found for compounds in column '{column}'."
-            )
+            print(f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}")
+            display(search_results_df)
+            if unmapped_compounds:
+                print(f"Failed to map compounds: {unmapped_compounds}")
 
     def standardize_genes(
         self,
@@ -958,7 +946,6 @@ class CuratedDataset:
         # initialize the converted DataFrame
         conv_df = df[[input_column]].copy()
         conv_df_index = conv_df.index.copy()
-        conv_list = conv_df[input_column].unique().tolist()
 
         # Explode the column if it contains multiple entries
         if multiple_entries:
@@ -966,37 +953,54 @@ class CuratedDataset:
                 raise ValueError(
                     "multiple_entries_sep must be provided if multiple_entries is True"
                 )
-            conv_df[input_column] = conv_df[input_column].str.split(
+            mask = ~conv_df[input_column].str.upper().str.contains('CONTROL')
+            conv_df.loc[mask, input_column] = conv_df.loc[mask, input_column].str.split(
                 multiple_entries_sep
             )
             conv_df = conv_df.explode(input_column)
+            conv_df_index_exploded = conv_df.index.copy()
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            self.remove_version_from_genes(
-                slot=slot, column=input_column, sep=version_sep
+            conv_df = self.remove_version_from_genes(
+                df=conv_df, column=input_column, sep=version_sep
             )
+        
+        # filter out all non-standard chromosome names from gene_ont
+        gene_ont = self.gene_ont[
+            self.gene_ont["chromosome_name"].isin(
+                [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
+            )
+        ].copy()
+
+        conv_list = conv_df[input_column].unique().tolist()
+        conv_list = [e for e in conv_list if e is not None]
 
         # map the ENSG or gene symbols to the gene ontology
         if input_column_type == "ensembl_gene_id":
             matched_df = self.merge_gene_ont_ensg(
-                conv_list=conv_list, gene_ont=self.gene_ont
+                conv_list=conv_list, gene_ont=gene_ont
             )
 
         elif input_column_type == "gene_symbol":
             matched_df = self.merge_gene_ont_symbol(
-                conv_list=conv_list, gene_ont=self.gene_ont
+                conv_list=conv_list, gene_ont=gene_ont
             )
+
+        # drop nas
+        matched_df = matched_df.dropna(subset=["original_input"])
 
         # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
             matched_df, how="left", left_on=input_column, right_on="original_input"
         )
-        conv_df.index = conv_df_index
 
         if multiple_entries:
+            conv_df.index = conv_df_index_exploded
             # collapse the DataFrame to get the original column back
-            conv_df = self.collapse_df(conv_df, unique_val_column="index")
+            conv_df = self.collapse_df(conv_df, unique_val_column=conv_df_index_exploded.name)
+        else:
+            conv_df.index = conv_df_index
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1737,6 +1741,7 @@ class CuratedDataset:
         missing_ensg = list(
             set(conv_list) - set(gene_ont_subset["ensembl_gene_id"].unique())
         )
+        missing_ensg = [e for e in missing_ensg if e!='nan']
 
         # --- Fetch latest Ensembl IDs for missing ones ---
         if missing_ensg:
@@ -1768,8 +1773,11 @@ class CuratedDataset:
         # Fill in missing mappings with fetched latest Ensembl IDs
         if missing_ensg:
             mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)] = (
-                missing_ensg_df.values
+                mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)].merge(
+                    missing_ensg_df, how="left", on="original_input"
+                )
             )
+
 
         print(
             f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
@@ -2246,3 +2254,192 @@ def concatenate_parquet_files(
         writer.close()
         if verbose:
             print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")
+
+def fetch_latest_ensg_id(ensg_list: list = None):
+    """
+    Fetch the latest ENSG id from Ensembl REST API for a list of ENSG ids.
+
+    Parameters
+    ----------
+    ensg_list : list of str
+        List of gene symbols/ensembl IDs to query.
+
+    Returns
+    -------
+    dict
+        Decoded JSON response from Ensembl containing gene information.
+    """
+    import requests
+    import sys
+
+    if ensg_list is None or len(ensg_list) == 0:
+        raise ValueError("ensg_list cannot be empty.")
+
+    server = "https://rest.ensembl.org"
+    ext = "/archive/id"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    
+    # if more than 500 ids, split into chunks of 500
+    chunk_size = 500
+    if len(ensg_list) > chunk_size:
+        df_list = []
+        print(f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}.")
+        for i in range(0, len(ensg_list), chunk_size):
+            chunk = ensg_list[i : i + chunk_size]
+            print(f"Processing IDs {i+1} to {min(i + chunk_size, len(ensg_list))}...")
+            
+            data = {"id": chunk}
+            
+            r = requests.post(server + ext, headers=headers, json=data)
+            if not r.ok:
+                r.raise_for_status()
+                sys.exit()
+            df_list.append(pd.DataFrame.from_dict(r.json()))
+        df = pd.concat(df_list, ignore_index=True)
+    else:
+        data = {"id": ensg_list}
+        r = requests.post(server + ext, headers=headers, json=data)
+
+        if not r.ok:
+            r.raise_for_status()
+            sys.exit()
+        df = pd.DataFrame.from_dict(r.json())
+        
+    df = df.explode("possible_replacement")
+    df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
+        columns=["possible_replacement"]
+    )
+    df = df[df["is_current"] == ""]
+    df = df[["id", "stable_id"]]
+
+    mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
+
+    return mapping_dict
+
+
+def get_synonyms(ensembl_data: dict = None) -> pd.DataFrame:
+    synonyms_dict = {}
+    for gene in ensembl_data["genes"]:
+        xrefs = gene.get("xrefs")
+        for e in xrefs:
+            synonyms = e.get("synonyms")
+            if synonyms:
+                synonyms_dict[gene.get("id")] = [synonyms]
+                continue
+
+    return pd.DataFrame.from_dict(
+        synonyms_dict, orient="index", columns=["synonyms"]
+    ).reset_index(names="id")
+
+
+def generate_gene_ont(
+    json_url: str = "https://ftp.ensembl.org/pub/current/json/homo_sapiens/homo_sapiens.json",
+    json_path: str = "data/homo_sapiens.json",
+    save_parquet_path: str = "data/gene_ont.parquet",
+):
+
+    download_file(url=json_url, dest_path=json_path)
+
+    # load the file
+    print(f"Reading the json file: {json_path}")
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # create the df
+    colnames = [
+        "id",
+        "name",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "GeneCards",
+        "EntrezGene",
+        "HGNC",
+        "EMBL",
+        "seq_region_name",
+        "start",
+        "end",
+        "strand",
+        "biotype",
+        "genome",
+        "description",
+    ]
+    main_df = pd.DataFrame.from_dict(data["genes"])[colnames]
+
+    # get synonyms
+    synonyms_df = get_synonyms(data)
+
+    # merge synonyms
+    main_df = main_df.merge(synonyms_df, how="left", on="id")
+
+    # rename the columns
+    main_df = main_df.rename(
+        columns={
+            "id": "ensembl_gene_id",
+            "name": "gene_symbol",
+            "seq_region_name": "chromosome_name",
+        }
+    )
+
+    # create a symbol_syn column
+    main_df["symbol_syn"] = main_df["gene_symbol"].copy()
+
+    # replace nan values with [] in synonym columns
+    syn_cols = [
+        "symbol_syn",
+        "synonyms",
+        "Interpro",
+        "Uniprot/SWISSPROT",
+        "EMBL",
+        "HGNC",
+        "EntrezGene",
+        "GeneCards",
+    ]
+    main_df[syn_cols] = main_df[syn_cols].map(
+        lambda x: [] if (not isinstance(x, list) and pd.isna(x)) else x
+    )
+
+    # add gene_coord column
+    main_df["gene_coord"] = main_df.apply(
+        lambda x: f"chr{x['chromosome_name']}:{x['start']}-{x['end']};{x['strand']}",
+        axis=1,
+    )
+
+    # pivot the df to create a long form df with a single "synonym" column
+    main_df_long = main_df.melt(
+        id_vars=[
+            "ensembl_gene_id",
+            "gene_symbol",
+            "chromosome_name",
+            "gene_coord",
+            "biotype",
+            "description",
+        ],
+        value_vars=syn_cols,
+        var_name="synonym_type",
+        value_name="synonym",
+    )
+    main_df_long = main_df_long.explode("synonym")
+
+    # remove dashes and add as additional synonyms
+    dash_long = main_df_long[main_df_long["synonym"].str.contains("-", na=False)]
+    dash_long["synonym"] = dash_long["synonym"].str.replace("-", "")
+    main_df_long = pd.concat([main_df_long, dash_long])
+
+    # make symbols and synonyms upper case
+    main_df_long["synonym"] = main_df_long["synonym"].str.upper()
+    main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
+    
+    # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+    control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive", "control_guideonly", "control_casonly"]
+    for term in control_terms:
+        control_row = {col: term for col in main_df_long.columns}
+        main_df_long = pd.concat([main_df_long, pd.DataFrame([control_row])], ignore_index=True)
+
+    # save as parquet
+    if save_parquet_path:
+        os.makedirs(os.path.dirname(save_parquet_path), exist_ok=True)
+        print(f"Saving to {save_parquet_path}")
+        main_df_long.to_parquet(save_parquet_path)
+        print("Done!")
+
+    return
