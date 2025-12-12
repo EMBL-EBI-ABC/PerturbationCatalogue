@@ -815,6 +815,24 @@ class CuratedDataset:
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
         )
 
+    @staticmethod
+    def get_chebi_compound(compound_name):
+        """
+        Search for a compound in ChEBI and return its standardized name and ChEBI ID.
+        Parameters:
+            compound_name (str): The name of the compound to search for.
+        Returns:
+            dict: A dictionary containing the response from ChEBI.
+        """
+        
+        r = requests.get(f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1")
+        
+        if r.ok:
+            return r.json().get('results')[0].get('_source')
+        else:
+            print(f"Error: {r.status_code} - {r.text}")
+            return None
+
     def standardize_compounds(self, column=None, overwrite=False):
         """
         Standardize compound names in a DataFrame column using ChEBI.
@@ -842,62 +860,38 @@ class CuratedDataset:
         search_results_df = pd.DataFrame(
             columns=["original_name", "treatment_label", "treatment_id"]
         )
+        mapped_compounds = []
+        unmapped_compounds = []
 
         # Iterate over each compound name
         for compound_name in compound_names:
-
             # Search for the compound in ChEBI
-            chebi_results = search(compound_name)
-
-            # Iterate over the search results
-            for chebi_entity in chebi_results:
-                for chebi_name_entry in chebi_entity.get_names():
-                    standardized_name = chebi_name_entry.get_name()
-                    # Check if the standardized name matches the input compound name (case-insensitive)
-                    if standardized_name.lower() == compound_name.lower():
-                        # Append the result to the list
-                        compound_result_df = pd.DataFrame(
-                            {
-                                "original_name": compound_name,  # Original input compound name
-                                "treatment_label": chebi_entity.get_name(),  # Standardized compound name
-                                "treatment_id": chebi_entity.get_id(),  # ChEBI ID
-                            },
-                            index=[0],
-                        )
-                        search_results_df = pd.concat(
-                            [search_results_df, compound_result_df], ignore_index=True
-                        )
-
-                        # If a match is found, print the standardized name and break the loop
-                        if not compound_result_df.empty:
-                            print(
-                                f"Found standardized name for compound '{compound_name}': {chebi_entity.get_name()} (ChEBI ID: {chebi_entity.get_id()})"
-                            )
-                            break
-                        else:
-                            print(
-                                f"No standardized name found for compound '{compound_name}'"
-                            )
-
-        # if any results were found, merge them back to the original DataFrame
-        if not search_results_df.empty:
-            if overwrite:
-                if "treatment_label" in df.columns or "treatment_id" in df.columns:
-                    print(
-                        "Warning: Overwriting existing 'treatment_label' and 'treatment_id' columns."
-                    )
-                    temp_col = f"temp_{column}"
-                    df[temp_col] = df[column]
-                    for col in ["treatment_label", "treatment_id"]:
-                        if col in df.columns:
-                            df = df.drop(columns=[col])
-                    column = temp_col
+            chebi_results = self.get_chebi_compound(compound_name)
+            if chebi_results is None:
+                print(f"No results found for compound '{compound_name}'")
+                unmapped_compounds.append(compound_name)
+                continue
             else:
-                if "treatment_label" in df.columns or "treatment_id" in df.columns:
-                    raise ValueError(
-                        "'treatment_label' and/or 'treatment_id' columns already exist. Set overwrite=True to replace them."
-                    )
-            # Merge the search results with the original DataFrame
+                # Merge the search results with the original DataFrame
+                chebi_results_df = pd.DataFrame(chebi_results)[['name', 'chebi_accession']]
+                chebi_results_df['original_name'] = compound_name
+                chebi_results_df = chebi_results_df.rename(
+                    columns={
+                        "name": "treatment_label",
+                        "chebi_accession": "treatment_id",
+                    }
+                )
+                search_results_df = pd.concat(
+                    [search_results_df, chebi_results_df], ignore_index=True
+                )
+                mapped_compounds.append(compound_name)
+
+        search_results_df = search_results_df.drop_duplicates()
+        # Add the mapped results to the DataFrame
+        if search_results_df.empty:
+            print(f"None of the compounds in column {column} found in ChEBI.")
+            print(f"Unmapped compounds: {unmapped_compounds}")
+        else:
             df = df.merge(
                 search_results_df,
                 how="left",
@@ -905,16 +899,11 @@ class CuratedDataset:
                 right_on="original_name",
             ).drop(columns=["original_name"])
 
-            # Update the adata.obs with the standardized DataFrame
             setattr(self.adata, "obs", df)
-
-            print(
-                f"Standardized compound names in column '{column}' and added 'treatment_label' and 'treatment_id' columns."
-            )
-        else:
-            raise ValueError(
-                f"No standardized names found for compounds in column '{column}'."
-            )
+            print(f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}")
+            display(search_results_df)
+            if unmapped_compounds:
+                print(f"Failed to map compounds: {unmapped_compounds}")
 
     def standardize_genes(
         self,
