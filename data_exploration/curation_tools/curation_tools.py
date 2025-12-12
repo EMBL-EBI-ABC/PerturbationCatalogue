@@ -946,8 +946,6 @@ class CuratedDataset:
         # initialize the converted DataFrame
         conv_df = df[[input_column]].copy()
         conv_df_index = conv_df.index.copy()
-        conv_list = conv_df[input_column].unique().tolist()
-        conv_list = [e for e in conv_list if e is not None]
 
         # Explode the column if it contains multiple entries
         if multiple_entries:
@@ -955,15 +953,17 @@ class CuratedDataset:
                 raise ValueError(
                     "multiple_entries_sep must be provided if multiple_entries is True"
                 )
-            conv_df[input_column] = conv_df[input_column].str.split(
+            mask = ~conv_df[input_column].str.upper().str.contains('CONTROL')
+            conv_df.loc[mask, input_column] = conv_df.loc[mask, input_column].str.split(
                 multiple_entries_sep
             )
             conv_df = conv_df.explode(input_column)
+            conv_df_index_exploded = conv_df.index.copy()
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            self.remove_version_from_genes(
-                slot=slot, column=input_column, sep=version_sep
+            conv_df = self.remove_version_from_genes(
+                df=conv_df, column=input_column, sep=version_sep
             )
         
         # filter out all non-standard chromosome names from gene_ont
@@ -972,6 +972,9 @@ class CuratedDataset:
                 [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
             )
         ].copy()
+
+        conv_list = conv_df[input_column].unique().tolist()
+        conv_list = [e for e in conv_list if e is not None]
 
         # map the ENSG or gene symbols to the gene ontology
         if input_column_type == "ensembl_gene_id":
@@ -991,11 +994,13 @@ class CuratedDataset:
         conv_df = conv_df.merge(
             matched_df, how="left", left_on=input_column, right_on="original_input"
         )
-        conv_df.index = conv_df_index
 
         if multiple_entries:
+            conv_df.index = conv_df_index_exploded
             # collapse the DataFrame to get the original column back
-            conv_df = self.collapse_df(conv_df, unique_val_column="index")
+            conv_df = self.collapse_df(conv_df, unique_val_column=conv_df_index_exploded.name)
+        else:
+            conv_df.index = conv_df_index
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -2273,15 +2278,33 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     server = "https://rest.ensembl.org"
     ext = "/archive/id"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    data = {"id": ensg_list}
+    
+    # if more than 500 ids, split into chunks of 500
+    chunk_size = 500
+    if len(ensg_list) > chunk_size:
+        df_list = []
+        print(f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}.")
+        for i in range(0, len(ensg_list), chunk_size):
+            chunk = ensg_list[i : i + chunk_size]
+            print(f"Processing IDs {i+1} to {min(i + chunk_size, len(ensg_list))}...")
+            
+            data = {"id": chunk}
+            
+            r = requests.post(server + ext, headers=headers, json=data)
+            if not r.ok:
+                r.raise_for_status()
+                sys.exit()
+            df_list.append(pd.DataFrame.from_dict(r.json()))
+        df = pd.concat(df_list, ignore_index=True)
+    else:
+        data = {"id": ensg_list}
+        r = requests.post(server + ext, headers=headers, json=data)
 
-    r = requests.post(server + ext, headers=headers, json=data)
-
-    if not r.ok:
-        r.raise_for_status()
-        sys.exit()
-
-    df = pd.DataFrame.from_dict(r.json())
+        if not r.ok:
+            r.raise_for_status()
+            sys.exit()
+        df = pd.DataFrame.from_dict(r.json())
+        
     df = df.explode("possible_replacement")
     df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
         columns=["possible_replacement"]
