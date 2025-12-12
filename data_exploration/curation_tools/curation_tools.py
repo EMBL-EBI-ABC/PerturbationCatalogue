@@ -743,28 +743,27 @@ class CuratedDataset:
         else:
             print(f"Column {symbol_column} not found in adata.obs")
 
-    def remove_version_from_genes(self, slot, column, sep="."):
+    @staticmethod
+    def remove_version_from_genes(df, column, sep="."):
         """
         Remove version numbers from gene symbols or ENSG IDs in a column of adata.var or adata.obs.
 
         Args:
-            slot: Which AnnData attribute to use: "var" or "obs".
+            df: DataFrame with gene symbols.
             column: Name of the column containing gene symbols/ENSG IDs.
             sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".").
         """
-        if slot not in ["var", "obs"]:
-            raise ValueError('slot must be either "var" or "obs"')
-        df = getattr(self.adata, slot)
+
         if column not in df.columns:
-            raise ValueError(f"Column {column} not found in adata.{slot}")
+            raise ValueError(f"Column {column} not found in the df")
         if df[column].empty:
-            raise ValueError(f"Column {column} is empty in adata.{slot}")
+            raise ValueError(f"Column {column} is empty in the df")
 
         df[column] = df[column].str.split(sep).str[0]
+        
+        print(f"Removed version numbers from {column}")
 
-        setattr(self.adata, slot, df)
-
-        print(f"Removed version numbers from {column} in adata.{slot}")
+        return df
 
     def count_entries(
         self,
