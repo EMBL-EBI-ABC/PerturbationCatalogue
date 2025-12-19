@@ -2236,19 +2236,24 @@ def concatenate_parquet_files(
     if verbose:
         print(f"Found {len(parquet_files)} files. Initializing writer...")
 
-    # Base schema from first file
+    # Base schema from first file'
+    # Convert to all strings
     first_pf = pq.ParquetFile(parquet_files[0])
-    base_schema = first_pf.schema_arrow
+    orig_schema = first_pf.schema_arrow
+    string_fields = [pyarrow.field(field.name, pyarrow.string(), nullable=True)
+                     for field in orig_schema]
+    base_schema = pyarrow.schema(string_fields)
     writer = pq.ParquetWriter(output_path, base_schema)
 
     total_rows = 0
     try:
         for idx, fpath in enumerate(parquet_files, start=1):
             pf = pq.ParquetFile(fpath)
-            if pf.schema_arrow != base_schema:
-                raise ValueError(f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output.")
+            if pf.schema_arrow.names != base_schema.names:
+                raise ValueError(f"Column names mismatch in file {fpath}. Aborting to avoid misaligned output.")
             for batch in pf.iter_batches():
-                writer.write_batch(batch)
+                casted_batch = batch.cast(base_schema)
+                writer.write_batch(casted_batch)
                 total_rows += batch.num_rows
             if verbose:
                 print(f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})")
