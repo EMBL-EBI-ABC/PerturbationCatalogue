@@ -357,7 +357,7 @@ class CuratedDataset:
 
         return schema_dict
 
-    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False):
+    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False, extra_data_columns: list = []):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
@@ -366,6 +366,8 @@ class CuratedDataset:
             Whether to split the data and metadata into two separate files (default is False).
         save_metadata_only : bool
             Whether to save only the metadata and skip saving the data (default is False).
+        extra_data_columns : list
+            List of extra columns to include in the data file (default is empty list).
         """
 
         adata = self.adata
@@ -390,7 +392,7 @@ class CuratedDataset:
         full_metadata_df = full_metadata_df.mask(full_metadata_df.eq("None"), None)
         
         metadata_columns = full_metadata_df.columns.to_list()
-        id_columns = metadata_columns[0:2]
+        id_columns = metadata_columns[0:2]+extra_data_columns
 
         # Process features (e.g. genes or scores) in chunks
         feature_colnames = adata.var_names.tolist()
