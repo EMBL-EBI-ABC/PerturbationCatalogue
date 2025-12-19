@@ -1025,6 +1025,8 @@ class CuratedDataset:
                 "gene_symbol": "gene_symbol",
             }
 
+        # drop any columns that are already in the conv_df
+        conv_df = conv_df[list(set(conv_df.columns)-set(new_colnames_map.values()))]
         conv_df = conv_df.rename(columns=new_colnames_map)
 
         # keep only the relevant columns
