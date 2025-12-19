@@ -164,6 +164,15 @@ def curate_biogrid_screen(
     # add chromosome encoding
     cur_data.chromosome_encoding()
 
+    # add replicate columns
+    cur_data.create_columns(
+        slot="obs",
+        col_dict={
+            'technical_replicate': None,
+            'biological_replicate': None
+        }
+    )
+
     # match the order of columns in obs to the schema
     cur_data.match_schema_columns(slot="obs")
 
