@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow.parquet as pq
+import pyarrow
 import json
 from pprint import pprint
 import requests
