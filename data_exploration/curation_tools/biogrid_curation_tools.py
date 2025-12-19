@@ -23,6 +23,7 @@ def process_biogrid_screen(
     bq_dataset_id: str = None,
     bq_metadata_table_name: str = "metadata",
     bq_data_table_name: str = "data",
+    extra_data_columns: list = []
 ):
     """
     Process a BioGRID screen dataset: create AnnData, curate it, save as h5ad and Parquet, and optionally upload to BigQuery.
@@ -47,6 +48,8 @@ def process_biogrid_screen(
         Table name for metadata in BigQuery.
     - bq_data_table_name: str
         Table name for data in BigQuery.
+    - extra_data_columns: list
+        List of extra data columns to save in the data Parquet file.
     Returns:
     -------
     - CuratedDataset
@@ -70,6 +73,7 @@ def process_biogrid_screen(
         save_curated_h5ad=True,
         save_curated_parquet=True,
         split_parquet=True,
+        extra_data_columns=extra_data_columns
     )
 
     # Step 3: Upload to BigQuery if specified
@@ -102,6 +106,7 @@ def curate_biogrid_screen(
     save_curated_h5ad: bool = True,
     save_curated_parquet: bool = True,
     split_parquet: bool = True,
+    extra_data_columns: list = []
 ):
     """
     Curate a BioGRID screen AnnData object.
@@ -118,6 +123,8 @@ def curate_biogrid_screen(
         Whether to save the curated data as Parquet files.
     - split_parquet: bool
         Whether to save separate Parquet files for data and metadata.
+    - extra_data_columns: list
+        List of extra data columns to save in the data Parquet file.
 
     Returns:
     -------
@@ -169,7 +176,7 @@ def curate_biogrid_screen(
 
     # save the curated data as Parquet files
     if save_curated_parquet:
-        cur_data.save_curated_data_parquet(split_metadata=split_parquet)
+        cur_data.save_curated_data_parquet(split_metadata=split_parquet, save_metadata_only=False, extra_data_columns=extra_data_columns)
 
     return cur_data
 
