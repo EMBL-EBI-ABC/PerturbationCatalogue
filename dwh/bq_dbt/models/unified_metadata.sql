@@ -19,27 +19,28 @@ with
             table_name = '{{ this.identifier }}'
             and partition_id not in ('__NULL__', '__UNPARTITIONED__')
     ),
-    crispr as (
+    -- Base metadata from sources, ensuring common ingested_at column name
+    crispr_base as (
         select
-            * except (ingested_at),
+            *,
             ingested_at as max_ingested_at
         from {{ source('crispr', 'metadata') }}
         {% if is_incremental() %}
             where timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
         {% endif %}
     ),
-    mave as (
+    mave_base as (
         select
-            * except (ingested_at),
+            *,
             ingested_at as max_ingested_at
         from {{ source('mave', 'metadata') }}
         {% if is_incremental() %}
             where timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
         {% endif %}
     ),
-    ps as (
+    ps_base as (
         select
-            * except (ingested_at),
+            *,
             ingested_at as max_ingested_at
         from (
             select distinct * except (sample_id)
@@ -52,24 +53,42 @@ with
             {% endif %}
         )
     ),
+    
+    -- Identify the superset of columns across all sources
+    -- Note: BigQuery's UNION ALL BY NAME requires all branches to have the SAME columns.
+    -- We'll explicitly select and cast to ensure alignment.
+    
+    crispr as (
+        select
+            * except (ingested_at),
+            cast(null as string) as perturbation_name,
+            cast(null as string) as guide_sequence
+        from crispr_base
+    ),
+    mave as (
+        select
+            * except (ingested_at),
+            cast(null as string) as guide_sequence
+        from mave_base
+    ),
+    ps as (
+        select
+            * except (ingested_at),
+            cast(null as string) as sample_id,
+            cast(null as string) as significant,
+            cast(null as string) as significance_criteria,
+            cast(number_of_perturbed_targets as string) as number_of_perturbed_targets,
+            cast(number_of_perturbed_samples as string) as number_of_perturbed_samples,
+            cast(library_total_grnas as string) as library_total_grnas
+        from ps_base
+    ),
+    
     unified as (
         select * from crispr
         union all by name
         select * from mave
         union all by name
-        select
-            * except (
-                significant,
-                significance_criteria,
-                number_of_perturbed_targets,
-                number_of_perturbed_samples,
-                library_total_grnas
-            ),
-            null as significant,
-            null as significance_criteria,
-            cast(number_of_perturbed_targets as string) as number_of_perturbed_targets,
-            cast(number_of_perturbed_samples as string) as number_of_perturbed_samples,
-            cast(library_total_grnas as string) as library_total_grnas
-        from ps
+        select * from ps
     )
+    
 select * from unified
