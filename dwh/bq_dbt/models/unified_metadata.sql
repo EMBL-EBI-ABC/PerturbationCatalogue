@@ -21,7 +21,7 @@ with
     ),
     crispr as (
         select
-            *,
+            * except (ingested_at),
             'CRISPR' as data_modality,
             ingested_at as max_ingested_at
         from {{ source('crispr', 'metadata') }}
@@ -31,7 +31,7 @@ with
     ),
     mave as (
         select
-            *,
+            * except (ingested_at),
             'MAVE' as data_modality,
             ingested_at as max_ingested_at
         from {{ source('mave', 'metadata') }}
@@ -41,7 +41,7 @@ with
     ),
     ps as (
         select
-            * except (sample_id, ingested_at),
+            * except (ingested_at),
             'Perturb-seq' as data_modality,
             ingested_at as max_ingested_at
         from (
@@ -51,7 +51,7 @@ with
                 perturbed_target_symbol not like 'control%'
                 and perturbed_target_symbol not like '%None%'
             {% if is_incremental() %}
-                where timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
+                and timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
             {% endif %}
         )
     ),
