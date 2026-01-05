@@ -2,6 +2,52 @@
 
 
 with
+    meta as (
+        select * from {{ ref("unified_metadata") }}
+    ),
+    crispr_joined as (
+        select
+            m.*,
+            d.score_name,
+            d.score_value,
+            cast(null as float64) as log2foldchange,
+            cast(null as float64) as padj
+        from meta m
+        join {{ source('crispr', 'data') }} d
+            on m.dataset_id = d.dataset_id and m.sample_id = d.sample_id
+        where m.data_modality = 'CRISPR'
+    ),
+    mave_joined as (
+        select
+            m.*,
+            d.score_name,
+            d.score_value,
+            cast(null as float64) as log2foldchange,
+            cast(null as float64) as padj
+        from meta m
+        join {{ source('mave', 'data') }} d
+            on m.dataset_id = d.dataset_id and m.sample_id = d.sample_id
+        where m.data_modality = 'MAVE'
+    ),
+    ps_joined as (
+        select
+            m.*,
+            cast(null as string) as score_name,
+            cast(null as float64) as score_value,
+            d.log2foldchange,
+            d.padj
+        from meta m
+        join {{ source('perturb_seq', 'data') }} d
+            on m.dataset_id = d.dataset_id and m.perturbed_target_symbol = d.perturbation
+        where m.data_modality = 'Perturb-seq'
+    ),
+    base_unioned as (
+        select * from crispr_joined
+        union all
+        select * from mave_joined
+        union all
+        select * from ps_joined
+    ),
     base as (
         select
             to_hex(
@@ -20,7 +66,7 @@ with
             data_modality,
             license_label,
             score_name
-        from {{ ref("unified_metadata_data") }}
+        from base_unioned
     ),
     agg_main as (
         select
