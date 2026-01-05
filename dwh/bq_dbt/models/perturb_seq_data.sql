@@ -19,9 +19,6 @@ select
     log2FoldChange as log2foldchange,
     padj,
     baseMean as basemean,
-    lfcSE as lfcse,
-    stat,
-    pvalue,
     ingested_at as max_ingested_at
 from {{ source('perturb_seq', 'data') }}
 {% if is_incremental() %}
