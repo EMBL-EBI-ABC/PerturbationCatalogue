@@ -2,7 +2,7 @@
 
 
 with
-    base as (select * from {{ ref("unified_metadata_data") }}),
+    base as (select * from {{ ref("unified_metadata") }}),
     -- Top-k helpers (by #datasets using that attribute)
     modalities as (
         select data_modality as value, count(distinct dataset_id) as n_datasets
