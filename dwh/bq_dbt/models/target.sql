@@ -13,8 +13,10 @@ with
             cast(null as float64) as log2foldchange,
             cast(null as float64) as padj
         from meta m
-        join {{ source('crispr', 'data') }} d
-            on m.dataset_id = d.dataset_id and m.sample_id = d.sample_id
+        join {{ ref('crispr_data') }} d
+            on m.dataset_id = d.dataset_id 
+            and m.sample_id = d.sample_id
+            and m.perturbed_target_symbol = d.perturbed_target_symbol
         where m.data_modality = 'CRISPR'
     ),
     mave_joined as (
@@ -25,8 +27,10 @@ with
             cast(null as float64) as log2foldchange,
             cast(null as float64) as padj
         from meta m
-        join {{ source('mave', 'data') }} d
-            on m.dataset_id = d.dataset_id and m.sample_id = d.sample_id
+        join {{ ref('mave_data') }} d
+            on m.dataset_id = d.dataset_id 
+            and m.sample_id = d.sample_id
+            and m.perturbed_target_symbol = d.perturbed_target_symbol
         where m.data_modality = 'MAVE'
     ),
     ps_joined as (
@@ -37,8 +41,9 @@ with
             d.log2foldchange,
             d.padj
         from meta m
-        join {{ source('perturb_seq', 'data') }} d
-            on m.dataset_id = d.dataset_id and m.perturbed_target_symbol = d.perturbation
+        join {{ ref('perturb_seq_data') }} d
+            on m.dataset_id = d.dataset_id 
+            and m.perturbed_target_symbol = d.perturbed_target_symbol
         where m.data_modality = 'Perturb-seq'
     ),
     base_unioned as (
