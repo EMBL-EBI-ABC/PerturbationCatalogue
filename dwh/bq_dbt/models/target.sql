@@ -9,7 +9,7 @@ with
         select
             m.*,
             d.score_name,
-            d.score_value,
+            cast(d.score_value as float64) as score_value,
             cast(null as float64) as log2foldchange,
             cast(null as float64) as padj
         from meta m
@@ -21,7 +21,7 @@ with
         select
             m.*,
             d.score_name,
-            d.score_value,
+            cast(d.score_value as float64) as score_value,
             cast(null as float64) as log2foldchange,
             cast(null as float64) as padj
         from meta m
@@ -43,9 +43,9 @@ with
     ),
     base_unioned as (
         select * from crispr_joined
-        union all
+        union all by name
         select * from mave_joined
-        union all
+        union all by name
         select * from ps_joined
     ),
     base as (
