@@ -22,7 +22,6 @@ with
     crispr as (
         select
             * except (ingested_at),
-            'CRISPR' as data_modality,
             ingested_at as max_ingested_at
         from {{ source('crispr', 'metadata') }}
         {% if is_incremental() %}
@@ -32,7 +31,6 @@ with
     mave as (
         select
             * except (ingested_at),
-            'MAVE' as data_modality,
             ingested_at as max_ingested_at
         from {{ source('mave', 'metadata') }}
         {% if is_incremental() %}
@@ -42,7 +40,6 @@ with
     ps as (
         select
             * except (ingested_at),
-            'Perturb-seq' as data_modality,
             ingested_at as max_ingested_at
         from (
             select distinct * except (sample_id)
