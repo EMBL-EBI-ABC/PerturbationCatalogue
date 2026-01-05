@@ -1033,6 +1033,7 @@ class CuratedDataset:
         df = df[list(set(df.columns) - set(conv_df.columns))]
 
         # merge the converted DataFrame to the original DataFrame
+        conv_df.index = conv_df_index
         df = df.merge(conv_df, "left", left_index=True, right_index=True)
 
         # replace "None" strings returned by gprofiler with None
