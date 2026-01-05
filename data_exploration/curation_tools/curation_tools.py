@@ -945,6 +945,9 @@ class CuratedDataset:
 
         # initialize the converted DataFrame
         conv_df = df[[input_column]].copy()
+        # add index name
+        conv_df.index.name = "index"
+        # store index
         conv_df_index = conv_df.index.copy()
 
         # Explode the column if it contains multiple entries
