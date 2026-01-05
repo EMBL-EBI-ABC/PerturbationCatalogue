@@ -192,7 +192,7 @@ with
             array_agg(distinct associated_datasets ignore nulls) as associated_datasets,
             any_value(score_interpretation) as score_interpretation,
             max(max_ingested_at) as max_ingested_at
-        from {{ ref("unified_metadata_data") }}
+        from {{ ref("unified_metadata") }}
 
         {% if is_incremental() %}
             -- No late arrivals: only load rows newer than what we've already loaded.
