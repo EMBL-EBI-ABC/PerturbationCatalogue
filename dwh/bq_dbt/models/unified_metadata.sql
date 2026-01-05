@@ -1,7 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="insert_overwrite",
+        materialized="table",
         partition_by={
             "field": "max_ingested_at",
             "data_type": "timestamp",
@@ -12,31 +11,21 @@
 }}
 
 with
-    latest_loaded_partition as (
-        select parse_date('%Y%m%d', max(partition_id)) as pdate
-        from `{{ this.database }}`.`{{ this.schema }}.INFORMATION_SCHEMA.PARTITIONS`
-        where
-            table_name = '{{ this.identifier }}'
-            and partition_id not in ('__NULL__', '__UNPARTITIONED__')
-    ),
+
     -- Base metadata from sources
     crispr_base as (
         select
             *,
             ingested_at as max_ingested_at
         from {{ source('crispr', 'metadata') }}
-        {% if is_incremental() %}
-            where timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
-        {% endif %}
+
     ),
     mave_base as (
         select
             *,
             ingested_at as max_ingested_at
         from {{ source('mave', 'metadata') }}
-        {% if is_incremental() %}
-            where timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
-        {% endif %}
+
     ),
     ps_base as (
         select
@@ -48,9 +37,7 @@ with
             where
                 perturbed_target_symbol not like 'control%'
                 and perturbed_target_symbol not like '%None%'
-            {% if is_incremental() %}
-                and timestamp_trunc(ingested_at, day) > (select timestamp(pdate) from latest_loaded_partition)
-            {% endif %}
+
         )
     ),
     

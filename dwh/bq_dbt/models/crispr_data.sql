@@ -1,8 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="insert_overwrite",
-        unique_key=["dataset_id", "sample_id", "score_name"],
+        materialized="table",
         partition_by={
             "field": "max_ingested_at",
             "data_type": "timestamp",
@@ -33,10 +31,4 @@ select
 from data d
 join meta m
     on d.dataset_id = m.dataset_id and d.sample_id = m.sample_id
-{% if is_incremental() %}
-    -- Incremental logic based on partition or ingested_at
-    where timestamp_trunc(d.ingested_at, day) >= (
-        select timestamp_sub(timestamp_trunc(max(max_ingested_at), day), interval 1 day)
-        from {{ this }}
-    )
-{% endif %}
+
