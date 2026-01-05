@@ -19,7 +19,7 @@ with
             table_name = '{{ this.identifier }}'
             and partition_id not in ('__NULL__', '__UNPARTITIONED__')
     ),
-    -- Base metadata from sources, ensuring common ingested_at column name
+    -- Base metadata from sources
     crispr_base as (
         select
             *,
@@ -54,27 +54,32 @@ with
         )
     ),
     
-    -- Identify the superset of columns across all sources
-    -- Note: BigQuery's UNION ALL BY NAME requires all branches to have the SAME columns.
-    -- We'll explicitly select and cast to ensure alignment.
+    -- Normalize columns for UNION ALL BY NAME
+    -- We must ensure ALL branches have the SAME columns to satisfy the specific BigQuery constraint reported.
     
     crispr as (
         select
-            * except (ingested_at),
-            cast(null as string) as perturbation_name,
-            cast(null as string) as guide_sequence
+            * except (ingested_at)
         from crispr_base
     ),
     mave as (
         select
-            * except (ingested_at),
-            cast(null as string) as guide_sequence
+            * except (ingested_at)
         from mave_base
     ),
     ps as (
         select
-            * except (ingested_at),
+            * except (
+                ingested_at,
+                significant,
+                significance_criteria,
+                number_of_perturbed_targets,
+                number_of_perturbed_samples,
+                library_total_grnas
+            ),
+            -- Add sample_id which is missing in PS
             cast(null as string) as sample_id,
+            -- Override these to match previous logic (nulling and casting to string)
             cast(null as string) as significant,
             cast(null as string) as significance_criteria,
             cast(number_of_perturbed_targets as string) as number_of_perturbed_targets,
