@@ -956,10 +956,8 @@ class CuratedDataset:
                 raise ValueError(
                     "multiple_entries_sep must be provided if multiple_entries is True"
                 )
-            mask = ~conv_df[input_column].str.upper().str.contains('CONTROL')
-            conv_df.loc[mask, input_column] = conv_df.loc[mask, input_column].str.split(
-                multiple_entries_sep
-            )
+
+            conv_df[input_column] = conv_df[input_column].str.split(multiple_entries_sep)
             conv_df = conv_df.explode(input_column)
             conv_df_index_exploded = conv_df.index.copy()
 
