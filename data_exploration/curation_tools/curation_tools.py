@@ -1628,19 +1628,26 @@ class CuratedDataset:
         if df[unique_val_column].empty:
             raise ValueError(f"Column {unique_val_column} is empty")
 
-        exploded_cols = df.columns.tolist()
-        exploded_cols.remove(unique_val_column)
+        pdf = pl.from_pandas(df)
 
-        df = df.groupby([unique_val_column]).agg(
-            {
-                col: lambda x: sep.join(x) if x.notna().all() else None
-                for col in exploded_cols
-            }
-        )
+        exploded_cols = [c for c in df.columns if c != unique_val_column]
+
+        # Define the aggregation logic
+        def join_values(series):
+            series = series.dropna()
+            if series.empty:
+                return None
+            # .astype(str) ensures integers/floats don't crash the .join()
+            return sep.join(series.astype(str))
+
+        pdf_collapsed = pdf.group_by(unique_val_column).agg([
+            pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
+            for c in exploded_cols
+        ])
 
         print(f"Collapsed column {unique_val_column} using separator {sep}")
 
-        return df
+        return pdf_collapsed.to_pandas()
 
     @staticmethod
     def convert_excel_date_to_gene(symbol):
@@ -1727,17 +1734,22 @@ class CuratedDataset:
         )
         gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
 
-        # Add the non-targeting control row
-        gene_ont_subset = pd.concat(
-            [
-                pd.DataFrame.from_dict(
-                    {k: "non-targeting" for k in gene_ont_subset.columns},
-                    orient="index",
-                ).T,
-                gene_ont_subset,
-            ],
-            ignore_index=True,
-        )
+        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+                         "control_guideonly", "control_casonly"]
+        for term in control_terms:
+            control_row = {col: term for col in gene_ont_subset.columns}
+            gene_ont_subset = pd.concat([gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True)
+        # gene_ont_subset = pd.concat(
+        #     [
+        #         pd.DataFrame.from_dict(
+        #             {k: "non-targeting" for k in gene_ont_subset.columns},
+        #             orient="index",
+        #         ).T,
+        #         gene_ont_subset,
+        #     ],
+        #     ignore_index=True,
+        # )
 
         # --- Identify missing Ensembl IDs ---
         missing_ensg = list(
