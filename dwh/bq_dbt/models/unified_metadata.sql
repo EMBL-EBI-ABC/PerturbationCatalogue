@@ -77,9 +77,9 @@ with
     
     unified as (
         select * from crispr
-        union all by name
+        full outer union all by name
         select * from mave
-        union all by name
+        full outer union all by name
         select * from ps
     )
     
