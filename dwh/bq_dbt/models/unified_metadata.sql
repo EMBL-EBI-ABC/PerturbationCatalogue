@@ -58,17 +58,10 @@ with
         select
             * except (
                 ingested_at,
-                significant,
-                significance_criteria,
                 number_of_perturbed_targets,
                 number_of_perturbed_samples,
                 library_total_grnas
             ),
-            -- Add sample_id which is missing in PS
-            cast(null as string) as sample_id,
-            -- Override these to match previous logic (nulling and casting to string)
-            cast(null as string) as significant,
-            cast(null as string) as significance_criteria,
             cast(number_of_perturbed_targets as string) as number_of_perturbed_targets,
             cast(number_of_perturbed_samples as string) as number_of_perturbed_samples,
             cast(library_total_grnas as string) as library_total_grnas
