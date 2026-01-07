@@ -2,7 +2,7 @@
 
 
 with
-    base as (select * from {{ ref("unified_metadata_data") }}),
+    base as (select * from {{ ref("unified_metadata") }}),
     -- Top-k helpers (by #datasets using that attribute)
     modalities as (
         select data_modality as value, count(distinct dataset_id) as n_datasets
@@ -71,7 +71,7 @@ with
         limit 10
     ),
 
-    summary as (
+    landing_page_summary as (
         select
             count(distinct dataset_id) as n_datasets,
             count(distinct experiment_title) as n_experiments,
@@ -98,4 +98,4 @@ select
     (select array_agg(struct(value, n_datasets)) from diseases) as top_diseases,
     (select array_agg(struct(value, n_datasets)) from sexes) as top_sexes,
     (select array_agg(struct(value, n_datasets)) from dev_stages) as top_dev_stages,
-from summary s
+from landing_page_summary s

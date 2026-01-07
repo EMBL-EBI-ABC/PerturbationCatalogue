@@ -1,9 +1,6 @@
 {{
     config(
-        materialized="incremental",
-        incremental_strategy="merge",
-        unique_key=["dataset_id"],
-        on_schema_change="sync_all_columns",
+        materialized="table",
         partition_by={
             "field": "max_ingested_at",
             "data_type": "timestamp",
@@ -14,13 +11,7 @@
 }}
 
 with
-    latest_loaded_partition as (
-        select parse_date('%Y%m%d', max(partition_id)) as pdate
-        from `{{ this.database }}`.`{{ this.schema }}.INFORMATION_SCHEMA.PARTITIONS`
-        where
-            table_name = '{{ this.identifier }}'
-            and partition_id not in ('__NULL__', '__UNPARTITIONED__')  -- ignore null + unpartitioned pseudo-ids
-    ),
+
     base as (
         select
             dataset_id,
@@ -192,15 +183,9 @@ with
             array_agg(distinct associated_datasets ignore nulls) as associated_datasets,
             any_value(score_interpretation) as score_interpretation,
             max(max_ingested_at) as max_ingested_at
-        from {{ ref("unified_metadata_data") }}
+        from {{ ref("unified_metadata") }}
 
-        {% if is_incremental() %}
-            -- No late arrivals: only load rows newer than what we've already loaded.
-            -- Using a strict greater-than avoids reprocessing the last batch.
-            where
-                timestamp_trunc(max_ingested_at, day)
-                > (select timestamp(pdate) from latest_loaded_partition)
-        {% endif %}
+
         group by dataset_id
     )
 
