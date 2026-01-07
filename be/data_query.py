@@ -547,7 +547,7 @@ async def _search_modality_impl(
             ]
 
     es_result = await es_client.search(
-        index="ES_DATASET_SUMMARY",
+        index=ES_DATASET_SUMMARY,
         body=es_query_body,
         size=10000,  # Get all matching datasets to apply pagination later
     )
