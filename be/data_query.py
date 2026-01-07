@@ -14,7 +14,7 @@ db_pools: Dict[str, Any] = {}
 router = APIRouter()
 
 # --- Constants and Mappings ---
-ES_DATASET_SUMMARY = "2026-01-05-dataset-summary"
+ES_DATASET_SUMMARY = "dataset-summary"
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 

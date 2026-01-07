@@ -34,8 +34,8 @@ load_dotenv()
 
 
 # Elastic indexes to use.
-ES_LANDING_PAGE_SUMMARY = "2026-01-05-landing-page-summary"
-ES_TARGET_SUMMARY = "2026-01-05-target-summary"
+ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
+ES_TARGET_SUMMARY = "target-summary"
 
 
 # Configuration
