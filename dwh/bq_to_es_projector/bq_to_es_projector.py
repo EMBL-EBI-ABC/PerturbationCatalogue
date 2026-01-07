@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Projector: BigQuery -> Elasticsearch (Python client) for
-<contrast|dataset|target|gene>_summary.
+Projector: BigQuery -> Elasticsearch (Python client).
 
 Reads rows from:
-  <BQ_PROJECT>.<BQ_DATASET>.<contrast|dataset|target|gene>_summary
+  <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary|landing_page_summary>
 
 Writes to ES index:
-  <contrast|dataset|target|gene>-summary
+  <dataset-summary|target-summary|landing-page-summary>
 """
 
 import os
