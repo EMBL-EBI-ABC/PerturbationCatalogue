@@ -14,6 +14,8 @@ db_pools: Dict[str, Any] = {}
 router = APIRouter()
 
 # --- Constants and Mappings ---
+ES_DATASET_SUMMARY = "2026-01-05-dataset-summary"
+
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
 PG_TABLES = {
@@ -545,7 +547,7 @@ async def _search_modality_impl(
             ]
 
     es_result = await es_client.search(
-        index="dataset-summary-v3",
+        index="ES_DATASET_SUMMARY",
         body=es_query_body,
         size=10000,  # Get all matching datasets to apply pagination later
     )
