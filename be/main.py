@@ -33,6 +33,11 @@ from data_query import router as data_query_router, db_pools
 load_dotenv()
 
 
+# Elastic indexes to use.
+ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
+ES_TARGET_SUMMARY = "target-summary"
+
+
 # Configuration
 class Settings(BaseSettings):
     pg_host: str
@@ -258,7 +263,7 @@ async def perform_search(
     # Execute search
     try:
         response = await db_pools["es"].search(
-            index="target", query=es_query, aggs=aggs, from_=from_, size=size
+            index=ES_TARGET_SUMMARY, query=es_query, aggs=aggs, from_=from_, size=size
         )
     except Exception as e:
         error_detail = str(e)
@@ -336,7 +341,7 @@ async def get_landing_page_summary():
     Retrieve the landing page summary document from Elasticsearch.
     """
     try:
-        response = await db_pools["es"].get(index="summary", id="summary")
+        response = await db_pools["es"].get(index=ES_LANDING_PAGE_SUMMARY, id="summary")
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {exc}"
