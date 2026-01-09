@@ -2255,7 +2255,7 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     Parameters
     ----------
     ensg_list : list of str
-        List of gene symbols/ensembl IDs to query.
+        List of ensembl IDs to query.
 
     Returns
     -------
