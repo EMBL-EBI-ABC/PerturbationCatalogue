@@ -42,6 +42,9 @@ CRISPR_PG_MAPPING = {
 MAVE_PG_MAPPING = {
     "perturbation_gene_name": "perturbed_target_symbol",
     "perturbation_name": "perturbation_name",
+    "perturbation_position": "perturbation_position",
+    "perturbation_aa_wt": "perturbation_aa_wt",
+    "perturbation_aa_change": "perturbation_aa_change",
     "effect_score_name": "score_name",
     "effect_score_value": "score_value",
 }
@@ -75,6 +78,9 @@ class PerturbationBase(BaseModel):
 
 class MavePerturbation(PerturbationBase):
     name: Optional[str] = Field(None, alias="perturbation_name")
+    position: Optional[int] = Field(None, alias="perturbation_position")
+    aa_wt: Optional[str] = Field(None, alias="perturbation_aa_wt")
+    aa_change: Optional[str] = Field(None, alias="perturbation_aa_change")
 
 
 class PerturbSeqPerturbation(PerturbationBase):
@@ -251,11 +257,23 @@ class MaveParams:
             None,
             description="Filter by effect score value (supports ranges e.g., '1_10', '1_', '_10')",
         ),
+        perturbation_position: Optional[str] = Query(
+            None, description="Filter by perturbation position (supports ranges)"
+        ),
+        perturbation_aa_wt: Optional[str] = Query(
+            None, description="Filter by source amino acid"
+        ),
+        perturbation_aa_change: Optional[str] = Query(
+            None, description="Filter by target amino acid"
+        ),
     ):
         self.perturbation_gene_name = perturbation_gene_name
         self.perturbation_name = perturbation_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
+        self.perturbation_position = perturbation_position
+        self.perturbation_aa_wt = perturbation_aa_wt
+        self.perturbation_aa_change = perturbation_aa_change
 
     def dict(self):
         return {k: v for k, v in self.__dict__.items() if v is not None}
