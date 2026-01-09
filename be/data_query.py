@@ -509,9 +509,9 @@ async def _search_modality_impl(
             elif isinstance(value, str):
                 condition, params = parse_numeric_filter(db_field, value)
                 # This is a bit tricky because parse_numeric_filter doesn't know the param index
-                condition = condition.replace("$...", f"${len(pg_params) + 1}")
+                condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
                 if " AND " in condition:
-                    condition = condition.replace("$...", f"${len(pg_params) + 2}")
+                    condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
                 pg_filters.append(condition)
                 pg_params.extend(params)
 
@@ -711,9 +711,9 @@ async def _search_dataset_impl(
                 pg_params.append(value)
             elif isinstance(value, str):
                 condition, params = parse_numeric_filter(db_field, value)
-                condition = condition.replace("$...", f"${len(pg_params) + 1}")
+                condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
                 if " AND " in condition:
-                    condition = condition.replace("$...", f"${len(pg_params) + 2}")
+                    condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
                 pg_filters.append(condition)
                 pg_params.extend(params)
 
