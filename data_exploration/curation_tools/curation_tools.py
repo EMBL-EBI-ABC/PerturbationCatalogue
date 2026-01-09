@@ -943,41 +943,34 @@ class CuratedDataset:
         if df[input_column].empty:
             raise ValueError(f"Column {input_column} is empty")
 
-        # initialize the converted DataFrame
-        conv_df = df[[input_column]].copy()
-        # add index name
-        conv_df.index.name = "index"
-        # store index
-        conv_df_index = conv_df.index.copy()
+        # reset index to avoid duplicate gene symbols
+        df.index.name = 'original_index'
+        df = df.reset_index()
 
-        # Explode the column if it contains multiple entries
+        # initialize the converted DataFrame
+        conv_df = df[[input_column, 'original_index']].copy()
+        conv_df['positional_index'] = range(len(conv_df))
+
         if multiple_entries:
             if multiple_entries_sep is None:
-                raise ValueError(
-                    "multiple_entries_sep must be provided if multiple_entries is True"
-                )
-
+                raise ValueError("multiple_entries_sep must be provided if multiple_entries is True")
             conv_df[input_column] = conv_df[input_column].str.split(multiple_entries_sep)
             conv_df = conv_df.explode(input_column)
-            conv_df_index_exploded = conv_df.index.copy()
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            conv_df = self.remove_version_from_genes(
-                df=conv_df, column=input_column, sep=version_sep
-            )
-        
+            conv_df = self.remove_version_from_genes(df=conv_df, column=input_column, sep=version_sep)
+
         # filter out all non-standard chromosome names from gene_ont
         gene_ont = self.gene_ont[
             self.gene_ont["chromosome_name"].isin(
                 [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
             )
-        ].copy()
-
-        conv_list = conv_df[input_column].unique().tolist()
-        conv_list = [e for e in conv_list if e is not None]
+        ]
 
         # map the ENSG or gene symbols to the gene ontology
+        conv_list = conv_df[input_column].dropna().unique().tolist()
+
         if input_column_type == "ensembl_gene_id":
             matched_df = self.merge_gene_ont_ensg(
                 conv_list=conv_list, gene_ont=gene_ont
@@ -988,20 +981,15 @@ class CuratedDataset:
                 conv_list=conv_list, gene_ont=gene_ont
             )
 
-        # drop nas
-        matched_df = matched_df.dropna(subset=["original_input"])
-
         # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
             matched_df, how="left", left_on=input_column, right_on="original_input"
         )
 
         if multiple_entries:
-            conv_df.index = conv_df_index_exploded
-            # collapse the DataFrame to get the original column back
-            conv_df = self.collapse_df(conv_df, unique_val_column=conv_df_index_exploded.name)
-        else:
-            conv_df.index = conv_df_index
+            # collapse the DataFrame
+            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index')
+            conv_df = conv_df.set_index('positional_index')
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1025,25 +1013,19 @@ class CuratedDataset:
             }
 
         conv_df = conv_df.rename(columns=new_colnames_map)
+        conv_df = conv_df.replace("None", None)
+        # keep only relevant columns
+        conv_df = conv_df[list(new_colnames_map.values()) + ['original_index']]
 
-        # keep only the relevant columns
-        conv_df = conv_df[new_colnames_map.values()]
-
-        # drop overlapping columns in the original df to avoid conflicts when merging
-        df = df[list(set(df.columns) - set(conv_df.columns))]
+        # drop overlapping columns in the original df to avoid conflicts when merging, but keep the "original_index" column
+        out_df = df[list(set(df.columns) - set(conv_df.columns))]
 
         # merge the converted DataFrame to the original DataFrame
-        conv_df.index = conv_df_index
-        df = df.merge(conv_df, "left", left_index=True, right_index=True)
+        out_df = out_df.merge(conv_df, "left", left_index=True, right_index=True)
 
-        # replace "None" strings returned by gprofiler with None
-        df = df.replace("None", None)
+        out_df.index.name = 'index'
 
-        # rename index to index
-        df.index = df.index.rename("index")
-
-        # replace slot with the converted DataFrame
-        setattr(self.adata, slot, df)
+        setattr(self.adata, slot, out_df)
 
     def standardize_ontology(
         self,
