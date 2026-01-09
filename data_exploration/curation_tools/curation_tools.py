@@ -1716,16 +1716,17 @@ class CuratedDataset:
         for term in control_terms:
             control_row = {col: term for col in gene_ont_subset.columns}
             gene_ont_subset = pd.concat([gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True)
-        # gene_ont_subset = pd.concat(
-        #     [
-        #         pd.DataFrame.from_dict(
-        #             {k: "non-targeting" for k in gene_ont_subset.columns},
-        #             orient="index",
-        #         ).T,
-        #         gene_ont_subset,
-        #     ],
-        #     ignore_index=True,
-        # )
+
+        # --- Main mapping ---
+        # Initialize mapped DataFrame
+        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
+        # Map using gene_ont_subset on 'ensembl_gene_id'
+        mapped_df = mapped_df.merge(
+            gene_ont_subset,
+            how="left",
+            left_on="original_input",
+            right_on="ensembl_gene_id",
+        )
 
         # --- Identify missing Ensembl IDs ---
         missing_ensg = list(
@@ -1749,25 +1750,27 @@ class CuratedDataset:
             missing_ensg_df = missing_ensg_df.merge(
                 gene_ont_subset, how="left", on="ensembl_gene_id"
             )
-
-        # --- Main mapping ---
-        # Initialize mapped DataFrame
-        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
-        # Map using gene_ont_subset on 'ensembl_gene_id'
-        mapped_df = mapped_df.merge(
-            gene_ont_subset,
-            how="left",
-            left_on="original_input",
-            right_on="ensembl_gene_id",
-        )
-        # Fill in missing mappings with fetched latest Ensembl IDs
-        if missing_ensg:
-            mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)] = (
-                mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)].merge(
-                    missing_ensg_df, how="left", on="original_input"
-                )
+            # add unmapped original entries back as is
+            unmapped_list = list(set(missing_ensg) - set(missing_ensg_df["original_input"]))
+            unmapped_df = pd.DataFrame(
+                {"original_input": list(unmapped_list), "ensembl_gene_id": list(unmapped_list)}
             )
+            missing_ensg_df = pd.concat([missing_ensg_df, unmapped_df], ignore_index=True)
 
+            # Fill in missing mappings with fetched latest Ensembl IDs
+            mapped_df = mapped_df.set_index("original_input")
+            missing_ensg_df = missing_ensg_df.set_index("original_input")
+            mapped_df.update(missing_ensg_df, errors='raise')
+            # add the original_input column back
+            mapped_df['original_input'] = mapped_df.index
+
+            # Fill the remaining nans in ensembl_gene_id with original_input
+            mapped_df['ensembl_gene_id'] = mapped_df['ensembl_gene_id'].fillna(mapped_df['original_input'])
+
+            mapped_df = mapped_df.reset_index(drop=True)
+
+        # drop nas
+        mapped_df = mapped_df.dropna(subset=["original_input"])
 
         print(
             f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
