@@ -1614,22 +1614,16 @@ class CuratedDataset:
 
         exploded_cols = [c for c in df.columns if c != unique_val_column]
 
-        # Define the aggregation logic
-        def join_values(series):
-            series = series.dropna()
-            if series.empty:
-                return None
-            # .astype(str) ensures integers/floats don't crash the .join()
-            return sep.join(series.astype(str))
-
         pdf_collapsed = pdf.group_by(unique_val_column).agg([
             pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
             for c in exploded_cols
         ])
 
+        pdf_collapsed = pdf_collapsed.to_pandas()
+
         print(f"Collapsed column {unique_val_column} using separator {sep}")
 
-        return pdf_collapsed.to_pandas()
+        return pdf_collapsed
 
     @staticmethod
     def convert_excel_date_to_gene(symbol):
