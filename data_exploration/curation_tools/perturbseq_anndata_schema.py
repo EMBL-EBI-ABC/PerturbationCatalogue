@@ -486,7 +486,7 @@ class VarSchema(DataFrameModel):
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
-        str_startswith=("ENSG", "control"),
+        str_startswith=["ENSG", "control"],
         description="Ensembl gene ID"
     )
     gene_symbol: Series[str] = Field(
