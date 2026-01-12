@@ -392,6 +392,7 @@ class ObsSchema(DataFrameModel):
         description="Ontology term label associated with the sequencing library kit.",
         isin=[
             "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
+            "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2",
             "10x Genomics Single Cell 3-prime",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
@@ -405,6 +406,7 @@ class ObsSchema(DataFrameModel):
         nullable=True,
         description="Ontology term label associated with the sequencing platform.",
         isin=[
+            "Illumina NovaSeq X",
             "Illumina NovaSeq X Plus",
             "Illumina HiSeq 4000",
             "Illumina HiSeq 2500",
@@ -439,7 +441,7 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles", "TRADE"],
+        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat"],
     )
     score_interpretation: Series[String] = Field(
         nullable=True,

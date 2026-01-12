@@ -943,40 +943,34 @@ class CuratedDataset:
         if df[input_column].empty:
             raise ValueError(f"Column {input_column} is empty")
 
-        # initialize the converted DataFrame
-        conv_df = df[[input_column]].copy()
-        conv_df_index = conv_df.index.copy()
+        # reset index to avoid duplicate gene symbols
+        df.index.name = 'original_index'
+        df = df.reset_index()
 
-        # Explode the column if it contains multiple entries
+        # initialize the converted DataFrame
+        conv_df = df[[input_column, 'original_index']].copy()
+        conv_df['positional_index'] = range(len(conv_df))
+
         if multiple_entries:
             if multiple_entries_sep is None:
-                raise ValueError(
-                    "multiple_entries_sep must be provided if multiple_entries is True"
-                )
-            mask = ~conv_df[input_column].str.upper().str.contains('CONTROL')
-            conv_df.loc[mask, input_column] = conv_df.loc[mask, input_column].str.split(
-                multiple_entries_sep
-            )
+                raise ValueError("multiple_entries_sep must be provided if multiple_entries is True")
+            conv_df[input_column] = conv_df[input_column].str.split(multiple_entries_sep)
             conv_df = conv_df.explode(input_column)
-            conv_df_index_exploded = conv_df.index.copy()
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            conv_df = self.remove_version_from_genes(
-                df=conv_df, column=input_column, sep=version_sep
-            )
-        
+            conv_df = self.remove_version_from_genes(df=conv_df, column=input_column, sep=version_sep)
+
         # filter out all non-standard chromosome names from gene_ont
         gene_ont = self.gene_ont[
             self.gene_ont["chromosome_name"].isin(
                 [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
             )
-        ].copy()
-
-        conv_list = conv_df[input_column].unique().tolist()
-        conv_list = [e for e in conv_list if e is not None]
+        ]
 
         # map the ENSG or gene symbols to the gene ontology
+        conv_list = conv_df[input_column].dropna().unique().tolist()
+
         if input_column_type == "ensembl_gene_id":
             matched_df = self.merge_gene_ont_ensg(
                 conv_list=conv_list, gene_ont=gene_ont
@@ -987,20 +981,15 @@ class CuratedDataset:
                 conv_list=conv_list, gene_ont=gene_ont
             )
 
-        # drop nas
-        matched_df = matched_df.dropna(subset=["original_input"])
-
         # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
             matched_df, how="left", left_on=input_column, right_on="original_input"
         )
 
         if multiple_entries:
-            conv_df.index = conv_df_index_exploded
-            # collapse the DataFrame to get the original column back
-            conv_df = self.collapse_df(conv_df, unique_val_column=conv_df_index_exploded.name)
-        else:
-            conv_df.index = conv_df_index
+            # collapse the DataFrame
+            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index')
+            conv_df = conv_df.set_index('positional_index')
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1024,24 +1013,19 @@ class CuratedDataset:
             }
 
         conv_df = conv_df.rename(columns=new_colnames_map)
+        conv_df = conv_df.replace("None", None)
+        # keep only relevant columns
+        conv_df = conv_df[list(new_colnames_map.values()) + ['original_index']]
 
-        # keep only the relevant columns
-        conv_df = conv_df[new_colnames_map.values()]
-
-        # drop overlapping columns in the original df to avoid conflicts when merging
-        df = df[list(set(df.columns) - set(conv_df.columns))]
+        # drop overlapping columns in the original df to avoid conflicts when merging, but keep the "original_index" column
+        out_df = df[list(set(df.columns) - set(conv_df.columns))]
 
         # merge the converted DataFrame to the original DataFrame
-        df = df.merge(conv_df, "left", left_index=True, right_index=True)
+        out_df = out_df.merge(conv_df, "left", left_index=True, right_index=True)
 
-        # replace "None" strings returned by gprofiler with None
-        df = df.replace("None", None)
+        out_df.index.name = 'index'
 
-        # rename index to index
-        df.index = df.index.rename("index")
-
-        # replace slot with the converted DataFrame
-        setattr(self.adata, slot, df)
+        setattr(self.adata, slot, out_df)
 
     def standardize_ontology(
         self,
@@ -1626,19 +1610,20 @@ class CuratedDataset:
         if df[unique_val_column].empty:
             raise ValueError(f"Column {unique_val_column} is empty")
 
-        exploded_cols = df.columns.tolist()
-        exploded_cols.remove(unique_val_column)
+        pdf = pl.from_pandas(df)
 
-        df = df.groupby([unique_val_column]).agg(
-            {
-                col: lambda x: sep.join(x) if x.notna().all() else None
-                for col in exploded_cols
-            }
-        )
+        exploded_cols = [c for c in df.columns if c != unique_val_column]
+
+        pdf_collapsed = pdf.group_by(unique_val_column).agg([
+            pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
+            for c in exploded_cols
+        ])
+
+        pdf_collapsed = pdf_collapsed.to_pandas()
 
         print(f"Collapsed column {unique_val_column} using separator {sep}")
 
-        return df
+        return pdf_collapsed
 
     @staticmethod
     def convert_excel_date_to_gene(symbol):
@@ -1725,16 +1710,22 @@ class CuratedDataset:
         )
         gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
 
-        # Add the non-targeting control row
-        gene_ont_subset = pd.concat(
-            [
-                pd.DataFrame.from_dict(
-                    {k: "non-targeting" for k in gene_ont_subset.columns},
-                    orient="index",
-                ).T,
-                gene_ont_subset,
-            ],
-            ignore_index=True,
+        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+                         "control_guideonly", "control_casonly"]
+        for term in control_terms:
+            control_row = {col: term for col in gene_ont_subset.columns}
+            gene_ont_subset = pd.concat([gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True)
+
+        # --- Main mapping ---
+        # Initialize mapped DataFrame
+        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
+        # Map using gene_ont_subset on 'ensembl_gene_id'
+        mapped_df = mapped_df.merge(
+            gene_ont_subset,
+            how="left",
+            left_on="original_input",
+            right_on="ensembl_gene_id",
         )
 
         # --- Identify missing Ensembl IDs ---
@@ -1759,25 +1750,27 @@ class CuratedDataset:
             missing_ensg_df = missing_ensg_df.merge(
                 gene_ont_subset, how="left", on="ensembl_gene_id"
             )
-
-        # --- Main mapping ---
-        # Initialize mapped DataFrame
-        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
-        # Map using gene_ont_subset on 'ensembl_gene_id'
-        mapped_df = mapped_df.merge(
-            gene_ont_subset,
-            how="left",
-            left_on="original_input",
-            right_on="ensembl_gene_id",
-        )
-        # Fill in missing mappings with fetched latest Ensembl IDs
-        if missing_ensg:
-            mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)] = (
-                mapped_df.loc[mapped_df["original_input"].isin(missing_ensg)].merge(
-                    missing_ensg_df, how="left", on="original_input"
-                )
+            # add unmapped original entries back as is
+            unmapped_list = list(set(missing_ensg) - set(missing_ensg_df["original_input"]))
+            unmapped_df = pd.DataFrame(
+                {"original_input": list(unmapped_list), "ensembl_gene_id": list(unmapped_list)}
             )
+            missing_ensg_df = pd.concat([missing_ensg_df, unmapped_df], ignore_index=True)
 
+            # Fill in missing mappings with fetched latest Ensembl IDs
+            mapped_df = mapped_df.set_index("original_input")
+            missing_ensg_df = missing_ensg_df.set_index("original_input")
+            mapped_df.update(missing_ensg_df, errors='raise')
+            # add the original_input column back
+            mapped_df['original_input'] = mapped_df.index
+
+            # Fill the remaining nans in ensembl_gene_id with original_input
+            mapped_df['ensembl_gene_id'] = mapped_df['ensembl_gene_id'].fillna(mapped_df['original_input'])
+
+            mapped_df = mapped_df.reset_index(drop=True)
+
+        # drop nas
+        mapped_df = mapped_df.dropna(subset=["original_input"])
 
         print(
             f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
@@ -2262,7 +2255,7 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     Parameters
     ----------
     ensg_list : list of str
-        List of gene symbols/ensembl IDs to query.
+        List of ensembl IDs to query.
 
     Returns
     -------
