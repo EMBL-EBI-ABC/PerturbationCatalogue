@@ -70,9 +70,7 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
     mapping = {
         "settings": {
             "analysis": {
-                "analyzer": {
-                    "standard": {"type": "standard", "stopwords": "_english_"}
-                },
+                "analyzer": {"en": {"type": "standard", "stopwords": "_english_"}},
                 "normalizer": {
                     "lc_ascii": {
                         "type": "custom",
@@ -101,7 +99,7 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
         if es_type == "keyword":
             prop["normalizer"] = "lc_ascii"
         elif es_type == "text":
-            prop["analyzer"] = "standard"
+            prop["analyzer"] = "en"
 
         mapping["mappings"]["properties"][es_field] = prop
 
