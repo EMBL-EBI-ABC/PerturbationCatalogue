@@ -105,6 +105,14 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
 
         mapping["mappings"]["properties"][es_field] = prop
 
+    # Explicitly define data_modalities with keyword and text sub-field
+    mapping["mappings"]["properties"]["data_modalities"] = {
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {"text": {"type": "text", "analyzer": "en"}},
+    }
+
     return mapping
 
 
