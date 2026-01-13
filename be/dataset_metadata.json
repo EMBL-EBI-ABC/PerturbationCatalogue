@@ -65,6 +65,429 @@
             "es_field": "score_interpretation",
             "is_array": false,
             "description": "Filter by score interpretation"
+        },
+        {
+            "api_name": "dataset_timepoints",
+            "es_field": "timepoints",
+            "is_array": true,
+            "description": "Filter by timepoints"
+        },
+        {
+            "api_name": "dataset_treatment_labels",
+            "es_field": "treatment_labels",
+            "is_array": true,
+            "description": "Filter by treatment labels"
+        },
+        {
+            "api_name": "dataset_treatment_ids",
+            "es_field": "treatment_ids",
+            "is_array": true,
+            "description": "Filter by treatment IDs"
+        },
+        {
+            "api_name": "dataset_model_system_labels",
+            "es_field": "model_system_labels",
+            "is_array": true,
+            "description": "Filter by model system labels"
+        },
+        {
+            "api_name": "dataset_model_system_ids",
+            "es_field": "model_system_ids",
+            "is_array": true,
+            "description": "Filter by model system IDs"
+        },
+        {
+            "api_name": "dataset_tissue_ids",
+            "es_field": "tissue_ids",
+            "is_array": true,
+            "description": "Filter by tissue IDs"
+        },
+        {
+            "api_name": "dataset_cell_type_ids",
+            "es_field": "cell_type_ids",
+            "is_array": true,
+            "description": "Filter by cell type IDs"
+        },
+        {
+            "api_name": "dataset_cell_line_ids",
+            "es_field": "cell_line_ids",
+            "is_array": true,
+            "description": "Filter by cell line IDs"
+        },
+        {
+            "api_name": "dataset_sex_ids",
+            "es_field": "sex_ids",
+            "is_array": true,
+            "description": "Filter by sex IDs"
+        },
+        {
+            "api_name": "dataset_developmental_stage_ids",
+            "es_field": "developmental_stage_ids",
+            "is_array": true,
+            "description": "Filter by developmental stage IDs"
+        },
+        {
+            "api_name": "dataset_disease_ids",
+            "es_field": "disease_ids",
+            "is_array": true,
+            "description": "Filter by disease IDs"
+        },
+        {
+            "api_name": "dataset_study_title",
+            "es_field": "study_title",
+            "is_array": false,
+            "description": "Filter by study title",
+            "es_type": "text"
+        },
+        {
+            "api_name": "dataset_study_uri",
+            "es_field": "study_uri",
+            "is_array": false,
+            "description": "Filter by study URI"
+        },
+        {
+            "api_name": "dataset_study_year",
+            "es_field": "study_year",
+            "is_array": false,
+            "description": "Filter by study year"
+        },
+        {
+            "api_name": "dataset_first_author",
+            "es_field": "first_author",
+            "is_array": false,
+            "description": "Filter by first author"
+        },
+        {
+            "api_name": "dataset_last_author",
+            "es_field": "last_author",
+            "is_array": false,
+            "description": "Filter by last author"
+        },
+        {
+            "api_name": "dataset_experiment_title",
+            "es_field": "experiment_title",
+            "is_array": false,
+            "description": "Filter by experiment title",
+            "es_type": "text"
+        },
+        {
+            "api_name": "dataset_experiment_summary",
+            "es_field": "experiment_summary",
+            "is_array": false,
+            "description": "Filter by experiment summary",
+            "es_type": "text"
+        },
+        {
+            "api_name": "dataset_number_of_perturbed_targets",
+            "es_field": "number_of_perturbed_targets",
+            "is_array": true,
+            "description": "Filter by number of perturbed targets"
+        },
+        {
+            "api_name": "dataset_number_of_perturbed_samples",
+            "es_field": "number_of_perturbed_samples",
+            "is_array": true,
+            "description": "Filter by number of perturbed samples"
+        },
+        {
+            "api_name": "dataset_library_generation_type_labels",
+            "es_field": "library_generation_type_labels",
+            "is_array": true,
+            "description": "Filter by library generation type labels"
+        },
+        {
+            "api_name": "dataset_library_generation_type_ids",
+            "es_field": "library_generation_type_ids",
+            "is_array": true,
+            "description": "Filter by library generation type IDs"
+        },
+        {
+            "api_name": "dataset_library_generation_method_labels",
+            "es_field": "library_generation_method_labels",
+            "is_array": true,
+            "description": "Filter by library generation method labels"
+        },
+        {
+            "api_name": "dataset_library_generation_method_ids",
+            "es_field": "library_generation_method_ids",
+            "is_array": true,
+            "description": "Filter by library generation method IDs"
+        },
+        {
+            "api_name": "dataset_enzyme_generation_delivery_labels",
+            "es_field": "enzyme_generation_delivery_labels",
+            "is_array": true,
+            "description": "Filter by enzyme generation delivery labels"
+        },
+        {
+            "api_name": "dataset_enzyme_generation_delivery_ids",
+            "es_field": "enzyme_generation_delivery_ids",
+            "is_array": true,
+            "description": "Filter by enzyme generation delivery IDs"
+        },
+        {
+            "api_name": "dataset_library_generation_delivery_labels",
+            "es_field": "library_generation_delivery_labels",
+            "is_array": true,
+            "description": "Filter by library generation delivery labels"
+        },
+        {
+            "api_name": "dataset_library_generation_delivery_ids",
+            "es_field": "library_generation_delivery_ids",
+            "is_array": true,
+            "description": "Filter by library generation delivery IDs"
+        },
+        {
+            "api_name": "dataset_enzyme_integration_state_labels",
+            "es_field": "enzyme_integration_state_labels",
+            "is_array": true,
+            "description": "Filter by enzyme integration state labels"
+        },
+        {
+            "api_name": "dataset_enzyme_integration_state_ids",
+            "es_field": "enzyme_integration_state_ids",
+            "is_array": true,
+            "description": "Filter by enzyme integration state IDs"
+        },
+        {
+            "api_name": "dataset_library_integration_state_labels",
+            "es_field": "library_integration_state_labels",
+            "is_array": true,
+            "description": "Filter by library integration state labels"
+        },
+        {
+            "api_name": "dataset_library_integration_state_ids",
+            "es_field": "library_integration_state_ids",
+            "is_array": true,
+            "description": "Filter by library integration state IDs"
+        },
+        {
+            "api_name": "dataset_enzyme_expression_control_labels",
+            "es_field": "enzyme_expression_control_labels",
+            "is_array": true,
+            "description": "Filter by enzyme expression control labels"
+        },
+        {
+            "api_name": "dataset_enzyme_expression_control_ids",
+            "es_field": "enzyme_expression_control_ids",
+            "is_array": true,
+            "description": "Filter by enzyme expression control IDs"
+        },
+        {
+            "api_name": "dataset_library_expression_control_labels",
+            "es_field": "library_expression_control_labels",
+            "is_array": true,
+            "description": "Filter by library expression control labels"
+        },
+        {
+            "api_name": "dataset_library_expression_control_ids",
+            "es_field": "library_expression_control_ids",
+            "is_array": true,
+            "description": "Filter by library expression control IDs"
+        },
+        {
+            "api_name": "dataset_library_names",
+            "es_field": "library_names",
+            "is_array": true,
+            "description": "Filter by library names"
+        },
+        {
+            "api_name": "dataset_library_uris",
+            "es_field": "library_uris",
+            "is_array": true,
+            "description": "Filter by library URIs"
+        },
+        {
+            "api_name": "dataset_library_format_labels",
+            "es_field": "library_format_labels",
+            "is_array": true,
+            "description": "Filter by library format labels"
+        },
+        {
+            "api_name": "dataset_library_format_ids",
+            "es_field": "library_format_ids",
+            "is_array": true,
+            "description": "Filter by library format IDs"
+        },
+        {
+            "api_name": "dataset_library_scope_labels",
+            "es_field": "library_scope_labels",
+            "is_array": true,
+            "description": "Filter by library scope labels"
+        },
+        {
+            "api_name": "dataset_library_scope_ids",
+            "es_field": "library_scope_ids",
+            "is_array": true,
+            "description": "Filter by library scope IDs"
+        },
+        {
+            "api_name": "dataset_library_perturbation_type_ids",
+            "es_field": "library_perturbation_type_ids",
+            "is_array": true,
+            "description": "Filter by library perturbation type IDs"
+        },
+        {
+            "api_name": "dataset_library_manufacturers",
+            "es_field": "library_manufacturers",
+            "is_array": true,
+            "description": "Filter by library manufacturers"
+        },
+        {
+            "api_name": "dataset_library_lentivaral_generations",
+            "es_field": "library_lentivaral_generations",
+            "is_array": true,
+            "description": "Filter by library lentivaral generations"
+        },
+        {
+            "api_name": "dataset_library_grnas_per_targets",
+            "es_field": "library_grnas_per_targets",
+            "is_array": true,
+            "description": "Filter by library grnas per targets"
+        },
+        {
+            "api_name": "dataset_library_total_grnas",
+            "es_field": "library_total_grnas",
+            "is_array": true,
+            "description": "Filter by library total grnas"
+        },
+        {
+            "api_name": "dataset_library_total_variants",
+            "es_field": "library_total_variants",
+            "is_array": true,
+            "description": "Filter by library total variants"
+        },
+        {
+            "api_name": "dataset_readout_dimensionality_labels",
+            "es_field": "readout_dimensionality_labels",
+            "is_array": true,
+            "description": "Filter by readout dimensionality labels"
+        },
+        {
+            "api_name": "dataset_readout_dimensionality_ids",
+            "es_field": "readout_dimensionality_ids",
+            "is_array": true,
+            "description": "Filter by readout dimensionality IDs"
+        },
+        {
+            "api_name": "dataset_readout_type_labels",
+            "es_field": "readout_type_labels",
+            "is_array": true,
+            "description": "Filter by readout type labels"
+        },
+        {
+            "api_name": "dataset_readout_type_ids",
+            "es_field": "readout_type_ids",
+            "is_array": true,
+            "description": "Filter by readout type IDs"
+        },
+        {
+            "api_name": "dataset_readout_technology_labels",
+            "es_field": "readout_technology_labels",
+            "is_array": true,
+            "description": "Filter by readout technology labels"
+        },
+        {
+            "api_name": "dataset_readout_technology_ids",
+            "es_field": "readout_technology_ids",
+            "is_array": true,
+            "description": "Filter by readout technology IDs"
+        },
+        {
+            "api_name": "dataset_method_name_labels",
+            "es_field": "method_name_labels",
+            "is_array": true,
+            "description": "Filter by method name labels"
+        },
+        {
+            "api_name": "dataset_method_name_ids",
+            "es_field": "method_name_ids",
+            "is_array": true,
+            "description": "Filter by method name IDs"
+        },
+        {
+            "api_name": "dataset_method_uri",
+            "es_field": "method_uri",
+            "is_array": true,
+            "description": "Filter by method URI"
+        },
+        {
+            "api_name": "dataset_sequencing_library_kit_labels",
+            "es_field": "sequencing_library_kit_labels",
+            "is_array": true,
+            "description": "Filter by sequencing library kit labels"
+        },
+        {
+            "api_name": "dataset_sequencing_library_ki_ids",
+            "es_field": "sequencing_library_ki_ids",
+            "is_array": true,
+            "description": "Filter by sequencing library kit IDs"
+        },
+        {
+            "api_name": "dataset_sequencing_platform_labels",
+            "es_field": "sequencing_platform_labels",
+            "is_array": true,
+            "description": "Filter by sequencing platform labels"
+        },
+        {
+            "api_name": "dataset_sequencing_platform_ids",
+            "es_field": "sequencing_platform_ids",
+            "is_array": true,
+            "description": "Filter by sequencing platform IDs"
+        },
+        {
+            "api_name": "dataset_sequencing_strategy_labels",
+            "es_field": "sequencing_strategy_labels",
+            "is_array": true,
+            "description": "Filter by sequencing strategy labels"
+        },
+        {
+            "api_name": "dataset_sequencing_strategy_ids",
+            "es_field": "sequencing_strategy_ids",
+            "is_array": true,
+            "description": "Filter by sequencing strategy IDs"
+        },
+        {
+            "api_name": "dataset_software_counts_labels",
+            "es_field": "software_counts_labels",
+            "is_array": true,
+            "description": "Filter by software counts labels"
+        },
+        {
+            "api_name": "dataset_software_counts_ids",
+            "es_field": "software_counts_ids",
+            "is_array": true,
+            "description": "Filter by software counts IDs"
+        },
+        {
+            "api_name": "dataset_software_analysis_labels",
+            "es_field": "software_analysis_labels",
+            "is_array": true,
+            "description": "Filter by software analysis labels"
+        },
+        {
+            "api_name": "dataset_software_analysis_ids",
+            "es_field": "software_analysis_ids",
+            "is_array": true,
+            "description": "Filter by software analysis IDs"
+        },
+        {
+            "api_name": "dataset_reference_genome_labels",
+            "es_field": "reference_genome_labels",
+            "is_array": true,
+            "description": "Filter by reference genome labels"
+        },
+        {
+            "api_name": "dataset_reference_genome_ids",
+            "es_field": "reference_genome_ids",
+            "is_array": true,
+            "description": "Filter by reference genome IDs"
+        },
+        {
+            "api_name": "dataset_associated_datasets",
+            "es_field": "associated_datasets",
+            "is_array": true,
+            "description": "Filter by associated datasets"
         }
     ]
 }
