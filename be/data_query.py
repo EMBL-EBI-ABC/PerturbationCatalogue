@@ -54,6 +54,12 @@ PG_MAPPINGS = {
     "mave": MAVE_PG_MAPPING,
 }
 
+# Default sorts for different modalities
+DEFAULT_SORTS = {
+    "crispr-screen": "effect_significant:desc",
+    "perturb-seq": "effect_padj:asc",
+}
+
 # Load dataset metadata configuration
 METADATA_PATH = os.path.join(os.path.dirname(__file__), "dataset_metadata.json")
 with open(METADATA_PATH) as f:
@@ -462,7 +468,7 @@ async def _search_modality_impl(
     dataset_limit = query_params.get("dataset_limit", 10)
     dataset_offset = query_params.get("dataset_offset", 0)
     rows_per_dataset_limit = query_params.get("rows_per_dataset_limit", 10)
-    sort = query_params.get("sort")
+    sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
 
     validate_query_params(query_params, modality)
 
@@ -661,7 +667,7 @@ async def _search_dataset_impl(
     """Search within a specific dataset in a modality (Shared Implementation)."""
     limit = query_params.get("limit", 50)
     offset = query_params.get("offset", 0)
-    sort = query_params.get("sort")
+    sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
 
     validate_query_params(query_params, modality, dataset_id)
 
