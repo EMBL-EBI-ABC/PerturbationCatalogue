@@ -480,6 +480,16 @@ async def _search_modality_impl(
 
     # 1. Pre-filter Datasets (Postgres)
     pg_filters = []
+
+    # Exclude "null" rows
+    essential_columns = {
+        "perturb-seq": "gene",
+        "crispr-screen": "score_name",
+        "mave": "score_name",
+    }
+    if modality in essential_columns:
+        pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
+
     pg_params: List[Any] = []
 
     for key, value in query_params.items():
@@ -698,6 +708,16 @@ async def _search_dataset_impl(
 
     # Build filters
     pg_filters = [f"dataset_id = ${1}"]
+
+    # Exclude "null" rows
+    essential_columns = {
+        "perturb-seq": "gene",
+        "crispr-screen": "score_name",
+        "mave": "score_name",
+    }
+    if modality in essential_columns:
+        pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
+
     pg_params: List[Any] = [dataset_id]
 
     for key, value in query_params.items():
