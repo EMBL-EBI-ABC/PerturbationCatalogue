@@ -65,6 +65,65 @@ def get_index_metadata(es_index_name: str) -> Tuple[str, str]:
         raise ValueError(f"Unknown index name: {es_index_name}")
 
 
+def generate_dataset_summary_mapping() -> Dict[str, Any]:
+    """Dynamically generate mapping for dataset-summary from be/dataset_metadata.json"""
+    mapping = {
+        "settings": {
+            "analysis": {
+                "analyzer": {"en": {"type": "standard", "stopwords": "_english_"}},
+                "normalizer": {
+                    "lc_ascii": {
+                        "type": "custom",
+                        "char_filter": [],
+                        "filter": ["lowercase", "asciifolding"],
+                    }
+                },
+            }
+        },
+        "mappings": {"properties": {}},
+    }
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    metadata_path = os.path.join(script_dir, "../../be/dataset_metadata.json")
+    if not os.path.exists(metadata_path):
+        metadata_path = "dataset_metadata.json"
+
+    with open(metadata_path, "r") as f:
+        meta = json.load(f)
+
+    for field in meta["fields"]:
+        es_field = field["es_field"]
+        es_type = field.get("es_type", "keyword")
+
+        prop = {"type": es_type}
+        if es_type == "keyword":
+            prop["normalizer"] = "lc_ascii"
+        elif es_type == "text":
+            prop["analyzer"] = "en"
+
+        mapping["mappings"]["properties"][es_field] = prop
+
+    # Explicitly define data_modalities with keyword and text sub-field
+    mapping["mappings"]["properties"]["data_modalities"] = {
+        "type": "keyword",
+        "ignore_above": 256,
+        "normalizer": "lc_ascii",
+        "fields": {"text": {"type": "text", "analyzer": "en"}},
+    }
+
+    return mapping
+
+
+def get_mapping(index_prefix: str) -> Dict[str, Any]:
+    if index_prefix == "dataset":
+        return generate_dataset_summary_mapping()
+    mapping_file = f"{index_prefix}-summary_settings+mapping.json"
+    if not os.path.exists(mapping_file):
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+    with open(mapping_file, "r") as f:
+        return json.load(f)
+
+
 def ensure_index(es: Elasticsearch, index: str) -> None:
     try:
         if es.indices.exists(index=index):
@@ -73,13 +132,7 @@ def ensure_index(es: Elasticsearch, index: str) -> None:
 
         logging.info("Index %s does not exist. Creating...", index)
         prefix, _ = get_index_metadata(index)
-        mapping_file = f"{prefix}-summary_settings+mapping.json"
-
-        if not os.path.exists(mapping_file):
-            raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
-
-        with open(mapping_file, "r") as f:
-            mapping_body = json.load(f)
+        mapping_body = get_mapping(prefix)
 
         es.indices.create(index=index, body=mapping_body)
         logging.info("Index %s created successfully.", index)
@@ -101,14 +154,12 @@ def stream_rows_from_bq(
 
 
 # --------- Transform / Actions ----------
-def get_typed_fields(index_name: str) -> tuple[list[str], list[str], list[str]]:
+def get_typed_fields(index_prefix: str) -> tuple[list[str], list[str], list[str]]:
     int_fields: list[str] = []
     float_fields: list[str] = []
     nested_fields: list[str] = []
-    # We use the prefix to find the mapping file
-    # e.g. index_name="dataset" -> "dataset-summary_settings+mapping.json"
-    with open(f"{index_name}-summary_settings+mapping.json") as f:
-        settings_mapping = json.load(f)
+
+    settings_mapping = get_mapping(index_prefix)
     for k, v in settings_mapping["mappings"]["properties"].items():
         if v["type"] == "integer":
             int_fields.append(k)

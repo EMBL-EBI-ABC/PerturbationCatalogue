@@ -1,10 +1,10 @@
 import os
-import re
+import json
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 
 # --- Database Connection Management ---
@@ -54,19 +54,38 @@ PG_MAPPINGS = {
     "mave": MAVE_PG_MAPPING,
 }
 
-ELASTIC_FIELD_MAPPING = {
-    "dataset_id": "dataset_id",
-    "dataset_tissue": "tissue_labels",
-    "dataset_cell_type": "cell_type_labels",
-    "dataset_cell_line": "cell_line_labels",
-    "dataset_sex": "sex_labels",
-    "dataset_developmental_stage": "developmental_stage_labels",
-    "dataset_disease": "disease_labels",
-    "dataset_library_perturbation_type": "library_perturbation_type_labels",
-    "dataset_license_id": "license_ids",
-    "dataset_license_label": "license_labels",
-    "dataset_score_interpretation": "score_interpretation",
+# Load dataset metadata configuration
+METADATA_PATH = os.path.join(os.path.dirname(__file__), "dataset_metadata.json")
+with open(METADATA_PATH) as f:
+    METADATA_CONFIG = json.load(f)
+
+DATASET_FIELDS = METADATA_CONFIG["fields"]
+
+ELASTIC_FIELD_MAPPING = {f["api_name"]: f["es_field"] for f in DATASET_FIELDS}
+ELASTIC_AGG_FIELDS = {
+    f["api_name"]: f["es_field"]
+    for f in DATASET_FIELDS
+    if f.get("es_type") != "text"
+    and f["api_name"] not in ("dataset_id", "dataset_score_interpretation")
 }
+
+
+# --- Pydantic Models for API Response ---
+
+
+# Dynamic Dataset Metadata Model
+def _build_dataset_metadata_model():
+    fields = {}
+    for f in DATASET_FIELDS:
+        name = f["api_name"].replace("dataset_", "")
+        if name == "id":
+            fields[name] = (str, Field(..., alias=f["api_name"]))
+        else:
+            fields[name] = (Optional[str], Field(None, alias=f["api_name"]))
+    return create_model("DatasetMetadata", **fields)
+
+
+DatasetMetadata = _build_dataset_metadata_model()
 
 # --- Pydantic Models for API Response ---
 
@@ -117,24 +136,6 @@ class Result(BaseModel):
 
 
 # Dataset Models
-class DatasetMetadata(BaseModel):
-    id: str = Field(..., alias="dataset_id")
-    tissue: Optional[str] = Field(None, alias="dataset_tissue")
-    cell_type: Optional[str] = Field(None, alias="dataset_cell_type")
-    cell_line: Optional[str] = Field(None, alias="dataset_cell_line")
-    sex: Optional[str] = Field(None, alias="dataset_sex")
-    developmental_stage: Optional[str] = Field(
-        None, alias="dataset_developmental_stage"
-    )
-    disease: Optional[str] = Field(None, alias="dataset_disease")
-    library_perturbation_type: Optional[str] = Field(
-        None, alias="dataset_library_perturbation_type"
-    )
-    license_id: Optional[str] = Field(None, alias="dataset_license_id")
-    license_label: Optional[str] = Field(None, alias="dataset_license_label")
-    score_interpretation: Optional[str] = Field(
-        None, alias="dataset_score_interpretation"
-    )
 
 
 class DatasetResult(BaseModel):
@@ -165,63 +166,47 @@ class DatasetSearchResponse(BaseModel):
 # --- Dependency Classes for Query Parameters ---
 
 
-class CommonModalitySearchParams:
-    def __init__(
-        self,
-        dataset_metadata: Optional[str] = Query(
-            None, description="Search term for dataset metadata"
-        ),
-        dataset_tissue: Optional[str] = Query(None, description="Filter by tissue"),
-        dataset_cell_type: Optional[str] = Query(
-            None, description="Filter by cell type"
-        ),
-        dataset_cell_line: Optional[str] = Query(
-            None, description="Filter by cell line"
-        ),
-        dataset_sex: Optional[str] = Query(None, description="Filter by sex"),
-        dataset_developmental_stage: Optional[str] = Query(
-            None, description="Filter by developmental stage"
-        ),
-        dataset_disease: Optional[str] = Query(None, description="Filter by disease"),
-        dataset_library_perturbation_type: Optional[str] = Query(
-            None, description="Filter by library perturbation type"
-        ),
-        dataset_license_id: Optional[str] = Query(
-            None, description="Filter by license ID"
-        ),
-        dataset_license_label: Optional[str] = Query(
-            None, description="Filter by license label"
-        ),
-        dataset_score_interpretation: Optional[str] = Query(
-            None, description="Filter by score interpretation"
-        ),
-        dataset_limit: int = Query(10, description="Number of datasets to return"),
-        dataset_offset: int = Query(0, description="Offset for datasets"),
-        rows_per_dataset_limit: int = Query(
-            10, description="Number of rows per dataset to return"
-        ),
-        sort: Optional[str] = Query(
-            None, description="Sort order (e.g., 'field:asc,other:desc')"
-        ),
-    ):
-        self.dataset_metadata = dataset_metadata
-        self.dataset_tissue = dataset_tissue
-        self.dataset_cell_type = dataset_cell_type
-        self.dataset_cell_line = dataset_cell_line
-        self.dataset_sex = dataset_sex
-        self.dataset_developmental_stage = dataset_developmental_stage
-        self.dataset_disease = dataset_disease
-        self.dataset_library_perturbation_type = dataset_library_perturbation_type
-        self.dataset_license_id = dataset_license_id
-        self.dataset_license_label = dataset_license_label
-        self.dataset_score_interpretation = dataset_score_interpretation
-        self.dataset_limit = dataset_limit
-        self.dataset_offset = dataset_offset
-        self.rows_per_dataset_limit = rows_per_dataset_limit
-        self.sort = sort
+# Dynamic Search Params
+def _build_search_params_class():
+    fields = {
+        "dataset_metadata": (
+            Optional[str],
+            Query(None, description="Search term for dataset metadata"),
+        )
+    }
+    for f in DATASET_FIELDS:
+        fields[f["api_name"]] = (
+            Optional[str],
+            Query(None, description=f.get("description", f"Filter by {f['api_name']}")),
+        )
 
-    def dict(self):
-        return {k: v for k, v in self.__dict__.items() if v is not None}
+    # Standard paging and sort
+    fields.update(
+        {
+            "dataset_limit": (
+                int,
+                Query(10, description="Number of datasets to return"),
+            ),
+            "dataset_offset": (int, Query(0, description="Offset for datasets")),
+            "rows_per_dataset_limit": (
+                int,
+                Query(10, description="Number of rows per dataset to return"),
+            ),
+            "sort": (
+                Optional[str],
+                Query(None, description="Sort order (e.g., 'field:asc,other:desc')"),
+            ),
+        }
+    )
+
+    # Create a Pydantic model and then wrap it or use it as-is in Depends
+    Model = create_model("CommonModalitySearchParams", **fields)
+
+    # FastAPI's Depends() works with Pydantic models. We'll use this model.
+    return Model
+
+
+CommonModalitySearchParams = _build_search_params_class()
 
 
 class CommonDatasetSearchParams:
@@ -368,16 +353,6 @@ def validate_query_params(
     """Validates that all query params are known for the endpoint."""
     valid_params = {
         "dataset_metadata",
-        "dataset_tissue",
-        "dataset_cell_type",
-        "dataset_cell_line",
-        "dataset_sex",
-        "dataset_developmental_stage",
-        "dataset_disease",
-        "dataset_library_perturbation_type",
-        "dataset_license_id",
-        "dataset_license_label",
-        "dataset_score_interpretation",
         "sort",
         "dataset_limit",
         "dataset_offset",
@@ -385,6 +360,9 @@ def validate_query_params(
         "limit",
         "offset",
     }
+    # Add all dynamic dataset params
+    valid_params.update(ELASTIC_FIELD_MAPPING.keys())
+
     if dataset_id:
         valid_params = {"sort", "limit", "offset"}
 
@@ -536,21 +514,25 @@ async def _search_modality_impl(
         "crispr-screen": "CRISPR screen",
         "mave": "MAVE",
     }
-    es_modality = MODALITY_CASE_MAPPING.get(modality, modality)
 
     es_query_body: Dict[str, Any] = {
         "query": {
             "bool": {
                 "filter": [
-                    {"term": {"data_modalities": es_modality}},
+                    {
+                        "term": {
+                            "data_modalities": MODALITY_CASE_MAPPING.get(
+                                modality, modality
+                            )
+                        }
+                    },
                     {"terms": {"dataset_id": prefiltered_dataset_ids}},
                 ]
             }
         },
         "aggs": {
             field: {"terms": {"field": es_field, "size": 100}}
-            for field, es_field in ELASTIC_FIELD_MAPPING.items()
-            if field not in ("dataset_id", "dataset_score_interpretation")
+            for field, es_field in ELASTIC_AGG_FIELDS.items()
         },
     }
 
@@ -654,25 +636,13 @@ async def _search_modality_impl(
         def get_first_or_none(data: Optional[list]):
             return data[0] if data else None
 
-        dataset_meta = {
-            "dataset_id": es_dataset.get("dataset_id"),
-            "dataset_tissue": get_first_or_none(es_dataset.get("tissue_labels")),
-            "dataset_cell_type": get_first_or_none(es_dataset.get("cell_type_labels")),
-            "dataset_cell_line": get_first_or_none(es_dataset.get("cell_line_labels")),
-            "dataset_sex": get_first_or_none(es_dataset.get("sex_labels")),
-            "dataset_developmental_stage": get_first_or_none(
-                es_dataset.get("developmental_stage_labels")
-            ),
-            "dataset_disease": get_first_or_none(es_dataset.get("disease_labels")),
-            "dataset_library_perturbation_type": get_first_or_none(
-                es_dataset.get("library_perturbation_type_labels")
-            ),
-            "dataset_license_id": get_first_or_none(es_dataset.get("license_ids")),
-            "dataset_license_label": get_first_or_none(
-                es_dataset.get("license_labels")
-            ),
-            "dataset_score_interpretation": es_dataset.get("score_interpretation"),
-        }
+        dataset_meta = {}
+        for f in DATASET_FIELDS:
+            val = es_dataset.get(f["es_field"])
+            if f.get("is_array"):
+                dataset_meta[f["api_name"]] = get_first_or_none(val)
+            else:
+                dataset_meta[f["api_name"]] = val
 
         final_datasets.append({"dataset": dataset_meta, "results": results})
 
@@ -799,7 +769,7 @@ async def search_mave(
     modality_params: MaveParams = Depends(),
 ):
     """Search across all MAVE datasets."""
-    params = {**common.dict(), **modality_params.dict()}
+    params = {**common.model_dump(exclude_none=True), **modality_params.dict()}
     return await _search_modality_impl("mave", params)
 
 
@@ -813,7 +783,7 @@ async def search_crispr_screen(
     modality_params: CrisprScreenParams = Depends(),
 ):
     """Search across all CRISPR Screen datasets."""
-    params = {**common.dict(), **modality_params.dict()}
+    params = {**common.model_dump(exclude_none=True), **modality_params.dict()}
     return await _search_modality_impl("crispr-screen", params)
 
 
@@ -827,7 +797,7 @@ async def search_perturb_seq(
     modality_params: PerturbSeqParams = Depends(),
 ):
     """Search across all Perturb-seq datasets."""
-    params = {**common.dict(), **modality_params.dict()}
+    params = {**common.model_dump(exclude_none=True), **modality_params.dict()}
     return await _search_modality_impl("perturb-seq", params)
 
 

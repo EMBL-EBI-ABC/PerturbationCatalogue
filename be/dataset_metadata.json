@@ -1,0 +1,70 @@
+{
+    "fields": [
+        {
+            "api_name": "dataset_id",
+            "es_field": "dataset_id",
+            "is_array": false,
+            "description": "Dataset ID"
+        },
+        {
+            "api_name": "dataset_tissue",
+            "es_field": "tissue_labels",
+            "is_array": true,
+            "description": "Filter by tissue"
+        },
+        {
+            "api_name": "dataset_cell_type",
+            "es_field": "cell_type_labels",
+            "is_array": true,
+            "description": "Filter by cell type"
+        },
+        {
+            "api_name": "dataset_cell_line",
+            "es_field": "cell_line_labels",
+            "is_array": true,
+            "description": "Filter by cell line"
+        },
+        {
+            "api_name": "dataset_sex",
+            "es_field": "sex_labels",
+            "is_array": true,
+            "description": "Filter by sex"
+        },
+        {
+            "api_name": "dataset_developmental_stage",
+            "es_field": "developmental_stage_labels",
+            "is_array": true,
+            "description": "Filter by developmental stage"
+        },
+        {
+            "api_name": "dataset_disease",
+            "es_field": "disease_labels",
+            "is_array": true,
+            "description": "Filter by disease"
+        },
+        {
+            "api_name": "dataset_library_perturbation_type",
+            "es_field": "library_perturbation_type_labels",
+            "is_array": true,
+            "description": "Filter by library perturbation type"
+        },
+        {
+            "api_name": "dataset_license_id",
+            "es_field": "license_ids",
+            "is_array": true,
+            "description": "Filter by license ID"
+        },
+        {
+            "api_name": "dataset_license_label",
+            "es_field": "license_labels",
+            "is_array": true,
+            "description": "Filter by license label"
+        },
+        {
+            "api_name": "dataset_score_interpretation",
+            "es_field": "score_interpretation",
+            "is_array": false,
+            "description": "Filter by score interpretation"
+        }
+    ]
+}
