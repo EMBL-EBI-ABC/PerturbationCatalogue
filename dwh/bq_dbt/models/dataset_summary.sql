@@ -185,7 +185,6 @@ with
             max(max_ingested_at) as max_ingested_at
         from {{ ref("unified_metadata") }}
 
-
         group by dataset_id
     )
 

@@ -19,5 +19,4 @@ select
     significant,
     significance_criteria,
     ingested_at as max_ingested_at
-from {{ source('crispr', 'data') }}
-
+from {{ source("crispr", "data") }}
