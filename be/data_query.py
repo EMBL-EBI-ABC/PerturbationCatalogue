@@ -54,6 +54,12 @@ PG_MAPPINGS = {
     "mave": MAVE_PG_MAPPING,
 }
 
+# Default sorts for different modalities
+DEFAULT_SORTS = {
+    "crispr-screen": "effect_significant:desc",
+    "perturb-seq": "effect_padj:asc",
+}
+
 # Load dataset metadata configuration
 METADATA_PATH = os.path.join(os.path.dirname(__file__), "dataset_metadata.json")
 with open(METADATA_PATH) as f:
@@ -462,7 +468,7 @@ async def _search_modality_impl(
     dataset_limit = query_params.get("dataset_limit", 10)
     dataset_offset = query_params.get("dataset_offset", 0)
     rows_per_dataset_limit = query_params.get("rows_per_dataset_limit", 10)
-    sort = query_params.get("sort")
+    sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
 
     validate_query_params(query_params, modality)
 
@@ -495,7 +501,24 @@ async def _search_modality_impl(
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}" if pg_filters else ""
 
-    prefilter_query = f"SELECT DISTINCT dataset_id FROM {pg_table} {where_clause}"
+    if modality == "crispr-screen":
+        prefilter_query = f"""
+            SELECT dataset_id
+            FROM {pg_table}
+            {where_clause}
+            GROUP BY dataset_id
+            ORDER BY MAX(CASE WHEN significant = 'true' THEN 1 ELSE 0 END) DESC
+        """
+    elif modality == "perturb-seq":
+        prefilter_query = f"""
+            SELECT dataset_id
+            FROM {pg_table}
+            {where_clause}
+            GROUP BY dataset_id
+            ORDER BY COUNT(*) FILTER (WHERE padj < 0.05) DESC
+        """
+    else:
+        prefilter_query = f"SELECT DISTINCT dataset_id FROM {pg_table} {where_clause}"
 
     try:
         prefiltered_dataset_ids = [
@@ -554,6 +577,10 @@ async def _search_modality_impl(
 
     total_datasets_count = es_result["hits"]["total"]["value"]
     es_datasets = [hit["_source"] for hit in es_result["hits"]["hits"]]
+
+    # Re-order es_datasets to match prefiltered_dataset_ids order (Postgres significance sort)
+    dataset_id_to_order = {did: i for i, did in enumerate(prefiltered_dataset_ids)}
+    es_datasets.sort(key=lambda x: dataset_id_to_order.get(x["dataset_id"], 999999))
 
     facet_counts = {
         api_field: [
@@ -661,7 +688,7 @@ async def _search_dataset_impl(
     """Search within a specific dataset in a modality (Shared Implementation)."""
     limit = query_params.get("limit", 50)
     offset = query_params.get("offset", 0)
-    sort = query_params.get("sort")
+    sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
 
     validate_query_params(query_params, modality, dataset_id)
 
