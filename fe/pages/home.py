@@ -51,19 +51,14 @@ def _render_search_results(results):
         html.Tr(
             [
                 html.Th("Target name", className="fw-semibold"),
+                html.Th("Perturb-seq datasets", className="fw-semibold text-center"),
                 html.Th(
-                    "Total number of experiments", className="fw-semibold text-center"
-                ),
-                html.Th(
-                    "Significant Perturb-Seq gene pairs",
+                    "CRISPR-screen datasets",
                     className="fw-semibold text-center",
                 ),
                 html.Th(
-                    "Number of Significant CRISPR experiments",
+                    "MAVE datasets",
                     className="fw-semibold text-center",
-                ),
-                html.Th(
-                    "Number of MAVE experiments", className="fw-semibold text-center"
                 ),
                 html.Th("Data Modalities", className="fw-semibold"),
             ],
@@ -76,9 +71,10 @@ def _render_search_results(results):
         symbol = record.get("perturbed_target_symbol", "N/A")
         results_store[symbol] = record
 
-        n_experiments = _format_count(record.get("n_experiments"))
-        n_sig_up = _format_count(record.get("n_sig_perturb_pairs_up"))
-        n_sig_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_sc_perturb_seq = _format_count(record.get("n_perturb_seq"))
+        n_sc_perturb_seq_up = _format_count(record.get("n_sig_perturb_pairs_up"))
+        n_sc_perturb_seq_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_crispr = _format_count(record.get("n_crispr"))
         n_sig_crispr = _format_count(record.get("n_sig_crispr"))
         n_mave = _format_count(record.get("n_mave"))
         data_modalities = record.get("data_modalities") or []
@@ -113,15 +109,21 @@ def _render_search_results(results):
                             style={"color": COLORS["primary"]},
                         )
                     ),
-                    html.Td(n_experiments, className="text-center"),
                     html.Td(
                         [
                             html.Div(
                                 [
                                     html.Span(
+                                        f"Datasets: {n_sc_perturb_seq} ",
+                                        style={
+                                            "marginRight": "5px",
+                                        },
+                                    ),
+                                    html.Span(
                                         [
+                                            html.Span("("),
                                             html.Span(
-                                                "↑",
+                                                "Sig. genes up ↑: ",
                                                 style={
                                                     "color": "#1f9d55",
                                                     "marginRight": "0.25rem",
@@ -129,19 +131,20 @@ def _render_search_results(results):
                                                 },
                                             ),
                                             html.Span(
-                                                n_sig_up,
+                                                n_sc_perturb_seq_up,
                                                 style={
                                                     "color": "#1f9d55",
                                                     "fontWeight": "600",
                                                 },
                                             ),
+                                            html.Span(";"),
                                         ],
                                         className="d-inline-flex align-items-center me-3",
                                     ),
                                     html.Span(
                                         [
                                             html.Span(
-                                                "↓",
+                                                "Sig. genes down ↓: ",
                                                 style={
                                                     "color": "#c53030",
                                                     "marginRight": "0.25rem",
@@ -149,12 +152,13 @@ def _render_search_results(results):
                                                 },
                                             ),
                                             html.Span(
-                                                n_sig_down,
+                                                n_sc_perturb_seq_down,
                                                 style={
                                                     "color": "#c53030",
                                                     "fontWeight": "600",
                                                 },
                                             ),
+                                            html.Span(")"),
                                         ],
                                         className="d-inline-flex align-items-center",
                                     ),
@@ -164,7 +168,23 @@ def _render_search_results(results):
                         ],
                         className="text-center",
                     ),
-                    html.Td(n_sig_crispr, className="text-center"),
+                    html.Td(
+                        html.Div(
+                            [
+                                html.Span(f"Datasets: {n_crispr}"),
+                                html.Span(
+                                    f"Sig. hits: {n_sig_crispr}",
+                                    style={
+                                        "color": "#1f9d55",
+                                        "marginRight": "0.25rem",
+                                        "fontWeight": "600",
+                                    },
+                                ),
+                            ],
+                            className="d-flex justify-content-center flex-wrap",
+                        ),
+                        className="text-center",
+                    ),
                     html.Td(n_mave, className="text-center"),
                     html.Td(modalities_badges),
                 ]
