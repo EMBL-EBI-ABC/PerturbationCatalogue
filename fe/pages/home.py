@@ -171,7 +171,12 @@ def _render_search_results(results):
                     html.Td(
                         html.Div(
                             [
-                                html.Span(f"Datasets: {n_crispr}"),
+                                html.Span(
+                                    f"Datasets: {n_crispr}",
+                                    style={
+                                        "marginRight": "5px",
+                                    },
+                                ),
                                 html.Span(
                                     f"Sig. hits: {n_sig_crispr}",
                                     style={
@@ -770,7 +775,7 @@ layout = html.Div(
                                                         [
                                                             dbc.Input(
                                                                 id="search-input",
-                                                                placeholder="Search by target name...",
+                                                                placeholder="Search by metadata fields...",
                                                                 type="text",
                                                                 value="",
                                                                 debounce=True,
@@ -804,7 +809,85 @@ layout = html.Div(
                                                             ),
                                                         ],
                                                         className="search-input-group banner-search",
-                                                    )
+                                                    ),
+                                                    html.Div(
+                                                        [
+                                                            html.Span(
+                                                                "Try searching for: ",
+                                                                className="text-muted me-2",
+                                                                style={
+                                                                    "fontSize": "0.9rem"
+                                                                },
+                                                            ),
+                                                            dbc.Button(
+                                                                "SUMO1",
+                                                                id="search-example-1",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1 me-2",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                            html.Span(
+                                                                ", ",
+                                                                className="text-muted me-1",
+                                                            ),
+                                                            dbc.Button(
+                                                                "retina",
+                                                                id="search-example-2",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1 me-2",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                            html.Span(
+                                                                ", ",
+                                                                className="text-muted me-1",
+                                                            ),
+                                                            dbc.Button(
+                                                                "acute myeloid leukemia",
+                                                                id="search-example-3",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                        ],
+                                                        className="mt-2",
+                                                        style={"textAlign": "left"},
+                                                    ),
                                                 ]
                                             ),
                                             html.P(
@@ -866,7 +949,8 @@ layout = html.Div(
                         dbc.Col(
                             dcc.Loading(
                                 id="search-results-loading",
-                                type="default",
+                                type="circle",
+                                color=COLORS["primary"],
                                 children=html.Div(
                                     id="search-results",
                                     className="mt-4",
@@ -913,6 +997,12 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
+                                target_components={
+                                    "search-results-table": "children",
+                                    "search-results-pagination": "style",
+                                },
+                                delay_show=200,
+                                delay_hide=100,
                             ),
                             xs=12,
                             sm=12,
@@ -933,6 +1023,36 @@ layout = html.Div(
         ),
     ]
 )
+
+
+@callback(
+    Output("search-input", "value"),
+    Output("search-button", "n_clicks"),
+    Input("search-example-1", "n_clicks"),
+    Input("search-example-2", "n_clicks"),
+    Input("search-example-3", "n_clicks"),
+    State("search-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def handle_search_examples(
+    example1_clicks, example2_clicks, example3_clicks, current_button_clicks
+):
+    """Handle clicks on search example links."""
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update
+
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    current_clicks = current_button_clicks or 0
+
+    if trigger_id == "search-example-1":
+        return "SUMO1", current_clicks + 1
+    elif trigger_id == "search-example-2":
+        return "retina", current_clicks + 1
+    elif trigger_id == "search-example-3":
+        return "acute myeloid leukemia", current_clicks + 1
+
+    return dash.no_update, dash.no_update
 
 
 @callback(
