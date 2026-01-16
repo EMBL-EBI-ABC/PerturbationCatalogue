@@ -1850,9 +1850,6 @@ class CuratedDataset:
             # Check synonym match
             elif e_upper in synonym_lookup:
                 map_dict[e] = select_best_match(synonym_lookup[e_upper], e_upper)
-            # Check if non-targeting
-            elif e_upper == "NON-TARGETING":
-                map_dict[e] = {col: "NON-TARGETING" for col in gene_ont.columns}
             # Check if the gene symbol is an Excel-corrupted date
             elif (corrected := cls.convert_excel_date_to_gene(e_upper)) is not None:
                 corrected_upper = corrected.upper()
