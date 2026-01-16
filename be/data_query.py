@@ -54,6 +54,22 @@ PG_MAPPINGS = {
     "mave": MAVE_PG_MAPPING,
 }
 
+# Numeric field mappings: "int" for integer fields, "float" for float fields
+NUMERIC_FIELDS = {
+    "perturb-seq": {
+        "effect_log2fc": "float",
+        "effect_padj": "float",
+        "effect_base_mean": "float",
+    },
+    "crispr-screen": {
+        "effect_score_value": "float",
+    },
+    "mave": {
+        "perturbation_position": "int",
+        "effect_score_value": "float",
+    },
+}
+
 # Default sorts for different modalities
 DEFAULT_SORTS = {
     "crispr-screen": "effect_significant:desc",
@@ -196,7 +212,7 @@ def _build_search_params_class():
             "dataset_offset": (int, Query(0, description="Offset for datasets")),
             "rows_per_dataset_limit": (
                 int,
-                Query(10, description="Number of rows per dataset to return"),
+                Query(20, description="Number of rows per dataset to return"),
             ),
             "sort": (
                 Optional[str],
@@ -467,8 +483,16 @@ async def _search_modality_impl(
     """Search across all datasets within a modality (Shared Implementation)."""
     dataset_limit = query_params.get("dataset_limit", 10)
     dataset_offset = query_params.get("dataset_offset", 0)
-    rows_per_dataset_limit = query_params.get("rows_per_dataset_limit", 10)
+    rows_per_dataset_limit = query_params.get("rows_per_dataset_limit", 20)
     sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
+
+    # Check if position range filter is specified - if so, return all matching rows
+    has_position_range = (
+        modality == "mave"
+        and "perturbation_position" in query_params
+        and isinstance(query_params["perturbation_position"], str)
+        and "_" in query_params["perturbation_position"]
+    )
 
     validate_query_params(query_params, modality)
 
@@ -491,15 +515,38 @@ async def _search_modality_impl(
         pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
 
     pg_params: List[Any] = []
+    numeric_fields = NUMERIC_FIELDS.get(modality, {})
 
     for key, value in query_params.items():
         if key in api_to_db:
             db_field = api_to_db[key]
+            field_type = numeric_fields.get(key)
+
+            # Numeric field handling
+            if field_type and isinstance(value, str):
+                # Numeric range filter (contains "_")
+                if "_" in value:
+                    condition, params = parse_numeric_filter(db_field, value)
+                    # This is a bit tricky because parse_numeric_filter doesn't know the param index
+                    condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
+                    if " AND " in condition:
+                        condition = condition.replace(
+                            "$...", f"${len(pg_params) + 2}", 1
+                        )
+                    pg_filters.append(condition)
+                    pg_params.extend(params)
+                # Simple numeric filter (no "_")
+                else:
+                    pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
+                    if field_type == "int":
+                        pg_params.append(int(value))
+                    else:  # float
+                        pg_params.append(float(value))
             # Simple string filter
-            if isinstance(value, str) and "_" not in value:
+            elif isinstance(value, str) and "_" not in value:
                 pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
                 pg_params.append(value)
-            # Numeric range filter
+            # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
             elif isinstance(value, str):
                 condition, params = parse_numeric_filter(db_field, value)
                 # This is a bit tricky because parse_numeric_filter doesn't know the param index
@@ -625,7 +672,11 @@ async def _search_modality_impl(
             if sort_clauses:
                 order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
 
-        data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} LIMIT {rows_per_dataset_limit}"
+        # Only apply LIMIT if not using position range filter (which should return all matching rows)
+        limit_clause = (
+            f"LIMIT {rows_per_dataset_limit}" if not has_position_range else ""
+        )
+        data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {limit_clause}".strip()
 
         pg_rows = await pg_conn.fetch(data_query, *current_pg_params)
         pg_rows_dict = [dict(row) for row in pg_rows]
@@ -700,6 +751,14 @@ async def _search_dataset_impl(
     offset = query_params.get("offset", 0)
     sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
 
+    # Check if position range filter is specified - if so, return all matching rows
+    has_position_range = (
+        modality == "mave"
+        and "perturbation_position" in query_params
+        and isinstance(query_params["perturbation_position"], str)
+        and "_" in query_params["perturbation_position"]
+    )
+
     validate_query_params(query_params, modality, dataset_id)
 
     pg_conn = db_pools["pg"]
@@ -719,13 +778,37 @@ async def _search_dataset_impl(
         pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
 
     pg_params: List[Any] = [dataset_id]
+    numeric_fields = NUMERIC_FIELDS.get(modality, {})
 
     for key, value in query_params.items():
         if key in api_to_db:
             db_field = api_to_db[key]
-            if isinstance(value, str) and "_" not in value:
+            field_type = numeric_fields.get(key)
+
+            # Numeric field handling
+            if field_type and isinstance(value, str):
+                # Numeric range filter (contains "_")
+                if "_" in value:
+                    condition, params = parse_numeric_filter(db_field, value)
+                    condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
+                    if " AND " in condition:
+                        condition = condition.replace(
+                            "$...", f"${len(pg_params) + 2}", 1
+                        )
+                    pg_filters.append(condition)
+                    pg_params.extend(params)
+                # Simple numeric filter (no "_")
+                else:
+                    pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
+                    if field_type == "int":
+                        pg_params.append(int(value))
+                    else:  # float
+                        pg_params.append(float(value))
+            # Simple string filter
+            elif isinstance(value, str) and "_" not in value:
                 pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
                 pg_params.append(value)
+            # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
             elif isinstance(value, str):
                 condition, params = parse_numeric_filter(db_field, value)
                 condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
@@ -755,7 +838,12 @@ async def _search_dataset_impl(
         if sort_clauses:
             order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
 
-    data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} LIMIT {limit} OFFSET {offset}"
+    # Only apply LIMIT/OFFSET if not using position range filter (which should return all matching rows)
+    if has_position_range:
+        pagination_clause = ""
+    else:
+        pagination_clause = f"LIMIT {limit} OFFSET {offset}"
+    data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {pagination_clause}".strip()
 
     pg_rows = await pg_conn.fetch(data_query, *pg_params)
     pg_rows_dict = [dict(row) for row in pg_rows]

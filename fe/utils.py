@@ -123,7 +123,7 @@ def fetch_modality_datasets(
     filters: Optional[Dict[str, Any]] = None,
     dataset_limit: int = 4,
     dataset_offset: int = 0,
-    rows_per_dataset_limit: int = 5,
+    rows_per_dataset_limit: Optional[int] = 5,
     sort: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Call /v1/{modality}/search with the provided filters."""
@@ -131,8 +131,10 @@ def fetch_modality_datasets(
         params: Dict[str, Any] = {
             "dataset_limit": dataset_limit,
             "dataset_offset": dataset_offset,
-            "rows_per_dataset_limit": rows_per_dataset_limit,
         }
+        # Only add rows_per_dataset_limit if it's not None (MAVE doesn't use it)
+        if rows_per_dataset_limit is not None:
+            params["rows_per_dataset_limit"] = rows_per_dataset_limit
         if sort:
             params["sort"] = sort
 
@@ -157,13 +159,18 @@ def fetch_dataset_rows(
     modality: str,
     dataset_id: str,
     filters: Optional[Dict[str, Any]] = None,
-    limit: int = 5,
-    offset: int = 0,
+    limit: Optional[int] = 5,
+    offset: Optional[int] = 0,
     sort: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Call /v1/{modality}/{dataset_id}/search to fetch more rows."""
     try:
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        params: Dict[str, Any] = {}
+        # Only add limit and offset if they're not None (MAVE doesn't use them)
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         if sort:
             params["sort"] = sort
 
