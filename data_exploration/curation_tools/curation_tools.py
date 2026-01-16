@@ -1795,6 +1795,10 @@ class CuratedDataset:
         gene_ont["synonym"] = gene_ont["synonym"].str.upper()
         gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
 
+        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+                         "control_guideonly", "control_casonly"]
+
         # --- Split symbol and synonym dataframes ---
         gene_ont_symbol_df = gene_ont.query("synonym_type == 'symbol_syn'")
         gene_ont_synonym_df = gene_ont.query("synonym_type != 'symbol_syn'")
@@ -1860,6 +1864,9 @@ class CuratedDataset:
                     map_dict[e] = select_best_match(
                         synonym_lookup[corrected_upper], corrected_upper
                     )
+            # Check if control
+            elif e in control_terms:
+                map_dict[e] = {col: e for col in gene_ont.columns}
             # If no match found, keep the original gene symbol and set other columns to None
             else:
                 map_dict[e] = {
