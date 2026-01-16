@@ -1795,6 +1795,10 @@ class CuratedDataset:
         gene_ont["synonym"] = gene_ont["synonym"].str.upper()
         gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
 
+        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+                         "control_guideonly", "control_casonly"]
+
         # --- Split symbol and synonym dataframes ---
         gene_ont_symbol_df = gene_ont.query("synonym_type == 'symbol_syn'")
         gene_ont_synonym_df = gene_ont.query("synonym_type != 'symbol_syn'")
@@ -1846,9 +1850,6 @@ class CuratedDataset:
             # Check synonym match
             elif e_upper in synonym_lookup:
                 map_dict[e] = select_best_match(synonym_lookup[e_upper], e_upper)
-            # Check if non-targeting
-            elif e_upper == "NON-TARGETING":
-                map_dict[e] = {col: "NON-TARGETING" for col in gene_ont.columns}
             # Check if the gene symbol is an Excel-corrupted date
             elif (corrected := cls.convert_excel_date_to_gene(e_upper)) is not None:
                 corrected_upper = corrected.upper()
@@ -1860,6 +1861,9 @@ class CuratedDataset:
                     map_dict[e] = select_best_match(
                         synonym_lookup[corrected_upper], corrected_upper
                     )
+            # Check if control
+            elif e in control_terms:
+                map_dict[e] = {col: e for col in gene_ont.columns}
             # If no match found, keep the original gene symbol and set other columns to None
             else:
                 map_dict[e] = {
