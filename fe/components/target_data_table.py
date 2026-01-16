@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from utils import format_number
+from utils import format_number, COLORS
 
 GridControlFactory = Optional[Callable[[str, Dict[str, Any]], Any]]
 
@@ -186,7 +186,30 @@ def _build_dataset_rows(
 
 
 def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
-    formatted_id = _format_dataset_id(_resolve_meta_value(dataset_meta, "dataset_id"))
+    dataset_id = _resolve_meta_value(dataset_meta, "dataset_id")
+    formatted_id = _format_dataset_id(dataset_id)
+    url_dataset_id = _dataset_id_to_url_format(dataset_id)
+    
+    # Create the dataset title with [more info] link
+    title_elements = [
+        html.Span(formatted_id, className="h4 fw-semibold text-break"),
+    ]
+    
+    if url_dataset_id:
+        title_elements.append(
+            html.A(
+                "[more info]",
+                href=f"/perturbation-catalogue/dataset/{url_dataset_id}",
+                className="text-decoration-none ms-2 small align-self-center",
+                style={"color": COLORS["primary"]},
+            )
+        )
+    
+    title_content = html.Div(
+        title_elements,
+        className="d-flex align-items-baseline flex-wrap mb-2",
+    )
+    
     metadata_lines = [
         _dataset_meta_line(label, _resolve_meta_value(dataset_meta, field))
         for field, label in DATASET_METADATA_FIELDS
@@ -201,7 +224,7 @@ def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
 
     return html.Div(
         [
-            html.Div(formatted_id, className="h4 fw-semibold mb-2 text-break"),
+            title_content,
             metadata_section,
         ],
         className="dataset-column px-2 py-2 border rounded-3 bg-white",
@@ -458,6 +481,20 @@ def _format_dataset_id(dataset_id: Optional[str]) -> str:
         return "Dataset"
     formatted = dataset_id.replace("_", " ")
     return formatted[:1].upper() + formatted[1:]
+
+
+def _dataset_id_to_url_format(dataset_id: Optional[str]) -> Optional[str]:
+    """Convert dataset ID to URL format (e.g., 'Depmap ACH000558' -> 'depmap_ACH000558')."""
+    if not dataset_id:
+        return None
+    # Split by space or underscore
+    parts = dataset_id.replace("_", " ").split()
+    if not parts:
+        return None
+    # Lowercase first part, keep rest as is, join with underscore
+    if len(parts) == 1:
+        return parts[0].lower()
+    return "_".join([parts[0].lower()] + parts[1:])
 
 
 def _resolve_meta_value(meta: Dict[str, Any], field: str) -> Optional[Any]:

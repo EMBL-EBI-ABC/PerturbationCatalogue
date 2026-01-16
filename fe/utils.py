@@ -188,6 +188,21 @@ def fetch_dataset_rows(
         return {"results": [], "error": error_message, "total_rows_count": 0}
 
 
+def fetch_dataset(dataset_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Fetch dataset metadata from backend API."""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/dataset/{dataset_id}",
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json(), None
+    except Exception as exc:
+        error_message = f"Error fetching dataset {dataset_id}: {exc}"
+        print(error_message)
+        return None, error_message
+
+
 # Helper function to format value for display
 def format_value(value: Any) -> str:
     """Format a value for display"""
