@@ -160,7 +160,9 @@ def _build_dataset_rows(
         else:
             for result in results:
                 children.append(
-                    _render_result_cell(result, modality, effect_gene_source, section_id)
+                    _render_result_cell(
+                        result, modality, effect_gene_source, section_id
+                    )
                 )
     else:
         children.append(
@@ -430,11 +432,13 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
         if aa is None or score_value is None:
             continue
 
-        positions[position].append({
-            "aa": aa,
-            "score": score_value,
-            "is_ref": is_reference,
-        })
+        positions[position].append(
+            {
+                "aa": aa,
+                "score": score_value,
+                "is_ref": is_reference,
+            }
+        )
 
     if not positions:
         return html.Div(
@@ -447,10 +451,10 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
     for lst in positions.values():
         for d in lst:
             all_aas.add(d["aa"])
-    
+
     # Sort amino acids for consistent ordering
     aa_index = sorted(all_aas)
-    
+
     if not aa_index:
         return html.Div(
             "No valid amino acid data for heatmap.",
@@ -464,13 +468,13 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
     # This allows us to handle different AAs per position
     data_dict = {}
     ref_mask_dict = {}
-    
+
     for pos, lst in sorted_positions.items():
         pos_str = str(pos)
         # Create dictionaries for this position: aa -> score/ref
         pos_scores = {d["aa"]: d["score"] for d in lst}
         pos_refs = {d["aa"]: d["is_ref"] for d in lst}
-        
+
         # Build lists for all AAs, using NaN/False for missing ones
         data_dict[pos_str] = [pos_scores.get(aa, None) for aa in aa_index]
         ref_mask_dict[pos_str] = [pos_refs.get(aa, False) for aa in aa_index]
@@ -479,16 +483,10 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
     ref_df = pd.DataFrame(ref_mask_dict, index=aa_index)
 
     # Create heatmap
-    fig = px.imshow(
-        df, 
-        color_continuous_scale="RdYlGn"
-    )
+    fig = px.imshow(df, color_continuous_scale="RdYlGn")
 
     # Disable hover tooltips
-    fig.update_traces(
-        hoverinfo="skip",
-        hovertemplate=""
-    )
+    fig.update_traces(hoverinfo="skip", hovertemplate="")
 
     # Add annotations for reference cells
     annotations = []
@@ -498,12 +496,15 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
             is_ref_value = ref_df.iloc[i, j]
             # Explicitly check if value is True
             if pd.notna(is_ref_value) and is_ref_value == True:
-                annotations.append(dict(
-                    x=j, y=i,
-                    text="WT",
-                    showarrow=False,
-                    font=dict(color="black", size=10)
-                ))
+                q(
+                    dict(
+                        x=j,
+                        y=i,
+                        text="WT",
+                        showarrow=False,
+                        font=dict(color="black", size=10),
+                    )
+                )
 
     if annotations:
         fig.update_layout(annotations=annotations)
@@ -514,13 +515,16 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
             text="<b>Functional Score by Variant</b>",
             x=0.5,  # Center the title
             xanchor="center",
-            font=dict(size=18)
+            font=dict(size=18),
         ),
         margin=dict(l=40, r=40, t=60, b=40),  # Increased top margin for title
         xaxis_title="Position",
         yaxis_title="Amino Acid",
         hovermode=False,  # Disable hover mode completely
     )
+
+    fig.update_xaxes(tickmode='linear')
+    fig.update_yaxes(tickmode='linear')
 
     return html.Div(
         [
