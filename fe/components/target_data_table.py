@@ -479,10 +479,16 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
     ref_df = pd.DataFrame(ref_mask_dict, index=aa_index)
 
     # Create heatmap
-    fig = px.imshow(df, color_continuous_scale="RdYlGn")
+    fig = px.imshow(
+        df, 
+        color_continuous_scale="RdYlGn"
+    )
 
     # Disable hover tooltips
-    fig.update_traces(hoverinfo="skip", hovertemplate="")
+    fig.update_traces(
+        hoverinfo="skip",
+        hovertemplate=""
+    )
 
     # Add annotations for reference cells
     annotations = []
@@ -504,7 +510,13 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
 
     # Update layout for better display
     fig.update_layout(
-        margin=dict(l=40, r=40, t=20, b=40),
+        title=dict(
+            text="<b>Functional Score by Variant</b>",
+            x=0.5,  # Center the title
+            xanchor="center",
+            font=dict(size=18)
+        ),
+        margin=dict(l=40, r=40, t=60, b=40),  # Increased top margin for title
         xaxis_title="Position",
         yaxis_title="Amino Acid",
         hovermode=False,  # Disable hover mode completely
