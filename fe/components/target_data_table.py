@@ -146,7 +146,7 @@ def _build_dataset_rows(
     row_span = max(len(results), 1)
 
     children: List[Any] = [
-        _render_dataset_cell(dataset_meta, row_span),
+        _render_dataset_cell(dataset_meta, row_span, modality),
     ]
 
     if results:
@@ -185,16 +185,16 @@ def _build_dataset_rows(
     return children
 
 
-def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
+def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int, modality: str = ""):
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id")
     formatted_id = _format_dataset_id(dataset_id)
     url_dataset_id = _dataset_id_to_url_format(dataset_id)
-    
+
     # Create the dataset title with [more info] link
     title_elements = [
         html.Span(formatted_id, className="h4 fw-semibold text-break"),
     ]
-    
+
     if url_dataset_id:
         title_elements.append(
             html.A(
@@ -202,6 +202,18 @@ def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int):
                 href=f"/perturbation-catalogue/dataset/{url_dataset_id}",
                 className="text-decoration-none ms-2 small align-self-center",
                 style={"color": COLORS["primary"]},
+            )
+        )
+
+    # Add MaveDB link for MAVE datasets
+    if modality == "mave" and dataset_id:
+        title_elements.append(
+            html.A(
+                "[MaveDB info]",
+                href=f"https://mavedb.org/score-sets/{dataset_id}",
+                className="text-decoration-none ms-2 small align-self-center",
+                style={"color": COLORS["primary"]},
+                target="_blank",
             )
         )
     
