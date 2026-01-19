@@ -118,6 +118,37 @@ def fetch_search_results(
         }
 
 
+def fetch_all_search_results(
+    query: Optional[str] = None,
+    filters: Optional[Dict[str, List[str]]] = None,
+    page_size: int = 100,
+) -> List[Dict[str, Any]]:
+    """Fetch all search results by paginating through the API.
+
+    Args:
+        query: Search query string
+        filters: Filter dictionary
+        page_size: Number of results per page (max 100)
+
+    Returns:
+        List of all result records
+    """
+    all_results = []
+    page = 1
+
+    while True:
+        data = fetch_search_results(query=query, filters=filters, page=page, size=page_size)
+        results = data.get("results", [])
+        all_results.extend(results)
+
+        total_pages = data.get("total_pages", 1)
+        if page >= total_pages or not results:
+            break
+        page += 1
+
+    return all_results
+
+
 def fetch_modality_datasets(
     modality: str,
     filters: Optional[Dict[str, Any]] = None,

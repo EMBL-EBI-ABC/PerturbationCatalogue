@@ -10,6 +10,7 @@ from utils import (
     DATA_MODALITIES_COLOURS,
     FACET_FIELDS,
     fetch_search_results,
+    fetch_all_search_results,
     get_landing_page_summary,
     results_store,
     format_value,
@@ -851,6 +852,34 @@ layout = html.Div(
                                     id="search-results",
                                     className="mt-4",
                                     children=[
+                                        html.Div(
+                                            id="download-metadata-container",
+                                            className="d-flex justify-content-end mb-3",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-download me-2"
+                                                        ),
+                                                        "Download Metadata",
+                                                    ],
+                                                    id="download-metadata-btn",
+                                                    color="primary",
+                                                    size="sm",
+                                                    style={
+                                                        "backgroundColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderRadius": "6px",
+                                                    },
+                                                ),
+                                                dcc.Download(id="download-metadata"),
+                                            ],
+                                        ),
                                         html.Div(id="search-results-table"),
                                         html.Div(
                                             id="search-results-pagination",
@@ -990,6 +1019,7 @@ def update_search_results(query, _):
     Output("search-results-page", "data"),
     Output("homepage-summary", "children", allow_duplicate=True),
     Output("facet-filters", "children"),
+    Output("download-metadata-container", "style"),
     Input("search-results-store", "data"),
     Input({"type": "facet-filter", "field": ALL}, "value"),
     Input("search-page-prev", "n_clicks"),
@@ -1015,6 +1045,7 @@ def render_filtered_results(
             1,
             dash.no_update,
             html.Div(),
+            {"display": "none"},
         )
 
     selected_filters = {}
@@ -1037,6 +1068,7 @@ def render_filtered_results(
             1,
             dash.no_update,
             html.Div(),
+            {"display": "none"},
         )
 
     triggered_prop = trigger or ""
@@ -1123,6 +1155,7 @@ def render_filtered_results(
             current_page_number,
             "",
             filters_children,
+            {"display": "none"},
         )
 
     table = _render_search_results(results)
@@ -1142,4 +1175,83 @@ def render_filtered_results(
         current_page_number,
         "",
         filters_children,
+        {"display": "block"},
     )
+
+
+@callback(
+    Output("download-metadata", "data"),
+    Input("download-metadata-btn", "n_clicks"),
+    State("search-results-store", "data"),
+    State({"type": "facet-filter", "field": ALL}, "value"),
+    State({"type": "facet-filter", "field": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def download_metadata(n_clicks, store_data, selected_values, filter_ids):
+    """Download all search results as CSV when the button is clicked."""
+    if not n_clicks or not store_data or not store_data.get("query"):
+        return dash.no_update
+
+    query = store_data.get("query")
+
+    # Build filters from current selection
+    selected_filters = {}
+    if selected_values and filter_ids:
+        for values, filter_id in zip(selected_values, filter_ids):
+            if values:
+                cleaned = [str(v).strip() for v in values if v not in (None, "")]
+                if cleaned:
+                    selected_filters[filter_id["field"]] = cleaned
+
+    # Fetch all results by paginating through the API
+    all_results = fetch_all_search_results(
+        query=query,
+        filters=selected_filters or None,
+    )
+
+    if not all_results:
+        return dash.no_update
+
+    # Define columns to include in the CSV
+    columns = [
+        "perturbed_target_symbol",
+        "n_experiments",
+        "n_sig_perturb_pairs_up",
+        "n_sig_perturb_pairs_down",
+        "n_sig_crispr",
+        "n_mave",
+        "data_modalities",
+        "tissues_tested",
+        "cell_types_tested",
+        "cell_lines_tested",
+        "sex_tested",
+        "developmental_stages_tested",
+        "diseases_tested",
+        "license",
+    ]
+
+    # Build CSV content
+    csv_lines = [",".join(columns)]
+    for record in all_results:
+        row_values = []
+        for col in columns:
+            value = record.get(col, "")
+            if isinstance(value, list):
+                value = "; ".join(str(v) for v in value)
+            elif value is None:
+                value = ""
+            else:
+                value = str(value)
+            # Escape quotes and wrap in quotes if contains comma or quote
+            if "," in value or '"' in value or "\n" in value:
+                value = '"' + value.replace('"', '""') + '"'
+            row_values.append(value)
+        csv_lines.append(",".join(row_values))
+
+    csv_content = "\n".join(csv_lines)
+
+    # Generate filename with query
+    safe_query = "".join(c if c.isalnum() or c in "-_" else "_" for c in query[:30])
+    filename = f"perturbation_catalogue_{safe_query}.csv"
+
+    return dict(content=csv_content, filename=filename, type="text/csv")
