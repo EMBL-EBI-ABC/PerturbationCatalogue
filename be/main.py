@@ -35,7 +35,8 @@ load_dotenv()
 
 # Elastic indexes to use.
 ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
-ES_TARGET_SUMMARY = "2026_01_14_target-summary"
+ES_TARGET_SUMMARY = "target-summary"
+ES_DATASET_SUMMARY = "dataset-summary"
 
 
 # Configuration
@@ -440,6 +441,32 @@ async def search_post(request: SearchRequest):
     return await perform_search(
         request.query, request.filters, request.page, request.size
     )
+
+
+@app.get("/dataset/{dataset_id}")
+async def get_dataset(dataset_id: str):
+    """
+    Retrieve a specific dataset record from Elasticsearch by dataset_id.
+    """
+    try:
+        # Search for the dataset by dataset_id field
+        response = await db_pools["es"].search(
+            index=ES_DATASET_SUMMARY,
+            query={"term": {"dataset_id": dataset_id}},
+            size=1,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Elasticsearch error: {exc}"
+        ) from exc
+
+    hits = response.get("hits", {}).get("hits", [])
+    if not hits:
+        raise HTTPException(
+            status_code=404, detail=f"Dataset with id '{dataset_id}' not found"
+        )
+
+    return hits[0]["_source"]
 
 
 if __name__ == "__main__":

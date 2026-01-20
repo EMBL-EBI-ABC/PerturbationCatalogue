@@ -19,7 +19,7 @@ app = dash.Dash(
 )
 
 # Import pages to ensure they are registered
-from pages import api, about
+from pages import api, about, dataset
 
 cookie_banner.register_callbacks(app)
 
