@@ -113,18 +113,34 @@ def build_elasticsearch_query(
     filter_clauses = []
     should_clauses = []
 
-    # Text search on perturbed_target_symbol
+    # Text search across all searchable fields
     if query:
         cleaned_query = query.strip()
         if cleaned_query:
-            # Exact/fuzzy matches with boost
+            # Exact/fuzzy matches with equal boost across all fields
             should_clauses.append(
                 {
                     "multi_match": {
                         "query": cleaned_query,
                         "fields": [
-                            "perturbed_target_symbol^2",  # Boost exact match
-                            "perturbed_target_symbol.text^1.5",  # Boost text field
+                            "perturbed_target_symbol^1.5",
+                            "perturbed_target_symbol.text^1.0",
+                            "license^1.5",
+                            "license.text^1.0",
+                            "data_modalities^1.5",
+                            "data_modalities.text^1.0",
+                            "tissues_tested^1.5",
+                            "tissues_tested.text^1.0",
+                            "cell_types_tested^1.5",
+                            "cell_types_tested.text^1.0",
+                            "cell_lines_tested^1.5",
+                            "cell_lines_tested.text^1.0",
+                            "sex_tested^1.5",
+                            "sex_tested.text^1.0",
+                            "developmental_stages_tested^1.5",
+                            "developmental_stages_tested.text^1.0",
+                            "diseases_tested^1.5",
+                            "diseases_tested.text^1.0",
                         ],
                         "type": "best_fields",
                         "fuzziness": "AUTO",
@@ -133,17 +149,29 @@ def build_elasticsearch_query(
             )
 
             # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
-            should_clauses.append(
-                {
-                    "match_phrase_prefix": {
-                        "perturbed_target_symbol.text": {
-                            "query": cleaned_query,
-                            "slop": 1,
-                            "boost": 1.2,
+            searchable_fields = [
+                "perturbed_target_symbol",
+                "license",
+                "data_modalities",
+                "tissues_tested",
+                "cell_types_tested",
+                "cell_lines_tested",
+                "sex_tested",
+                "developmental_stages_tested",
+                "diseases_tested",
+            ]
+            for field in searchable_fields:
+                should_clauses.append(
+                    {
+                        "match_phrase_prefix": {
+                            f"{field}.text": {
+                                "query": cleaned_query,
+                                "slop": 1,
+                                "boost": 1.2,
+                            }
                         }
                     }
-                }
-            )
+                )
 
             # Wildcard for partial/infix search (case-insensitive)
             wildcard_terms = []
@@ -159,28 +187,29 @@ def build_elasticsearch_query(
                     wildcard_terms.append(f"*{safe_term}*")
 
             for wildcard_value in wildcard_terms:
-                should_clauses.append(
-                    {
-                        "wildcard": {
-                            "perturbed_target_symbol.keyword": {
-                                "value": wildcard_value,
-                                "case_insensitive": True,
-                                "boost": 0.8,
+                for field in searchable_fields:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                f"{field}.keyword": {
+                                    "value": wildcard_value,
+                                    "case_insensitive": True,
+                                    "boost": 0.8,
+                                }
                             }
                         }
-                    }
-                )
-                should_clauses.append(
-                    {
-                        "wildcard": {
-                            "perturbed_target_symbol": {
-                                "value": wildcard_value,
-                                "case_insensitive": True,
-                                "boost": 0.6,
+                    )
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {
+                                    "value": wildcard_value,
+                                    "case_insensitive": True,
+                                    "boost": 0.6,
+                                }
                             }
                         }
-                    }
-                )
+                    )
 
     # Filters for facet fields
     if filters:

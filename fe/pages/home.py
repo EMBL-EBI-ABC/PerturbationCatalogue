@@ -51,19 +51,14 @@ def _render_search_results(results):
         html.Tr(
             [
                 html.Th("Target name", className="fw-semibold"),
+                html.Th("Perturb-seq datasets", className="fw-semibold text-center"),
                 html.Th(
-                    "Total number of experiments", className="fw-semibold text-center"
-                ),
-                html.Th(
-                    "Significant Perturb-Seq gene pairs",
+                    "CRISPR-screen datasets",
                     className="fw-semibold text-center",
                 ),
                 html.Th(
-                    "Number of Significant CRISPR experiments",
+                    "MAVE datasets",
                     className="fw-semibold text-center",
-                ),
-                html.Th(
-                    "Number of MAVE experiments", className="fw-semibold text-center"
                 ),
                 html.Th("Data Modalities", className="fw-semibold"),
             ],
@@ -76,9 +71,10 @@ def _render_search_results(results):
         symbol = record.get("perturbed_target_symbol", "N/A")
         results_store[symbol] = record
 
-        n_experiments = _format_count(record.get("n_experiments"))
-        n_sig_up = _format_count(record.get("n_sig_perturb_pairs_up"))
-        n_sig_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_sc_perturb_seq = _format_count(record.get("n_perturb_seq"))
+        n_sc_perturb_seq_up = _format_count(record.get("n_sig_perturb_pairs_up"))
+        n_sc_perturb_seq_down = _format_count(record.get("n_sig_perturb_pairs_down"))
+        n_crispr = _format_count(record.get("n_crispr"))
         n_sig_crispr = _format_count(record.get("n_sig_crispr"))
         n_mave = _format_count(record.get("n_mave"))
         data_modalities = record.get("data_modalities") or []
@@ -113,15 +109,21 @@ def _render_search_results(results):
                             style={"color": COLORS["primary"]},
                         )
                     ),
-                    html.Td(n_experiments, className="text-center"),
                     html.Td(
                         [
                             html.Div(
                                 [
                                     html.Span(
+                                        f"Datasets: {n_sc_perturb_seq} ",
+                                        style={
+                                            "marginRight": "5px",
+                                        },
+                                    ),
+                                    html.Span(
                                         [
+                                            html.Span("("),
                                             html.Span(
-                                                "↑",
+                                                "Sig. genes up ↑: ",
                                                 style={
                                                     "color": "#1f9d55",
                                                     "marginRight": "0.25rem",
@@ -129,19 +131,20 @@ def _render_search_results(results):
                                                 },
                                             ),
                                             html.Span(
-                                                n_sig_up,
+                                                n_sc_perturb_seq_up,
                                                 style={
                                                     "color": "#1f9d55",
                                                     "fontWeight": "600",
                                                 },
                                             ),
+                                            html.Span(";"),
                                         ],
                                         className="d-inline-flex align-items-center me-3",
                                     ),
                                     html.Span(
                                         [
                                             html.Span(
-                                                "↓",
+                                                "Sig. genes down ↓: ",
                                                 style={
                                                     "color": "#c53030",
                                                     "marginRight": "0.25rem",
@@ -149,12 +152,13 @@ def _render_search_results(results):
                                                 },
                                             ),
                                             html.Span(
-                                                n_sig_down,
+                                                n_sc_perturb_seq_down,
                                                 style={
                                                     "color": "#c53030",
                                                     "fontWeight": "600",
                                                 },
                                             ),
+                                            html.Span(")"),
                                         ],
                                         className="d-inline-flex align-items-center",
                                     ),
@@ -164,7 +168,28 @@ def _render_search_results(results):
                         ],
                         className="text-center",
                     ),
-                    html.Td(n_sig_crispr, className="text-center"),
+                    html.Td(
+                        html.Div(
+                            [
+                                html.Span(
+                                    f"Datasets: {n_crispr}",
+                                    style={
+                                        "marginRight": "5px",
+                                    },
+                                ),
+                                html.Span(
+                                    f"Sig. hits: {n_sig_crispr}",
+                                    style={
+                                        "color": "#1f9d55",
+                                        "marginRight": "0.25rem",
+                                        "fontWeight": "600",
+                                    },
+                                ),
+                            ],
+                            className="d-flex justify-content-center flex-wrap",
+                        ),
+                        className="text-center",
+                    ),
                     html.Td(n_mave, className="text-center"),
                     html.Td(modalities_badges),
                 ]
@@ -750,7 +775,7 @@ layout = html.Div(
                                                         [
                                                             dbc.Input(
                                                                 id="search-input",
-                                                                placeholder="Search by target name...",
+                                                                placeholder="Search by metadata fields...",
                                                                 type="text",
                                                                 value="",
                                                                 debounce=True,
@@ -784,7 +809,85 @@ layout = html.Div(
                                                             ),
                                                         ],
                                                         className="search-input-group banner-search",
-                                                    )
+                                                    ),
+                                                    html.Div(
+                                                        [
+                                                            html.Span(
+                                                                "Try searching for: ",
+                                                                className="text-muted me-2",
+                                                                style={
+                                                                    "fontSize": "0.9rem"
+                                                                },
+                                                            ),
+                                                            dbc.Button(
+                                                                "SUMO1",
+                                                                id="search-example-1",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1 me-2",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                            html.Span(
+                                                                ", ",
+                                                                className="text-muted me-1",
+                                                            ),
+                                                            dbc.Button(
+                                                                "retina",
+                                                                id="search-example-2",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1 me-2",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                            html.Span(
+                                                                ", ",
+                                                                className="text-muted me-1",
+                                                            ),
+                                                            dbc.Button(
+                                                                "acute myeloid leukemia",
+                                                                id="search-example-3",
+                                                                n_clicks=0,
+                                                                color="link",
+                                                                className="p-1",
+                                                                style={
+                                                                    "color": COLORS[
+                                                                        "primary"
+                                                                    ],
+                                                                    "textDecoration": "none",
+                                                                    "fontSize": "0.9rem",
+                                                                    "border": f"1px solid {COLORS['primary']}",
+                                                                    "borderRadius": "4px",
+                                                                    "background": "transparent",
+                                                                    "padding": "0.25rem 0.5rem",
+                                                                    "verticalAlign": "baseline",
+                                                                },
+                                                            ),
+                                                        ],
+                                                        className="mt-2",
+                                                        style={"textAlign": "left"},
+                                                    ),
                                                 ]
                                             ),
                                             html.P(
@@ -846,7 +949,8 @@ layout = html.Div(
                         dbc.Col(
                             dcc.Loading(
                                 id="search-results-loading",
-                                type="default",
+                                type="circle",
+                                color=COLORS["primary"],
                                 children=html.Div(
                                     id="search-results",
                                     className="mt-4",
@@ -893,6 +997,12 @@ layout = html.Div(
                                         ),
                                     ],
                                 ),
+                                target_components={
+                                    "search-results-table": "children",
+                                    "search-results-pagination": "style",
+                                },
+                                delay_show=200,
+                                delay_hide=100,
                             ),
                             xs=12,
                             sm=12,
@@ -913,6 +1023,36 @@ layout = html.Div(
         ),
     ]
 )
+
+
+@callback(
+    Output("search-input", "value"),
+    Output("search-button", "n_clicks"),
+    Input("search-example-1", "n_clicks"),
+    Input("search-example-2", "n_clicks"),
+    Input("search-example-3", "n_clicks"),
+    State("search-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def handle_search_examples(
+    example1_clicks, example2_clicks, example3_clicks, current_button_clicks
+):
+    """Handle clicks on search example links."""
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update
+
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    current_clicks = current_button_clicks or 0
+
+    if trigger_id == "search-example-1":
+        return "SUMO1", current_clicks + 1
+    elif trigger_id == "search-example-2":
+        return "retina", current_clicks + 1
+    elif trigger_id == "search-example-3":
+        return "acute myeloid leukemia", current_clicks + 1
+
+    return dash.no_update, dash.no_update
 
 
 @callback(

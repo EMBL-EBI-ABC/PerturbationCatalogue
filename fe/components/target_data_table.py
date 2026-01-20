@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional
 
+import pandas as pd
+import plotly.express as px
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
@@ -143,17 +146,24 @@ def _build_dataset_rows(
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
     results = entry.get("results") or []
-    row_span = max(len(results), 1)
+    # For MAVE, we show a single heatmap, so row_span should be 1
+    row_span = 1 if modality == "mave" else max(len(results), 1)
 
     children: List[Any] = [
         _render_dataset_cell(dataset_meta, row_span, modality),
     ]
 
     if results:
-        for result in results:
-            children.append(
-                _render_result_cell(result, modality, effect_gene_source, section_id)
-            )
+        # For MAVE modality, render a single heatmap instead of individual result cells
+        if modality == "mave":
+            children.append(_mave_heatmap_effect(results))
+        else:
+            for result in results:
+                children.append(
+                    _render_result_cell(
+                        result, modality, effect_gene_source, section_id
+                    )
+                )
     else:
         children.append(
             _grid_message(
@@ -424,6 +434,141 @@ def _score_effect(
 
     return html.Div(
         [html.Div(headline_children, className="mb-2 d-flex flex-column gap-1"), grid],
+        className="effect-column px-2 py-2 border rounded-3 bg-white",
+    )
+
+
+def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
+    """Create a heatmap visualization for MAVE data showing position-based scores."""
+    if not results:
+        return html.Div(
+            "No data available for heatmap.",
+            className="effect-column px-2 py-2 border rounded-3 bg-white text-muted fst-italic",
+        )
+
+    # Build positions dictionary
+    positions = defaultdict(list)
+
+    for item in results:
+        perturbation = item.get("perturbation") or {}
+        effect = item.get("effect") or {}
+
+        position = perturbation.get("position")
+        if position is None:
+            continue
+
+        aa_change = perturbation.get("aa_change")
+        aa_wt = perturbation.get("aa_wt")
+        score_value = effect.get("score_value")
+
+        is_reference = aa_change == "="
+        aa = aa_wt if is_reference else aa_change
+
+        if aa is None or score_value is None:
+            continue
+
+        positions[position].append(
+            {
+                "aa": aa,
+                "score": score_value,
+                "is_ref": is_reference,
+            }
+        )
+
+    if not positions:
+        return html.Div(
+            "No valid position data for heatmap.",
+            className="effect-column px-2 py-2 border rounded-3 bg-white text-muted fst-italic",
+        )
+
+    # Collect all unique amino acids across all positions
+    all_aas = set()
+    for lst in positions.values():
+        for d in lst:
+            all_aas.add(d["aa"])
+
+    # Sort amino acids for consistent ordering
+    aa_index = sorted(all_aas)
+
+    if not aa_index:
+        return html.Div(
+            "No valid amino acid data for heatmap.",
+            className="effect-column px-2 py-2 border rounded-3 bg-white text-muted fst-italic",
+        )
+
+    # Sort positions numerically
+    sorted_positions = dict(sorted(positions.items(), key=lambda x: x[0]))
+
+    # Build score data + ref mask dictionaries: position -> aa -> value
+    # This allows us to handle different AAs per position
+    data_dict = {}
+    ref_mask_dict = {}
+
+    for pos, lst in sorted_positions.items():
+        pos_str = str(pos)
+        # Create dictionaries for this position: aa -> score/ref
+        pos_scores = {d["aa"]: d["score"] for d in lst}
+        pos_refs = {d["aa"]: d["is_ref"] for d in lst}
+
+        # Build lists for all AAs, using NaN/False for missing ones
+        data_dict[pos_str] = [pos_scores.get(aa, None) for aa in aa_index]
+        ref_mask_dict[pos_str] = [pos_refs.get(aa, False) for aa in aa_index]
+
+    df = pd.DataFrame(data_dict, index=aa_index)
+    ref_df = pd.DataFrame(ref_mask_dict, index=aa_index)
+
+    # Create heatmap
+    fig = px.imshow(df, color_continuous_scale="RdYlGn")
+
+    # Disable hover tooltips
+    fig.update_traces(hoverinfo="skip", hovertemplate="")
+
+    # Add annotations for reference cells
+    annotations = []
+    for j, col in enumerate(ref_df.columns):
+        for i, row in enumerate(ref_df.index):
+            # Use iloc to get scalar value and avoid pandas boolean ambiguity
+            is_ref_value = ref_df.iloc[i, j]
+            # Explicitly check if value is True
+            if pd.notna(is_ref_value) and is_ref_value == True:
+                q(
+                    dict(
+                        x=j,
+                        y=i,
+                        text="WT",
+                        showarrow=False,
+                        font=dict(color="black", size=10),
+                    )
+                )
+
+    if annotations:
+        fig.update_layout(annotations=annotations)
+
+    # Update layout for better display
+    fig.update_layout(
+        title=dict(
+            text="<b>Functional Score by Variant</b>",
+            x=0.5,  # Center the title
+            xanchor="center",
+            font=dict(size=18),
+        ),
+        margin=dict(l=40, r=40, t=60, b=40),  # Increased top margin for title
+        xaxis_title="Position",
+        yaxis_title="Amino Acid",
+        hovermode=False,  # Disable hover mode completely
+    )
+
+    fig.update_xaxes(tickmode='linear')
+    fig.update_yaxes(tickmode='linear')
+
+    return html.Div(
+        [
+            dcc.Graph(
+                figure=fig,
+                config={"displayModeBar": False},
+                style={"height": "400px"},
+            )
+        ],
         className="effect-column px-2 py-2 border rounded-3 bg-white",
     )
 

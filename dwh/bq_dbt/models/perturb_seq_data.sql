@@ -14,9 +14,8 @@ select
     dataset_id,
     perturbation as perturbed_target_symbol,
     gene,
-    log2FoldChange as log2foldchange,
+    log2foldchange as log2foldchange,
     padj,
-    baseMean as basemean,
+    basemean as basemean,
     ingested_at as max_ingested_at
-from {{ source('perturb_seq', 'data') }}
-
+from {{ source("perturb_seq", "data") }}
