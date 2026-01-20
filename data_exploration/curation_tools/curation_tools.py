@@ -1711,7 +1711,7 @@ class CuratedDataset:
         gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
 
         # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive",
                          "control_guideonly", "control_casonly"]
         for term in control_terms:
             control_row = {col: term for col in gene_ont_subset.columns}
@@ -1796,7 +1796,7 @@ class CuratedDataset:
         gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
 
         # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive",
+        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive",
                          "control_guideonly", "control_casonly"]
 
         # --- Split symbol and synonym dataframes ---
@@ -2427,7 +2427,7 @@ def generate_gene_ont(
     main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
     
     # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-    control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_positive", "control_guideonly", "control_casonly"]
+    control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive", "control_guideonly", "control_casonly"]
     for term in control_terms:
         control_row = {col: term for col in main_df_long.columns}
         main_df_long = pd.concat([main_df_long, pd.DataFrame([control_row])], ignore_index=True)
