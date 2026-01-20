@@ -105,7 +105,7 @@ class ObsSchema(DataFrameModel):
     )
     treatment_label: Series[String] = Field(
         nullable=True,
-        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label.",
+        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
     )
     treatment_id: Series[String] = Field(
         nullable=True,
