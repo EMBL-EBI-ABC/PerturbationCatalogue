@@ -887,34 +887,54 @@ def _fetch_section_payload(
         cleaned_perturbed_gene = perturbed_gene_search.strip()
         if cleaned_perturbed_gene:
             filters["perturbation_gene_name"] = cleaned_perturbed_gene
+    # For MAVE, add effect_score_name and perturbation_position
+    if config["modality"] == "mave":
+        filters["effect_score_name"] = "score"
+        filters["perturbation_position"] = "1_20"
+
+    # For MAVE, don't use rows_per_dataset_limit
+    rows_per_dataset_limit = (
+        None if config["modality"] == "mave" else ROWS_PER_DATASET_LIMIT
+    )
+
     response = fetch_modality_datasets(
         config["modality"],
         filters=filters,
         dataset_limit=DATASET_LIMIT,
         dataset_offset=dataset_offset,
-        rows_per_dataset_limit=ROWS_PER_DATASET_LIMIT,
+        rows_per_dataset_limit=rows_per_dataset_limit,
     )
     datasets = response.get("datasets") or []
     for dataset in datasets:
         results = dataset.get("results") or []
-        dataset["rows_per_dataset_limit"] = ROWS_PER_DATASET_LIMIT
-        dataset["truncated"] = len(results) == ROWS_PER_DATASET_LIMIT
         # Initialize pagination state
         dataset["current_page"] = 1
-        dataset["current_offset"] = 0
-        # Get total count from API response, or infer from results
-        total_count = dataset.get("total_rows_count")
-        if total_count is None:
-            # If not provided, assume there are more if we got the full limit
-            total_count = (
-                len(results) if len(results) < ROWS_PER_DATASET_LIMIT else None
+        if config["modality"] == "mave":
+            # For MAVE, track position range instead of offset
+            dataset["current_position_range"] = "1_20"
+            dataset["rows_per_dataset_limit"] = (
+                20  # Each position range covers 20 positions
             )
-        dataset["total_rows_count"] = total_count
-        # Determine if there are more rows: either total > current, or we got full limit and total is unknown
-        if total_count is not None:
-            dataset["has_more"] = len(results) < total_count
+            # For MAVE, assume there are more if we got results (can't easily determine total)
+            dataset["has_more"] = len(results) > 0
+            dataset["total_rows_count"] = None  # Unknown for MAVE
         else:
-            dataset["has_more"] = len(results) >= ROWS_PER_DATASET_LIMIT
+            dataset["rows_per_dataset_limit"] = ROWS_PER_DATASET_LIMIT
+            dataset["truncated"] = len(results) == ROWS_PER_DATASET_LIMIT
+            dataset["current_offset"] = 0
+            # Get total count from API response, or infer from results
+            total_count = dataset.get("total_rows_count")
+            if total_count is None:
+                # If not provided, assume there are more if we got the full limit
+                total_count = (
+                    len(results) if len(results) < ROWS_PER_DATASET_LIMIT else None
+                )
+            dataset["total_rows_count"] = total_count
+            # Determine if there are more rows: either total > current, or we got full limit and total is unknown
+            if total_count is not None:
+                dataset["has_more"] = len(results) < total_count
+            else:
+                dataset["has_more"] = len(results) >= ROWS_PER_DATASET_LIMIT
 
     return {
         "section": config["id"],
@@ -985,65 +1005,123 @@ def _paginate_dataset_rows(
         )
         return updated_store
 
-    # Get current pagination state
-    current_page = target_dataset.get("current_page", 1)
-    current_offset = target_dataset.get("current_offset", 0)
-
-    # Calculate new offset based on direction
-    if direction == "next":
-        new_offset = current_offset + DATASET_LOAD_MORE_SIZE
-        new_page = current_page + 1
-    elif direction == "previous":
-        new_offset = max(0, current_offset - DATASET_LOAD_MORE_SIZE)
-        new_page = max(1, current_page - 1)
-    else:
-        return updated_store
-
     # Get the target symbol (perturbed target) for the API call
     target_symbol = updated_store.get("target_name")
 
     # Get the correct filter field based on the section
     section_id = updated_store.get("section")
     config = SECTION_LOOKUP.get(section_id) if section_id else None
-    filter_field = (
-        config.get("filter_field", "perturbation_gene_name")
-        if config
-        else "perturbation_gene_name"
-    )
+    modality = updated_store.get("modality", "")
 
-    # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_symbol}&limit=5&offset=X
-    response = fetch_dataset_rows(
-        updated_store.get("modality", ""),
-        dataset_id,
-        filters={filter_field: target_symbol} if target_symbol else {},
-        offset=new_offset,
-        limit=DATASET_LOAD_MORE_SIZE,  # Always 5 rows per page
-    )
+    # Get current pagination state
+    current_page = target_dataset.get("current_page", 1)
 
-    # Replace results instead of appending
-    new_results = response.get("results") or []
+    # Handle MAVE pagination differently (using position ranges)
+    if modality == "mave":
+        current_position_range = target_dataset.get("current_position_range", "1_20")
 
-    # Update total count if provided by API
-    api_total_count = response.get("total_rows_count")
-    if api_total_count is not None:
-        target_dataset["total_rows_count"] = api_total_count
-        total_count = api_total_count
+        # Parse current position range (e.g., "1_20" -> start=1, end=20)
+        try:
+            start_pos, end_pos = map(int, current_position_range.split("_"))
+        except (ValueError, AttributeError):
+            start_pos, end_pos = 1, 20
+
+        # Calculate new position range based on direction
+        if direction == "next":
+            new_start = end_pos + 1
+            new_end = new_start + 19  # 20 positions per page
+            new_page = current_page + 1
+        elif direction == "previous":
+            new_end = start_pos - 1
+            new_start = max(1, new_end - 19)  # 20 positions per page
+            new_page = max(1, current_page - 1)
+        else:
+            return updated_store
+
+        new_position_range = f"{new_start}_{new_end}"
+
+        # Build filters for MAVE
+        filters = (
+            {
+                config.get("filter_field", "perturbation_gene_name"): target_symbol,
+                "effect_score_name": "score",
+                "perturbation_position": new_position_range,
+            }
+            if target_symbol and config
+            else {}
+        )
+
+        # Call API with position range
+        response = fetch_dataset_rows(
+            modality,
+            dataset_id,
+            filters=filters,
+            offset=None,  # Not used for MAVE
+            limit=None,  # Not used for MAVE
+        )
+
+        new_results = response.get("results") or []
+
+        # Update dataset state
+        target_dataset["results"] = new_results
+        target_dataset["current_page"] = new_page
+        target_dataset["current_position_range"] = new_position_range
+        # For MAVE, assume there are more if we got results
+        target_dataset["has_more"] = len(new_results) > 0
+
     else:
-        # Keep existing total_count or None if not set
-        total_count = target_dataset.get("total_rows_count")
+        # Original pagination logic for non-MAVE modalities
+        current_offset = target_dataset.get("current_offset", 0)
 
-    # Update dataset state
-    target_dataset["results"] = new_results
-    target_dataset["current_page"] = new_page
-    target_dataset["current_offset"] = new_offset
-    target_dataset["truncated"] = False
+        # Calculate new offset based on direction
+        if direction == "next":
+            new_offset = current_offset + DATASET_LOAD_MORE_SIZE
+            new_page = current_page + 1
+        elif direction == "previous":
+            new_offset = max(0, current_offset - DATASET_LOAD_MORE_SIZE)
+            new_page = max(1, current_page - 1)
+        else:
+            return updated_store
 
-    # Determine if there are more rows available
-    if total_count is not None:
-        target_dataset["has_more"] = new_offset + len(new_results) < total_count
-    else:
-        # If total is unknown, assume there are more if we got a full page
-        target_dataset["has_more"] = len(new_results) >= DATASET_LOAD_MORE_SIZE
+        filter_field = (
+            config.get("filter_field", "perturbation_gene_name")
+            if config
+            else "perturbation_gene_name"
+        )
+
+        # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_symbol}&limit=5&offset=X
+        response = fetch_dataset_rows(
+            modality,
+            dataset_id,
+            filters={filter_field: target_symbol} if target_symbol else {},
+            offset=new_offset,
+            limit=DATASET_LOAD_MORE_SIZE,  # Always 5 rows per page
+        )
+
+        # Replace results instead of appending
+        new_results = response.get("results") or []
+
+        # Update total count if provided by API
+        api_total_count = response.get("total_rows_count")
+        if api_total_count is not None:
+            target_dataset["total_rows_count"] = api_total_count
+            total_count = api_total_count
+        else:
+            # Keep existing total_count or None if not set
+            total_count = target_dataset.get("total_rows_count")
+
+        # Update dataset state
+        target_dataset["results"] = new_results
+        target_dataset["current_page"] = new_page
+        target_dataset["current_offset"] = new_offset
+        target_dataset["truncated"] = False
+
+        # Determine if there are more rows available
+        if total_count is not None:
+            target_dataset["has_more"] = new_offset + len(new_results) < total_count
+        else:
+            # If total is unknown, assume there are more if we got a full page
+            target_dataset["has_more"] = len(new_results) >= DATASET_LOAD_MORE_SIZE
 
     if response.get("error"):
         updated_store["error"] = response["error"]
