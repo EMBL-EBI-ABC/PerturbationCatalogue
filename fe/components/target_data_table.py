@@ -568,10 +568,17 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
             dcc.Graph(
                 figure=fig,
                 config={"displayModeBar": False},
-                style={"height": "400px"},
+                style={"height": "100%", "width": "100%"},
             )
         ],
         className="effect-column px-2 py-2 border rounded-3 bg-white",
+        style={
+            "height": "450px",
+            "minHeight": "450px",
+            "maxHeight": "450px",
+            "overflow": "hidden",
+            "marginBottom": "0.5rem",
+        },
     )
 
 
