@@ -958,7 +958,7 @@ layout = html.Div(
                                     children=[
                                         html.Div(
                                             id="download-metadata-container",
-                                            className="d-flex justify-content-end mb-3",
+                                            className="mb-3",
                                             style={"display": "none"},
                                             children=[
                                                 dbc.Button(
@@ -1315,7 +1315,7 @@ def render_filtered_results(
         current_page_number,
         "",
         filters_children,
-        {"display": "block"},
+        {"display": "flex", "justifyContent": "flex-end"},
     )
 
 

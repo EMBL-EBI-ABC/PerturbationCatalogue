@@ -195,7 +195,9 @@ def _build_dataset_rows(
     return children
 
 
-def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int, modality: str = ""):
+def _render_dataset_cell(
+    dataset_meta: Dict[str, Any], span_rows: int, modality: str = ""
+):
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id")
     formatted_id = _format_dataset_id(dataset_id)
     url_dataset_id = _dataset_id_to_url_format(dataset_id)
@@ -226,12 +228,12 @@ def _render_dataset_cell(dataset_meta: Dict[str, Any], span_rows: int, modality:
                 target="_blank",
             )
         )
-    
+
     title_content = html.Div(
         title_elements,
         className="d-flex align-items-baseline flex-wrap mb-2",
     )
-    
+
     metadata_lines = [
         _dataset_meta_line(label, _resolve_meta_value(dataset_meta, field))
         for field, label in DATASET_METADATA_FIELDS
@@ -531,7 +533,7 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
             is_ref_value = ref_df.iloc[i, j]
             # Explicitly check if value is True
             if pd.notna(is_ref_value) and is_ref_value == True:
-                q(
+                (
                     dict(
                         x=j,
                         y=i,
@@ -558,8 +560,8 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
         hovermode=False,  # Disable hover mode completely
     )
 
-    fig.update_xaxes(tickmode='linear')
-    fig.update_yaxes(tickmode='linear')
+    fig.update_xaxes(tickmode="linear")
+    fig.update_yaxes(tickmode="linear")
 
     return html.Div(
         [
