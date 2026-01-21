@@ -27,6 +27,14 @@
       "n_crispr": { "type": "integer" },
       "n_sig_crispr": { "type": "integer" },
       "n_mave": { "type": "integer" },
+      "top_gsea_terms": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
       "license": { 
         "type": "keyword", 
         "normalizer": "lc_ascii", 

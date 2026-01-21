@@ -43,6 +43,27 @@ with
         group by perturbed_target_symbol
     ),
 
+    gsea_ranked as (
+        select
+            perturbed_target_symbol,
+            term,
+            sidak,
+            row_number() over (
+                partition by perturbed_target_symbol order by sidak asc
+            ) as rn
+        from {{ source("perturb_seq", "pertpy_gsea") }}
+        where sidak <= 0.05
+    ),
+
+    agg_gsea as (
+        select
+            perturbed_target_symbol,
+            array_agg(term order by sidak asc) as top_gsea_terms
+        from gsea_ranked
+        where rn <= 5
+        group by perturbed_target_symbol
+    ),
+
     -- Supersets of symbols to ensure we don't miss any target that might exist only
     -- in data (unlikely but safe)
     symbols as (
@@ -57,6 +78,9 @@ with
         union distinct
         select perturbed_target_symbol
         from agg_crispr
+        union distinct
+        select perturbed_target_symbol
+        from agg_gsea
     )
 
 select
@@ -67,6 +91,7 @@ select
     coalesce(c.n_crispr, 0) as n_crispr,
     coalesce(c.n_sig_crispr, 0) as n_sig_crispr,
     coalesce(v.n_mave, 0) as n_mave,
+    g.top_gsea_terms,
     m.license,
     m.data_modalities,
     m.tissues_tested,
@@ -80,3 +105,4 @@ left join agg_meta m on s.perturbed_target_symbol = m.perturbed_target_symbol
 left join agg_mave v on s.perturbed_target_symbol = v.perturbed_target_symbol
 left join agg_ps p on s.perturbed_target_symbol = p.perturbed_target_symbol
 left join agg_crispr c on s.perturbed_target_symbol = c.perturbed_target_symbol
+left join agg_gsea g on s.perturbed_target_symbol = g.perturbed_target_symbol
