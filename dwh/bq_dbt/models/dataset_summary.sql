@@ -182,7 +182,7 @@ with
             array_agg(distinct license_id ignore nulls) as license_ids,
             array_agg(distinct associated_datasets ignore nulls) as associated_datasets,
             any_value(score_interpretation) as score_interpretation,
-            max(max_ingested_at) as max_ingested_at
+            max(ingested_at) as max_ingested_at
         from {{ ref("unified_metadata") }}
 
         group by dataset_id

@@ -12,10 +12,15 @@
 
 select
     dataset_id,
-    perturbation as perturbed_target_symbol,
-    gene,
-    log2foldchange as log2foldchange,
-    padj,
-    basemean as basemean,
-    ingested_at as max_ingested_at
-from {{ source("perturb_seq", "data") }}
+    term,
+    perturbed_target_symbol,
+    es,
+    nes,
+    pval,
+    sidak,
+    fdr,
+    geneset_size,
+    leading_edge,
+    cell_type,
+    current_timestamp() as max_ingested_at
+from {{ source("perturb_seq", "pertpy_gsea") }}

@@ -65,13 +65,15 @@ python3 bq_to_postgres.py \
 Run `psql $PG_CONN` and create the indexes.
 
 ## Perturb-Seq
+
+### DEA
 ```sql
-CREATE INDEX CONCURRENTLY idx_perturbation
-  ON public.perturb_seq_data (perturbed_target_symbol, dataset_id, padj, basemean, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_phenotype
-  ON public.perturb_seq_data (gene, dataset_id, padj, basemean, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_perturbation_phenotype
-  ON public.perturb_seq_data (perturbed_target_symbol, gene, dataset_id, padj, basemean, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_perturbation_dea
+  ON public.perturb_seq_dea (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_phenotype_dea
+  ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_perturbation_phenotype_dea
+  ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
@@ -80,7 +82,7 @@ SELECT
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
-FROM public.perturb_seq_data
+FROM public.perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, perturbed_target_symbol;
 
@@ -91,10 +93,16 @@ SELECT
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
-    AVG(basemean) AS base_mean
-FROM public.perturb_seq_data
+    AVG(score_value) AS avg_score
+FROM public.perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, gene;
+```
+
+### GSEA
+```sql
+CREATE INDEX CONCURRENTLY idx_perturbation_gsea
+  ON public.perturb_seq_gsea (perturbed_target_symbol, dataset_id, fdr, nes);
 ```
 
 ## CRISPR
