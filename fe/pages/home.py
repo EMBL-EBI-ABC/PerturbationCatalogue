@@ -61,6 +61,28 @@ def _render_search_results(results):
                     "MAVE datasets",
                     className="fw-semibold text-center",
                 ),
+                html.Th(
+                    [
+                        "Top GSEA Terms ",
+                        html.Span(
+                            html.I(className="bi bi-question-circle"),
+                            id="gsea-info-icon",
+                            style={"cursor": "pointer", "color": "#6c757d"},
+                        ),
+                        dbc.Popover(
+                            [
+                                dbc.PopoverHeader("Pathway enrichment (GSEA)"),
+                                dbc.PopoverBody(
+                                    "Shows biological pathways whose genes are collectively up- or down-regulated after a genetic perturbation, based on single-cell Perturb-seq data and MSigDB Hallmark gene sets."
+                                ),
+                            ],
+                            target="gsea-info-icon",
+                            trigger="click",
+                            placement="bottom",
+                        ),
+                    ],
+                    className="fw-semibold",
+                ),
                 html.Th("Data Modalities", className="fw-semibold"),
             ],
             style={"backgroundColor": "#f1f3f5"},
@@ -78,7 +100,36 @@ def _render_search_results(results):
         n_crispr = _format_count(record.get("n_crispr"))
         n_sig_crispr = _format_count(record.get("n_sig_crispr"))
         n_mave = _format_count(record.get("n_mave"))
+        top_gsea_terms = record.get("top_gsea_terms") or []
         data_modalities = record.get("data_modalities") or []
+
+        gsea_badges = []
+        for term in top_gsea_terms[:5]:  # Limit to 5 terms
+            # Truncate long terms for display
+            display_term = term if len(term) <= 25 else term[:22] + "..."
+            gsea_badges.append(
+                html.Span(
+                    dbc.Badge(
+                        display_term,
+                        color="light",
+                        className="me-1 mb-1",
+                        style={
+                            "fontSize": "0.65rem",
+                            "border": "1px solid #6c757d",
+                            "color": "#495057",
+                            "backgroundColor": "#f8f9fa",
+                            "whiteSpace": "nowrap",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                            "maxWidth": "150px",
+                            "display": "inline-block",
+                        },
+                    ),
+                    title=term,  # Full term shown on hover
+                )
+            )
+        if not gsea_badges:
+            gsea_badges = [html.Span("No significant hits were found", className="text-muted", style={"fontSize": "0.8rem"})]
 
         modalities_badges = []
         for modality in data_modalities:
@@ -192,6 +243,14 @@ def _render_search_results(results):
                         className="text-center",
                     ),
                     html.Td(n_mave, className="text-center"),
+                    html.Td(
+                        html.Div(gsea_badges, className="d-flex flex-wrap"),
+                        style={
+                            "maxWidth": "180px",
+                            "minWidth": "120px",
+                            "overflow": "hidden",
+                        },
+                    ),
                     html.Td(modalities_badges),
                 ]
             )
@@ -1360,6 +1419,7 @@ def download_metadata(n_clicks, store_data, selected_values, filter_ids):
         "n_sig_perturb_pairs_down",
         "n_sig_crispr",
         "n_mave",
+        "top_gsea_terms",
         "data_modalities",
         "tissues_tested",
         "cell_types_tested",
