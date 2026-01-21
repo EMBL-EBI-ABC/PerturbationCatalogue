@@ -139,7 +139,7 @@ gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} -
 
 # Migrate tables and indexes from development to production
 
-Export and import is done via a shared temporary bucket. As such, the commands for export and import do not require a direct connection to the instance and can be run from a local terminal.
+Export and import is done via a shared temporary bucket. 
 
 ## Export in development environment
 ```bash
