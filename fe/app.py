@@ -11,7 +11,7 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[
         dbc.themes.BOOTSTRAP,
-        "https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css"
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css",
     ],
     suppress_callback_exceptions=True,
     use_pages=True,
@@ -40,7 +40,7 @@ app.layout = html.Div(
                     html.A(
                         [
                             html.Img(
-                                src="/perturbation-catalogue/assets/logo.png",
+                                src="/perturbation-catalogue/assets/2026-Final-Perturbation-Catalogue-Logo.png",
                                 alt="Perturbation Catalogue logo",
                                 className="header-logo-img",
                             )
