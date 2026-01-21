@@ -6,6 +6,9 @@ ipython
 matplotlib
 scipy<1.15.0
 pandas
+polars
+ibis-framework
+fastapi
 
 # scverse
 decoupler==2.0.1

@@ -105,7 +105,7 @@ class ObsSchema(DataFrameModel):
     )
     treatment_label: Series[String] = Field(
         nullable=True,
-        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label.",
+        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
     )
     treatment_id: Series[String] = Field(
         nullable=True,
@@ -377,7 +377,7 @@ class ObsSchema(DataFrameModel):
     method_name_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the method name used in the readout assay.",
-        isin=["Perturb-seq", "scRNA-seq", "proliferation CRISPR screen", "DMS-TileSeq", "DMS-BarSeq", "Joined and refined DMS-BarSeq and DMS-TileSeq", "Combined DMS-BarSeq and DMS-TileSeq"],
+        isin=["Perturb-seq", "Perturb-CITE-seq", "scRNA-seq", "proliferation CRISPR screen", "DMS-TileSeq", "DMS-BarSeq", "Joined and refined DMS-BarSeq and DMS-TileSeq", "Combined DMS-BarSeq and DMS-TileSeq"],
     )
     method_uri: Series[String] = Field(
         nullable=True,
@@ -442,7 +442,7 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat"],
+        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST"],
     )
     score_interpretation: Series[String] = Field(
         nullable=True,
@@ -487,7 +487,7 @@ class VarSchema(DataFrameModel):
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
-        str_startswith=("ENSG", "control"),
+        str_matches=r"^(ENSG|control)",  # starts with either ENSG or control
         description="Ensembl gene ID"
     )
     gene_symbol: Series[str] = Field(
