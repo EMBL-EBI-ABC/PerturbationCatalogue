@@ -146,8 +146,14 @@ def _build_dataset_rows(
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
     results = entry.get("results") or []
+
     # For MAVE, we show a single heatmap, so row_span should be 1
-    row_span = 1 if modality == "mave" else max(len(results), 1)
+    # For Perturb-Seq sections, we show a single table, so row_span should be 1
+    is_perturb_seq_table = modality == "perturb-seq" and section_id in (
+        "perturb_seq_perturbed",
+        "perturb_seq_affected",
+    )
+    row_span = 1 if modality == "mave" or is_perturb_seq_table else max(len(results), 1)
 
     children: List[Any] = [
         _render_dataset_cell(dataset_meta, row_span, modality),
@@ -157,6 +163,9 @@ def _build_dataset_rows(
         # For MAVE modality, render a single heatmap instead of individual result cells
         if modality == "mave":
             children.append(_mave_heatmap_effect(results))
+        # For Perturb-Seq sections, render as a table
+        elif is_perturb_seq_table:
+            children.append(_perturb_seq_table(results, section_id))
         else:
             for result in results:
                 children.append(
@@ -282,6 +291,7 @@ def _perturb_seq_effect(
     effect_gene_source: str,
     section_id: Optional[str] = None,
 ) -> html.Div:
+    """Render a single Perturb-Seq result row (legacy card format for non-table sections)."""
     perturbation_gene_name = perturbation.get("gene_name") or "N/A"
     effect_gene_name = effect.get("gene_name") or "N/A"
 
@@ -362,6 +372,101 @@ def _perturb_seq_effect(
             grid,
         ],
         className="effect-column px-2 py-2 border rounded-3 bg-white",
+    )
+
+
+def _perturb_seq_table(
+    results: List[Dict[str, Any]],
+    section_id: Optional[str] = None,
+) -> html.Div:
+    """Render Perturb-Seq results as a traditional table with columns."""
+    if not results:
+        return html.Div(
+            "No results available.",
+            className="text-muted fst-italic py-2",
+        )
+
+    # Build table header
+    header_row = html.Tr(
+        [
+            html.Th("Perturbation", className="text-start"),
+            html.Th("Effect Gene", className="text-start"),
+            html.Th("Log2FC", className="text-end"),
+            html.Th("Padj", className="text-end"),
+            html.Th("Base Mean", className="text-end"),
+        ]
+    )
+
+    # Build table rows
+    table_rows = []
+    for result in results:
+        perturbation = result.get("perturbation") or {}
+        effect = result.get("effect") or {}
+
+        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+        effect_gene_name = effect.get("gene_name") or "N/A"
+
+        log2fc_value = effect.get("log2fc")
+        log2fc_display = _format_numeric(log2fc_value)
+
+        # Apply color styling for log2fc
+        if isinstance(log2fc_value, (int, float)):
+            if log2fc_value > 0:
+                log2fc_cell = html.Td(
+                    _arrow_value("▲", log2fc_display, GREEN),
+                    className="text-end",
+                )
+            elif log2fc_value < 0:
+                log2fc_cell = html.Td(
+                    _arrow_value("▼", log2fc_display, RED),
+                    className="text-end",
+                )
+            else:
+                log2fc_cell = html.Td(log2fc_display, className="text-end")
+        else:
+            log2fc_cell = html.Td(log2fc_display, className="text-end")
+
+        padj_raw = effect.get("padj")
+        padj_value = _format_numeric(padj_raw)
+        base_mean_value = _format_numeric(effect.get("base_mean"))
+
+        # Apply green color for significant padj values (<= 0.05)
+        if isinstance(padj_raw, (int, float)) and padj_raw <= 0.05:
+            padj_cell = html.Td(
+                html.Span(padj_value, style={"color": GREEN, "fontWeight": "bold"}),
+                className="text-end",
+            )
+        else:
+            padj_cell = html.Td(padj_value, className="text-end")
+
+        table_rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        perturbation_gene_name,
+                        className="text-start fw-semibold",
+                    ),
+                    html.Td(effect_gene_name, className="text-start fw-semibold"),
+                    log2fc_cell,
+                    padj_cell,
+                    html.Td(base_mean_value, className="text-end"),
+                ]
+            )
+        )
+
+    table = html.Table(
+        [
+            html.Thead(header_row, className="table-light"),
+            html.Tbody(table_rows),
+        ],
+        className="table table-sm table-hover mb-0",
+        style={"fontSize": "0.9rem"},
+    )
+
+    return html.Div(
+        table,
+        className="effect-column px-2 py-2 border rounded-3 bg-white",
+        style={"overflowX": "auto"},
     )
 
 
