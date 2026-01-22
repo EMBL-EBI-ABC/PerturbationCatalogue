@@ -189,13 +189,18 @@ class Result(BaseModel):
     effect: Dict
 
 
+class GseaResult(BaseModel):
+    perturbation: Dict
+    effects: List[Dict]
+
+
 # Dataset Models
 
 
 class DatasetResult(BaseModel):
     dataset: DatasetMetadata
     results: List[Result]
-    results_gsea: Optional[List[Dict]] = None
+    results_gsea: Optional[List[GseaResult]] = None
 
 
 # Facet Models
@@ -216,7 +221,7 @@ class DatasetSearchResponse(BaseModel):
     offset: int
     limit: int
     results: List[Result]
-    results_gsea: Optional[List[Dict]] = None
+    results_gsea: Optional[List[GseaResult]] = None
 
 
 # --- Dependency Classes for Query Parameters ---
@@ -810,14 +815,46 @@ async def _search_modality_impl(
         gsea_data = None
         if modality == "perturb-seq":
             gsea_rows = await _fetch_perturb_seq_gsea(pg_conn, dataset_id, query_params)
-            gsea_data = []
+            # Group by perturbation
+            gsea_by_pert = defaultdict(list)
             for r in gsea_rows:
                 gsea_effect = {
                     k.replace("effect_", ""): r.get(v)
                     for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                     if k.startswith("effect_")
                 }
-                gsea_data.append(gsea_effect)
+                gsea_by_pert[r["perturbed_target_symbol"]].append(gsea_effect)
+
+            if gsea_by_pert:
+                # Enrich perturbations for GSEA
+                gsea_pert_symbols = list(gsea_by_pert.keys())
+                gsea_pert_summary_rows = await pg_conn.fetch(
+                    """
+                    SELECT t.perturbed_target_symbol, t.n_total, t.n_up, t.n_down
+                    FROM perturb_seq_summary_perturbation AS t
+                    WHERE t.dataset_id = $1 AND t.perturbed_target_symbol = ANY($2)
+                    """,
+                    dataset_id,
+                    gsea_pert_symbols,
+                )
+                gsea_pert_summary_map = {
+                    r["perturbed_target_symbol"]: r for r in gsea_pert_summary_rows
+                }
+
+                gsea_data = []
+                for pert_symbol, effects in gsea_by_pert.items():
+                    pert_summary = gsea_pert_summary_map.get(pert_symbol, {})
+                    gsea_data.append(
+                        {
+                            "perturbation": {
+                                "gene_name": pert_symbol,
+                                "n_total": pert_summary.get("n_total"),
+                                "n_up": pert_summary.get("n_up"),
+                                "n_down": pert_summary.get("n_down"),
+                            },
+                            "effects": effects,
+                        }
+                    )
 
         # Map ES fields to final dataset metadata
         def get_first_or_none(data: Optional[list]):
@@ -995,14 +1032,46 @@ async def _search_dataset_impl(
     gsea_data = None
     if modality == "perturb-seq":
         gsea_rows = await _fetch_perturb_seq_gsea(pg_conn, dataset_id, query_params)
-        gsea_data = []
+        # Group by perturbation
+        gsea_by_pert = defaultdict(list)
         for r in gsea_rows:
             gsea_effect = {
                 k.replace("effect_", ""): r.get(v)
                 for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                 if k.startswith("effect_")
             }
-            gsea_data.append(gsea_effect)
+            gsea_by_pert[r["perturbed_target_symbol"]].append(gsea_effect)
+
+        if gsea_by_pert:
+            # Enrich perturbations for GSEA
+            gsea_pert_symbols = list(gsea_by_pert.keys())
+            gsea_pert_summary_rows = await pg_conn.fetch(
+                """
+                SELECT t.perturbed_target_symbol, t.n_total, t.n_up, t.n_down
+                FROM perturb_seq_summary_perturbation AS t
+                WHERE t.dataset_id = $1 AND t.perturbed_target_symbol = ANY($2)
+                """,
+                dataset_id,
+                gsea_pert_symbols,
+            )
+            gsea_pert_summary_map = {
+                r["perturbed_target_symbol"]: r for r in gsea_pert_summary_rows
+            }
+
+            gsea_data = []
+            for pert_symbol, effects in gsea_by_pert.items():
+                pert_summary = gsea_pert_summary_map.get(pert_symbol, {})
+                gsea_data.append(
+                    {
+                        "perturbation": {
+                            "gene_name": pert_symbol,
+                            "n_total": pert_summary.get("n_total"),
+                            "n_up": pert_summary.get("n_up"),
+                            "n_down": pert_summary.get("n_down"),
+                        },
+                        "effects": effects,
+                    }
+                )
 
     return {
         "total_rows_count": total_rows_count,
