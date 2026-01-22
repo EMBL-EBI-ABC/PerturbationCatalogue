@@ -23,9 +23,12 @@ import dash_bootstrap_components as dbc
 
 from components.target_data_table import TargetDataTable
 from utils import (
+    BACKEND_URL,
     COLORS,
     fetch_dataset_rows,
     fetch_modality_datasets,
+    fetch_perturb_seq_gsea,
+    format_number,
 )
 
 
@@ -264,9 +267,27 @@ def layout(target_name: Optional[str] = None, **kwargs):
             )
         )
 
+    # GSEA Modal for displaying GSEA results
+    gsea_modal = dbc.Modal(
+        [
+            dbc.ModalHeader(
+                dbc.ModalTitle(id="gsea-modal-title"),
+                close_button=True,
+            ),
+            dbc.ModalBody(
+                id="gsea-modal-body",
+                style={"maxHeight": "70vh", "overflowY": "auto"},
+            ),
+        ],
+        id="gsea-modal",
+        size="xl",
+        is_open=False,
+    )
+
     return dbc.Container(
         stores
         + [
+            gsea_modal,
             html.Div(id="page-top"),
             html.Div(
                 [
@@ -505,9 +526,26 @@ def render_section(store_data: Optional[Dict[str, Any]]):
             className="d-flex align-items-center",
         )
 
+    # Build download URL base with filters (dataset_id will be appended per dataset)
+    modality = store_data.get("modality", "")
+    target_name = store_data.get("target_name", "")
+    filters = store_data.get("filters", {})
+
+    download_url_base = None
+    if modality and target_name:
+        # Build query params for download
+        download_params = []
+        for key, value in filters.items():
+            if value:
+                download_params.append(f"{key}={value}")
+        query_string = "&".join(download_params)
+        download_url_base = f"{BACKEND_URL}/v1/{modality}/download"
+        if query_string:
+            download_url_base = f"{download_url_base}?{query_string}"
+
     table = TargetDataTable(
         data=datasets,
-        modality=store_data.get("modality", ""),
+        modality=modality,
         rows_per_dataset_limit=rows_limit,
         error_message=store_data.get("error"),
         dataset_control_factory=control_factory,
@@ -515,6 +553,8 @@ def render_section(store_data: Optional[Dict[str, Any]]):
             "perturbation" if section_id == "perturb_seq_affected" else "effect"
         ),
         section_id=section_id,
+        download_url_base=download_url_base,
+        perturbed_gene_name=target_name if section_id == "perturb_seq_perturbed" else None,
     )
 
     return html.Div([table] + dataset_pagination)
@@ -1127,3 +1167,158 @@ def _paginate_dataset_rows(
         updated_store["error"] = response["error"]
 
     return updated_store
+
+
+# GSEA Modal callback
+@callback(
+    [
+        Output("gsea-modal", "is_open"),
+        Output("gsea-modal-title", "children"),
+        Output("gsea-modal-body", "children"),
+    ],
+    Input(
+        {"type": "gsea-modal-trigger", "dataset_id": ALL, "perturbed_gene": ALL, "dataset_cell_type": ALL},
+        "n_clicks",
+    ),
+    prevent_initial_call=True,
+)
+def handle_gsea_modal(n_clicks_list):
+    """Handle GSEA button clicks and populate modal with GSEA results."""
+    # Check if any button was clicked
+    if not n_clicks_list or not any(n_clicks_list):
+        raise PreventUpdate
+
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    # Find which button was clicked
+    triggered = ctx.triggered[0]
+    prop_id = triggered["prop_id"]
+
+    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_type
+    try:
+        id_str = prop_id.rsplit(".", 1)[0]
+        button_id = json.loads(id_str)
+        dataset_id = button_id.get("dataset_id", "")
+        perturbed_gene = button_id.get("perturbed_gene", "")
+        dataset_cell_type = button_id.get("dataset_cell_type", "")
+    except (json.JSONDecodeError, KeyError):
+        raise PreventUpdate
+
+    if not dataset_id or not perturbed_gene:
+        raise PreventUpdate
+
+    # Fetch GSEA data
+    response = fetch_perturb_seq_gsea(dataset_id, perturbed_gene)
+
+    if response.get("error"):
+        return (
+            True,
+            f"GSEA Results: {perturbed_gene}",
+            html.Div(
+                f"Error loading GSEA data: {response['error']}",
+                className="text-danger",
+            ),
+        )
+
+    results = response.get("results", [])
+
+    if not results:
+        return (
+            True,
+            f"GSEA Results: {perturbed_gene}",
+            html.Div("No GSEA results available.", className="text-muted fst-italic"),
+        )
+
+    # Build the table - exclude leading_edge column
+    # Columns: Term, ES, NES, P-value, Sidak, FDR, Geneset Size, Cell Type
+    header_row = html.Tr(
+        [
+            html.Th("Term", className="text-start"),
+            html.Th("ES", className="text-end"),
+            html.Th("NES", className="text-end"),
+            html.Th("P-value", className="text-end"),
+            html.Th("Sidak", className="text-end"),
+            html.Th("FDR", className="text-end"),
+            html.Th("Geneset Size", className="text-end"),
+            html.Th("Cell Type", className="text-start"),
+        ]
+    )
+
+    table_rows = []
+    for result in results:
+        effects = result.get("effects", [])
+        for effect in effects:
+            term = effect.get("term", "N/A")
+            es = effect.get("es")
+            nes = effect.get("nes")
+            pval = effect.get("pval")
+            sidak = effect.get("sidak")
+            fdr = effect.get("fdr")
+            geneset_size = effect.get("geneset_size", "N/A")
+            # Use dataset cell_type (from button ID) as fallback if effect cell_type is N/A
+            cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
+
+            # Format numeric values
+            es_display = format_number(es) if es is not None else "N/A"
+            nes_display = format_number(nes) if nes is not None else "N/A"
+            pval_display = format_number(pval) if pval is not None else "N/A"
+            sidak_display = format_number(sidak) if sidak is not None else "N/A"
+            fdr_display = format_number(fdr) if fdr is not None else "N/A"
+
+            # Color NES based on direction (positive = green, negative = red)
+            if isinstance(nes, (int, float)):
+                if nes > 0:
+                    nes_cell = html.Td(
+                        html.Span(nes_display, style={"color": "#2acc06"}),
+                        className="text-end",
+                    )
+                elif nes < 0:
+                    nes_cell = html.Td(
+                        html.Span(nes_display, style={"color": "#ff4824"}),
+                        className="text-end",
+                    )
+                else:
+                    nes_cell = html.Td(nes_display, className="text-end")
+            else:
+                nes_cell = html.Td(nes_display, className="text-end")
+
+            # Highlight significant Sidak values (<= 0.05)
+            if isinstance(sidak, (int, float)) and sidak <= 0.05:
+                sidak_cell = html.Td(
+                    html.Span(
+                        sidak_display, style={"color": "#2acc06", "fontWeight": "bold"}
+                    ),
+                    className="text-end",
+                )
+            else:
+                sidak_cell = html.Td(sidak_display, className="text-end")
+
+            table_rows.append(
+                html.Tr(
+                    [
+                        html.Td(term, className="text-start"),
+                        html.Td(es_display, className="text-end"),
+                        nes_cell,
+                        html.Td(pval_display, className="text-end"),
+                        sidak_cell,
+                        html.Td(fdr_display, className="text-end"),
+                        html.Td(str(geneset_size), className="text-end"),
+                        html.Td(cell_type or "N/A", className="text-start"),
+                    ]
+                )
+            )
+
+    table = html.Table(
+        [
+            html.Thead(header_row, className="table-light"),
+            html.Tbody(table_rows),
+        ],
+        className="table table-sm table-hover table-striped",
+        style={"fontSize": "0.9rem"},
+    )
+
+    modal_title = f"Pathway Enrichment (GSEA): {perturbed_gene}"
+
+    return True, modal_title, table

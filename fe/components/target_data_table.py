@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional
 
@@ -33,6 +34,7 @@ DATASET_METADATA_FIELDS = [
     ("dataset_sex", "Sex"),
     ("dataset_developmental_stage", "Developmental stage"),
     ("dataset_score_interpretation", "Score interpretation"),
+    ("dataset_readout_technology", "Readout technology"),
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
@@ -47,6 +49,10 @@ DATASET_FIELD_FALLBACKS = {
     "dataset_sex": ["sex"],
     "dataset_developmental_stage": ["developmental_stage"],
     "dataset_score_interpretation": ["score_interpretation"],
+    "dataset_readout_technology": [
+        "readout_technology_labels",
+        "readout_technology",
+    ],
 }
 
 GREEN = "#2acc06"
@@ -63,6 +69,7 @@ METADATA_FIELD_COLORS = {
     "Sex": "success",
     "Developmental stage": "dark",
     "Score interpretation": "secondary",
+    "Readout technology": "info",
 }
 
 
@@ -76,6 +83,8 @@ def TargetDataTable(
     dataset_control_factory: GridControlFactory = None,
     effect_gene_source: str = "effect",
     section_id: Optional[str] = None,
+    download_url_base: Optional[str] = None,
+    perturbed_gene_name: Optional[str] = None,
 ):
     """Render the reusable data table."""
     datasets = data or []
@@ -98,6 +107,8 @@ def TargetDataTable(
                     dataset_control_factory,
                     effect_gene_source,
                     section_id,
+                    download_url_base,
+                    perturbed_gene_name,
                 )
             )
 
@@ -142,31 +153,57 @@ def _build_dataset_rows(
     dataset_control_factory: GridControlFactory,
     effect_gene_source: str,
     section_id: Optional[str],
+    download_url_base: Optional[str] = None,
+    perturbed_gene_name: Optional[str] = None,
 ) -> List[Any]:
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
     results = entry.get("results") or []
 
-    # For MAVE, we show a single heatmap, so row_span should be 1
-    # For Perturb-Seq sections, we show a single table, so row_span should be 1
+    # For MAVE, Perturb-Seq, and CRISPR we show single components (heatmap/table), so row_span should be 1
     is_perturb_seq_table = modality == "perturb-seq" and section_id in (
         "perturb_seq_perturbed",
         "perturb_seq_affected",
     )
-    row_span = 1 if modality == "mave" or is_perturb_seq_table else max(len(results), 1)
+    is_crispr_table = modality == "crispr-screen"
+    uses_single_component = modality == "mave" or is_perturb_seq_table or is_crispr_table
+    row_span = 1 if uses_single_component else max(len(results), 1)
 
     children: List[Any] = [
         _render_dataset_cell(dataset_meta, row_span, modality),
     ]
 
+    # Build download URL for this dataset
+    download_url = None
+    if download_url_base and dataset_id:
+        # Append dataset_id filter to the base URL
+        separator = "&" if "?" in download_url_base else "?"
+        download_url = f"{download_url_base}{separator}dataset_id={dataset_id}"
+
+    # Get dataset cell_type for fallback when effect cell_type is N/A
+    ds_cell_type = _resolve_meta_value(dataset_meta, "dataset_cell_type")
+
+    # Build GSEA button data for this dataset (perturb_seq_perturbed only)
+    gsea_button_data = None
+    if perturbed_gene_name and dataset_id and section_id == "perturb_seq_perturbed":
+        gsea_button_data = {
+            "dataset_id": dataset_id,
+            "perturbed_gene_name": perturbed_gene_name,
+            "dataset_cell_type": ds_cell_type,
+        }
+
     if results:
         # For MAVE modality, render a single heatmap instead of individual result cells
         if modality == "mave":
-            children.append(_mave_heatmap_effect(results))
+            children.append(_mave_heatmap_effect(results, download_url))
         # For Perturb-Seq sections, render as a table
-        elif is_perturb_seq_table:
-            children.append(_perturb_seq_table(results, section_id))
+        elif section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
+            children.append(_perturb_seq_table(results, section_id, download_url, gsea_button_data, ds_cell_type))
+        # For CRISPR, render as a table
+        elif is_crispr_table:
+            children.append(_crispr_table(results, download_url))
         else:
+            # Fallback for other modalities
             for result in results:
                 children.append(
                     _render_result_cell(
@@ -378,6 +415,9 @@ def _perturb_seq_effect(
 def _perturb_seq_table(
     results: List[Dict[str, Any]],
     section_id: Optional[str] = None,
+    download_url: Optional[str] = None,
+    gsea_button_data: Optional[Dict[str, str]] = None,
+    dataset_cell_type: Optional[str] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
     if not results:
@@ -393,7 +433,8 @@ def _perturb_seq_table(
             html.Th("Effect Gene", className="text-start"),
             html.Th("Log2FC", className="text-end"),
             html.Th("Padj", className="text-end"),
-            html.Th("Base Mean", className="text-end"),
+            html.Th("Statistical Score", className="text-start"),
+            html.Th("Cell Type", className="text-start"),
         ]
     )
 
@@ -428,7 +469,6 @@ def _perturb_seq_table(
 
         padj_raw = effect.get("padj")
         padj_value = _format_numeric(padj_raw)
-        base_mean_value = _format_numeric(effect.get("base_mean"))
 
         # Apply green color for significant padj values (<= 0.05)
         if isinstance(padj_raw, (int, float)) and padj_raw <= 0.05:
@@ -438,6 +478,21 @@ def _perturb_seq_table(
             )
         else:
             padj_cell = html.Td(padj_value, className="text-end")
+
+        # Build Statistical Score cell (score_name: score_value)
+        score_name = effect.get("score_name")
+        score_value = effect.get("score_value")
+        if score_name and score_value is not None:
+            statistical_score = f"{score_name}: {_format_numeric(score_value)}"
+        elif score_name:
+            statistical_score = score_name
+        elif score_value is not None:
+            statistical_score = _format_numeric(score_value)
+        else:
+            statistical_score = "N/A"
+
+        # Get cell type (use dataset cell_type as fallback if effect cell_type is N/A)
+        cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
 
         table_rows.append(
             html.Tr(
@@ -449,7 +504,8 @@ def _perturb_seq_table(
                     html.Td(effect_gene_name, className="text-start fw-semibold"),
                     log2fc_cell,
                     padj_cell,
-                    html.Td(base_mean_value, className="text-end"),
+                    html.Td(statistical_score, className="text-start"),
+                    html.Td(cell_type, className="text-start"),
                 ]
             )
         )
@@ -463,8 +519,203 @@ def _perturb_seq_table(
         style={"fontSize": "0.9rem"},
     )
 
+    # Build content with optional download button and GSEA button
+    content_children = []
+    button_row_children = []
+
+    if download_url:
+        button_row_children.append(
+            html.A(
+                dbc.Button(
+                    [
+                        html.I(className="bi bi-download me-2"),
+                        "Download Data",
+                    ],
+                    color="primary",
+                    size="sm",
+                    style={
+                        "backgroundColor": COLORS["primary"],
+                        "borderColor": COLORS["primary"],
+                        "borderRadius": "6px",
+                    },
+                ),
+                href=download_url,
+                target="_blank",
+                className="text-decoration-none me-2",
+            )
+        )
+
+    # Add GSEA button for perturb_seq_perturbed section only
+    if section_id == "perturb_seq_perturbed" and gsea_button_data:
+        dataset_id = gsea_button_data.get("dataset_id", "")
+        perturbed_gene = gsea_button_data.get("perturbed_gene_name", "")
+        gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_type") or ""
+        # Generate unique ID for the popover target
+        unique_key = f"{dataset_id}_{perturbed_gene}"
+        gsea_icon_id = f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
+        button_row_children.extend(
+            [
+                dbc.Button(
+                    [
+                        html.I(className="bi bi-bar-chart-line me-2"),
+                        "GSEA",
+                    ],
+                    id={
+                        "type": "gsea-modal-trigger",
+                        "dataset_id": dataset_id,
+                        "perturbed_gene": perturbed_gene,
+                        "dataset_cell_type": gsea_dataset_cell_type,
+                    },
+                    color="success",
+                    size="sm",
+                    className="me-1",
+                    style={
+                        "borderRadius": "6px",
+                    },
+                ),
+                html.Span(
+                    html.I(className="bi bi-question-circle"),
+                    id=gsea_icon_id,
+                    style={"cursor": "pointer", "color": "#6c757d"},
+                ),
+                dbc.Popover(
+                    [
+                        dbc.PopoverHeader("Pathway enrichment (GSEA)"),
+                        dbc.PopoverBody(
+                            "Shows biological pathways whose genes are collectively up- or down-regulated after a genetic perturbation, based on single-cell Perturb-seq data and MSigDB Hallmark gene sets."
+                        ),
+                    ],
+                    target=gsea_icon_id,
+                    trigger="click",
+                    placement="bottom",
+                ),
+            ]
+        )
+
+    if button_row_children:
+        content_children.append(
+            html.Div(
+                button_row_children,
+                className="mb-2 d-flex align-items-center",
+            )
+        )
+    content_children.append(table)
+
     return html.Div(
-        table,
+        content_children,
+        className="effect-column px-2 py-2 border rounded-3 bg-white",
+        style={"overflowX": "auto"},
+    )
+
+
+def _crispr_table(
+    results: List[Dict[str, Any]],
+    download_url: Optional[str] = None,
+) -> html.Div:
+    """Render CRISPR screen results as a traditional table with columns."""
+    if not results:
+        return html.Div(
+            "No results available.",
+            className="text-muted fst-italic py-2",
+        )
+
+    # Build table header
+    header_row = html.Tr(
+        [
+            html.Th("Perturbation", className="text-start"),
+            html.Th("Score Name", className="text-start"),
+            html.Th("Score Value", className="text-end"),
+            html.Th("Significant", className="text-center"),
+            html.Th("Significance Criteria", className="text-start"),
+        ]
+    )
+
+    # Build table rows
+    table_rows = []
+    for result in results:
+        perturbation = result.get("perturbation") or {}
+        effect = result.get("effect") or {}
+
+        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+        score_name = effect.get("score_name") or "N/A"
+        score_value = _format_numeric(effect.get("score_value"))
+        significant = effect.get("significant")
+        significance_criteria = effect.get("significance_criteria") or "N/A"
+
+        # Apply color styling for significant field
+        if significant is not None:
+            significant_str = str(significant).lower()
+            if significant_str == "true":
+                significant_cell = html.Td(
+                    html.Span(
+                        str(significant), style={"color": GREEN, "fontWeight": "bold"}
+                    ),
+                    className="text-center",
+                )
+            else:
+                significant_cell = html.Td(
+                    html.Span(
+                        str(significant), style={"color": RED, "fontWeight": "bold"}
+                    ),
+                    className="text-center",
+                )
+        else:
+            significant_cell = html.Td("N/A", className="text-center")
+
+        table_rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        perturbation_gene_name,
+                        className="text-start fw-semibold",
+                    ),
+                    html.Td(score_name, className="text-start"),
+                    html.Td(score_value, className="text-end"),
+                    significant_cell,
+                    html.Td(significance_criteria, className="text-start"),
+                ]
+            )
+        )
+
+    table = html.Table(
+        [
+            html.Thead(header_row, className="table-light"),
+            html.Tbody(table_rows),
+        ],
+        className="table table-sm table-hover mb-0",
+        style={"fontSize": "0.9rem"},
+    )
+
+    # Build content with optional download button
+    content_children = []
+    if download_url:
+        content_children.append(
+            html.Div(
+                html.A(
+                    dbc.Button(
+                        [
+                            html.I(className="bi bi-download me-2"),
+                            "Download Data",
+                        ],
+                        color="primary",
+                        size="sm",
+                        style={
+                            "backgroundColor": COLORS["primary"],
+                            "borderColor": COLORS["primary"],
+                            "borderRadius": "6px",
+                        },
+                    ),
+                    href=download_url,
+                    target="_blank",
+                    className="text-decoration-none",
+                ),
+                className="mb-2",
+            )
+        )
+    content_children.append(table)
+
+    return html.Div(
+        content_children,
         className="effect-column px-2 py-2 border rounded-3 bg-white",
         style={"overflowX": "auto"},
     )
@@ -545,7 +796,10 @@ def _score_effect(
     )
 
 
-def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
+def _mave_heatmap_effect(
+    results: List[Dict[str, Any]],
+    download_url: Optional[str] = None,
+) -> html.Div:
     """Create a heatmap visualization for MAVE data showing position-based scores."""
     if not results:
         return html.Div(
@@ -668,19 +922,46 @@ def _mave_heatmap_effect(results: List[Dict[str, Any]]) -> html.Div:
     fig.update_xaxes(tickmode="linear")
     fig.update_yaxes(tickmode="linear")
 
-    return html.Div(
-        [
-            dcc.Graph(
-                figure=fig,
-                config={"displayModeBar": False},
-                style={"height": "100%", "width": "100%"},
+    # Build content with optional download button
+    content_children = []
+    if download_url:
+        content_children.append(
+            html.Div(
+                html.A(
+                    dbc.Button(
+                        [
+                            html.I(className="bi bi-download me-2"),
+                            "Download Data",
+                        ],
+                        color="primary",
+                        size="sm",
+                        style={
+                            "backgroundColor": COLORS["primary"],
+                            "borderColor": COLORS["primary"],
+                            "borderRadius": "6px",
+                        },
+                    ),
+                    href=download_url,
+                    target="_blank",
+                    className="text-decoration-none",
+                ),
+                className="mb-2",
             )
-        ],
+        )
+    content_children.append(
+        dcc.Graph(
+            figure=fig,
+            config={"displayModeBar": False},
+            style={"height": "100%", "width": "100%"},
+        )
+    )
+
+    return html.Div(
+        content_children,
         className="effect-column px-2 py-2 border rounded-3 bg-white",
         style={
-            "height": "450px",
+            "height": "500px" if download_url else "450px",
             "minHeight": "450px",
-            "maxHeight": "450px",
             "overflow": "hidden",
             "marginBottom": "0.5rem",
         },
