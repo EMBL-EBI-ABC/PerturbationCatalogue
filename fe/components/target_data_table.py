@@ -750,8 +750,7 @@ def _dataset_separator() -> html.Div:
 def _format_dataset_id(dataset_id: Optional[str]) -> str:
     if not dataset_id:
         return "Dataset"
-    formatted = dataset_id.replace("_", " ")
-    return formatted[:1].upper() + formatted[1:]
+    return dataset_id
 
 
 def _dataset_id_to_url_format(dataset_id: Optional[str]) -> Optional[str]:
