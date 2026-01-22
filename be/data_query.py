@@ -187,7 +187,6 @@ class ScoreEffect(EffectBase):
 class Result(BaseModel):
     perturbation: Dict
     effect: Dict
-    gsea: Optional[List[Dict]] = None
 
 
 # Dataset Models
@@ -196,6 +195,7 @@ class Result(BaseModel):
 class DatasetResult(BaseModel):
     dataset: DatasetMetadata
     results: List[Result]
+    results_gsea: Optional[List[Dict]] = None
 
 
 # Facet Models
@@ -216,6 +216,7 @@ class DatasetSearchResponse(BaseModel):
     offset: int
     limit: int
     results: List[Result]
+    results_gsea: Optional[List[Dict]] = None
 
 
 # --- Dependency Classes for Query Parameters ---
@@ -809,21 +810,17 @@ async def _search_modality_impl(
 
             results.append({"perturbation": perturbation, "effect": effect})
 
+        gsea_data = None
         if modality == "perturb-seq":
             gsea_rows = await _fetch_perturb_seq_gsea(pg_conn, dataset_id, query_params)
-            gsea_by_pert = defaultdict(list)
+            gsea_data = []
             for r in gsea_rows:
                 gsea_effect = {
                     k.replace("effect_", ""): r.get(v)
                     for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                     if k.startswith("effect_")
                 }
-                gsea_by_pert[r["perturbed_target_symbol"]].append(gsea_effect)
-
-            for res in results:
-                pert_symbol = res["perturbation"].get("gene_name")
-                if pert_symbol in gsea_by_pert:
-                    res["gsea"] = gsea_by_pert[pert_symbol]
+                gsea_data.append(gsea_effect)
 
         # Map ES fields to final dataset metadata
         def get_first_or_none(data: Optional[list]):
@@ -837,7 +834,9 @@ async def _search_modality_impl(
             else:
                 dataset_meta[f["api_name"]] = val
 
-        final_datasets.append({"dataset": dataset_meta, "results": results})
+        final_datasets.append(
+            {"dataset": dataset_meta, "results": results, "results_gsea": gsea_data}
+        )
 
     return {
         "total_datasets_count": total_datasets_count,
@@ -996,27 +995,24 @@ async def _search_dataset_impl(
             )
         results.append({"perturbation": perturbation, "effect": effect})
 
+    gsea_data = None
     if modality == "perturb-seq":
         gsea_rows = await _fetch_perturb_seq_gsea(pg_conn, dataset_id, query_params)
-        gsea_by_pert = defaultdict(list)
+        gsea_data = []
         for r in gsea_rows:
             gsea_effect = {
                 k.replace("effect_", ""): r.get(v)
                 for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                 if k.startswith("effect_")
             }
-            gsea_by_pert[r["perturbed_target_symbol"]].append(gsea_effect)
-
-        for res in results:
-            pert_symbol = res["perturbation"].get("gene_name")
-            if pert_symbol in gsea_by_pert:
-                res["gsea"] = gsea_by_pert[pert_symbol]
+            gsea_data.append(gsea_effect)
 
     return {
         "total_rows_count": total_rows_count,
         "offset": offset,
         "limit": limit,
         "results": results,
+        "results_gsea": gsea_data,
     }
 
 
