@@ -810,8 +810,6 @@ async def _search_modality_impl(
 
             results.append({"perturbation": perturbation, "effect": effect})
 
-            results.append({"perturbation": perturbation, "effect": effect})
-
         # Map ES fields to final dataset metadata
         def get_first_or_none(data: Optional[list]):
             return data[0] if data else None
