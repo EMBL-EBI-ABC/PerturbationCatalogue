@@ -539,9 +539,6 @@ async def _fetch_perturb_seq_gsea(
             condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
         pg_filters.append(condition)
         pg_params.extend(params)
-    else:
-        # Default filter: sidak <= 0.05
-        pg_filters.append(f"sidak <= 0.05")
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
