@@ -1,11 +1,14 @@
 import argparse
 import logging
 import uuid
+import io
+import json
 
 from google.cloud import bigquery, storage
 import psycopg2
 from psycopg2 import sql
 from tqdm import tqdm
+import pyarrow.parquet as pq
 
 logging.basicConfig(level=logging.INFO)
 
@@ -39,10 +42,12 @@ def export_bq_to_gcs(
     gcs_file_path_prefix,
     last_synced_at,
 ):
-    """Exports data from BigQuery to a GCS bucket."""
+    """Exports data from BigQuery to a GCS bucket in Parquet format."""
     dataset_ref = bq_client.dataset(bq_dataset)
     table_ref = dataset_ref.table(bq_table)
-    destination_uri = f"gs://{gcs_bucket}/{gcs_file_path_prefix}-*.csv"
+    destination_uri = f"gs://{gcs_bucket}/{gcs_file_path_prefix}-*.parquet"
+
+    job_config = bigquery.ExtractJobConfig(destination_format="PARQUET")
 
     if last_synced_at:
         # Incremental load: query to a temporary table, then export.
@@ -65,6 +70,7 @@ def export_bq_to_gcs(
             temp_table_ref,
             destination_uri,
             location=bq_location,
+            job_config=job_config,
         )
         extract_job.result()  # Wait for the extract to finish
 
@@ -76,10 +82,11 @@ def export_bq_to_gcs(
             table_ref,
             destination_uri,
             location=bq_location,
+            job_config=job_config,
         )
         extract_job.result()
 
-    logging.info(f"Exported data to gs://{gcs_bucket}/{gcs_file_path_prefix}-*.csv")
+    logging.info(f"Exported data to gs://{gcs_bucket}/{gcs_file_path_prefix}-*.parquet")
 
 
 def load_to_postgres(
@@ -92,30 +99,67 @@ def load_to_postgres(
     bq_dataset,
     bq_table_name,
 ):
-    """Loads data from a GCS file into a PostgreSQL table."""
+    """Loads data from a GCS Parquet file into a PostgreSQL table."""
     gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_file_path_prefix))
 
+    table = bq_client.get_table(f"{bq_dataset}.{bq_table_name}")
+    schema = table.schema
+
+    def format_row(row, schema):
+        formatted = []
+        for i, field in enumerate(schema):
+            val = row[i]
+            if val is None:
+                formatted.append("")
+            elif field.mode == "REPEATED":
+                # Convert list to Postgres array literal: {"val1", "val2"}
+                # We use json.dumps to handle basic quoting for strings.
+                inner = [str(x) if not isinstance(x, str) else x for x in val]
+                # Simple quoting for postgres array format
+                escaped = []
+                for x in inner:
+                    x_str = str(x).replace('"', '\\"')
+                    escaped.append(f'"{x_str}"')
+                formatted.append(f'{{{",".join(escaped)}}}')
+            elif field.field_type == "BOOLEAN":
+                formatted.append("true" if val else "false")
+            else:
+                formatted.append(str(val))
+        return "\t".join(formatted)
+
+    def stream_parquet_to_pg(cursor, target_table, blobs, schema):
+        for blob in tqdm(blobs, desc=f"Loading shards to {target_table}"):
+            with blob.open("rb") as f:
+                parquet_file = pq.ParquetFile(f)
+                for i in range(parquet_file.num_row_groups):
+                    table = parquet_file.read_row_group(i)
+                    rows = table.to_pylist()
+
+                    # Convert rows to TSV format for COPY
+                    tsv_data = io.StringIO()
+                    for row_dict in rows:
+                        # Convert dict to ordered list based on schema
+                        row_val = [row_dict.get(field.name) for field in schema]
+                        tsv_data.write(format_row(row_val, schema) + "\n")
+
+                    tsv_data.seek(0)
+                    cursor.copy_expert(
+                        sql.SQL(
+                            "COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')"
+                        ).format(sql.Identifier(target_table)),
+                        tsv_data,
+                    )
+
     with psycopg2.connect(pg_conn) as conn:
         with conn.cursor() as cursor:
             if last_synced_at:
-                for blob in tqdm(blobs, desc="Loading shards"):
-                    with blob.open("r") as f:
-                        cursor.copy_expert(
-                            sql.SQL(
-                                "COPY {} FROM STDIN WITH (FORMAT CSV, HEADER)"
-                            ).format(sql.Identifier(pg_table)),
-                            f,
-                        )
+                stream_parquet_to_pg(cursor, pg_table, blobs, schema)
             else:
                 # Full load
                 staging_table = f"staging_{uuid.uuid4().hex}"
-                table = bq_client.get_table(f"{bq_dataset}.{bq_table_name}")
-                schema = table.schema
-                columns = [
-                    f"{field.name} {get_pg_type(field.field_type)}" for field in schema
-                ]
+                columns = [f"{field.name} {get_pg_type(field)}" for field in schema]
 
                 cursor.execute(
                     sql.SQL("CREATE TABLE {} ({})").format(
@@ -124,14 +168,7 @@ def load_to_postgres(
                     )
                 )
 
-                for blob in tqdm(blobs, desc="Loading shards"):
-                    with blob.open("r") as f:
-                        cursor.copy_expert(
-                            sql.SQL(
-                                "COPY {} FROM STDIN WITH (FORMAT CSV, HEADER)"
-                            ).format(sql.Identifier(staging_table)),
-                            f,
-                        )
+                stream_parquet_to_pg(cursor, staging_table, blobs, schema)
 
                 cursor.execute(
                     sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(pg_table))
@@ -143,9 +180,10 @@ def load_to_postgres(
                 )
 
 
-def get_pg_type(bq_type):
+def get_pg_type(field):
     """Maps BigQuery types to PostgreSQL types."""
-    return {
+    bq_type = field.field_type
+    pg_type = {
         "STRING": "TEXT",
         "INTEGER": "BIGINT",
         "FLOAT": "DOUBLE PRECISION",
@@ -153,6 +191,11 @@ def get_pg_type(bq_type):
         "TIMESTAMP": "TIMESTAMP WITHOUT TIME ZONE",
         "DATE": "DATE",
     }.get(bq_type, "TEXT")
+
+    if field.mode == "REPEATED":
+        pg_type += "[]"
+
+    return pg_type
 
 
 def update_sync_state(
