@@ -1,5 +1,6 @@
 import os
 import json
+from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
@@ -19,7 +20,7 @@ ES_DATASET_SUMMARY = "dataset-summary"
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
 PG_TABLES = {
-    "perturb-seq": "perturb_seq_data",
+    "perturb-seq": "perturb_seq_dea",
     "crispr-screen": "crispr_data",
     "mave": "mave_data",
 }
@@ -30,7 +31,23 @@ PERTURB_SEQ_PG_MAPPING = {
     "effect_gene_name": "gene",
     "effect_log2fc": "log2foldchange",
     "effect_padj": "padj",
-    "effect_base_mean": "basemean",
+    "effect_score_name": "score_name",
+    "effect_score_value": "score_value",
+    "effect_cell_type": "cell_type",
+}
+PERTURB_SEQ_GSEA_PG_MAPPING = {
+    "perturbation_gene_name": "perturbed_target_symbol",
+    "gsea_term": "term",
+    "gsea_sidak": "sidak",
+    "effect_term": "term",
+    "effect_es": "es",
+    "effect_nes": "nes",
+    "effect_pval": "pval",
+    "effect_sidak": "sidak",
+    "effect_fdr": "fdr",
+    "effect_geneset_size": "geneset_size",
+    "effect_leading_edge": "leading_edge",
+    "effect_cell_type": "cell_type",
 }
 CRISPR_PG_MAPPING = {
     "perturbation_gene_name": "perturbed_target_symbol",
@@ -59,7 +76,8 @@ NUMERIC_FIELDS = {
     "perturb-seq": {
         "effect_log2fc": "float",
         "effect_padj": "float",
-        "effect_base_mean": "float",
+        "effect_score_value": "float",
+        "gsea_sidak": "float",
     },
     "crispr-screen": {
         "effect_score_value": "float",
@@ -140,10 +158,24 @@ class PerturbSeqEffect(EffectBase):
     direction: str = Field(..., alias="effect_direction")
     log2fc: float = Field(..., alias="effect_log2fc")
     padj: float = Field(..., alias="effect_padj")
-    base_mean: float = Field(..., alias="effect_base_mean")
-    n_total: int = Field(..., alias="effect_n_total")
-    n_up: int = Field(..., alias="effect_n_up")
-    n_down: int = Field(..., alias="effect_n_down")
+    score_name: Optional[str] = Field(None, alias="effect_score_name")
+    score_value: Optional[float] = Field(None, alias="effect_score_value")
+    cell_type: Optional[str] = Field(None, alias="effect_cell_type")
+    n_total: Optional[int] = Field(None, alias="effect_n_total")
+    n_up: Optional[int] = Field(None, alias="effect_n_up")
+    n_down: Optional[int] = Field(None, alias="effect_n_down")
+
+
+class PerturbSeqGseaEffect(EffectBase):
+    term: str = Field(..., alias="effect_term")
+    es: float = Field(..., alias="effect_es")
+    nes: float = Field(..., alias="effect_nes")
+    pval: float = Field(..., alias="effect_pval")
+    sidak: float = Field(..., alias="effect_sidak")
+    fdr: float = Field(..., alias="effect_fdr")
+    geneset_size: int = Field(..., alias="effect_geneset_size")
+    leading_edge: Optional[str] = Field(None, alias="effect_leading_edge")
+    cell_type: Optional[str] = Field(None, alias="effect_cell_type")
 
 
 class ScoreEffect(EffectBase):
@@ -155,6 +187,11 @@ class ScoreEffect(EffectBase):
 class Result(BaseModel):
     perturbation: Dict
     effect: Dict
+
+
+class GseaResult(BaseModel):
+    perturbation: Dict
+    effects: List[Dict]
 
 
 # Dataset Models
@@ -330,15 +367,29 @@ class PerturbSeqParams:
         effect_padj: Optional[str] = Query(
             None, description="Filter by effect padj (supports ranges)"
         ),
-        effect_base_mean: Optional[str] = Query(
-            None, description="Filter by effect base mean (supports ranges)"
+        effect_score_name: Optional[str] = Query(
+            None, description="Filter by effect score name"
+        ),
+        effect_score_value: Optional[str] = Query(
+            None, description="Filter by effect score value (supports ranges)"
+        ),
+        effect_cell_type: Optional[str] = Query(
+            None, description="Filter by cell type"
+        ),
+        gsea_term: Optional[str] = Query(None, description="Filter GSEA by term"),
+        gsea_sidak: Optional[str] = Query(
+            None, description="Filter GSEA by sidak (supports ranges)"
         ),
     ):
         self.perturbation_gene_name = perturbation_gene_name
         self.effect_gene_name = effect_gene_name
         self.effect_log2fc = effect_log2fc
         self.effect_padj = effect_padj
-        self.effect_base_mean = effect_base_mean
+        self.effect_score_name = effect_score_name
+        self.effect_score_value = effect_score_value
+        self.effect_cell_type = effect_cell_type
+        self.gsea_term = gsea_term
+        self.gsea_sidak = gsea_sidak
 
     def dict(self):
         return {k: v for k, v in self.__dict__.items() if v is not None}
@@ -391,6 +442,8 @@ def validate_query_params(
     # Add all filterable perturbation and effect fields to valid_params
     pg_mapping = get_api_to_db_mapping(modality)
     valid_params.update(pg_mapping.keys())
+    if modality == "perturb-seq":
+        valid_params.update(PERTURB_SEQ_GSEA_PG_MAPPING.keys())
 
     for param in query_params:
         if param not in valid_params:
@@ -460,17 +513,46 @@ async def enrich_perturb_seq_rows(
         row["effect_n_up"] = effect_summary.get("n_up")
         row["effect_n_down"] = effect_summary.get("n_down")
 
-        log2fc = row.get("log2foldchange")
-        if log2fc is None:
-            row["effect_direction"] = "not available"
-        elif log2fc > 0:
-            row["effect_direction"] = "increased"
-        elif log2fc < 0:
-            row["effect_direction"] = "decreased"
-        else:
-            row["effect_direction"] = "no change"
-
     return rows
+
+
+async def _fetch_perturb_seq_gsea(
+    conn: asyncpg.Connection,
+    dataset_id: str,
+    query_params: Dict[str, Any],
+) -> List[Dict]:
+    """Fetches GSEA data for a perturb-seq dataset."""
+    pg_filters = ["dataset_id = $1"]
+    pg_params = [dataset_id]
+
+    # Re-use perturbation_gene_name filter if present
+    if "perturbation_gene_name" in query_params:
+        pg_filters.append(f"perturbed_target_symbol = ${len(pg_params) + 1}")
+        pg_params.append(query_params["perturbation_gene_name"])
+
+    # GSEA specific filters
+    if "gsea_term" in query_params:
+        pg_filters.append(f"term = ${len(pg_params) + 1}")
+        pg_params.append(query_params["gsea_term"])
+
+    if "gsea_sidak" in query_params:
+        condition, params = parse_numeric_filter("sidak", query_params["gsea_sidak"])
+        condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
+        if " AND " in condition:
+            condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
+        pg_filters.append(condition)
+        pg_params.extend(params)
+
+    where_clause = f"WHERE {' AND '.join(pg_filters)}"
+    query = f"""
+        SELECT *
+        FROM perturb_seq_gsea
+        {where_clause}
+        ORDER BY sidak ASC
+        LIMIT 50
+    """
+    rows = await conn.fetch(query, *pg_params)
+    return [dict(row) for row in rows]
 
 
 # --- Shared Implementation Functions ---
@@ -709,14 +791,24 @@ async def _search_modality_impl(
                         "n_down": row.get("perturbation_n_down"),
                     }
                 )
+                log2fc = row.get("log2foldchange")
+                if log2fc is None:
+                    effect["direction"] = "not available"
+                elif log2fc > 0:
+                    effect["direction"] = "increased"
+                elif log2fc < 0:
+                    effect["direction"] = "decreased"
+                else:
+                    effect["direction"] = "no change"
                 effect.update(
                     {
-                        "direction": row.get("effect_direction"),
                         "n_total": row.get("effect_n_total"),
                         "n_up": row.get("effect_n_up"),
                         "n_down": row.get("effect_n_down"),
                     }
                 )
+
+            results.append({"perturbation": perturbation, "effect": effect})
 
             results.append({"perturbation": perturbation, "effect": effect})
 
@@ -866,6 +958,15 @@ async def _search_dataset_impl(
         }
 
         if modality == "perturb-seq":
+            log2fc = row.get("log2foldchange")
+            if log2fc is None:
+                effect["direction"] = "not available"
+            elif log2fc > 0:
+                effect["direction"] = "increased"
+            elif log2fc < 0:
+                effect["direction"] = "decreased"
+            else:
+                effect["direction"] = "no change"
             perturbation.update(
                 {
                     "n_total": row.get("perturbation_n_total"),
@@ -875,7 +976,6 @@ async def _search_dataset_impl(
             )
             effect.update(
                 {
-                    "direction": row.get("effect_direction"),
                     "n_total": row.get("effect_n_total"),
                     "n_up": row.get("effect_n_up"),
                     "n_down": row.get("effect_n_down"),
@@ -979,3 +1079,70 @@ async def search_perturb_seq_dataset(
     """Search within a specific Perturb-seq dataset."""
     params = {**common.dict(), **modality_params.dict()}
     return await _search_dataset_impl("perturb-seq", dataset_id, params)
+
+
+@router.get(
+    "/v1/perturb-seq-gsea",
+    response_model=List[GseaResult],
+    response_model_by_alias=False,
+)
+async def get_perturb_seq_gsea(
+    dataset_id: str = Query(..., description="Mandatory dataset ID"),
+    perturbed_gene_name: str = Query(
+        ..., description="Mandatory perturbed gene symbol"
+    ),
+):
+    """Retrieve GSEA results for a specific gene in a dataset."""
+    pg_pool = db_pools.get("pg")
+    if not pg_pool:
+        raise HTTPException(status_code=500, detail="Database pool not initialized")
+    async with pg_pool.acquire() as conn:
+        # Fetch rows for this gene (no default filtering, return all)
+        rows = await conn.fetch(
+            """
+            SELECT * FROM perturb_seq_gsea 
+            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            ORDER BY sidak ASC
+            """,
+            dataset_id,
+            perturbed_gene_name,
+        )
+        if not rows:
+            return []
+
+        # Group by perturbation
+        gsea_by_pert = defaultdict(list)
+        for r in rows:
+            effect = {
+                k.replace("effect_", ""): r.get(v)
+                for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
+                if k.startswith("effect_")
+            }
+            gsea_by_pert[r["perturbed_target_symbol"]].append(effect)
+
+        # Enrich perturbation
+        pert_summary = await conn.fetchrow(
+            """
+            SELECT n_total, n_up, n_down
+            FROM perturb_seq_summary_perturbation
+            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            """,
+            dataset_id,
+            perturbed_gene_name,
+        )
+        pert_summary = dict(pert_summary) if pert_summary else {}
+
+        results = []
+        for pert_symbol, effects in gsea_by_pert.items():
+            results.append(
+                {
+                    "perturbation": {
+                        "gene_name": pert_symbol,
+                        "n_total": pert_summary.get("n_total"),
+                        "n_up": pert_summary.get("n_up"),
+                        "n_down": pert_summary.get("n_down"),
+                    },
+                    "effects": effects,
+                }
+            )
+        return results
