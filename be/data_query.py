@@ -37,6 +37,8 @@ PERTURB_SEQ_PG_MAPPING = {
 }
 PERTURB_SEQ_GSEA_PG_MAPPING = {
     "perturbation_gene_name": "perturbed_target_symbol",
+    "gsea_term": "term",
+    "gsea_sidak": "sidak",
     "effect_term": "term",
     "effect_es": "es",
     "effect_nes": "nes",
@@ -75,6 +77,7 @@ NUMERIC_FIELDS = {
         "effect_log2fc": "float",
         "effect_padj": "float",
         "effect_score_value": "float",
+        "gsea_sidak": "float",
     },
     "crispr-screen": {
         "effect_score_value": "float",
@@ -369,6 +372,10 @@ class PerturbSeqParams:
         effect_cell_type: Optional[str] = Query(
             None, description="Filter by cell type"
         ),
+        gsea_term: Optional[str] = Query(None, description="Filter GSEA by term"),
+        gsea_sidak: Optional[str] = Query(
+            None, description="Filter GSEA by sidak (supports ranges)"
+        ),
     ):
         self.perturbation_gene_name = perturbation_gene_name
         self.effect_gene_name = effect_gene_name
@@ -377,6 +384,8 @@ class PerturbSeqParams:
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
         self.effect_cell_type = effect_cell_type
+        self.gsea_term = gsea_term
+        self.gsea_sidak = gsea_sidak
 
     def dict(self):
         return {k: v for k, v in self.__dict__.items() if v is not None}
@@ -516,6 +525,22 @@ async def _fetch_perturb_seq_gsea(
     if "perturbation_gene_name" in query_params:
         pg_filters.append(f"perturbed_target_symbol = ${len(pg_params) + 1}")
         pg_params.append(query_params["perturbation_gene_name"])
+
+    # GSEA specific filters
+    if "gsea_term" in query_params:
+        pg_filters.append(f"term = ${len(pg_params) + 1}")
+        pg_params.append(query_params["gsea_term"])
+
+    if "gsea_sidak" in query_params:
+        condition, params = parse_numeric_filter("sidak", query_params["gsea_sidak"])
+        condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
+        if " AND " in condition:
+            condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
+        pg_filters.append(condition)
+        pg_params.extend(params)
+    else:
+        # Default filter: sidak <= 0.05
+        pg_filters.append(f"sidak <= 0.05")
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
