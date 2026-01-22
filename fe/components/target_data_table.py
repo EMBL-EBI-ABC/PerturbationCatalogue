@@ -188,7 +188,9 @@ def _build_dataset_rows(
             children.append(_mave_heatmap_effect(results, download_url))
         # For Perturb-Seq sections, render as a table
         elif section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
-            children.append(_perturb_seq_table(results, section_id, download_url, gsea_button_data))
+            # Get dataset cell_type for fallback when effect cell_type is N/A
+            ds_cell_type = _resolve_meta_value(dataset_meta, "dataset_cell_type")
+            children.append(_perturb_seq_table(results, section_id, download_url, gsea_button_data, ds_cell_type))
         # For CRISPR, render as a table
         elif is_crispr_table:
             children.append(_crispr_table(results, download_url))
@@ -407,6 +409,7 @@ def _perturb_seq_table(
     section_id: Optional[str] = None,
     download_url: Optional[str] = None,
     gsea_button_data: Optional[Dict[str, str]] = None,
+    dataset_cell_type: Optional[str] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
     if not results:
@@ -480,8 +483,8 @@ def _perturb_seq_table(
         else:
             statistical_score = "N/A"
 
-        # Get cell type
-        cell_type = effect.get("cell_type") or "N/A"
+        # Get cell type (use dataset cell_type as fallback if effect cell_type is N/A)
+        cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
 
         table_rows.append(
             html.Tr(

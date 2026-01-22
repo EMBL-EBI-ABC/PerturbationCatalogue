@@ -1247,6 +1247,8 @@ def handle_gsea_modal(n_clicks_list):
 
     table_rows = []
     for result in results:
+        # Get dataset-level cell_type as fallback
+        dataset_cell_type = result.get("cell_type") or result.get("dataset_cell_type")
         effects = result.get("effects", [])
         for effect in effects:
             term = effect.get("term", "N/A")
@@ -1256,7 +1258,8 @@ def handle_gsea_modal(n_clicks_list):
             sidak = effect.get("sidak")
             fdr = effect.get("fdr")
             geneset_size = effect.get("geneset_size", "N/A")
-            cell_type = effect.get("cell_type", "N/A")
+            # Use dataset cell_type as fallback if effect cell_type is N/A
+            cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
 
             # Format numeric values
             es_display = format_number(es) if es is not None else "N/A"
