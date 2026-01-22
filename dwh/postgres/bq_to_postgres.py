@@ -57,7 +57,7 @@ def export_bq_to_gcs(
         query = f"""
         SELECT *
         FROM `{bq_dataset}.{bq_table}`
-        WHERE max_ingested_at > DATETIME('{last_synced_at.isoformat()}')
+        WHERE max_ingested_at > TIMESTAMP('{last_synced_at.isoformat()}')
         """
         query_job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
