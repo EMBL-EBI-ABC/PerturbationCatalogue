@@ -1177,7 +1177,7 @@ def _paginate_dataset_rows(
         Output("gsea-modal-body", "children"),
     ],
     Input(
-        {"type": "gsea-modal-trigger", "dataset_id": ALL, "perturbed_gene": ALL},
+        {"type": "gsea-modal-trigger", "dataset_id": ALL, "perturbed_gene": ALL, "dataset_cell_type": ALL},
         "n_clicks",
     ),
     prevent_initial_call=True,
@@ -1196,12 +1196,13 @@ def handle_gsea_modal(n_clicks_list):
     triggered = ctx.triggered[0]
     prop_id = triggered["prop_id"]
 
-    # Parse the ID to get dataset_id and perturbed_gene
+    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_type
     try:
         id_str = prop_id.rsplit(".", 1)[0]
         button_id = json.loads(id_str)
         dataset_id = button_id.get("dataset_id", "")
         perturbed_gene = button_id.get("perturbed_gene", "")
+        dataset_cell_type = button_id.get("dataset_cell_type", "")
     except (json.JSONDecodeError, KeyError):
         raise PreventUpdate
 
@@ -1247,8 +1248,6 @@ def handle_gsea_modal(n_clicks_list):
 
     table_rows = []
     for result in results:
-        # Get dataset-level cell_type as fallback
-        dataset_cell_type = result.get("cell_type") or result.get("dataset_cell_type")
         effects = result.get("effects", [])
         for effect in effects:
             term = effect.get("term", "N/A")
@@ -1258,7 +1257,7 @@ def handle_gsea_modal(n_clicks_list):
             sidak = effect.get("sidak")
             fdr = effect.get("fdr")
             geneset_size = effect.get("geneset_size", "N/A")
-            # Use dataset cell_type as fallback if effect cell_type is N/A
+            # Use dataset cell_type (from button ID) as fallback if effect cell_type is N/A
             cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
 
             # Format numeric values

@@ -34,6 +34,7 @@ DATASET_METADATA_FIELDS = [
     ("dataset_sex", "Sex"),
     ("dataset_developmental_stage", "Developmental stage"),
     ("dataset_score_interpretation", "Score interpretation"),
+    ("dataset_readout_technology", "Readout technology"),
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
@@ -48,6 +49,10 @@ DATASET_FIELD_FALLBACKS = {
     "dataset_sex": ["sex"],
     "dataset_developmental_stage": ["developmental_stage"],
     "dataset_score_interpretation": ["score_interpretation"],
+    "dataset_readout_technology": [
+        "readout_technology_labels",
+        "readout_technology",
+    ],
 }
 
 GREEN = "#2acc06"
@@ -64,6 +69,7 @@ METADATA_FIELD_COLORS = {
     "Sex": "success",
     "Developmental stage": "dark",
     "Score interpretation": "secondary",
+    "Readout technology": "info",
 }
 
 
@@ -174,12 +180,16 @@ def _build_dataset_rows(
         separator = "&" if "?" in download_url_base else "?"
         download_url = f"{download_url_base}{separator}dataset_id={dataset_id}"
 
+    # Get dataset cell_type for fallback when effect cell_type is N/A
+    ds_cell_type = _resolve_meta_value(dataset_meta, "dataset_cell_type")
+
     # Build GSEA button data for this dataset (perturb_seq_perturbed only)
     gsea_button_data = None
     if perturbed_gene_name and dataset_id and section_id == "perturb_seq_perturbed":
         gsea_button_data = {
             "dataset_id": dataset_id,
             "perturbed_gene_name": perturbed_gene_name,
+            "dataset_cell_type": ds_cell_type,
         }
 
     if results:
@@ -188,8 +198,6 @@ def _build_dataset_rows(
             children.append(_mave_heatmap_effect(results, download_url))
         # For Perturb-Seq sections, render as a table
         elif section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
-            # Get dataset cell_type for fallback when effect cell_type is N/A
-            ds_cell_type = _resolve_meta_value(dataset_meta, "dataset_cell_type")
             children.append(_perturb_seq_table(results, section_id, download_url, gsea_button_data, ds_cell_type))
         # For CRISPR, render as a table
         elif is_crispr_table:
@@ -541,6 +549,7 @@ def _perturb_seq_table(
     if section_id == "perturb_seq_perturbed" and gsea_button_data:
         dataset_id = gsea_button_data.get("dataset_id", "")
         perturbed_gene = gsea_button_data.get("perturbed_gene_name", "")
+        gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_type") or ""
         # Generate unique ID for the popover target
         unique_key = f"{dataset_id}_{perturbed_gene}"
         gsea_icon_id = f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
@@ -555,6 +564,7 @@ def _perturb_seq_table(
                         "type": "gsea-modal-trigger",
                         "dataset_id": dataset_id,
                         "perturbed_gene": perturbed_gene,
+                        "dataset_cell_type": gsea_dataset_cell_type,
                     },
                     color="success",
                     size="sm",
