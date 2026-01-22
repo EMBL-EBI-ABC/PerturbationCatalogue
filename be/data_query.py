@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import json
 from collections import defaultdict
@@ -5,6 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
 
 
@@ -1146,3 +1149,213 @@ async def get_perturb_seq_gsea(
                 }
             )
         return results
+
+
+# CSV column definitions for each modality
+CSV_COLUMNS = {
+    "perturb-seq": [
+        ("perturbation_gene_name", "Perturbation Gene"),
+        ("effect_gene_name", "Effect Gene"),
+        ("effect_log2fc", "Log2FC"),
+        ("effect_padj", "Padj"),
+        ("effect_score_name", "Score Name"),
+        ("effect_score_value", "Score Value"),
+        ("effect_cell_type", "Cell Type"),
+    ],
+    "crispr-screen": [
+        ("perturbation_gene_name", "Perturbation Gene"),
+        ("effect_score_name", "Score Name"),
+        ("effect_score_value", "Score Value"),
+        ("effect_significant", "Significant"),
+        ("effect_significance_criteria", "Significance Criteria"),
+    ],
+    "mave": [
+        ("perturbation_gene_name", "Perturbation Gene"),
+        ("perturbation_name", "Perturbation Name"),
+        ("perturbation_position", "Position"),
+        ("perturbation_aa_wt", "AA WT"),
+        ("perturbation_aa_change", "AA Change"),
+        ("effect_score_name", "Score Name"),
+        ("effect_score_value", "Score Value"),
+    ],
+}
+
+
+def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
+    """Convert results to CSV format."""
+    output = io.StringIO()
+    columns = CSV_COLUMNS.get(modality, [])
+
+    writer = csv.writer(output)
+    # Write header
+    writer.writerow([col[1] for col in columns])
+
+    # Write data rows
+    for result in results:
+        perturbation = result.get("perturbation", {})
+        effect = result.get("effect", {})
+
+        row = []
+        for field_key, _ in columns:
+            if field_key.startswith("perturbation_"):
+                key = field_key.replace("perturbation_", "")
+                value = perturbation.get(key, "")
+            elif field_key.startswith("effect_"):
+                key = field_key.replace("effect_", "")
+                value = effect.get(key, "")
+            else:
+                value = ""
+            row.append(value if value is not None else "")
+        writer.writerow(row)
+
+    return output.getvalue()
+
+
+@router.get("/v1/{modality}/download")
+async def download_modality_data(
+    modality: MODALITIES,
+    common: CommonModalitySearchParams = Depends(),
+    perturbation_gene_name: Optional[str] = Query(None),
+    effect_gene_name: Optional[str] = Query(None),
+    effect_log2fc: Optional[str] = Query(None),
+    effect_padj: Optional[str] = Query(None),
+    effect_score_name: Optional[str] = Query(None),
+    effect_score_value: Optional[str] = Query(None),
+    effect_cell_type: Optional[str] = Query(None),
+    effect_significant: Optional[str] = Query(None),
+    effect_significance_criteria: Optional[str] = Query(None),
+    perturbation_name: Optional[str] = Query(None),
+    perturbation_position: Optional[str] = Query(None),
+    perturbation_aa_wt: Optional[str] = Query(None),
+    perturbation_aa_change: Optional[str] = Query(None),
+):
+    """Download data for a modality as CSV."""
+    # Build params dict from all provided parameters
+    params = common.model_dump(exclude_none=True)
+
+    # Add modality-specific params
+    modality_params = {
+        "perturbation_gene_name": perturbation_gene_name,
+        "effect_gene_name": effect_gene_name,
+        "effect_log2fc": effect_log2fc,
+        "effect_padj": effect_padj,
+        "effect_score_name": effect_score_name,
+        "effect_score_value": effect_score_value,
+        "effect_cell_type": effect_cell_type,
+        "effect_significant": effect_significant,
+        "effect_significance_criteria": effect_significance_criteria,
+        "perturbation_name": perturbation_name,
+        "perturbation_position": perturbation_position,
+        "perturbation_aa_wt": perturbation_aa_wt,
+        "perturbation_aa_change": perturbation_aa_change,
+    }
+    params.update({k: v for k, v in modality_params.items() if v is not None})
+
+    # Override limits for download - get more data
+    params["dataset_limit"] = 1000
+    params["rows_per_dataset_limit"] = 10000
+
+    result = await _search_modality_impl(modality, params)
+
+    # Flatten all results from all datasets
+    all_results = []
+    for dataset in result.get("datasets", []):
+        all_results.extend(dataset.get("results", []))
+
+    csv_content = _results_to_csv(all_results, modality)
+
+    # Generate filename
+    gene_name = perturbation_gene_name or effect_gene_name or "all"
+    filename = f"{modality}_{gene_name}_data.csv"
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# GSEA CSV columns (excluding leading_edge)
+GSEA_CSV_COLUMNS = [
+    ("term", "Term"),
+    ("es", "ES"),
+    ("nes", "NES"),
+    ("pval", "P-value"),
+    ("sidak", "Sidak"),
+    ("fdr", "FDR"),
+    ("geneset_size", "Geneset Size"),
+    ("cell_type", "Cell Type"),
+]
+
+
+def _gsea_results_to_csv(gsea_results: List[Dict]) -> str:
+    """Convert GSEA results to CSV format."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([col[1] for col in GSEA_CSV_COLUMNS])
+
+    # Flatten and write data rows
+    for result in gsea_results:
+        effects = result.get("effects") or []
+        for effect in effects:
+            row = []
+            for field_key, _ in GSEA_CSV_COLUMNS:
+                value = effect.get(field_key, "")
+                row.append(value if value is not None else "")
+            writer.writerow(row)
+
+    return output.getvalue()
+
+
+@router.get("/v1/perturb-seq-gsea/download")
+async def download_perturb_seq_gsea(
+    dataset_id: str = Query(..., description="Mandatory dataset ID"),
+    perturbed_gene_name: str = Query(
+        ..., description="Mandatory perturbed gene symbol"
+    ),
+):
+    """Download GSEA data for a specific gene in a dataset as CSV."""
+    # Reuse the existing GSEA endpoint logic
+    pg_pool = db_pools.get("pg")
+    if not pg_pool:
+        raise HTTPException(status_code=500, detail="Database pool not initialized")
+
+    async with pg_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM perturb_seq_gsea
+            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            ORDER BY sidak ASC
+            """,
+            dataset_id,
+            perturbed_gene_name,
+        )
+
+        if not rows:
+            csv_content = _gsea_results_to_csv([])
+        else:
+            # Build results in the same format as the main GSEA endpoint
+            gsea_by_pert = defaultdict(list)
+            for r in rows:
+                effect = {
+                    k.replace("effect_", ""): r.get(v)
+                    for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
+                    if k.startswith("effect_")
+                }
+                gsea_by_pert[r["perturbed_target_symbol"]].append(effect)
+
+            results = [
+                {"perturbation": {"gene_name": pert_symbol}, "effects": effects}
+                for pert_symbol, effects in gsea_by_pert.items()
+            ]
+            csv_content = _gsea_results_to_csv(results)
+
+    filename = f"gsea_{perturbed_gene_name}_{dataset_id}_data.csv"
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

@@ -241,6 +241,29 @@ def fetch_dataset(dataset_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[s
         return None, error_message
 
 
+def fetch_perturb_seq_gsea(
+    dataset_id: str,
+    perturbed_gene_name: str,
+) -> Dict[str, Any]:
+    """Fetch GSEA results for a perturbed gene in a dataset."""
+    try:
+        params = {
+            "dataset_id": dataset_id,
+            "perturbed_gene_name": perturbed_gene_name,
+        }
+        response = requests.get(
+            f"{BACKEND_URL}/v1/perturb-seq-gsea",
+            params=params,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return {"results": response.json(), "error": None}
+    except Exception as exc:
+        error_message = f"Error fetching GSEA data for {perturbed_gene_name}: {exc}"
+        print(error_message)
+        return {"results": [], "error": error_message}
+
+
 # Helper function to format value for display
 def format_value(value: Any) -> str:
     """Format a value for display"""
