@@ -57,7 +57,7 @@ def export_bq_to_gcs(
         query = f"""
         SELECT *
         FROM `{bq_dataset}.{bq_table}`
-        WHERE max_ingested_at > DATETIME('{last_synced_at.isoformat()}')
+        WHERE max_ingested_at > TIMESTAMP('{last_synced_at.isoformat()}')
         """
         query_job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
@@ -98,6 +98,7 @@ def load_to_postgres(
     bq_client,
     bq_dataset,
     bq_table_name,
+    force_full=False,
 ):
     """Loads data from a GCS Parquet file into a PostgreSQL table."""
     gcs_client = storage.Client()
@@ -154,30 +155,38 @@ def load_to_postgres(
 
     with psycopg2.connect(pg_conn) as conn:
         with conn.cursor() as cursor:
-            if last_synced_at:
+            # Check if table exists
+            cursor.execute(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
+                (pg_table,),
+            )
+            table_exists = cursor.fetchone()[0]
+
+            if not force_full and last_synced_at and table_exists:
+                # Incremental load: append to existing table
                 stream_parquet_to_pg(cursor, pg_table, blobs, schema)
             else:
-                # Full load
-                staging_table = f"staging_{uuid.uuid4().hex}"
-                columns = [f"{field.name} {get_pg_type(field)}" for field in schema]
-
-                cursor.execute(
-                    sql.SQL("CREATE TABLE {} ({})").format(
-                        sql.Identifier(staging_table),
-                        sql.SQL(", ").join(map(sql.SQL, columns)),
+                # Full load or first load
+                if table_exists:
+                    # preserve indexes by truncating instead of dropping
+                    logging.info(
+                        f"Table {pg_table} exists. Truncating for full reload."
                     )
-                )
-
-                stream_parquet_to_pg(cursor, staging_table, blobs, schema)
-
-                cursor.execute(
-                    sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(pg_table))
-                )
-                cursor.execute(
-                    sql.SQL("ALTER TABLE {} RENAME TO {}").format(
-                        sql.Identifier(staging_table), sql.Identifier(pg_table)
+                    cursor.execute(
+                        sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(pg_table))
                     )
-                )
+                    stream_parquet_to_pg(cursor, pg_table, blobs, schema)
+                else:
+                    # Initial load: create table and load
+                    logging.info(f"Table {pg_table} does not exist. Creating.")
+                    columns = [f"{field.name} {get_pg_type(field)}" for field in schema]
+                    cursor.execute(
+                        sql.SQL("CREATE TABLE {} ({})").format(
+                            sql.Identifier(pg_table),
+                            sql.SQL(", ").join(map(sql.SQL, columns)),
+                        )
+                    )
+                    stream_parquet_to_pg(cursor, pg_table, blobs, schema)
 
 
 def get_pg_type(field):
@@ -238,12 +247,17 @@ def main():
     parser.add_argument("--pg-conn", required=True)
     parser.add_argument("--pg-table", required=True)
     parser.add_argument("--gcs-bucket", required=True)
+    parser.add_argument(
+        "--full", action="store_true", help="Perform a full reload of the table"
+    )
     args = parser.parse_args()
 
     bq_client = bigquery.Client()
     gcs_file_path_prefix = f"tmp/{args.bq_dataset}_{args.bq_table}_{uuid.uuid4()}"
 
-    last_synced_at = get_last_synced_at(args.pg_conn, args.pg_table)
+    last_synced_at = (
+        get_last_synced_at(args.pg_conn, args.pg_table) if not args.full else None
+    )
 
     export_bq_to_gcs(
         bq_client,
@@ -263,6 +277,7 @@ def main():
         bq_client,
         args.bq_dataset,
         args.bq_table,
+        force_full=args.full,
     )
     update_sync_state(
         args.pg_conn,
