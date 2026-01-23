@@ -51,7 +51,28 @@ def _render_search_results(results):
     header = html.Thead(
         html.Tr(
             [
-                html.Th("Target name", className="fw-semibold"),
+                html.Th(
+                    [
+                        "Target name ",
+                        html.Span(
+                            html.I(className="bi bi-question-circle"),
+                            id="target-info-icon",
+                            style={"cursor": "pointer", "color": "#6c757d"},
+                        ),
+                        dbc.Popover(
+                            [
+                                dbc.PopoverHeader("Target Gene Aggregation"),
+                                dbc.PopoverBody(
+                                    "Results are aggregated by target gene name. Each row represents all datasets and modalities available for a specific target, combining data from Perturb-seq, CRISPR screens, and MAVE experiments across different tissues, cell types, and experimental conditions."
+                                ),
+                            ],
+                            target="target-info-icon",
+                            trigger="click",
+                            placement="bottom",
+                        ),
+                    ],
+                    className="fw-semibold",
+                ),
                 html.Th("Perturb-seq datasets", className="fw-semibold text-center"),
                 html.Th(
                     "CRISPR-screen datasets",
@@ -707,6 +728,42 @@ def _build_filter_controls(facets, selected_filters=None):
         "developmental_stages_tested": "bi-graph-up-arrow",
     }
 
+    # Explanations for facet fields (shown in popover)
+    field_explanations = {
+        "license": {
+            "header": "License Filter",
+            "body": "Filter targets by the license types of their underlying datasets. Selecting a license shows all targets that have at least one dataset released under that license. Note: A single target may have datasets with different licenses.",
+        },
+        "data_modalities": {
+            "header": "Data Modalities Filter",
+            "body": "Filter targets by experimental approach (Perturb-seq, CRISPR screens, MAVE). Selecting a modality shows all targets that have data from that experimental type. A target may appear in multiple modalities.",
+        },
+        "tissues_tested": {
+            "header": "Tissues Filter",
+            "body": "Filter targets by the tissues used in experiments. Selecting a tissue shows all targets that have been studied in at least one dataset using that tissue. The aggregated results for a target may include data from multiple tissues.",
+        },
+        "cell_types_tested": {
+            "header": "Cell Types Filter",
+            "body": "Filter targets by cell types used in experiments. Selecting a cell type shows all targets studied in at least one dataset using that cell type. A single target's aggregated data may span multiple cell types.",
+        },
+        "cell_lines_tested": {
+            "header": "Cell Lines Filter",
+            "body": "Filter targets by cell lines used in experiments. Selecting a cell line shows all targets studied in at least one dataset using that cell line. A target's aggregated results may include data from multiple cell lines.",
+        },
+        "diseases_tested": {
+            "header": "Diseases Filter",
+            "body": "Filter targets by disease context of experiments. Selecting a disease shows all targets studied in at least one dataset related to that disease. A target may have been studied across multiple disease contexts.",
+        },
+        "sex_tested": {
+            "header": "Sex Filter",
+            "body": "Filter targets by the biological sex of samples used in experiments. Selecting a sex shows all targets studied in at least one dataset using samples of that sex. A target's aggregated data may include both sexes.",
+        },
+        "developmental_stages_tested": {
+            "header": "Developmental Stages Filter",
+            "body": "Filter targets by developmental stage of samples. Selecting a stage shows all targets studied in at least one dataset at that developmental stage. A target may have data across multiple developmental stages.",
+        },
+    }
+
     controls = []
     for field in FACET_FIELDS:
         values = facets.get(field, [])
@@ -768,26 +825,45 @@ def _build_filter_controls(facets, selected_filters=None):
                 style={"fontSize": "0.9rem", "zIndex": 2000, "position": "relative"},
             )
 
-        # Build header with icon
+        # Build header with icon and explanation popover
         icon_class = field_icons.get(field)
+        explanation = field_explanations.get(field)
+        info_icon_id = f"facet-info-{field}"
+
+        # Build the header content matching GSEA tooltip structure exactly
+        header_children = []
         if icon_class:
-            header_content = html.Div(
-                [
-                    html.I(
-                        className=f"bi {icon_class} me-2",
-                    ),
-                    html.Span(display_name),
-                ],
-                className="d-flex align-items-center",
+            header_children.append(html.I(className=f"bi {icon_class} me-2"))
+
+        header_children.append(f"{display_name} ")
+
+        # Add info icon and popover if explanation exists (same structure as GSEA)
+        if explanation:
+            header_children.append(
+                html.Span(
+                    html.I(className="bi bi-question-circle me-2"),
+                    id=info_icon_id,
+                    style={"cursor": "pointer", "marginLeft": "2px"},
+                )
             )
-        else:
-            header_content = display_name
+            header_children.append(
+                dbc.Popover(
+                    [
+                        dbc.PopoverHeader(explanation["header"]),
+                        dbc.PopoverBody(explanation["body"]),
+                    ],
+                    target=info_icon_id,
+                    trigger="click",
+                    placement="right",
+                )
+            )
+
 
         controls.append(
             dbc.Card(
                 [
                     dbc.CardHeader(
-                        header_content,
+                        header_children,
                         className="fw-semibold",
                         style={"backgroundColor": "#f8f9fa"},
                     ),
