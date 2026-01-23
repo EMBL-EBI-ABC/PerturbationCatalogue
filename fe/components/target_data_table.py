@@ -26,30 +26,36 @@ GRID_STYLE = {
 HEADER_TITLES = ["Dataset", "Effect"]
 
 DATASET_METADATA_FIELDS = [
-    ("dataset_tissue", "Tissue"),
-    ("dataset_cell_type", "Cell type"),
-    ("dataset_cell_line", "Cell line"),
-    ("dataset_library_perturbation_type", "Library perturbation"),
-    ("dataset_disease", "Disease"),
-    ("dataset_sex", "Sex"),
-    ("dataset_developmental_stage", "Developmental stage"),
+    ("dataset_tissues", "Tissue"),
+    ("dataset_cell_types", "Cell type"),
+    ("dataset_cell_lines", "Cell line"),
+    ("dataset_library_perturbation_types", "Library perturbation"),
+    ("dataset_diseases", "Disease"),
+    ("dataset_sexes", "Sex"),
+    ("dataset_developmental_stages", "Developmental stage"),
     ("dataset_score_interpretation", "Score interpretation"),
-    ("dataset_readout_technology", "Readout technology"),
+    ("dataset_readout_technology_labels", "Readout technology"),
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
-    "dataset_tissue": ["tissue"],
-    "dataset_cell_type": ["cell_type"],
-    "dataset_cell_line": ["cell_line"],
-    "dataset_library_perturbation_type": [
+    "dataset_tissues": ["tissue_labels", "tissues", "tissue"],
+    "dataset_cell_types": ["cell_type_labels", "cell_types", "cell_type"],
+    "dataset_cell_lines": ["cell_line_labels", "cell_lines", "cell_line"],
+    "dataset_library_perturbation_types": [
+        "library_perturbation_type_labels",
+        "library_perturbation_types",
         "library_perturbation_type",
         "library_type",
     ],
-    "dataset_disease": ["disease"],
-    "dataset_sex": ["sex"],
-    "dataset_developmental_stage": ["developmental_stage"],
+    "dataset_diseases": ["disease_labels", "diseases", "disease"],
+    "dataset_sexes": ["sex_labels", "sexes", "sex"],
+    "dataset_developmental_stages": [
+        "developmental_stage_labels",
+        "developmental_stages",
+        "developmental_stage",
+    ],
     "dataset_score_interpretation": ["score_interpretation"],
-    "dataset_readout_technology": [
+    "dataset_readout_technology_labels": [
         "readout_technology_labels",
         "readout_technology",
     ],
@@ -166,7 +172,9 @@ def _build_dataset_rows(
         "perturb_seq_affected",
     )
     is_crispr_table = modality == "crispr-screen"
-    uses_single_component = modality == "mave" or is_perturb_seq_table or is_crispr_table
+    uses_single_component = (
+        modality == "mave" or is_perturb_seq_table or is_crispr_table
+    )
     row_span = 1 if uses_single_component else max(len(results), 1)
 
     children: List[Any] = [
@@ -181,7 +189,12 @@ def _build_dataset_rows(
         download_url = f"{download_url_base}{separator}dataset_id={dataset_id}"
 
     # Get dataset cell_type for fallback when effect cell_type is N/A
-    ds_cell_type = _resolve_meta_value(dataset_meta, "dataset_cell_type")
+    ds_cell_types = _resolve_meta_value(dataset_meta, "dataset_cell_types")
+    ds_cell_type = (
+        ds_cell_types[0]
+        if isinstance(ds_cell_types, list) and ds_cell_types
+        else ds_cell_types
+    )
 
     # Build GSEA button data for this dataset (perturb_seq_perturbed only)
     gsea_button_data = None
@@ -189,7 +202,7 @@ def _build_dataset_rows(
         gsea_button_data = {
             "dataset_id": dataset_id,
             "perturbed_gene_name": perturbed_gene_name,
-            "dataset_cell_type": ds_cell_type,
+            "dataset_cell_types": ds_cell_type,
         }
 
     if results:
@@ -198,7 +211,11 @@ def _build_dataset_rows(
             children.append(_mave_heatmap_effect(results, download_url))
         # For Perturb-Seq sections, render as a table
         elif section_id in ("perturb_seq_perturbed", "perturb_seq_affected"):
-            children.append(_perturb_seq_table(results, section_id, download_url, gsea_button_data, ds_cell_type))
+            children.append(
+                _perturb_seq_table(
+                    results, section_id, download_url, gsea_button_data, ds_cell_type
+                )
+            )
         # For CRISPR, render as a table
         elif is_crispr_table:
             children.append(_crispr_table(results, download_url))
@@ -417,7 +434,7 @@ def _perturb_seq_table(
     section_id: Optional[str] = None,
     download_url: Optional[str] = None,
     gsea_button_data: Optional[Dict[str, str]] = None,
-    dataset_cell_type: Optional[str] = None,
+    dataset_cell_types: Optional[str] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
     if not results:
@@ -491,8 +508,8 @@ def _perturb_seq_table(
         else:
             statistical_score = "N/A"
 
-        # Get cell type (use dataset cell_type as fallback if effect cell_type is N/A)
-        cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
+        # Get cell type (use dataset cell_types as fallback if effect cell_type is N/A)
+        cell_type = effect.get("cell_type") or dataset_cell_types or "N/A"
 
         table_rows.append(
             html.Tr(
@@ -549,10 +566,12 @@ def _perturb_seq_table(
     if section_id == "perturb_seq_perturbed" and gsea_button_data:
         dataset_id = gsea_button_data.get("dataset_id", "")
         perturbed_gene = gsea_button_data.get("perturbed_gene_name", "")
-        gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_type") or ""
+        gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_types") or ""
         # Generate unique ID for the popover target
         unique_key = f"{dataset_id}_{perturbed_gene}"
-        gsea_icon_id = f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
+        gsea_icon_id = (
+            f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
+        )
         button_row_children.extend(
             [
                 dbc.Button(
@@ -564,7 +583,7 @@ def _perturb_seq_table(
                         "type": "gsea-modal-trigger",
                         "dataset_id": dataset_id,
                         "perturbed_gene": perturbed_gene,
-                        "dataset_cell_type": gsea_dataset_cell_type,
+                        "dataset_cell_types": gsea_dataset_cell_type,
                     },
                     color="success",
                     size="sm",
@@ -969,9 +988,14 @@ def _mave_heatmap_effect(
 
 
 def _dataset_meta_line(label: str, value: Optional[Any]) -> html.Div:
-    if value is None:
+    if value is None or (isinstance(value, list) and not value):
         return html.Div()
-    pretty_value = _capitalize_value(str(value))
+
+    if isinstance(value, list):
+        pretty_value = ", ".join([_capitalize_value(str(v)) for v in value])
+    else:
+        pretty_value = _capitalize_value(str(value))
+
     # Get badge color for this field, default to "secondary" if not found
     badge_color = METADATA_FIELD_COLORS.get(label, "secondary")
     return html.Div(
