@@ -284,10 +284,18 @@ def layout(target_name: Optional[str] = None, **kwargs):
         is_open=False,
     )
 
+    # Store to hold GSEA data for download
+    gsea_data_store = dcc.Store(id="gsea-data-store", data=None)
+
+    # Download component for GSEA data
+    gsea_download = dcc.Download(id="gsea-download")
+
     return dbc.Container(
         stores
         + [
             gsea_modal,
+            gsea_data_store,
+            gsea_download,
             html.Div(id="page-top"),
             html.Div(
                 [
@@ -1175,6 +1183,7 @@ def _paginate_dataset_rows(
         Output("gsea-modal", "is_open"),
         Output("gsea-modal-title", "children"),
         Output("gsea-modal-body", "children"),
+        Output("gsea-data-store", "data"),
     ],
     Input(
         {"type": "gsea-modal-trigger", "dataset_id": ALL, "perturbed_gene": ALL, "dataset_cell_type": ALL},
@@ -1220,6 +1229,7 @@ def handle_gsea_modal(n_clicks_list):
                 f"Error loading GSEA data: {response['error']}",
                 className="text-danger",
             ),
+            None,
         )
 
     results = response.get("results", [])
@@ -1229,6 +1239,7 @@ def handle_gsea_modal(n_clicks_list):
             True,
             f"GSEA Results: {perturbed_gene}",
             html.Div("No GSEA results available.", className="text-muted fst-italic"),
+            None,
         )
 
     # Build the table - exclude leading_edge column
@@ -1321,4 +1332,85 @@ def handle_gsea_modal(n_clicks_list):
 
     modal_title = f"Pathway Enrichment (GSEA): {perturbed_gene}"
 
-    return True, modal_title, table
+    # Prepare data for download (list of dicts for CSV export)
+    download_data = {
+        "perturbed_gene": perturbed_gene,
+        "rows": [],
+    }
+    for result in results:
+        effects = result.get("effects", [])
+        for effect in effects:
+            cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
+            download_data["rows"].append({
+                "term": effect.get("term", "N/A"),
+                "es": effect.get("es"),
+                "nes": effect.get("nes"),
+                "pval": effect.get("pval"),
+                "sidak": effect.get("sidak"),
+                "fdr": effect.get("fdr"),
+                "geneset_size": effect.get("geneset_size", "N/A"),
+                "cell_type": cell_type,
+            })
+
+    # Build modal body with download button at the top
+    download_button = html.Div(
+        dbc.Button(
+            [
+                html.I(className="bi bi-download me-2"),
+                "Download Data",
+            ],
+            id="gsea-download-btn",
+            color="primary",
+            size="sm",
+            style={
+                "backgroundColor": COLORS["primary"],
+                "borderColor": COLORS["primary"],
+                "borderRadius": "6px",
+            },
+        ),
+        className="mb-2",
+    )
+
+    modal_body = html.Div([download_button, table])
+
+    return True, modal_title, modal_body, download_data
+
+
+@callback(
+    Output("gsea-download", "data"),
+    Input("gsea-download-btn", "n_clicks"),
+    State("gsea-data-store", "data"),
+    prevent_initial_call=True,
+)
+def download_gsea_data(n_clicks, gsea_data):
+    """Download GSEA data as CSV when download button is clicked."""
+    if not n_clicks or not gsea_data:
+        raise PreventUpdate
+
+    rows = gsea_data.get("rows", [])
+    perturbed_gene = gsea_data.get("perturbed_gene", "unknown")
+
+    if not rows:
+        raise PreventUpdate
+
+    # Build CSV content
+    headers = ["Term", "ES", "NES", "P-value", "Sidak", "FDR", "Geneset Size", "Cell Type"]
+    csv_lines = [",".join(headers)]
+
+    for row in rows:
+        csv_row = [
+            f'"{row.get("term", "N/A")}"',
+            str(row.get("es", "")) if row.get("es") is not None else "",
+            str(row.get("nes", "")) if row.get("nes") is not None else "",
+            str(row.get("pval", "")) if row.get("pval") is not None else "",
+            str(row.get("sidak", "")) if row.get("sidak") is not None else "",
+            str(row.get("fdr", "")) if row.get("fdr") is not None else "",
+            str(row.get("geneset_size", "")),
+            f'"{row.get("cell_type", "N/A")}"',
+        ]
+        csv_lines.append(",".join(csv_row))
+
+    csv_content = "\n".join(csv_lines)
+    filename = f"gsea_{perturbed_gene}.csv"
+
+    return dict(content=csv_content, filename=filename)
