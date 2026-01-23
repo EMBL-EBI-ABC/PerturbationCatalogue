@@ -279,30 +279,10 @@ def parse_filters_from_params(
     return filters if filters else None
 
 
-async def perform_search(
-    query: Optional[str], filters: Optional[Dict[str, List[str]]], page: int, size: int
+def _build_search_response(
+    response: Dict[str, Any], page: int, size: int
 ) -> SearchResponse:
-    """Perform the actual search operation"""
-    # Build Elasticsearch query
-    es_query = build_elasticsearch_query(query, filters)
-    aggs = build_aggregations()
-
-    # Calculate from/size for pagination
-    from_ = (page - 1) * size
-
-    # Execute search
-    try:
-        response = await db_pools["es"].search(
-            index=ES_TARGET_SUMMARY, query=es_query, aggs=aggs, from_=from_, size=size
-        )
-    except Exception as e:
-        error_detail = str(e)
-        print(f"Elasticsearch error: {error_detail}")
-        raise HTTPException(
-            status_code=500, detail=f"Elasticsearch error: {error_detail}"
-        )
-
-    # Process results
+    """Build SearchResponse from Elasticsearch response."""
     hits = response.get("hits", {})
     total = hits.get("total", {}).get("value", 0)
     results = [hit["_source"] for hit in hits.get("hits", [])]
@@ -330,6 +310,116 @@ async def perform_search(
         results=results,
         facets=facets,
     )
+
+
+def _has_exact_match(result: Dict[str, Any], query: str) -> bool:
+    """Check if result has an exact match for the query in perturbed_target_symbol."""
+    query_lower = query.lower().strip()
+
+    # Check perturbed_target_symbol field
+    target_symbol = result.get("perturbed_target_symbol")
+    if target_symbol:
+        if isinstance(target_symbol, str):
+            if target_symbol.lower() == query_lower:
+                return True
+        elif isinstance(target_symbol, list):
+            for val in target_symbol:
+                if isinstance(val, str) and val.lower() == query_lower:
+                    return True
+
+    return False
+
+
+async def perform_search(
+    query: Optional[str], filters: Optional[Dict[str, List[str]]], page: int, size: int
+) -> SearchResponse:
+    """Perform the actual search operation"""
+    # Build Elasticsearch query
+    es_query = build_elasticsearch_query(query, filters)
+    aggs = build_aggregations()
+
+    # For exact match detection, we need to fetch more results initially
+    # to check if any are exact matches
+    search_size = size
+    if query and query.strip():
+        # Fetch more to find potential exact matches
+        search_size = max(size, 100)
+
+    # Calculate from/size for pagination
+    from_ = (page - 1) * size
+
+    # Execute search
+    try:
+        response = await db_pools["es"].search(
+            index=ES_TARGET_SUMMARY,
+            query=es_query,
+            aggs=aggs,
+            from_=0,
+            size=search_size,
+        )
+    except Exception as e:
+        error_detail = str(e)
+        print(f"Elasticsearch error: {error_detail}")
+        raise HTTPException(
+            status_code=500, detail=f"Elasticsearch error: {error_detail}"
+        )
+
+    # Process results
+    hits = response.get("hits", {})
+    total = hits.get("total", {}).get("value", 0)
+    all_results = [hit["_source"] for hit in hits.get("hits", [])]
+
+    # If there's a query, check for exact matches and filter if found
+    if query and query.strip():
+        cleaned_query = query.strip()
+        exact_matches = [r for r in all_results if _has_exact_match(r, cleaned_query)]
+
+        if exact_matches:
+            # Return only exact matches
+            total = len(exact_matches)
+            total_pages = (total + size - 1) // size if total > 0 else 0
+            # Apply pagination to exact matches
+            paginated_results = exact_matches[from_ : from_ + size]
+
+            # Process facets from original response
+            facets_dict = {}
+            aggregations = response.get("aggregations", {})
+            for field in FACET_FIELDS:
+                buckets = aggregations.get(field, {}).get("buckets", [])
+                facets_dict[field] = [
+                    FacetValue(value=bucket["key"], count=bucket["doc_count"])
+                    for bucket in buckets
+                ]
+            facets = Facets(**facets_dict)
+
+            return SearchResponse(
+                total=total,
+                page=page,
+                size=size,
+                total_pages=total_pages,
+                results=paginated_results,
+                facets=facets,
+            )
+
+    # No exact matches found (or no query), return normal fuzzy results
+    # Re-fetch with correct pagination if we fetched extra
+    if search_size != size or from_ > 0:
+        try:
+            response = await db_pools["es"].search(
+                index=ES_TARGET_SUMMARY,
+                query=es_query,
+                aggs=aggs,
+                from_=from_,
+                size=size,
+            )
+        except Exception as e:
+            error_detail = str(e)
+            print(f"Elasticsearch error: {error_detail}")
+            raise HTTPException(
+                status_code=500, detail=f"Elasticsearch error: {error_detail}"
+            )
+
+    return _build_search_response(response, page, size)
 
 
 @app.get("/")
