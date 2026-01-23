@@ -562,7 +562,9 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         ),
         section_id=section_id,
         download_url_base=download_url_base,
-        perturbed_gene_name=target_name if section_id == "perturb_seq_perturbed" else None,
+        perturbed_gene_name=(
+            target_name if section_id == "perturb_seq_perturbed" else None
+        ),
     )
 
     return html.Div([table] + dataset_pagination)
@@ -1186,7 +1188,12 @@ def _paginate_dataset_rows(
         Output("gsea-data-store", "data"),
     ],
     Input(
-        {"type": "gsea-modal-trigger", "dataset_id": ALL, "perturbed_gene": ALL, "dataset_cell_type": ALL},
+        {
+            "type": "gsea-modal-trigger",
+            "dataset_id": ALL,
+            "perturbed_gene": ALL,
+            "dataset_cell_types": ALL,
+        },
         "n_clicks",
     ),
     prevent_initial_call=True,
@@ -1205,13 +1212,13 @@ def handle_gsea_modal(n_clicks_list):
     triggered = ctx.triggered[0]
     prop_id = triggered["prop_id"]
 
-    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_type
+    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_types
     try:
         id_str = prop_id.rsplit(".", 1)[0]
         button_id = json.loads(id_str)
         dataset_id = button_id.get("dataset_id", "")
         perturbed_gene = button_id.get("perturbed_gene", "")
-        dataset_cell_type = button_id.get("dataset_cell_type", "")
+        dataset_cell_types = button_id.get("dataset_cell_types", "")
     except (json.JSONDecodeError, KeyError):
         raise PreventUpdate
 
@@ -1268,8 +1275,8 @@ def handle_gsea_modal(n_clicks_list):
             sidak = effect.get("sidak")
             fdr = effect.get("fdr")
             geneset_size = effect.get("geneset_size", "N/A")
-            # Use dataset cell_type (from button ID) as fallback if effect cell_type is N/A
-            cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
+            # Use dataset cell_types (from button ID) as fallback if effect cell_type is N/A
+            cell_type = effect.get("cell_type") or dataset_cell_types or "N/A"
 
             # Format numeric values
             es_display = format_number(es) if es is not None else "N/A"
@@ -1340,17 +1347,19 @@ def handle_gsea_modal(n_clicks_list):
     for result in results:
         effects = result.get("effects", [])
         for effect in effects:
-            cell_type = effect.get("cell_type") or dataset_cell_type or "N/A"
-            download_data["rows"].append({
-                "term": effect.get("term", "N/A"),
-                "es": effect.get("es"),
-                "nes": effect.get("nes"),
-                "pval": effect.get("pval"),
-                "sidak": effect.get("sidak"),
-                "fdr": effect.get("fdr"),
-                "geneset_size": effect.get("geneset_size", "N/A"),
-                "cell_type": cell_type,
-            })
+            cell_type = effect.get("cell_type") or dataset_cell_types or "N/A"
+            download_data["rows"].append(
+                {
+                    "term": effect.get("term", "N/A"),
+                    "es": effect.get("es"),
+                    "nes": effect.get("nes"),
+                    "pval": effect.get("pval"),
+                    "sidak": effect.get("sidak"),
+                    "fdr": effect.get("fdr"),
+                    "geneset_size": effect.get("geneset_size", "N/A"),
+                    "cell_type": cell_type,
+                }
+            )
 
     # Build modal body with download button at the top
     download_button = html.Div(
@@ -1394,7 +1403,16 @@ def download_gsea_data(n_clicks, gsea_data):
         raise PreventUpdate
 
     # Build CSV content
-    headers = ["Term", "ES", "NES", "P-value", "Sidak", "FDR", "Geneset Size", "Cell Type"]
+    headers = [
+        "Term",
+        "ES",
+        "NES",
+        "P-value",
+        "Sidak",
+        "FDR",
+        "Geneset Size",
+        "Cell Type",
+    ]
     csv_lines = [",".join(headers)]
 
     for row in rows:

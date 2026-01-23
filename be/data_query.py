@@ -123,6 +123,8 @@ def _build_dataset_metadata_model():
         name = f["api_name"].replace("dataset_", "")
         if name == "id":
             fields[name] = (str, Field(..., alias=f["api_name"]))
+        elif f.get("is_array"):
+            fields[name] = (Optional[List[str]], Field(None, alias=f["api_name"]))
         else:
             fields[name] = (Optional[str], Field(None, alias=f["api_name"]))
     return create_model("DatasetMetadata", **fields)
@@ -814,16 +816,10 @@ async def _search_modality_impl(
             results.append({"perturbation": perturbation, "effect": effect})
 
         # Map ES fields to final dataset metadata
-        def get_first_or_none(data: Optional[list]):
-            return data[0] if data else None
-
         dataset_meta = {}
         for f in DATASET_FIELDS:
             val = es_dataset.get(f["es_field"])
-            if f.get("is_array"):
-                dataset_meta[f["api_name"]] = get_first_or_none(val)
-            else:
-                dataset_meta[f["api_name"]] = val
+            dataset_meta[f["api_name"]] = val
 
         final_datasets.append({"dataset": dataset_meta, "results": results})
 
@@ -998,7 +994,7 @@ async def _search_dataset_impl(
 @router.get(
     "/v1/mave/search",
     response_model=ModalitySearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_mave(
     common: CommonModalitySearchParams = Depends(),
@@ -1012,7 +1008,7 @@ async def search_mave(
 @router.get(
     "/v1/crispr-screen/search",
     response_model=ModalitySearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_crispr_screen(
     common: CommonModalitySearchParams = Depends(),
@@ -1026,7 +1022,7 @@ async def search_crispr_screen(
 @router.get(
     "/v1/perturb-seq/search",
     response_model=ModalitySearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_perturb_seq(
     common: CommonModalitySearchParams = Depends(),
@@ -1040,7 +1036,7 @@ async def search_perturb_seq(
 @router.get(
     "/v1/mave/{dataset_id}/search",
     response_model=DatasetSearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_mave_dataset(
     dataset_id: str,
@@ -1055,7 +1051,7 @@ async def search_mave_dataset(
 @router.get(
     "/v1/crispr-screen/{dataset_id}/search",
     response_model=DatasetSearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_crispr_screen_dataset(
     dataset_id: str,
@@ -1070,7 +1066,7 @@ async def search_crispr_screen_dataset(
 @router.get(
     "/v1/perturb-seq/{dataset_id}/search",
     response_model=DatasetSearchResponse,
-    response_model_by_alias=False,
+    response_model_by_alias=True,
 )
 async def search_perturb_seq_dataset(
     dataset_id: str,
