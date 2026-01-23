@@ -1223,6 +1223,7 @@ def handle_search_examples(
     Output("search-results-store", "data"),
     Output("homepage-summary", "children", allow_duplicate=True),
     Output("facet-filters", "style"),
+    Output("search-results-table", "children", allow_duplicate=True),
     Input("search-input", "value"),
     Input("search-button", "n_clicks"),
     prevent_initial_call="initial_duplicate",
@@ -1254,6 +1255,7 @@ def update_search_results(query, _):
             },
             summary_content,
             filters_style,
+            [],  # Clear search results table
         )
 
     data = fetch_search_results(
@@ -1282,11 +1284,12 @@ def update_search_results(query, _):
         "display": "block",
     }
 
-    return store_payload, summary_content, filters_style
+    # Return dash.no_update for search-results-table so the second callback handles rendering
+    return store_payload, summary_content, filters_style, dash.no_update
 
 
 @callback(
-    Output("search-results-table", "children"),
+    Output("search-results-table", "children", allow_duplicate=True),
     Output("search-results-pagination", "style"),
     Output("search-page-info", "children"),
     Output("search-page-prev", "disabled"),
