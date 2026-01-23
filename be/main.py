@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List, Dict, Any
 from elasticsearch import AsyncElasticsearch
 import asyncpg
-import os
 from dotenv import load_dotenv
 import re
 from urllib.parse import urlparse
@@ -245,6 +244,34 @@ def build_aggregations() -> Dict[str, Any]:
     return aggs
 
 
+def _calculate_facets_from_results(results: List[Dict[str, Any]]) -> Facets:
+    """Calculate facet counts from displayed results only.
+
+    Used for search queries to ensure facets match the limited result set shown.
+    """
+    from collections import Counter
+
+    facets_dict = {}
+    for field in FACET_FIELDS:
+        counter = Counter()
+        for result in results:
+            value = result.get(field)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                for v in value:
+                    if v:
+                        counter[v] += 1
+            elif value:
+                counter[value] += 1
+
+        facets_dict[field] = [
+            FacetValue(value=val, count=count)
+            for val, count in counter.most_common(100)
+        ]
+    return Facets(**facets_dict)
+
+
 def parse_filters_from_params(
     license: Optional[str] = None,
     data_modalities: Optional[str] = None,
@@ -279,57 +306,6 @@ def parse_filters_from_params(
     return filters if filters else None
 
 
-def _build_search_response(
-    response: Dict[str, Any], page: int, size: int
-) -> SearchResponse:
-    """Build SearchResponse from Elasticsearch response."""
-    hits = response.get("hits", {})
-    total = hits.get("total", {}).get("value", 0)
-    results = [hit["_source"] for hit in hits.get("hits", [])]
-
-    # Process facets
-    facets_dict = {}
-    aggregations = response.get("aggregations", {})
-    for field in FACET_FIELDS:
-        buckets = aggregations.get(field, {}).get("buckets", [])
-        facets_dict[field] = [
-            FacetValue(value=bucket["key"], count=bucket["doc_count"])
-            for bucket in buckets
-        ]
-
-    facets = Facets(**facets_dict)
-
-    # Calculate total pages
-    total_pages = (total + size - 1) // size if total > 0 else 0
-
-    return SearchResponse(
-        total=total,
-        page=page,
-        size=size,
-        total_pages=total_pages,
-        results=results,
-        facets=facets,
-    )
-
-
-def _has_exact_match(result: Dict[str, Any], query: str) -> bool:
-    """Check if result has an exact match for the query in perturbed_target_symbol."""
-    query_lower = query.lower().strip()
-
-    # Check perturbed_target_symbol field
-    target_symbol = result.get("perturbed_target_symbol")
-    if target_symbol:
-        if isinstance(target_symbol, str):
-            if target_symbol.lower() == query_lower:
-                return True
-        elif isinstance(target_symbol, list):
-            for val in target_symbol:
-                if isinstance(val, str) and val.lower() == query_lower:
-                    return True
-
-    return False
-
-
 async def perform_search(
     query: Optional[str], filters: Optional[Dict[str, List[str]]], page: int, size: int
 ) -> SearchResponse:
@@ -338,88 +314,66 @@ async def perform_search(
     es_query = build_elasticsearch_query(query, filters)
     aggs = build_aggregations()
 
-    # For exact match detection, we need to fetch more results initially
-    # to check if any are exact matches
-    search_size = size
-    if query and query.strip():
-        # Fetch more to find potential exact matches
-        search_size = max(size, 100)
+    # When searching, limit to 20 best hits to show most relevant results
+    # When browsing (no query), use normal pagination
+    max_search_results = 20
+    has_query = query and query.strip()
 
-    # Calculate from/size for pagination
-    from_ = (page - 1) * size
+    if has_query:
+        # For search queries, always return top 20 results (no pagination)
+        effective_size = max_search_results
+        from_ = 0
+    else:
+        # Normal pagination for browsing
+        effective_size = size
+        from_ = (page - 1) * size
 
-    # Execute search
+    # Execute search with aggregations
     try:
         response = await db_pools["es"].search(
             index=ES_TARGET_SUMMARY,
             query=es_query,
             aggs=aggs,
-            from_=0,
-            size=search_size,
+            from_=from_,
+            size=effective_size,
         )
     except Exception as e:
         error_detail = str(e)
-        print(f"Elasticsearch error: {error_detail}")
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {error_detail}"
         )
 
     # Process results
     hits = response.get("hits", {})
-    total = hits.get("total", {}).get("value", 0)
-    all_results = [hit["_source"] for hit in hits.get("hits", [])]
+    results = [hit["_source"] for hit in hits.get("hits", [])]
 
-    # If there's a query, check for exact matches and filter if found
-    if query and query.strip():
-        cleaned_query = query.strip()
-        exact_matches = [r for r in all_results if _has_exact_match(r, cleaned_query)]
+    if has_query:
+        # For search queries: facets from displayed results only, capped total
+        total = min(hits.get("total", {}).get("value", 0), max_search_results)
+        total_pages = (total + effective_size - 1) // effective_size if total > 0 and effective_size > 0 else 0
+        facets = _calculate_facets_from_results(results)
+    else:
+        # For browsing: use ES aggregations for full dataset facets
+        total = hits.get("total", {}).get("value", 0)
+        total_pages = (total + size - 1) // size if total > 0 else 0
+        aggregations = response.get("aggregations", {})
+        facets_dict = {}
+        for field in FACET_FIELDS:
+            buckets = aggregations.get(field, {}).get("buckets", [])
+            facets_dict[field] = [
+                FacetValue(value=bucket["key"], count=bucket["doc_count"])
+                for bucket in buckets
+            ]
+        facets = Facets(**facets_dict)
 
-        if exact_matches:
-            # Return only exact matches
-            total = len(exact_matches)
-            total_pages = (total + size - 1) // size if total > 0 else 0
-            # Apply pagination to exact matches
-            paginated_results = exact_matches[from_ : from_ + size]
-
-            # Process facets from original response
-            facets_dict = {}
-            aggregations = response.get("aggregations", {})
-            for field in FACET_FIELDS:
-                buckets = aggregations.get(field, {}).get("buckets", [])
-                facets_dict[field] = [
-                    FacetValue(value=bucket["key"], count=bucket["doc_count"])
-                    for bucket in buckets
-                ]
-            facets = Facets(**facets_dict)
-
-            return SearchResponse(
-                total=total,
-                page=page,
-                size=size,
-                total_pages=total_pages,
-                results=paginated_results,
-                facets=facets,
-            )
-
-    # No exact matches found (or no query), return normal fuzzy results
-    # Re-fetch with correct pagination if we fetched extra
-    if search_size != size or from_ > 0:
-        try:
-            response = await db_pools["es"].search(
-                index=ES_TARGET_SUMMARY,
-                query=es_query,
-                aggs=aggs,
-                from_=from_,
-                size=size,
-            )
-        except Exception as e:
-            error_detail = str(e)
-            print(f"Elasticsearch error: {error_detail}")
-            raise HTTPException(
-                status_code=500, detail=f"Elasticsearch error: {error_detail}"
-            )
-
-    return _build_search_response(response, page, size)
+    return SearchResponse(
+        total=total,
+        page=page,
+        size=effective_size if has_query else size,
+        total_pages=total_pages,
+        results=results,
+        facets=facets,
+    )
 
 
 @app.get("/")

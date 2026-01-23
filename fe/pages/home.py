@@ -1,6 +1,5 @@
 """Home page for Perturbation Search"""
 
-import math
 import dash
 from dash import dcc, html, Input, Output, State, callback, ALL, callback_context
 import dash_bootstrap_components as dbc
@@ -707,14 +706,8 @@ def _build_filter_controls(facets, selected_filters=None):
     if not facets:
         return _filter_placeholder()
 
-    normalized_selected_filters = {}
-    if selected_filters:
-        for field, values in selected_filters.items():
-            normalized_selected_filters[field] = [
-                str(v).strip() for v in values if v not in (None, "")
-            ]
-    else:
-        normalized_selected_filters = {}
+    if selected_filters is None:
+        selected_filters = {}
 
     # Icon mapping for facet fields
     field_icons = {
@@ -1349,72 +1342,62 @@ def render_filtered_results(
             {"display": "none"},
         )
 
-    triggered_prop = trigger or ""
-    requested_page = current_page or 1
+    # Always use stored results for search queries - filter client-side
+    all_results = store_data.get("results", [])
+    original_facets = store_data.get("facets", {})
 
-    if (
-        "search-results-store" in triggered_prop
-        or not triggered_prop
-        or "facet-filter" in triggered_prop
-    ):
-        requested_page = 1
-    elif "search-page-prev" in triggered_prop:
-        requested_page = max(1, requested_page - 1)
-    elif "search-page-next" in triggered_prop:
-        requested_page = requested_page + 1
+    # Apply client-side filtering
+    def matches_filters(result, filters):
+        for field, selected_values in filters.items():
+            if not selected_values:
+                continue
+            result_value = result.get(field)
+            if result_value is None:
+                return False
+            # Handle both list and scalar values
+            if isinstance(result_value, list):
+                if not any(v in selected_values for v in result_value):
+                    return False
+            else:
+                if result_value not in selected_values:
+                    return False
+        return True
 
-    api_response = None
-
-    if "search-results-store" in triggered_prop or not triggered_prop:
-        api_response = {
-            "results": store_data.get("results", []),
-            "facets": store_data.get("facets", {}),
-            "total": store_data.get("total", 0),
-            "page": store_data.get("page", 1),
-            "size": store_data.get("size", SEARCH_RESULTS_PAGE_SIZE),
-            "total_pages": store_data.get("total_pages"),
-        }
+    if selected_filters:
+        filtered_results = [r for r in all_results if matches_filters(r, selected_filters)]
     else:
-        api_response = fetch_search_results(
-            query=query,
-            filters=selected_filters or None,
-            page=requested_page,
-            size=SEARCH_RESULTS_PAGE_SIZE,
-        )
+        filtered_results = all_results
 
-    total_results = api_response.get("total", 0)
-    page_size = (
-        api_response.get("size", SEARCH_RESULTS_PAGE_SIZE) or SEARCH_RESULTS_PAGE_SIZE
-    )
-    total_pages = api_response.get("total_pages")
-    if not total_pages:
-        total_pages = max(1, math.ceil(total_results / page_size)) if page_size else 1
+    # Pagination: 10 records per page
+    page_size = 10
+    total_results = len(filtered_results)
+    total_pages = max(1, (total_results + page_size - 1) // page_size)
 
-    current_page_number = api_response.get("page", requested_page)
+    # Handle page navigation
+    triggered_prop = trigger or ""
+    current_page_number = current_page or 1
+
+    if "search-results-store" in triggered_prop or "facet-filter" in triggered_prop:
+        # Reset to page 1 on new search or filter change
+        current_page_number = 1
+    elif "search-page-prev" in triggered_prop:
+        current_page_number = max(1, current_page_number - 1)
+    elif "search-page-next" in triggered_prop:
+        current_page_number = min(total_pages, current_page_number + 1)
+
+    # Ensure page is within bounds
+    if current_page_number > total_pages:
+        current_page_number = total_pages
     if current_page_number < 1:
         current_page_number = 1
 
-    if current_page_number > total_pages and total_pages > 0:
-        current_page_number = total_pages
-        api_response = fetch_search_results(
-            query=query,
-            filters=selected_filters or None,
-            page=current_page_number,
-            size=SEARCH_RESULTS_PAGE_SIZE,
-        )
-        total_results = api_response.get("total", 0)
-        page_size = (
-            api_response.get("size", SEARCH_RESULTS_PAGE_SIZE)
-            or SEARCH_RESULTS_PAGE_SIZE
-        )
-        total_pages = api_response.get("total_pages") or (
-            max(1, math.ceil(total_results / page_size)) if page_size else 1
-        )
+    # Slice results for current page
+    start_idx = (current_page_number - 1) * page_size
+    end_idx = start_idx + page_size
+    results = filtered_results[start_idx:end_idx]
+    facets = original_facets
 
-    results = api_response.get("results", [])
-    facets = api_response.get("facets", {})
-
-    if not results:
+    if not results and total_results == 0:
         filters_children = _build_filter_controls(facets, selected_filters)
         return (
             dbc.Alert(
