@@ -289,6 +289,45 @@ def _render_search_results(results):
     return table
 
 
+def _recalculate_facets(filtered_results, original_facets):
+    """Recalculate facet counts based on currently filtered results."""
+    recalculated = {}
+    for field in FACET_FIELDS:
+        value_counts = {}
+        for result in filtered_results:
+            field_value = result.get(field)
+            if field_value is None:
+                continue
+            if isinstance(field_value, list):
+                for v in field_value:
+                    v_str = str(v).strip()
+                    if v_str:
+                        value_counts[v_str] = value_counts.get(v_str, 0) + 1
+            else:
+                v_str = str(field_value).strip()
+                if v_str:
+                    value_counts[v_str] = value_counts.get(v_str, 0) + 1
+
+        # Preserve original ordering, update counts
+        original_values = original_facets.get(field, [])
+        facet_list = []
+        seen = set()
+        for item in original_values:
+            val = item.get("value")
+            if val is not None:
+                val_str = str(val).strip()
+                count = value_counts.get(val_str, 0)
+                facet_list.append({"value": val_str, "count": count})
+                seen.add(val_str)
+        for val_str, count in value_counts.items():
+            if val_str not in seen:
+                facet_list.append({"value": val_str, "count": count})
+
+        recalculated[field] = facet_list
+
+    return recalculated
+
+
 def _filter_placeholder(message="Search to enable filters."):
     """Placeholder message when filters are unavailable."""
     return dbc.Alert(
@@ -1368,6 +1407,12 @@ def render_filtered_results(
     else:
         filtered_results = all_results
 
+    # Recalculate facet counts based on filtered results
+    if selected_filters:
+        facets = _recalculate_facets(filtered_results, original_facets)
+    else:
+        facets = original_facets
+
     # Pagination: 10 records per page
     page_size = 10
     total_results = len(filtered_results)
@@ -1395,7 +1440,6 @@ def render_filtered_results(
     start_idx = (current_page_number - 1) * page_size
     end_idx = start_idx + page_size
     results = filtered_results[start_idx:end_idx]
-    facets = original_facets
 
     if not results and total_results == 0:
         filters_children = _build_filter_controls(facets, selected_filters)
