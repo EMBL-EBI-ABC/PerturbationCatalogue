@@ -43,7 +43,7 @@ class SearchResponse(BaseModel):
     size: int
     total_pages: int
     results: List[Dict[str, Any]]
-    facets: Facets
+    facets: Any
 
 
 class SummaryTopEntry(BaseModel):
