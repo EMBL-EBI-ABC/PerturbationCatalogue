@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
 
 import dash
 from dash import (
@@ -84,6 +85,8 @@ DATASET_LOAD_MORE_SIZE = 5
 
 def layout(target_name: Optional[str] = None, **kwargs):
     """Page layout with data stores and section shells."""
+    if target_name:
+        target_name = unquote(target_name)
     stores = [
         dcc.Store(id=TARGET_NAME_STORE, data=target_name),
         dcc.Store(id=SCROLL_VISIBILITY_STORE, data=False),

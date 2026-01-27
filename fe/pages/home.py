@@ -4,6 +4,7 @@ import dash
 from dash import dcc, html, Input, Output, State, callback, ALL, callback_context
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+from urllib.parse import quote
 from utils import (
     COLORS,
     DATA_MODALITIES_COLOURS,
@@ -176,7 +177,7 @@ def _render_search_results(results):
                     html.Td(
                         dcc.Link(
                             symbol,
-                            href=f"/perturbation-catalogue/target/{symbol}",
+                            href=f"/perturbation-catalogue/target/{quote(symbol, safe='')}",
                             className="text-decoration-none fw-semibold",
                             style={"color": COLORS["primary"]},
                         )
