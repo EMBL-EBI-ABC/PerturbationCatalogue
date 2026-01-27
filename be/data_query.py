@@ -651,7 +651,7 @@ async def _search_modality_impl(
             FROM {pg_table}
             {where_clause}
             GROUP BY dataset_id
-            ORDER BY MAX(CASE WHEN significant = 'true' THEN 1 ELSE 0 END) DESC
+            ORDER BY MAX(CASE WHEN significant = 'True' THEN 1 ELSE 0 END) DESC
         """
     elif modality == "perturb-seq":
         prefilter_query = f"""
