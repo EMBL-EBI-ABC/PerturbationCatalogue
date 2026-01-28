@@ -74,6 +74,9 @@ CREATE INDEX CONCURRENTLY idx_phenotype_dea
   ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange);
 CREATE INDEX CONCURRENTLY idx_perturbation_phenotype_dea
   ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_perturb_seq_dea_dataset_id
+  ON public.perturb_seq_dea (dataset_id);
+
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
