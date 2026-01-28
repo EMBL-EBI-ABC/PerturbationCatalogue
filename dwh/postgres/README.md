@@ -100,6 +100,12 @@ SELECT
 FROM public.perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, gene;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk
+  ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk
+  ON perturb_seq_summary_effect (dataset_id, gene);
+
 ```
 
 ### GSEA
