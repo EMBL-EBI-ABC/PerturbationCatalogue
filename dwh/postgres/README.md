@@ -120,6 +120,15 @@ CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
   ON public.crispr_data (dataset_id);
 CREATE INDEX CONCURRENTLY idx_crispr_data_target
   ON public.crispr_data (perturbed_target_symbol);
+
+## MAVE
+```sql
+CREATE INDEX CONCURRENTLY idx_mave_data_dataset
+  ON public.mave_data (dataset_id);
+CREATE INDEX CONCURRENTLY idx_mave_data_target
+  ON public.mave_data (perturbed_target_symbol, dataset_id);
+```
+
 ```
 
 ## Monitoring
