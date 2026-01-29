@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import os
@@ -469,10 +470,16 @@ async def enrich_perturb_seq_rows(
         set((row["dataset_id"], row["perturbed_target_symbol"]) for row in rows)
     )
     pert_summary_map = {}
+    # Fetch effect summaries keys
+    effect_keys = list(set((row["dataset_id"], row["gene"]) for row in rows))
+    effect_summary_map = {}
+
+    # Fetch summaries in parallel
+    pert_task = None
     if pert_keys:
         pert_dataset_ids = [k[0] for k in pert_keys]
         pert_symbols = [k[1] for k in pert_keys]
-        pert_summary_rows = await conn.fetch(
+        pert_task = conn.fetch(
             """
             SELECT t.dataset_id, t.perturbed_target_symbol, t.n_total, t.n_up, t.n_down
             FROM perturb_seq_summary_perturbation AS t
@@ -482,16 +489,13 @@ async def enrich_perturb_seq_rows(
             pert_dataset_ids,
             pert_symbols,
         )
-        for r in pert_summary_rows:
-            pert_summary_map[(r["dataset_id"], r["perturbed_target_symbol"])] = r
 
-    # Fetch effect summaries
-    effect_keys = list(set((row["dataset_id"], row["gene"]) for row in rows))
-    effect_summary_map = {}
+    effect_task = None
     if effect_keys:
+
         effect_dataset_ids = [k[0] for k in effect_keys]
         effect_genes = [k[1] for k in effect_keys]
-        effect_summary_rows = await conn.fetch(
+        effect_task = conn.fetch(
             """
             SELECT t.dataset_id, t.gene, t.n_total, t.n_up, t.n_down
             FROM perturb_seq_summary_effect AS t
@@ -501,8 +505,29 @@ async def enrich_perturb_seq_rows(
             effect_dataset_ids,
             effect_genes,
         )
-        for r in effect_summary_rows:
-            effect_summary_map[(r["dataset_id"], r["gene"])] = r
+
+    # Wait for both tasks if they were created
+    tasks = []
+    if pert_task:
+        tasks.append(pert_task)
+    if effect_task:
+        tasks.append(effect_task)
+
+    if tasks:
+        results = await asyncio.gather(*tasks)
+
+        # Unpack results
+        res_idx = 0
+        if pert_task:
+            pert_summary_rows = results[res_idx]
+            res_idx += 1
+            for r in pert_summary_rows:
+                pert_summary_map[(r["dataset_id"], r["perturbed_target_symbol"])] = r
+
+        if effect_task:
+            effect_summary_rows = results[res_idx]
+            for r in effect_summary_rows:
+                effect_summary_map[(r["dataset_id"], r["gene"])] = r
 
     # Enrich rows
     for row in rows:
