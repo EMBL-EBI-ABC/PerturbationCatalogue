@@ -74,6 +74,9 @@ CREATE INDEX CONCURRENTLY idx_phenotype_dea
   ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange);
 CREATE INDEX CONCURRENTLY idx_perturbation_phenotype_dea
   ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange);
+CREATE INDEX CONCURRENTLY idx_perturb_seq_dea_dataset_id
+  ON public.perturb_seq_dea (dataset_id);
+
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
@@ -97,6 +100,12 @@ SELECT
 FROM public.perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, gene;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk
+  ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk
+  ON perturb_seq_summary_effect (dataset_id, gene);
+
 ```
 
 ### GSEA
@@ -111,6 +120,15 @@ CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
   ON public.crispr_data (dataset_id);
 CREATE INDEX CONCURRENTLY idx_crispr_data_target
   ON public.crispr_data (perturbed_target_symbol);
+
+## MAVE
+```sql
+CREATE INDEX CONCURRENTLY idx_mave_data_dataset
+  ON public.mave_data (dataset_id);
+CREATE INDEX CONCURRENTLY idx_mave_data_target
+  ON public.mave_data (perturbed_target_symbol, dataset_id);
+```
+
 ```
 
 ## Monitoring
