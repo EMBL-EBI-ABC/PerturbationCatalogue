@@ -236,7 +236,7 @@ def build_elasticsearch_query(
                                 f"{field}.keyword": {
                                     "value": wildcard_value,
                                     "case_insensitive": True,
-                                    "boost": 0.8,
+                                    "boost": 0.4,
                                 }
                             }
                         }
@@ -247,7 +247,7 @@ def build_elasticsearch_query(
                                 field: {
                                     "value": wildcard_value,
                                     "case_insensitive": True,
-                                    "boost": 0.6,
+                                    "boost": 0.3,
                                 }
                             }
                         }
@@ -389,19 +389,17 @@ def build_dataset_elasticsearch_query(
 
 def _calculate_facets_from_results(
     results: List[Dict[str, Any]],
-    facet_fields: Optional[List[str]] = None,
+    facet_fields: List[str],
 ) -> Dict[str, List[FacetValue]]:
-    """Calculate facet counts from displayed results only.
+    """Calculate facet counts from the returned results.
 
-    Used for search queries to ensure facets match the limited result set shown.
-    Returns a dict of field -> FacetValue list (usable for both Facets model and raw dict).
+    Used for search queries to ensure facets match the result set.
     """
     from collections import Counter
 
-    fields = facet_fields or FACET_FIELDS
     facets_dict = {}
-    for field in fields:
-        counter = Counter()
+    for field in facet_fields:
+        counter: Counter = Counter()
         for result in results:
             value = result.get(field)
             if value is None:
@@ -507,13 +505,13 @@ async def perform_search(
 
     aggs = build_aggregations(facet_fields)
 
-    # When searching, limit to 20 best hits to show most relevant results
-    # When browsing (no query), use normal pagination
-    max_search_results = 20
+    # For search queries, return all matching results so frontend can filter client-side
+    # For browsing (no query), use normal pagination
     has_query = query and query.strip()
+    max_search_results = 1000  # Reasonable limit for search results
 
     if has_query:
-        # For search queries, always return top 20 results (no pagination)
+        # Return all matching results (up to max) for client-side filtering
         effective_size = max_search_results
         from_ = 0
     else:
@@ -541,9 +539,9 @@ async def perform_search(
     results = [hit["_source"] for hit in hits.get("hits", [])]
 
     if has_query:
-        # For search queries: facets from displayed results only, capped total
-        total = min(hits.get("total", {}).get("value", 0), max_search_results)
-        total_pages = (total + effective_size - 1) // effective_size if total > 0 and effective_size > 0 else 0
+        # For search queries: calculate facets from returned results
+        total = len(results)
+        total_pages = 1  # All results returned in one response
         facets_dict = _calculate_facets_from_results(results, facet_fields)
     else:
         # For browsing: use ES aggregations for full dataset facets
@@ -569,7 +567,7 @@ async def perform_search(
     return SearchResponse(
         total=total,
         page=page,
-        size=effective_size if has_query else size,
+        size=len(results) if has_query else size,
         total_pages=total_pages,
         results=results,
         facets=facets,
