@@ -18,6 +18,19 @@ from utils import (
 
 SEARCH_RESULTS_PAGE_SIZE = 15
 
+# Mapping from canonical (target) field names to dataset index field names.
+# Used for client-side filtering of dataset results.
+TARGET_TO_DATASET_FIELD = {
+    "license": "license_labels",
+    "data_modalities": "data_modalities",
+    "tissues_tested": "tissue_labels",
+    "cell_types_tested": "cell_type_labels",
+    "cell_lines_tested": "cell_line_labels",
+    "sex_tested": "sex_labels",
+    "developmental_stages_tested": "developmental_stage_labels",
+    "diseases_tested": "disease_labels",
+}
+
 
 # Register this page with Dash Pages
 dash.register_page(__name__, path="/")
@@ -290,13 +303,16 @@ def _render_search_results(results):
     return table
 
 
-def _recalculate_facets(filtered_results, original_facets):
+def _recalculate_facets(filtered_results, original_facets, search_mode="targets"):
     """Recalculate facet counts based on currently filtered results."""
+    is_dataset_mode = search_mode == "datasets"
     recalculated = {}
     for field in FACET_FIELDS:
         value_counts = {}
+        # In dataset mode, result fields use different names (e.g. cell_type_labels vs cell_types_tested)
+        result_field = TARGET_TO_DATASET_FIELD.get(field, field) if is_dataset_mode else field
         for result in filtered_results:
-            field_value = result.get(field)
+            field_value = result.get(result_field)
             if field_value is None:
                 continue
             if isinstance(field_value, list):
@@ -327,6 +343,93 @@ def _recalculate_facets(filtered_results, original_facets):
         recalculated[field] = facet_list
 
     return recalculated
+
+
+def _render_dataset_search_results(results):
+    """Render the search results table for dataset search results."""
+    if not results:
+        return dbc.Alert(
+            [
+                html.I(className="bi bi-info-circle me-2"),
+                "No datasets found. Try another search term.",
+            ],
+            color="info",
+            className="shadow-sm",
+            style={"borderRadius": "10px"},
+        )
+
+    header = html.Thead(
+        html.Tr(
+            [
+                html.Th("Dataset ID", className="fw-semibold"),
+                html.Th("Study Title", className="fw-semibold"),
+                html.Th("Study Year", className="fw-semibold text-center"),
+                html.Th("Data Modality", className="fw-semibold"),
+            ],
+            style={"backgroundColor": "#f1f3f5"},
+        )
+    )
+
+    rows = []
+    for record in results:
+        dataset_id = record.get("dataset_id", "N/A")
+        study_title = record.get("study_title") or record.get("experiment_title") or "N/A"
+        # Truncate long titles
+        display_title = study_title if len(study_title) <= 60 else study_title[:57] + "..."
+        modality = record.get("data_modalities") or []
+        year = record.get("study_year") or "N/A"
+
+        modality_badges = []
+        for mod in modality:
+            badge_color = DATA_MODALITIES_COLOURS.get(mod, COLORS["primary"])
+            modality_badges.append(
+                dbc.Badge(
+                    mod,
+                    color="light",
+                    className="me-1 mb-1",
+                    style={
+                        "fontSize": "0.75rem",
+                        "border": f"1px solid {badge_color}",
+                        "color": badge_color,
+                        "backgroundColor": f"{badge_color}1A",
+                    },
+                )
+            )
+        if not modality_badges:
+            modality_badges = [html.Span("N/A", className="text-muted")]
+
+        rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        dcc.Link(
+                            dataset_id,
+                            href=f"/perturbation-catalogue/dataset/{dataset_id}",
+                            className="text-decoration-none fw-semibold",
+                            style={"color": COLORS["primary"]},
+                        )
+                    ),
+                    html.Td(
+                        html.Span(display_title, title=study_title),
+                        style={"maxWidth": "300px"},
+                    ),
+                    html.Td(str(year), className="text-center"),
+                    html.Td(html.Div(modality_badges, className="d-flex flex-wrap")),
+                ]
+            )
+        )
+
+    table = dbc.Table(
+        [header, html.Tbody(rows)],
+        bordered=False,
+        hover=True,
+        responsive=True,
+        striped=False,
+        className="align-middle shadow-sm",
+        style={"borderRadius": "12px", "overflow": "hidden"},
+    )
+
+    return table
 
 
 def _filter_placeholder(message="Search to enable filters."):
@@ -741,7 +844,7 @@ def _build_summary_component(summary_data, error=None):
     )
 
 
-def _build_filter_controls(facets, selected_filters=None):
+def _build_filter_controls(facets, selected_filters=None, facet_fields=None, search_mode="targets"):
     """Build filter controls for facet fields."""
     if not facets:
         return _filter_placeholder()
@@ -749,7 +852,10 @@ def _build_filter_controls(facets, selected_filters=None):
     if selected_filters is None:
         selected_filters = {}
 
-    # Icon mapping for facet fields
+    if facet_fields is None:
+        facet_fields = FACET_FIELDS
+
+    # Icon mapping for facet fields (covers both target and dataset field names)
     field_icons = {
         "license": "bi-award-fill",
         "data_modalities": "bi-database",
@@ -759,6 +865,15 @@ def _build_filter_controls(facets, selected_filters=None):
         "diseases_tested": "bi-virus2",
         "sex_tested": "bi-gender-ambiguous",
         "developmental_stages_tested": "bi-graph-up-arrow",
+        # Dataset-mode fields
+        "license_labels": "bi-award-fill",
+        "library_perturbation_type_labels": "bi-database",
+        "tissue_labels": "bi-universal-access-circle",
+        "cell_type_labels": "bi-puzzle",
+        "cell_line_labels": "bi-puzzle-fill",
+        "disease_labels": "bi-virus2",
+        "sex_labels": "bi-gender-ambiguous",
+        "developmental_stage_labels": "bi-graph-up-arrow",
     }
 
     # Explanations for facet fields (shown in popover)
@@ -795,28 +910,85 @@ def _build_filter_controls(facets, selected_filters=None):
             "header": "Developmental Stages Filter",
             "body": "Filter targets by developmental stage of samples. Selecting a stage shows all targets studied in at least one dataset at that developmental stage. A target may have data across multiple developmental stages.",
         },
+        # Dataset-mode field explanations
+        "license_labels": {
+            "header": "License Filter",
+            "body": "Filter datasets by the license types under which they are released. Selecting a license shows all datasets released under that license.",
+        },
+        "library_perturbation_type_labels": {
+            "header": "Data Modalities Filter",
+            "body": "Filter datasets by experimental approach (Perturb-seq, CRISPR screens, MAVE). Selecting a modality shows all datasets that have data from that experimental type.",
+        },
+        "tissue_labels": {
+            "header": "Tissues Filter",
+            "body": "Filter datasets by the tissues used in experiments. Selecting a tissue shows all datasets that used that tissue.",
+        },
+        "cell_type_labels": {
+            "header": "Cell Types Filter",
+            "body": "Filter datasets by cell types used in experiments. Selecting a cell type shows all datasets that used that cell type.",
+        },
+        "cell_line_labels": {
+            "header": "Cell Lines Filter",
+            "body": "Filter datasets by cell lines used in experiments. Selecting a cell line shows all datasets that used that cell line.",
+        },
+        "disease_labels": {
+            "header": "Diseases Filter",
+            "body": "Filter datasets by disease context of experiments. Selecting a disease shows all datasets related to that disease.",
+        },
+        "sex_labels": {
+            "header": "Sex Filter",
+            "body": "Filter datasets by the biological sex of samples used in experiments. Selecting a sex shows all datasets using samples of that sex.",
+        },
+        "developmental_stage_labels": {
+            "header": "Developmental Stages Filter",
+            "body": "Filter datasets by developmental stage of samples. Selecting a stage shows all datasets at that developmental stage.",
+        },
     }
 
     controls = []
-    for field in FACET_FIELDS:
+    for field in facet_fields:
         values = facets.get(field, [])
         if not values:
             continue
 
         # Custom display names for specific fields
-        if field == "license":
-            display_name = "License"
+        display_name_map = {
+            # Target-mode fields
+            "license": "License",
+            "data_modalities": "Data Modalities",
+            "tissues_tested": "Tissues",
+            "cell_types_tested": "Cell Types",
+            "cell_lines_tested": "Cell Lines",
+            "sex_tested": "Sex",
+            "developmental_stages_tested": "Developmental Stages",
+            "diseases_tested": "Diseases",
+            # Dataset-mode fields
+            "license_labels": "License",
+            "library_perturbation_type_labels": "Data Modalities",
+            "tissue_labels": "Tissues",
+            "cell_type_labels": "Cell Types",
+            "cell_line_labels": "Cell Lines",
+            "disease_labels": "Diseases",
+            "sex_labels": "Sex",
+            "developmental_stage_labels": "Developmental Stages",
+        }
+        if field in display_name_map:
+            display_name = display_name_map[field]
         else:
             display_name = field.replace("_", " ").title()
         options = []
         option_value_map = {}
+        field_selected = [str(v).strip().lower() for v in selected_filters.get(field, []) if v is not None]
         for item in values:
             raw_value = item.get("value")
             count = item.get("count", 0)
-            if raw_value is None or count <= 0:
+            if raw_value is None:
                 continue
             value = str(raw_value).strip()
             if not value:
+                continue
+            # Keep values with count 0 if they are currently selected, so user can deselect
+            if count <= 0 and value.lower() not in field_selected:
                 continue
             options.append({"label": f"{value} ({count})", "value": value})
             option_value_map[value.lower()] = value
@@ -870,8 +1042,8 @@ def _build_filter_controls(facets, selected_filters=None):
 
         header_children.append(f"{display_name} ")
 
-        # Add info icon and popover if explanation exists (same structure as GSEA)
-        if explanation:
+        # Add info icon and popover if explanation exists (target mode only)
+        if explanation and search_mode != "datasets":
             header_children.append(
                 html.Span(
                     html.I(className="bi bi-question-circle me-2"),
@@ -942,6 +1114,22 @@ layout = html.Div(
                                                 [
                                                     dbc.InputGroup(
                                                         [
+                                                            dbc.Select(
+                                                                id="search-mode-dropdown",
+                                                                options=[
+                                                                    {"label": "Targets", "value": "targets"},
+                                                                    {"label": "Datasets", "value": "datasets"},
+                                                                ],
+                                                                value="targets",
+                                                                className="form-select-lg",
+                                                                style={
+                                                                    "borderRadius": "8px 0 0 8px",
+                                                                    "maxWidth": "140px",
+                                                                    "borderRight": "none",
+                                                                    "backgroundColor": "#f8f9fa",
+                                                                    "fontWeight": "500",
+                                                                },
+                                                            ),
                                                             dbc.Input(
                                                                 id="search-input",
                                                                 placeholder="Search by metadata fields...",
@@ -950,7 +1138,7 @@ layout = html.Div(
                                                                 debounce=True,
                                                                 className="form-control-lg",
                                                                 style={
-                                                                    "borderRadius": "8px 0 0 8px"
+                                                                    "borderRadius": "0"
                                                                 },
                                                             ),
                                                             dbc.Button(
@@ -1259,11 +1447,13 @@ def handle_search_examples(
     Output("search-results-table", "children", allow_duplicate=True),
     Input("search-input", "value"),
     Input("search-button", "n_clicks"),
+    Input("search-mode-dropdown", "value"),
     prevent_initial_call="initial_duplicate",
 )
-def update_search_results(query, _):
+def update_search_results(query, _, search_mode):
     """Fetch fuzzy search results and store them."""
     search_term = (query or "").strip() if query else ""
+    search_mode = search_mode or "targets"
 
     summary_content = dash.no_update
     filters_style = dash.no_update
@@ -1285,6 +1475,7 @@ def update_search_results(query, _):
                 "total": 0,
                 "page": 1,
                 "size": SEARCH_RESULTS_PAGE_SIZE,
+                "search_mode": search_mode,
             },
             summary_content,
             filters_style,
@@ -1295,6 +1486,7 @@ def update_search_results(query, _):
         query=search_term if search_term else None,
         page=1,
         size=SEARCH_RESULTS_PAGE_SIZE,
+        search_mode=search_mode,
     )
     results = data.get("results", [])
     facets = data.get("facets", {})
@@ -1307,6 +1499,7 @@ def update_search_results(query, _):
         "page": data.get("page", 1),
         "size": data.get("size", SEARCH_RESULTS_PAGE_SIZE),
         "total_pages": data.get("total_pages"),
+        "search_mode": search_mode,
     }
 
     summary_content = ""
@@ -1382,6 +1575,10 @@ def render_filtered_results(
             {"display": "none"},
         )
 
+    # Determine search mode
+    search_mode = store_data.get("search_mode", "targets")
+    is_dataset_mode = search_mode == "datasets"
+
     # Always use stored results for search queries - filter client-side
     all_results = store_data.get("results", [])
     original_facets = store_data.get("facets", {})
@@ -1391,7 +1588,9 @@ def render_filtered_results(
         for field, selected_values in filters.items():
             if not selected_values:
                 continue
-            result_value = result.get(field)
+            # For dataset mode, map canonical target field names to dataset field names
+            actual_field = TARGET_TO_DATASET_FIELD.get(field, field) if is_dataset_mode else field
+            result_value = result.get(actual_field)
             if result_value is None:
                 return False
             # Handle both list and scalar values
@@ -1410,7 +1609,7 @@ def render_filtered_results(
 
     # Recalculate facet counts based on filtered results
     if selected_filters:
-        facets = _recalculate_facets(filtered_results, original_facets)
+        facets = _recalculate_facets(filtered_results, original_facets, search_mode)
     else:
         facets = original_facets
 
@@ -1443,12 +1642,13 @@ def render_filtered_results(
     results = filtered_results[start_idx:end_idx]
 
     if not results and total_results == 0:
-        filters_children = _build_filter_controls(facets, selected_filters)
+        filters_children = _build_filter_controls(facets, selected_filters, FACET_FIELDS, search_mode)
+        no_results_msg = "No datasets found. Try another search term." if is_dataset_mode else "No results found. Try another target name."
         return (
             dbc.Alert(
                 [
                     html.I(className="bi bi-info-circle me-2"),
-                    "No results found. Try another target name.",
+                    no_results_msg,
                 ],
                 color="info",
                 className="shadow-sm",
@@ -1464,8 +1664,11 @@ def render_filtered_results(
             {"display": "none"},
         )
 
-    table = _render_search_results(results)
-    filters_children = _build_filter_controls(facets, selected_filters)
+    if is_dataset_mode:
+        table = _render_dataset_search_results(results)
+    else:
+        table = _render_search_results(results)
+    filters_children = _build_filter_controls(facets, selected_filters, FACET_FIELDS, search_mode)
 
     pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
     page_info = f"Page {current_page_number} of {total_pages} ({total_results} results)"
@@ -1499,6 +1702,7 @@ def download_metadata(n_clicks, store_data, selected_values, filter_ids):
         return dash.no_update
 
     query = store_data.get("query")
+    search_mode = store_data.get("search_mode", "targets")
 
     # Build filters from current selection
     selected_filters = {}
@@ -1513,29 +1717,38 @@ def download_metadata(n_clicks, store_data, selected_values, filter_ids):
     all_results = fetch_all_search_results(
         query=query,
         filters=selected_filters or None,
+        search_mode=search_mode,
     )
 
     if not all_results:
         return dash.no_update
 
-    # Define columns to include in the CSV
-    columns = [
-        "perturbed_target_symbol",
-        "n_experiments",
-        "n_sig_perturb_pairs_up",
-        "n_sig_perturb_pairs_down",
-        "n_sig_crispr",
-        "n_mave",
-        "top_gsea_terms",
-        "data_modalities",
-        "tissues_tested",
-        "cell_types_tested",
-        "cell_lines_tested",
-        "sex_tested",
-        "developmental_stages_tested",
-        "diseases_tested",
-        "license",
-    ]
+    # Define columns to include in the CSV based on search mode
+    if search_mode == "datasets":
+        columns = [
+            "dataset_id",
+            "study_title",
+            "study_year",
+            "data_modalities",
+        ]
+    else:
+        columns = [
+            "perturbed_target_symbol",
+            "n_experiments",
+            "n_sig_perturb_pairs_up",
+            "n_sig_perturb_pairs_down",
+            "n_sig_crispr",
+            "n_mave",
+            "top_gsea_terms",
+            "data_modalities",
+            "tissues_tested",
+            "cell_types_tested",
+            "cell_lines_tested",
+            "sex_tested",
+            "developmental_stages_tested",
+            "diseases_tested",
+            "license",
+        ]
 
     # Build CSV content
     csv_lines = [",".join(columns)]
@@ -1557,8 +1770,8 @@ def download_metadata(n_clicks, store_data, selected_values, filter_ids):
 
     csv_content = "\n".join(csv_lines)
 
-    # Generate filename with query
+    # Generate filename with query and search mode
     safe_query = "".join(c if c.isalnum() or c in "-_" else "_" for c in query[:30])
-    filename = f"perturbation_catalogue_{safe_query}.csv"
+    filename = f"perturbation_catalogue_{search_mode}_{safe_query}.csv"
 
     return dict(content=csv_content, filename=filename, type="text/csv")

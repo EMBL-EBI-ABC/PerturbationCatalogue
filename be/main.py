@@ -86,7 +86,7 @@ app.add_middleware(
 app.include_router(data_query_router)
 
 
-# Facet fields
+# Facet fields for target-summary index
 FACET_FIELDS = [
     "license",
     "data_modalities",
@@ -96,6 +96,49 @@ FACET_FIELDS = [
     "sex_tested",
     "developmental_stages_tested",
     "diseases_tested",
+]
+
+# Facet fields for dataset-summary index (actual ES field names)
+DATASET_FACET_FIELDS = [
+    "license_labels",
+    "data_modalities",
+    "tissue_labels",
+    "cell_type_labels",
+    "cell_line_labels",
+    "sex_labels",
+    "developmental_stage_labels",
+    "disease_labels",
+]
+
+# Mapping from canonical (target) field names to dataset index field names
+TARGET_TO_DATASET_FIELD = {
+    "license": "license_labels",
+    "data_modalities": "data_modalities",
+    "tissues_tested": "tissue_labels",
+    "cell_types_tested": "cell_type_labels",
+    "cell_lines_tested": "cell_line_labels",
+    "sex_tested": "sex_labels",
+    "developmental_stages_tested": "developmental_stage_labels",
+    "diseases_tested": "disease_labels",
+}
+DATASET_TO_TARGET_FIELD = {v: k for k, v in TARGET_TO_DATASET_FIELD.items()}
+
+# Searchable fields for dataset-summary index
+DATASET_SEARCHABLE_FIELDS = [
+    "dataset_id",
+    "study_title",
+    "experiment_title",
+    "experiment_summary",
+    "first_author",
+    "last_author",
+    "tissue_labels",
+    "cell_type_labels",
+    "cell_line_labels",
+    "sex_labels",
+    "developmental_stage_labels",
+    "disease_labels",
+    "license_labels",
+    "library_perturbation_type_labels",
 ]
 
 
@@ -142,7 +185,7 @@ def build_elasticsearch_query(
                             "diseases_tested.text^1.0",
                         ],
                         "type": "best_fields",
-                        "fuzziness": "AUTO",
+                        "fuzziness": "AUTO:5,8",
                     }
                 }
             )
@@ -193,7 +236,7 @@ def build_elasticsearch_query(
                                 f"{field}.keyword": {
                                     "value": wildcard_value,
                                     "case_insensitive": True,
-                                    "boost": 0.8,
+                                    "boost": 0.4,
                                 }
                             }
                         }
@@ -204,7 +247,7 @@ def build_elasticsearch_query(
                                 field: {
                                     "value": wildcard_value,
                                     "case_insensitive": True,
-                                    "boost": 0.6,
+                                    "boost": 0.3,
                                 }
                             }
                         }
@@ -231,29 +274,132 @@ def build_elasticsearch_query(
     return {"match_all": {}}
 
 
-def build_aggregations() -> Dict[str, Any]:
+def build_aggregations(facet_fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """Build aggregations for all facet fields"""
+    fields = facet_fields or FACET_FIELDS
     aggs = {}
-    for field in FACET_FIELDS:
+    for field in fields:
         aggs[field] = {
             "terms": {
                 "field": field,
-                "size": 100,  # Adjust if you need more facet values
+                "size": 100,
             }
         }
     return aggs
 
 
-def _calculate_facets_from_results(results: List[Dict[str, Any]]) -> Facets:
-    """Calculate facet counts from displayed results only.
+def build_dataset_elasticsearch_query(
+    query: Optional[str], filters: Optional[Dict[str, List[str]]]
+) -> Dict[str, Any]:
+    """Build Elasticsearch query for searching the dataset-summary index."""
+    filter_clauses = []
+    should_clauses = []
 
-    Used for search queries to ensure facets match the limited result set shown.
+    if query:
+        cleaned_query = query.strip()
+        if cleaned_query:
+            # Multi-match with boosted fields
+            text_fields = []
+            for field in DATASET_SEARCHABLE_FIELDS:
+                text_fields.append(f"{field}^1.5")
+                text_fields.append(f"{field}.text^1.0")
+            should_clauses.append(
+                {
+                    "multi_match": {
+                        "query": cleaned_query,
+                        "fields": text_fields,
+                        "type": "best_fields",
+                        "fuzziness": "AUTO:5,8",
+                    }
+                }
+            )
+
+            # Prefix support
+            for field in DATASET_SEARCHABLE_FIELDS:
+                should_clauses.append(
+                    {
+                        "match_phrase_prefix": {
+                            f"{field}.text": {
+                                "query": cleaned_query,
+                                "slop": 1,
+                                "boost": 1.2,
+                            }
+                        }
+                    }
+                )
+
+            # Wildcard for partial/infix search
+            wildcard_terms = []
+            for term in cleaned_query.split():
+                safe_term = _escape_wildcard(term.lower())
+                if safe_term:
+                    wildcard_terms.append(f"*{safe_term}*")
+
+            if not wildcard_terms:
+                safe_term = _escape_wildcard(cleaned_query.lower())
+                if safe_term:
+                    wildcard_terms.append(f"*{safe_term}*")
+
+            for wildcard_value in wildcard_terms:
+                for field in DATASET_SEARCHABLE_FIELDS:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                f"{field}.keyword": {
+                                    "value": wildcard_value,
+                                    "case_insensitive": True,
+                                    "boost": 0.8,
+                                }
+                            }
+                        }
+                    )
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {
+                                    "value": wildcard_value,
+                                    "case_insensitive": True,
+                                    "boost": 0.6,
+                                }
+                            }
+                        }
+                    )
+
+    # Filters for dataset facet fields (map canonical target names to dataset names)
+    if filters:
+        for field, values in filters.items():
+            dataset_field = TARGET_TO_DATASET_FIELD.get(field, field)
+            if dataset_field in DATASET_FACET_FIELDS and values:
+                filter_clauses.append({"terms": {dataset_field: values}})
+
+    bool_query: Dict[str, Any] = {}
+
+    if filter_clauses:
+        bool_query["filter"] = filter_clauses
+
+    if should_clauses:
+        bool_query["should"] = should_clauses
+        bool_query["minimum_should_match"] = 1
+
+    if bool_query:
+        return {"bool": bool_query}
+
+    return {"match_all": {}}
+
+
+def _calculate_facets_from_results(
+    results: List[Dict[str, Any]],
+    facet_fields: List[str],
+) -> Dict[str, List[FacetValue]]:
+    """Calculate facet counts from the returned results.
+
+    Used for search queries to ensure facets match the result set.
     """
     from collections import Counter
 
     facets_dict = {}
-    for field in FACET_FIELDS:
-        counter = Counter()
+    for field in facet_fields:
+        counter: Counter = Counter()
         for result in results:
             value = result.get(field)
             if value is None:
@@ -269,7 +415,7 @@ def _calculate_facets_from_results(results: List[Dict[str, Any]]) -> Facets:
             FacetValue(value=val, count=count)
             for val, count in counter.most_common(100)
         ]
-    return Facets(**facets_dict)
+    return facets_dict
 
 
 def parse_filters_from_params(
@@ -281,9 +427,19 @@ def parse_filters_from_params(
     sex_tested: Optional[str] = None,
     developmental_stages_tested: Optional[str] = None,
     diseases_tested: Optional[str] = None,
+    # Dataset-mode filters
+    license_labels: Optional[str] = None,
+    library_perturbation_type_labels: Optional[str] = None,
+    tissue_labels: Optional[str] = None,
+    cell_type_labels: Optional[str] = None,
+    cell_line_labels: Optional[str] = None,
+    sex_labels: Optional[str] = None,
+    developmental_stage_labels: Optional[str] = None,
+    disease_labels: Optional[str] = None,
 ) -> Optional[Dict[str, List[str]]]:
     """Parse filters from query parameters"""
     filters = {}
+    # Target-mode filters
     if license:
         filters["license"] = [v.strip() for v in license.split(",")]
     if data_modalities:
@@ -302,25 +458,60 @@ def parse_filters_from_params(
         ]
     if diseases_tested:
         filters["diseases_tested"] = [v.strip() for v in diseases_tested.split(",")]
+    # Dataset-mode filters
+    if license_labels:
+        filters["license_labels"] = [v.strip() for v in license_labels.split(",")]
+    if library_perturbation_type_labels:
+        filters["library_perturbation_type_labels"] = [
+            v.strip() for v in library_perturbation_type_labels.split(",")
+        ]
+    if tissue_labels:
+        filters["tissue_labels"] = [v.strip() for v in tissue_labels.split(",")]
+    if cell_type_labels:
+        filters["cell_type_labels"] = [v.strip() for v in cell_type_labels.split(",")]
+    if cell_line_labels:
+        filters["cell_line_labels"] = [v.strip() for v in cell_line_labels.split(",")]
+    if sex_labels:
+        filters["sex_labels"] = [v.strip() for v in sex_labels.split(",")]
+    if developmental_stage_labels:
+        filters["developmental_stage_labels"] = [
+            v.strip() for v in developmental_stage_labels.split(",")
+        ]
+    if disease_labels:
+        filters["disease_labels"] = [v.strip() for v in disease_labels.split(",")]
 
     return filters if filters else None
 
 
 async def perform_search(
-    query: Optional[str], filters: Optional[Dict[str, List[str]]], page: int, size: int
+    query: Optional[str],
+    filters: Optional[Dict[str, List[str]]],
+    page: int,
+    size: int,
+    search_mode: str = "targets",
 ) -> SearchResponse:
     """Perform the actual search operation"""
-    # Build Elasticsearch query
-    es_query = build_elasticsearch_query(query, filters)
-    aggs = build_aggregations()
+    is_dataset_mode = search_mode == "datasets"
 
-    # When searching, limit to 20 best hits to show most relevant results
-    # When browsing (no query), use normal pagination
-    max_search_results = 20
+    # Build Elasticsearch query based on mode
+    if is_dataset_mode:
+        es_query = build_dataset_elasticsearch_query(query, filters)
+        facet_fields = DATASET_FACET_FIELDS
+        es_index = ES_DATASET_SUMMARY
+    else:
+        es_query = build_elasticsearch_query(query, filters)
+        facet_fields = FACET_FIELDS
+        es_index = ES_TARGET_SUMMARY
+
+    aggs = build_aggregations(facet_fields)
+
+    # For search queries, return all matching results so frontend can filter client-side
+    # For browsing (no query), use normal pagination
     has_query = query and query.strip()
+    max_search_results = 1000  # Reasonable limit for search results
 
     if has_query:
-        # For search queries, always return top 20 results (no pagination)
+        # Return all matching results (up to max) for client-side filtering
         effective_size = max_search_results
         from_ = 0
     else:
@@ -331,7 +522,7 @@ async def perform_search(
     # Execute search with aggregations
     try:
         response = await db_pools["es"].search(
-            index=ES_TARGET_SUMMARY,
+            index=es_index,
             query=es_query,
             aggs=aggs,
             from_=from_,
@@ -348,28 +539,35 @@ async def perform_search(
     results = [hit["_source"] for hit in hits.get("hits", [])]
 
     if has_query:
-        # For search queries: facets from displayed results only, capped total
-        total = min(hits.get("total", {}).get("value", 0), max_search_results)
-        total_pages = (total + effective_size - 1) // effective_size if total > 0 and effective_size > 0 else 0
-        facets = _calculate_facets_from_results(results)
+        # For search queries: calculate facets from returned results
+        total = len(results)
+        total_pages = 1  # All results returned in one response
+        facets_dict = _calculate_facets_from_results(results, facet_fields)
     else:
         # For browsing: use ES aggregations for full dataset facets
         total = hits.get("total", {}).get("value", 0)
         total_pages = (total + size - 1) // size if total > 0 else 0
         aggregations = response.get("aggregations", {})
         facets_dict = {}
-        for field in FACET_FIELDS:
+        for field in facet_fields:
             buckets = aggregations.get(field, {}).get("buckets", [])
             facets_dict[field] = [
                 FacetValue(value=bucket["key"], count=bucket["doc_count"])
                 for bucket in buckets
             ]
-        facets = Facets(**facets_dict)
+
+    # Remap dataset field names to canonical target field names
+    if is_dataset_mode:
+        facets_dict = {
+            DATASET_TO_TARGET_FIELD.get(k, k): v for k, v in facets_dict.items()
+        }
+
+    facets = Facets(**facets_dict)
 
     return SearchResponse(
         total=total,
         page=page,
-        size=effective_size if has_query else size,
+        size=len(results) if has_query else size,
         total_pages=total_pages,
         results=results,
         facets=facets,
@@ -433,6 +631,9 @@ async def search_get(
     query: Optional[str] = Query(
         None, description="Search query for perturbed_target_symbol"
     ),
+    search_mode: str = Query(
+        "targets", description="Search mode: 'targets' or 'datasets'"
+    ),
     license: Optional[str] = Query(
         None, description="Comma-separated list of licenses"
     ),
@@ -457,6 +658,31 @@ async def search_get(
     diseases_tested: Optional[str] = Query(
         None, description="Comma-separated list of diseases_tested"
     ),
+    # Dataset-mode filter parameters
+    license_labels: Optional[str] = Query(
+        None, description="Comma-separated list of license labels (dataset mode)"
+    ),
+    library_perturbation_type_labels: Optional[str] = Query(
+        None, description="Comma-separated list of perturbation type labels (dataset mode)"
+    ),
+    tissue_labels: Optional[str] = Query(
+        None, description="Comma-separated list of tissue labels (dataset mode)"
+    ),
+    cell_type_labels: Optional[str] = Query(
+        None, description="Comma-separated list of cell type labels (dataset mode)"
+    ),
+    cell_line_labels: Optional[str] = Query(
+        None, description="Comma-separated list of cell line labels (dataset mode)"
+    ),
+    sex_labels: Optional[str] = Query(
+        None, description="Comma-separated list of sex labels (dataset mode)"
+    ),
+    developmental_stage_labels: Optional[str] = Query(
+        None, description="Comma-separated list of developmental stage labels (dataset mode)"
+    ),
+    disease_labels: Optional[str] = Query(
+        None, description="Comma-separated list of disease labels (dataset mode)"
+    ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     size: int = Query(6, ge=1, le=100, description="Number of results per page"),
 ):
@@ -472,8 +698,16 @@ async def search_get(
         sex_tested,
         developmental_stages_tested,
         diseases_tested,
+        license_labels,
+        library_perturbation_type_labels,
+        tissue_labels,
+        cell_type_labels,
+        cell_line_labels,
+        sex_labels,
+        developmental_stage_labels,
+        disease_labels,
     )
-    return await perform_search(query, filters, page, size)
+    return await perform_search(query, filters, page, size, search_mode)
 
 
 @app.post("/search", response_model=SearchResponse)
@@ -483,7 +717,8 @@ async def search_post(request: SearchRequest):
     Accepts JSON body with search parameters.
     """
     return await perform_search(
-        request.query, request.filters, request.page, request.size
+        request.query, request.filters, request.page, request.size,
+        getattr(request, "search_mode", "targets"),
     )
 
 

@@ -435,6 +435,7 @@ def _perturb_seq_table(
     download_url: Optional[str] = None,
     gsea_button_data: Optional[Dict[str, str]] = None,
     dataset_cell_types: Optional[str] = None,
+    extra_controls: Optional[Any] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
     if not results:
@@ -610,6 +611,10 @@ def _perturb_seq_table(
                 ),
             ]
         )
+
+    # Add extra controls if provided
+    if extra_controls:
+        button_row_children.append(extra_controls)
 
     if button_row_children:
         content_children.append(
@@ -1112,3 +1117,73 @@ def _arrow_value(symbol: str, value: str, color: str) -> html.Span:
 
 def _capitalize_value(value: str) -> str:
     return value[:1].upper() + value[1:] if value else value
+
+
+# Public wrapper functions for use in other modules
+
+
+def mave_heatmap(
+    results: List[Dict[str, Any]],
+    download_url: Optional[str] = None,
+) -> html.Div:
+    """Create a heatmap visualization for MAVE data showing position-based scores.
+
+    Public wrapper for _mave_heatmap_effect.
+
+    Args:
+        results: List of result dicts with perturbation and effect data.
+        download_url: Optional URL for downloading the data.
+
+    Returns:
+        A Dash html.Div containing the heatmap visualization.
+    """
+    return _mave_heatmap_effect(results, download_url)
+
+
+def perturb_seq_table(
+    results: List[Dict[str, Any]],
+    section_id: Optional[str] = None,
+    download_url: Optional[str] = None,
+    dataset_cell_types: Optional[str] = None,
+    extra_controls: Optional[Any] = None,
+) -> html.Div:
+    """Render Perturb-Seq results as a table.
+
+    Public wrapper for _perturb_seq_table.
+
+    Args:
+        results: List of result dicts with perturbation and effect data.
+        section_id: Section identifier for styling.
+        download_url: Optional URL for downloading the data.
+        dataset_cell_types: Fallback cell type from dataset metadata.
+        extra_controls: Optional extra controls to render alongside the download button.
+
+    Returns:
+        A Dash html.Div containing the table.
+    """
+    return _perturb_seq_table(
+        results,
+        section_id=section_id,
+        download_url=download_url,
+        gsea_button_data=None,
+        dataset_cell_types=dataset_cell_types,
+        extra_controls=extra_controls,
+    )
+
+
+def crispr_table(
+    results: List[Dict[str, Any]],
+    download_url: Optional[str] = None,
+) -> html.Div:
+    """Render CRISPR screen results as a table.
+
+    Public wrapper for _crispr_table.
+
+    Args:
+        results: List of result dicts with perturbation and effect data.
+        download_url: Optional URL for downloading the data.
+
+    Returns:
+        A Dash html.Div containing the table.
+    """
+    return _crispr_table(results, download_url)

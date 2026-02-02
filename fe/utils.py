@@ -82,10 +82,11 @@ def fetch_search_results(
     filters: Optional[Dict[str, List[str]]] = None,
     page: int = 1,
     size: int = 6,
+    search_mode: str = "targets",
 ) -> Dict[str, Any]:
     """Fetch search results from backend API"""
     try:
-        params = {"page": page, "size": size}
+        params = {"page": page, "size": size, "search_mode": search_mode}
 
         if query:
             params["query"] = query
@@ -106,15 +107,7 @@ def fetch_search_results(
             "size": size,
             "total_pages": 0,
             "results": [],
-            "facets": {
-                "data_modalities": [],
-                "tissues_tested": [],
-                "cell_types_tested": [],
-                "cell_lines_tested": [],
-                "sex_tested": [],
-                "developmental_stages_tested": [],
-                "diseases_tested": [],
-            },
+            "facets": {},
         }
 
 
@@ -122,6 +115,7 @@ def fetch_all_search_results(
     query: Optional[str] = None,
     filters: Optional[Dict[str, List[str]]] = None,
     page_size: int = 100,
+    search_mode: str = "targets",
 ) -> List[Dict[str, Any]]:
     """Fetch all search results by paginating through the API.
 
@@ -129,6 +123,7 @@ def fetch_all_search_results(
         query: Search query string
         filters: Filter dictionary
         page_size: Number of results per page (max 100)
+        search_mode: Search mode ('targets' or 'datasets')
 
     Returns:
         List of all result records
@@ -137,7 +132,10 @@ def fetch_all_search_results(
     page = 1
 
     while True:
-        data = fetch_search_results(query=query, filters=filters, page=page, size=page_size)
+        data = fetch_search_results(
+            query=query, filters=filters, page=page, size=page_size,
+            search_mode=search_mode,
+        )
         results = data.get("results", [])
         all_results.extend(results)
 
