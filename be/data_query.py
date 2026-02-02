@@ -1303,6 +1303,71 @@ def _gsea_results_to_csv(gsea_results: List[Dict]) -> str:
     return output.getvalue()
 
 
+@router.get("/v1/{modality}/{dataset_id}/download")
+async def download_dataset_data(
+    modality: MODALITIES,
+    dataset_id: str,
+    # Common params
+    limit: int = Query(100000, description="Maximum rows to download"),
+    offset: int = Query(0, description="Offset for rows"),
+    sort: Optional[str] = Query(None, description="Sort order"),
+    # Perturb-seq params
+    perturbation_gene_name: Optional[str] = Query(None),
+    effect_gene_name: Optional[str] = Query(None),
+    effect_log2fc: Optional[str] = Query(None),
+    effect_padj: Optional[str] = Query(None),
+    effect_score_name: Optional[str] = Query(None),
+    effect_score_value: Optional[str] = Query(None),
+    effect_cell_type: Optional[str] = Query(None),
+    # CRISPR params
+    effect_significant: Optional[str] = Query(None),
+    effect_significance_criteria: Optional[str] = Query(None),
+    # MAVE params
+    perturbation_name: Optional[str] = Query(None),
+    perturbation_position: Optional[str] = Query(None),
+    perturbation_aa_wt: Optional[str] = Query(None),
+    perturbation_aa_change: Optional[str] = Query(None),
+):
+    """Download data for a specific dataset as CSV."""
+    # Build params dict
+    params = {
+        "limit": limit,
+        "offset": offset,
+    }
+    if sort:
+        params["sort"] = sort
+
+    # Add modality-specific params
+    modality_params = {
+        "perturbation_gene_name": perturbation_gene_name,
+        "effect_gene_name": effect_gene_name,
+        "effect_log2fc": effect_log2fc,
+        "effect_padj": effect_padj,
+        "effect_score_name": effect_score_name,
+        "effect_score_value": effect_score_value,
+        "effect_cell_type": effect_cell_type,
+        "effect_significant": effect_significant,
+        "effect_significance_criteria": effect_significance_criteria,
+        "perturbation_name": perturbation_name,
+        "perturbation_position": perturbation_position,
+        "perturbation_aa_wt": perturbation_aa_wt,
+        "perturbation_aa_change": perturbation_aa_change,
+    }
+    params.update({k: v for k, v in modality_params.items() if v is not None})
+
+    result = await _search_dataset_impl(modality, dataset_id, params)
+
+    csv_content = _results_to_csv(result.get("results", []), modality)
+
+    filename = f"{modality}_{dataset_id}_data.csv"
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/v1/perturb-seq-gsea/download")
 async def download_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),

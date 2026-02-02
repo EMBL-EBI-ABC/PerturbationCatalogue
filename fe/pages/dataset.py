@@ -6,10 +6,12 @@ import json
 from typing import Any, Dict, Optional
 
 import dash
-from dash import Input, Output, callback, dcc, html
+from dash import ALL, Input, Output, State, callback, dcc, html
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
-from utils import COLORS, fetch_dataset
+from components.target_data_table import crispr_table, mave_heatmap, perturb_seq_table
+from utils import BACKEND_URL, COLORS, fetch_dataset, fetch_dataset_rows
 
 
 dash.register_page(
@@ -20,6 +22,27 @@ dash.register_page(
 )
 
 DATASET_STORE = "dataset-store"
+DATASET_DATA_STORE = "dataset-data-store"
+ROWS_PER_PAGE = 15
+MAVE_POSITION_RANGE_SIZE = 20
+
+# Search input IDs for Perturb-seq
+PERTURB_SEARCH_PERTURBATION_GENE = "dataset-perturb-search-perturbation-gene"
+PERTURB_SEARCH_EFFECT_GENE = "dataset-perturb-search-effect-gene"
+
+# Search input IDs for CRISPR screen
+CRISPR_SEARCH_PERTURBATION_GENE = "dataset-crispr-search-perturbation-gene"
+
+# Download component IDs
+DATASET_DOWNLOAD_BTN = "dataset-download-btn"
+DATASET_DOWNLOAD = "dataset-download"
+
+# Map display names to API endpoint modality names
+MODALITY_DISPLAY_TO_API = {
+    "Perturb-seq": "perturb-seq",
+    "CRISPR screen": "crispr-screen",
+    "MAVE": "mave",
+}
 
 
 def _format_dataset_id(dataset_id: str) -> str:
@@ -212,6 +235,8 @@ def layout(dataset_id: Optional[str] = None, **kwargs):
     return dbc.Container(
         [
             dcc.Store(id=DATASET_STORE, data={"dataset_id": dataset_id}),
+            dcc.Store(id=DATASET_DATA_STORE, data=None),
+            dcc.Download(id=DATASET_DOWNLOAD),
             dcc.Loading(
                 html.Div(id="dataset-content"),
                 type="default",
@@ -222,16 +247,31 @@ def layout(dataset_id: Optional[str] = None, **kwargs):
     )
 
 
+def _get_modality_from_dataset(dataset_data: Dict[str, Any]) -> Optional[str]:
+    """Extract API modality name from dataset metadata."""
+    data_modalities = dataset_data.get("data_modalities") or []
+    for display_name in data_modalities:
+        if display_name in MODALITY_DISPLAY_TO_API:
+            return MODALITY_DISPLAY_TO_API[display_name]
+    return None
+
+
 @callback(
-    Output("dataset-content", "children"),
+    [
+        Output("dataset-content", "children"),
+        Output(DATASET_DATA_STORE, "data"),
+    ],
     Input(DATASET_STORE, "data"),
 )
 def render_dataset(data: Optional[Dict[str, Any]]):
-    """Render dataset details."""
+    """Render dataset details and initialize data store."""
     if not data or not data.get("dataset_id"):
-        return html.Div(
-            "No dataset ID provided.",
-            className="text-muted text-center",
+        return (
+            html.Div(
+                "No dataset ID provided.",
+                className="text-muted text-center",
+            ),
+            None,
         )
 
     dataset_id = data["dataset_id"]
@@ -239,34 +279,43 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     dataset_data, error = fetch_dataset(dataset_id)
 
     if error:
-        return html.Div(
-            [
-                html.H1(
-                    f"Dataset: {formatted_dataset_id}",
-                    className="display-5 fw-bold mb-2 text-center",
-                    style={"color": COLORS["primary"]},
-                ),
-                html.Div(
-                    f"Error loading dataset: {error}",
-                    className="alert alert-danger mt-4",
-                ),
-            ]
+        return (
+            html.Div(
+                [
+                    html.H1(
+                        f"Dataset: {formatted_dataset_id}",
+                        className="display-5 fw-bold mb-2 text-center",
+                        style={"color": COLORS["primary"]},
+                    ),
+                    html.Div(
+                        f"Error loading dataset: {error}",
+                        className="alert alert-danger mt-4",
+                    ),
+                ]
+            ),
+            None,
         )
 
     if not dataset_data:
-        return html.Div(
-            [
-                html.H1(
-                    f"Dataset: {formatted_dataset_id}",
-                    className="display-5 fw-bold mb-2 text-center",
-                    style={"color": COLORS["primary"]},
-                ),
-                html.Div(
-                    "Dataset not found.",
-                    className="text-muted text-center mt-4",
-                ),
-            ]
+        return (
+            html.Div(
+                [
+                    html.H1(
+                        f"Dataset: {formatted_dataset_id}",
+                        className="display-5 fw-bold mb-2 text-center",
+                        style={"color": COLORS["primary"]},
+                    ),
+                    html.Div(
+                        "Dataset not found.",
+                        className="text-muted text-center mt-4",
+                    ),
+                ]
+            ),
+            None,
         )
+
+    # Detect modality from dataset metadata
+    modality = _get_modality_from_dataset(dataset_data)
 
     # Group fields: collect _labels and _ids pairs
     field_groups: Dict[str, Dict[str, Any]] = {}
@@ -319,17 +368,627 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                 _create_field_display(f"{base_name}_ids", ids, None)
             )
 
-    return html.Div(
+    # Build metadata section
+    metadata_section = html.Dl(
+        field_elements,
+        className="mt-4",
+        style={"maxWidth": "900px", "margin": "0 auto"},
+    )
+
+    # Build search controls based on modality
+    is_perturb_seq = modality == "perturb-seq"
+    is_crispr = modality == "crispr-screen"
+
+    if is_perturb_seq:
+        search_controls = html.Div(
+            [
+                dbc.Button(
+                    [
+                        html.I(className="bi bi-download me-2"),
+                        "Download Data",
+                    ],
+                    id=DATASET_DOWNLOAD_BTN,
+                    color="primary",
+                    size="sm",
+                    className="me-3",
+                    style={
+                        "backgroundColor": COLORS["primary"],
+                        "borderColor": COLORS["primary"],
+                        "borderRadius": "6px",
+                    },
+                ),
+                dbc.Input(
+                    id=PERTURB_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    placeholder="Search by perturbed gene",
+                    value="",
+                    size="sm",
+                    debounce=True,
+                    style={"width": "200px"},
+                    className="me-2",
+                ),
+                dbc.Input(
+                    id=PERTURB_SEARCH_EFFECT_GENE,
+                    type="text",
+                    placeholder="Search by effect gene",
+                    value="",
+                    size="sm",
+                    debounce=True,
+                    style={"width": "200px"},
+                ),
+                # Hidden CRISPR input for callback compatibility
+                dbc.Input(
+                    id=CRISPR_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    value="",
+                    style={"display": "none"},
+                ),
+            ],
+            className="d-flex align-items-center mb-3",
+        )
+    elif is_crispr:
+        search_controls = html.Div(
+            [
+                dbc.Button(
+                    [
+                        html.I(className="bi bi-download me-2"),
+                        "Download Data",
+                    ],
+                    id=DATASET_DOWNLOAD_BTN,
+                    color="primary",
+                    size="sm",
+                    className="me-3",
+                    style={
+                        "backgroundColor": COLORS["primary"],
+                        "borderColor": COLORS["primary"],
+                        "borderRadius": "6px",
+                    },
+                ),
+                dbc.Input(
+                    id=CRISPR_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    placeholder="Search by perturbed gene",
+                    value="",
+                    size="sm",
+                    debounce=True,
+                    style={"width": "200px"},
+                ),
+                # Hidden Perturb-seq inputs for callback compatibility
+                dbc.Input(
+                    id=PERTURB_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    value="",
+                    style={"display": "none"},
+                ),
+                dbc.Input(
+                    id=PERTURB_SEARCH_EFFECT_GENE,
+                    type="text",
+                    value="",
+                    style={"display": "none"},
+                ),
+            ],
+            className="d-flex align-items-center mb-3",
+        )
+    else:
+        # Hidden inputs for callback compatibility (MAVE modality)
+        search_controls = html.Div(
+            [
+                dbc.Input(
+                    id=PERTURB_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    value="",
+                ),
+                dbc.Input(
+                    id=PERTURB_SEARCH_EFFECT_GENE,
+                    type="text",
+                    value="",
+                ),
+                dbc.Input(
+                    id=CRISPR_SEARCH_PERTURBATION_GENE,
+                    type="text",
+                    value="",
+                ),
+            ],
+            style={"display": "none"},
+        )
+
+    # Build score interpretation banner for CRISPR modality
+    score_interpretation_banner = None
+    if is_crispr:
+        score_interpretation = dataset_data.get("score_interpretation")
+        if score_interpretation:
+            score_interpretation_banner = html.Div(
+                [
+                    html.Div(
+                        [
+                            html.I(
+                                className="bi bi-info-circle-fill me-2",
+                                style={"fontSize": "1.1rem", "color": COLORS["primary"]},
+                            ),
+                            html.Strong("Score Interpretation: ", className="me-1"),
+                            html.Span(score_interpretation),
+                        ],
+                        className="d-flex align-items-center",
+                    ),
+                ],
+                className="alert mb-3",
+                style={
+                    "backgroundColor": "#e8f5e9",
+                    "borderColor": COLORS["primary"],
+                    "borderLeft": f"4px solid {COLORS['primary']}",
+                    "color": "#1b5e20",
+                    "borderRadius": "6px",
+                },
+            )
+
+    # Build data visualization section
+    data_section = html.Div(
         [
-            html.H1(
-                f"Dataset: {formatted_dataset_id}",
-                className="display-5 fw-bold mb-4 text-center",
+            html.Hr(className="my-4"),
+            html.H2(
+                "Data",
+                id="data-section-anchor",
+                className="fw-bold mb-3 text-center",
                 style={"color": COLORS["primary"]},
             ),
-            html.Dl(
-                field_elements,
-                className="mt-4",
+            score_interpretation_banner,
+            search_controls,
+            dcc.Loading(
+                html.Div(id="dataset-data-content"),
+                type="default",
+                color=COLORS["primary"],
+            ),
+        ],
+        style={"maxWidth": "1200px", "margin": "0 auto"},
+    )
+
+    # Initialize data store for fetching
+    initial_data_store = None
+    if modality:
+        initial_data_store = {
+            "dataset_id": dataset_id,
+            "modality": modality,
+            "results": None,
+            "current_page": 1,
+            "current_offset": 0,
+            "current_position_range": "1_20" if modality == "mave" else None,
+            "has_more": False,
+            "total_rows_count": None,
+            "error": None,
+            "needs_fetch": True,
+            # Perturb-seq search filters
+            "perturbation_gene_search": "",
+            "effect_gene_search": "",
+            # CRISPR search filters
+            "crispr_perturbation_gene_search": "",
+        }
+
+    # Build header with optional "Data" button
+    header_children = [
+        # Empty spacer for balance when button is shown
+        html.Div(style={"width": "100px"}) if modality else None,
+        html.H1(
+            f"Dataset: {formatted_dataset_id}",
+            className="display-5 fw-bold mb-0",
+            style={"color": COLORS["primary"]},
+        ),
+        html.A(
+            dbc.Button(
+                ["Data ", html.Span("↓", style={"fontSize": "0.8em"})],
+                color="primary",
+                size="sm",
+                className="shadow",
+            ),
+            href="#data-section-anchor",
+            className="align-self-center text-decoration-none",
+        ) if modality else html.Div(style={"width": "100px"}),
+    ]
+    # Filter out None values
+    header_children = [child for child in header_children if child is not None]
+
+    header_section = html.Div(
+        header_children,
+        className="d-flex justify-content-between align-items-center mb-4",
+        style={"maxWidth": "1200px", "margin": "0 auto"},
+    )
+
+    # Hidden inputs for no-modality case (needed for callback)
+    hidden_search_inputs = html.Div(
+        [
+            dbc.Input(
+                id=PERTURB_SEARCH_PERTURBATION_GENE,
+                type="text",
+                value="",
+            ),
+            dbc.Input(
+                id=PERTURB_SEARCH_EFFECT_GENE,
+                type="text",
+                value="",
+            ),
+            dbc.Input(
+                id=CRISPR_SEARCH_PERTURBATION_GENE,
+                type="text",
+                value="",
+            ),
+        ],
+        style={"display": "none"},
+    )
+
+    content = html.Div(
+        [
+            header_section,
+            metadata_section,
+            data_section if modality else html.Div(
+                [
+                    html.Hr(className="my-4"),
+                    # Include hidden inputs when no modality
+                    hidden_search_inputs,
+                    html.Div(
+                        "No data visualization available for this dataset.",
+                        className="text-muted text-center py-4",
+                    ),
+                ],
                 style={"maxWidth": "900px", "margin": "0 auto"},
             ),
         ]
     )
+
+    return content, initial_data_store
+
+
+def _fetch_data_rows(store_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Fetch data rows from the API."""
+    dataset_id = store_data["dataset_id"]
+    modality = store_data["modality"]
+
+    # Build filters
+    filters: Dict[str, Any] = {}
+
+    if modality == "mave":
+        # MAVE uses position range filter
+        position_range = store_data.get("current_position_range", "1_20")
+        filters["perturbation_position"] = position_range
+        filters["effect_score_name"] = "score"
+
+        response = fetch_dataset_rows(
+            modality,
+            dataset_id,
+            filters=filters,
+            limit=None,
+            offset=None,
+        )
+    else:
+        # CRISPR and Perturb-seq use limit/offset
+        offset = store_data.get("current_offset", 0)
+
+        # Add Perturb-seq search filters
+        if modality == "perturb-seq":
+            perturbation_gene = store_data.get("perturbation_gene_search", "").strip()
+            effect_gene = store_data.get("effect_gene_search", "").strip()
+            if perturbation_gene:
+                filters["perturbation_gene_name"] = perturbation_gene
+            if effect_gene:
+                filters["effect_gene_name"] = effect_gene
+
+        # Add CRISPR search filters
+        if modality == "crispr-screen":
+            crispr_perturbation_gene = store_data.get(
+                "crispr_perturbation_gene_search", ""
+            ).strip()
+            if crispr_perturbation_gene:
+                filters["perturbation_gene_name"] = crispr_perturbation_gene
+
+        response = fetch_dataset_rows(
+            modality,
+            dataset_id,
+            filters=filters,
+            limit=ROWS_PER_PAGE,
+            offset=offset,
+        )
+
+    # Update store with results
+    results = response.get("results") or []
+    total_count = response.get("total_rows_count")
+
+    store_data["results"] = results
+    store_data["error"] = response.get("error")
+    store_data["total_rows_count"] = total_count
+
+    # Calculate has_more
+    if modality == "mave":
+        store_data["has_more"] = len(results) > 0
+    else:
+        if total_count is not None:
+            current_offset = store_data.get("current_offset", 0)
+            store_data["has_more"] = current_offset + len(results) < total_count
+        else:
+            store_data["has_more"] = len(results) >= ROWS_PER_PAGE
+
+    return store_data
+
+
+def _paginate_data(store_data: Dict[str, Any], direction: str) -> Dict[str, Any]:
+    """Update pagination state based on direction."""
+    modality = store_data.get("modality")
+    current_page = store_data.get("current_page", 1)
+
+    if modality == "mave":
+        # MAVE pagination by position range
+        current_range = store_data.get("current_position_range", "1_20")
+        try:
+            start, end = map(int, current_range.split("_"))
+        except (ValueError, AttributeError):
+            start, end = 1, 20
+
+        if direction == "next":
+            new_start = end + 1
+            new_end = new_start + MAVE_POSITION_RANGE_SIZE - 1
+            store_data["current_page"] = current_page + 1
+        elif direction == "previous":
+            new_end = start - 1
+            new_start = max(1, new_end - MAVE_POSITION_RANGE_SIZE + 1)
+            store_data["current_page"] = max(1, current_page - 1)
+        else:
+            return store_data
+
+        store_data["current_position_range"] = f"{new_start}_{new_end}"
+    else:
+        # CRISPR/Perturb-seq pagination by offset
+        current_offset = store_data.get("current_offset", 0)
+
+        if direction == "next":
+            store_data["current_offset"] = current_offset + ROWS_PER_PAGE
+            store_data["current_page"] = current_page + 1
+        elif direction == "previous":
+            store_data["current_offset"] = max(0, current_offset - ROWS_PER_PAGE)
+            store_data["current_page"] = max(1, current_page - 1)
+
+    return store_data
+
+
+def _build_pagination_controls(store_data: Dict[str, Any]) -> html.Div:
+    """Build pagination controls for data rows."""
+    current_page = store_data.get("current_page", 1)
+    has_more = store_data.get("has_more", False)
+    has_previous = current_page > 1
+    total_count = store_data.get("total_rows_count")
+    modality = store_data.get("modality")
+
+    if not has_previous and not has_more:
+        return html.Div()  # No pagination needed
+
+    buttons = []
+
+    if has_previous:
+        buttons.append(
+            dbc.Button(
+                "← Previous",
+                id={"type": "dataset-paginate", "direction": "previous"},
+                color="secondary",
+                outline=True,
+                size="sm",
+                className="me-2",
+            )
+        )
+
+    # Page info
+    if total_count and modality != "mave":
+        total_pages = (total_count + ROWS_PER_PAGE - 1) // ROWS_PER_PAGE
+        page_text = f"Page {current_page} of {total_pages}"
+    else:
+        page_text = f"Page {current_page}"
+
+    buttons.append(
+        html.Span(
+            page_text,
+            className="align-self-center mx-2",
+            style={"fontSize": "0.875rem"},
+        )
+    )
+
+    if has_more:
+        buttons.append(
+            dbc.Button(
+                "Next →",
+                id={"type": "dataset-paginate", "direction": "next"},
+                color="secondary",
+                outline=True,
+                size="sm",
+            )
+        )
+
+    return html.Div(
+        buttons,
+        className="d-flex align-items-center justify-content-end mt-3 w-100",
+    )
+
+
+def _render_data_visualization(store_data: Dict[str, Any]) -> html.Div:
+    """Render the appropriate visualization based on modality."""
+    modality = store_data.get("modality")
+    results = store_data.get("results") or []
+    error = store_data.get("error")
+    dataset_id = store_data.get("dataset_id")
+
+    if error:
+        return html.Div(
+            f"Error loading data: {error}",
+            className="alert alert-danger",
+        )
+
+    if not results:
+        return html.Div(
+            "No data rows found for this dataset.",
+            className="text-muted fst-italic text-center py-4",
+        )
+
+    # Build download URL
+    download_url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
+
+    # Render based on modality
+    if modality == "mave":
+        table_component = mave_heatmap(results, download_url)
+    elif modality == "perturb-seq":
+        # Download button and search inputs are in the main layout for perturb-seq
+        table_component = perturb_seq_table(
+            results,
+            section_id="dataset_perturb_seq",
+            download_url=None,
+        )
+    elif modality == "crispr-screen":
+        # Download button is in the main layout for crispr-screen
+        table_component = crispr_table(results, download_url=None)
+    else:
+        table_component = html.Div(
+            f"Unknown modality: {modality}",
+            className="text-muted fst-italic",
+        )
+
+    # Build pagination controls
+    pagination = _build_pagination_controls(store_data)
+
+    return html.Div([table_component, pagination])
+
+
+@callback(
+    [
+        Output("dataset-data-content", "children"),
+        Output(DATASET_DATA_STORE, "data", allow_duplicate=True),
+    ],
+    [
+        Input(DATASET_DATA_STORE, "data"),
+        Input({"type": "dataset-paginate", "direction": ALL}, "n_clicks"),
+        Input(PERTURB_SEARCH_PERTURBATION_GENE, "value"),
+        Input(PERTURB_SEARCH_EFFECT_GENE, "value"),
+        Input(CRISPR_SEARCH_PERTURBATION_GENE, "value"),
+    ],
+    prevent_initial_call=True,
+)
+def render_dataset_data(
+    store_data: Optional[Dict[str, Any]],
+    _paginate_clicks,
+    perturbation_gene_search: Optional[str],
+    effect_gene_search: Optional[str],
+    crispr_perturbation_gene_search: Optional[str],
+):
+    """Fetch data rows and render visualization."""
+    if not store_data:
+        return (
+            html.Div(
+                "No modality data available for this dataset.",
+                className="text-muted fst-italic text-center py-4",
+            ),
+            store_data,
+        )
+
+    dataset_id = store_data.get("dataset_id")
+    modality = store_data.get("modality")
+
+    if not dataset_id or not modality:
+        return (
+            html.Div(
+                "Unable to determine data modality.",
+                className="text-muted fst-italic text-center py-4",
+            ),
+            store_data,
+        )
+
+    # Determine if we need to fetch data
+    ctx = dash.callback_context
+    triggered_id = ctx.triggered_id if hasattr(ctx, "triggered_id") else None
+    needs_fetch = store_data.get("needs_fetch", False)
+
+    # Handle pagination
+    if isinstance(triggered_id, dict) and triggered_id.get("type") == "dataset-paginate":
+        direction = triggered_id.get("direction")
+        if direction:
+            store_data = _paginate_data(store_data, direction)
+            needs_fetch = True
+
+    # Handle Perturb-seq search inputs
+    if modality == "perturb-seq":
+        old_perturbation_search = store_data.get("perturbation_gene_search", "")
+        old_effect_search = store_data.get("effect_gene_search", "")
+        new_perturbation_search = perturbation_gene_search or ""
+        new_effect_search = effect_gene_search or ""
+
+        # Check if search terms changed
+        if (new_perturbation_search != old_perturbation_search or
+                new_effect_search != old_effect_search):
+            store_data["perturbation_gene_search"] = new_perturbation_search
+            store_data["effect_gene_search"] = new_effect_search
+            # Reset pagination when search changes
+            store_data["current_page"] = 1
+            store_data["current_offset"] = 0
+            needs_fetch = True
+
+    # Handle CRISPR search inputs
+    if modality == "crispr-screen":
+        old_crispr_search = store_data.get("crispr_perturbation_gene_search", "")
+        new_crispr_search = crispr_perturbation_gene_search or ""
+
+        # Check if search term changed
+        if new_crispr_search != old_crispr_search:
+            store_data["crispr_perturbation_gene_search"] = new_crispr_search
+            # Reset pagination when search changes
+            store_data["current_page"] = 1
+            store_data["current_offset"] = 0
+            needs_fetch = True
+
+    # Fetch data if needed
+    if needs_fetch or store_data.get("results") is None:
+        store_data = _fetch_data_rows(store_data)
+        store_data["needs_fetch"] = False
+
+    # Render the visualization
+    content = _render_data_visualization(store_data)
+
+    return content, store_data
+
+
+@callback(
+    Output(DATASET_DOWNLOAD, "data"),
+    Input(DATASET_DOWNLOAD_BTN, "n_clicks"),
+    State(DATASET_DATA_STORE, "data"),
+    prevent_initial_call=True,
+)
+def download_dataset_data(n_clicks, store_data):
+    """Download dataset data as CSV."""
+    if not n_clicks or not store_data:
+        raise PreventUpdate
+
+    dataset_id = store_data.get("dataset_id")
+    modality = store_data.get("modality")
+
+    if not dataset_id or not modality:
+        raise PreventUpdate
+
+    # Build download URL with search filters for Perturb-seq
+    download_url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
+
+    # Add search filters as query parameters
+    params = {}
+    if modality == "perturb-seq":
+        perturbation_gene = store_data.get("perturbation_gene_search", "").strip()
+        effect_gene = store_data.get("effect_gene_search", "").strip()
+        if perturbation_gene:
+            params["perturbation_gene_name"] = perturbation_gene
+        if effect_gene:
+            params["effect_gene_name"] = effect_gene
+    elif modality == "crispr-screen":
+        crispr_perturbation_gene = store_data.get(
+            "crispr_perturbation_gene_search", ""
+        ).strip()
+        if crispr_perturbation_gene:
+            params["perturbation_gene_name"] = crispr_perturbation_gene
+
+    try:
+        import requests
+        response = requests.get(download_url, params=params, timeout=60)
+        response.raise_for_status()
+        content = response.text
+    except Exception:
+        raise PreventUpdate
+
+    filename = f"{modality}_{dataset_id}.csv"
+    return dict(content=content, filename=filename)
