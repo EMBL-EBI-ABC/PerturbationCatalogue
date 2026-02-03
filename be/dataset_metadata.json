@@ -7,6 +7,18 @@
             "description": "Dataset ID"
         },
         {
+            "api_name": "dataset_perturbation_types",
+            "es_field": "perturbation_type_labels",
+            "is_array": true,
+            "description": "Filter by perturbation type"
+        },
+        {
+            "api_name": "dataset_perturbation_type_ids",
+            "es_field": "perturbation_type_ids",
+            "is_array": true,
+            "description": "Filter by perturbation type IDs"
+        },
+        {
             "api_name": "dataset_tissues",
             "es_field": "tissue_labels",
             "is_array": true,

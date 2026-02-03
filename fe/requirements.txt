@@ -3,3 +3,4 @@ dash-bootstrap-components>=2.0.4
 gunicorn>=23.0.0
 plotly>=3.3.0
 pandas>=2.3.3
+isodate==0.7.2

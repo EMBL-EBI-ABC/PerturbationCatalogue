@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
+import isodate
 import dash
 from dash import ALL, Input, Output, State, callback, dcc, html
 from dash.exceptions import PreventUpdate
@@ -59,20 +61,45 @@ def _format_field_name(field_name: str) -> str:
 
 
 def _ontology_id_to_url(ontology_id: str) -> str:
-    """Convert ontology ID (e.g., 'UBERON:0002113') to a URL."""
+    """Convert ontology ID (e.g., 'UBERON:0002113') to an OLS4 URL.
+
+    OLS4 requires:
+    - URL format: /ontologies/{ontology}/classes/{double-encoded-IRI}
+    - Different ontologies use different IRI bases:
+      - EFO: http://www.ebi.ac.uk/efo/EFO_XXXXXXX
+      - OBO Foundry (UBERON, CL, etc.): http://purl.obolibrary.org/obo/PREFIX_ID
+    """
     if not ontology_id or ":" not in ontology_id:
         return ontology_id
-    
-    # Split into prefix and ID
+
     parts = ontology_id.split(":", 1)
     if len(parts) != 2:
         return ontology_id
-    
+
     prefix, term_id = parts
-    # Convert to OBO format (UBERON:0002113 -> UBERON_0002113)
-    obo_id = f"{prefix}_{term_id}"
-    # Create OLS URL
-    return f"https://www.ebi.ac.uk/ols4/ontologies/{prefix.lower()}/terms?iri=http://purl.obolibrary.org/obo/{obo_id}"
+    prefix_upper = prefix.upper()
+    prefix_lower = prefix.lower()
+
+    # Ontologies that use their own IRI scheme (not OBO Foundry)
+    # Format: prefix -> (iri_base, include_prefix_in_id)
+    # If include_prefix_in_id is True, ID will be PREFIX_termid, else just termid
+    non_obo_iri_bases = {
+        "EFO": "http://www.ebi.ac.uk/efo/",
+        "SWO": "http://www.ebi.ac.uk/swo/license/",
+    }
+
+    # Build the full IRI based on the ontology
+    if prefix_upper in non_obo_iri_bases:
+        iri = f"{non_obo_iri_bases[prefix_upper]}{prefix_upper}_{term_id}"
+    else:
+        # Default to OBO Foundry format
+        iri = f"http://purl.obolibrary.org/obo/{prefix_upper}_{term_id}"
+
+    # Double-encode the IRI for OLS4 URL path
+    # First encode, then encode again
+    encoded_iri = quote(quote(iri, safe=""), safe="")
+
+    return f"https://www.ebi.ac.uk/ols4/ontologies/{prefix_lower}/classes/{encoded_iri}"
 
 
 def _format_value(value: Any) -> str:
@@ -85,6 +112,43 @@ def _format_value(value: Any) -> str:
         return "N/A"
     else:
         return str(value)
+
+
+def _format_iso_duration(duration_str: str) -> str:
+    """Convert ISO 8601 duration string to human-readable format.
+
+    Examples:
+        "P7DT0H0M0S" -> "Day 7"
+        "P0DT12H0M0S" -> "Hour 12"
+        "P1DT6H0M0S" -> "Day 1, Hour 6"
+    """
+    try:
+        duration = isodate.parse_duration(duration_str)
+        parts = []
+
+        # Extract days and hours from timedelta
+        days = duration.days
+        hours = duration.seconds // 3600
+        minutes = (duration.seconds % 3600) // 60
+
+        if days > 0:
+            parts.append(f"Day {days}")
+        if hours > 0:
+            parts.append(f"Hour {hours}")
+        if minutes > 0:
+            parts.append(f"Minute {minutes}")
+
+        if not parts:
+            return "Day 0"
+
+        return ", ".join(parts)
+    except (ValueError, isodate.ISO8601Error):
+        return duration_str
+
+
+def _format_timepoints(timepoints: List[str]) -> List[str]:
+    """Format a list of ISO 8601 duration strings to human-readable format."""
+    return [_format_iso_duration(tp) for tp in timepoints]
 
 
 def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
@@ -345,10 +409,14 @@ def render_dataset(data: Optional[Dict[str, Any]]):
 
     # First, add standalone fields (excluding dataset_id which we show in the header)
     for key, value in sorted(standalone_fields.items()):
-        if key != "dataset_id":
+        if key not in ("dataset_id", "max_ingested_at"):
             # Special handling for associated_datasets
             if key == "associated_datasets":
                 field_elements.append(_create_associated_datasets_display(value))
+            # Special handling for timepoints - format ISO 8601 durations
+            elif key == "timepoints" and isinstance(value, list):
+                formatted_timepoints = _format_timepoints(value)
+                field_elements.append(_create_field_display(key, formatted_timepoints))
             else:
                 field_elements.append(_create_field_display(key, value))
 
@@ -950,6 +1018,14 @@ def render_dataset_data(
     Output(DATASET_DOWNLOAD, "data"),
     Input(DATASET_DOWNLOAD_BTN, "n_clicks"),
     State(DATASET_DATA_STORE, "data"),
+    running=[
+        (Output(DATASET_DOWNLOAD_BTN, "disabled"), True, False),
+        (
+            Output(DATASET_DOWNLOAD_BTN, "children"),
+            [dbc.Spinner(size="sm", spinner_class_name="me-2"), "Downloading Data..."],
+            [html.I(className="bi bi-download me-2"), "Download Data"],
+        ),
+    ],
     prevent_initial_call=True,
 )
 def download_dataset_data(n_clicks, store_data):
