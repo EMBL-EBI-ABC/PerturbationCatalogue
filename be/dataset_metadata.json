@@ -14,7 +14,7 @@
         },
         {
             "api_name": "dataset_perturbation_type_ids",
-            "es_field": "erturbation_type_ids",
+            "es_field": "perturbation_type_ids",
             "is_array": true,
             "description": "Filter by perturbation type IDs"
         },
