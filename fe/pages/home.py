@@ -1113,6 +1113,41 @@ layout = html.Div(
                                                 [
                                                     dbc.InputGroup(
                                                         [
+                                                            dbc.InputGroupText(
+                                                                [
+                                                                    html.Span(
+                                                                        html.I(className="bi bi-question-circle"),
+                                                                        id="search-mode-info-icon",
+                                                                        style={
+                                                                            "cursor": "pointer",
+                                                                            "color": "#6c757d",
+                                                                        },
+                                                                    ),
+                                                                    dbc.Popover(
+                                                                        [
+                                                                            dbc.PopoverHeader("Search Mode"),
+                                                                            dbc.PopoverBody(
+                                                                                [
+                                                                                    html.Strong("Targets:"),
+                                                                                    " Search for gene targets across all experiments. Results show aggregated data for each target gene, including the number of datasets, significant perturbation effects, and pathway enrichment across Perturb-seq, CRISPR, and MAVE experiments.",
+                                                                                    html.Br(),
+                                                                                    html.Br(),
+                                                                                    html.Strong("Datasets:"),
+                                                                                    " Search for datasets by metadata fields such as dataset ID, study title, tissue, cell type, disease, and more. Results show individual experiments with their study details, publication year, and data modality.",
+                                                                                ]
+                                                                            ),
+                                                                        ],
+                                                                        target="search-mode-info-icon",
+                                                                        trigger="click",
+                                                                        placement="bottom",
+                                                                    ),
+                                                                ],
+                                                                style={
+                                                                    "backgroundColor": "#f8f9fa",
+                                                                    "borderRadius": "8px 0 0 8px",
+                                                                    "borderRight": "none",
+                                                                },
+                                                            ),
                                                             dbc.Select(
                                                                 id="search-mode-dropdown",
                                                                 options=[
@@ -1122,7 +1157,7 @@ layout = html.Div(
                                                                 value="targets",
                                                                 className="form-select-lg",
                                                                 style={
-                                                                    "borderRadius": "8px 0 0 8px",
+                                                                    "borderRadius": "0",
                                                                     "maxWidth": "140px",
                                                                     "borderRight": "none",
                                                                     "backgroundColor": "#f8f9fa",
