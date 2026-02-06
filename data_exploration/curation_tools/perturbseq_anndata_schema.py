@@ -397,6 +397,7 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
+            "GEM-X Flex Gene Expression Human n-plex kit"
         ],
     )
     sequencing_platform_id: Series[String] = Field(
@@ -442,7 +443,7 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST"],
+        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST", "scanpy"],
     )
     score_interpretation: Series[String] = Field(
         nullable=True,
