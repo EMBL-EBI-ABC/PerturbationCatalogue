@@ -303,8 +303,9 @@ def layout(dataset_id: Optional[str] = None, **kwargs):
             dcc.Download(id=DATASET_DOWNLOAD),
             dcc.Loading(
                 html.Div(id="dataset-content"),
-                type="default",
+                type="circle",
                 color=COLORS["primary"],
+                target_components={"dataset-content": "children"},
             ),
         ],
         className="py-4",
@@ -603,7 +604,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             search_controls,
             dcc.Loading(
                 html.Div(id="dataset-data-content"),
-                type="default",
+                type="circle",
                 color=COLORS["primary"],
             ),
         ],
