@@ -257,7 +257,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                                         "section": config["id"],
                                     }
                                 ),
-                                type="default",
+                                type="circle",
                                 color=COLORS["primary"],
                             ),
                         ],

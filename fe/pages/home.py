@@ -1483,6 +1483,9 @@ def handle_search_examples(
     Input("search-input", "value"),
     Input("search-button", "n_clicks"),
     Input("search-mode-dropdown", "value"),
+    running=[
+        (Output("homepage-summary", "style"), {"display": "none"}, {}),
+    ],
     prevent_initial_call="initial_duplicate",
 )
 def update_search_results(query, _, search_mode):
@@ -1545,8 +1548,7 @@ def update_search_results(query, _, search_mode):
         "display": "block",
     }
 
-    # Return dash.no_update for search-results-table so the second callback handles rendering
-    return store_payload, summary_content, filters_style, dash.no_update
+    return store_payload, summary_content, filters_style, []
 
 
 @callback(
