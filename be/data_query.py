@@ -934,9 +934,22 @@ async def _search_dataset_impl(
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
 
     # 1. Count Rows
-    count_query = f"SELECT COUNT(*) FROM {pg_table} {where_clause}"
+    if (
+        modality == "perturb-seq"
+        and len(pg_filters) == 2
+        and "dataset_id = $1" in pg_filters
+        and "gene IS NOT NULL" in pg_filters
+    ):
+        count_query = (
+            "SELECT n_total FROM perturb_seq_summary_dataset WHERE dataset_id = $1"
+        )
+        count_params = [dataset_id]
+    else:
+        count_query = f"SELECT COUNT(*) FROM {pg_table} {where_clause}"
+        count_params = pg_params
+
     try:
-        total_rows_count = await pg_conn.fetchval(count_query, *pg_params)
+        total_rows_count = await pg_conn.fetchval(count_query, *count_params)
     except asyncpg.exceptions.UndefinedColumnError as e:
         raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
 
