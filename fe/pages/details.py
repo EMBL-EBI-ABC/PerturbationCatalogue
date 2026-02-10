@@ -125,7 +125,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                 debounce=True,
                 className="form-control form-control-sm",
                 style={
-                    "maxWidth": "200px",
+                    "width": "200px",
                 },
             )
         else:
@@ -149,7 +149,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                 debounce=True,
                 className="form-control form-control-sm",
                 style={
-                    "maxWidth": "200px",
+                    "width": "200px",
                 },
             )
         else:
@@ -207,7 +207,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                                     debounce=True,
                                     className="form-control form-control-sm",
                                     style={
-                                        "maxWidth": "240px",
+                                        "width": "240px",
                                     },
                                 ),
                                 style={"marginRight": "1rem"},
