@@ -1,0 +1,605 @@
+"""Browse datasets page for Perturbation Catalogue."""
+
+import dash
+from dash import dcc, html, Input, Output, State, callback, ALL, callback_context
+import dash_bootstrap_components as dbc
+from urllib.parse import parse_qs
+from utils import (
+    COLORS,
+    FACET_FIELDS,
+    fetch_search_results,
+    fetch_all_search_results,
+)
+from components.search_table import (
+    TARGET_TO_DATASET_FIELD,
+    render_datasets_table,
+    recalculate_facets,
+    filter_placeholder,
+    build_filter_controls,
+)
+
+dash.register_page(__name__, path="/datasets", name="Datasets", title="Browse Datasets")
+
+PAGE_SIZE = 10
+
+
+layout = html.Div(
+    [
+        dcc.Location(id="datasets-url", refresh=False),
+        dbc.Container(
+            [
+                html.Div(
+                    [
+                        html.H2("Browse Datasets", className="mb-3 mt-4"),
+                        html.P(
+                            "Explore all datasets in the Perturbation Catalogue. Use the search bar to filter by dataset ID, study title, tissue, disease, and more.",
+                            className="text-muted mb-3",
+                        ),
+                        dbc.InputGroup(
+                            [
+                                dbc.Input(
+                                    id="datasets-search-input",
+                                    placeholder="Search datasets by ID, title, tissue, disease...",
+                                    type="text",
+                                    value="",
+                                    debounce=True,
+                                    className="form-control-lg",
+                                    style={"borderRadius": "8px 0 0 8px"},
+                                ),
+                                dbc.Button(
+                                    [
+                                        html.I(className="bi bi-search me-2"),
+                                        "Search",
+                                    ],
+                                    id="datasets-search-button",
+                                    color="primary",
+                                    n_clicks=0,
+                                    className="btn-lg",
+                                    style={
+                                        "backgroundColor": COLORS["primary"],
+                                        "borderColor": COLORS["primary"],
+                                        "borderRadius": "0 8px 8px 0",
+                                        "paddingLeft": "2rem",
+                                        "paddingRight": "2rem",
+                                    },
+                                ),
+                            ],
+                            className="mb-4",
+                            style={"maxWidth": "700px"},
+                        ),
+                    ]
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            html.Div(
+                                id="datasets-facets",
+                                className="mt-2",
+                                style={
+                                    "position": "relative",
+                                    "zIndex": 50,
+                                    "overflow": "visible",
+                                },
+                            ),
+                            xs=12,
+                            sm=12,
+                            md=12,
+                            lg=3,
+                            className="mb-4",
+                            style={
+                                "overflow": "visible",
+                                "position": "relative",
+                                "zIndex": 50,
+                            },
+                        ),
+                        dbc.Col(
+                            dcc.Loading(
+                                id="datasets-results-loading",
+                                type="circle",
+                                color=COLORS["primary"],
+                                children=html.Div(
+                                    id="datasets-results",
+                                    className="mt-2",
+                                    children=[
+                                        html.Div(
+                                            id="datasets-download-container",
+                                            className="mb-3",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-download me-2"
+                                                        ),
+                                                        "Download Metadata",
+                                                    ],
+                                                    id="datasets-download-btn",
+                                                    color="primary",
+                                                    size="sm",
+                                                    style={
+                                                        "backgroundColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderColor": COLORS[
+                                                            "primary"
+                                                        ],
+                                                        "borderRadius": "6px",
+                                                    },
+                                                ),
+                                                dcc.Download(id="datasets-download"),
+                                            ],
+                                        ),
+                                        html.Div(id="datasets-results-table"),
+                                        html.Div(
+                                            id="datasets-pagination",
+                                            className="mt-3 pagination-bar",
+                                            style={"display": "none"},
+                                            children=[
+                                                dbc.Button(
+                                                    [
+                                                        html.I(
+                                                            className="bi bi-arrow-left me-1"
+                                                        ),
+                                                        "Previous",
+                                                    ],
+                                                    id="datasets-page-prev",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    disabled=True,
+                                                    style={"borderRadius": "6px"},
+                                                    className="me-3",
+                                                ),
+                                                html.Span(
+                                                    "Page 1 of 1",
+                                                    id="datasets-page-info",
+                                                    className="fw-semibold me-3",
+                                                ),
+                                                dbc.Button(
+                                                    [
+                                                        "Next",
+                                                        html.I(
+                                                            className="bi bi-arrow-right ms-1"
+                                                        ),
+                                                    ],
+                                                    id="datasets-page-next",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    disabled=True,
+                                                    style={"borderRadius": "6px"},
+                                                ),
+                                            ],
+                                        ),
+                                    ],
+                                ),
+                                target_components={
+                                    "datasets-results-table": "children",
+                                    "datasets-pagination": "style",
+                                },
+                                delay_show=200,
+                                delay_hide=100,
+                            ),
+                            xs=12,
+                            sm=12,
+                            md=12,
+                            lg=9,
+                            style={"position": "relative", "zIndex": 10},
+                        ),
+                    ],
+                    className="py-2 g-4",
+                ),
+                dcc.Store(
+                    id="datasets-results-store",
+                    data={
+                        "results": [],
+                        "facets": {},
+                        "query": "",
+                        "total": 0,
+                        "total_pages": 0,
+                        "current_page": 1,
+                        "server_paginated": True,
+                    },
+                ),
+                dcc.Store(id="datasets-page-store", data=1),
+            ],
+            className="content-container",
+        ),
+    ]
+)
+
+
+@callback(
+    Output("datasets-search-input", "value"),
+    Input("datasets-url", "search"),
+)
+def populate_datasets_search_from_url(search):
+    """Populate search input from URL query parameter on initial load."""
+    if search:
+        params = parse_qs(search.lstrip("?"))
+        query = params.get("q", [None])[0]
+        if query:
+            return query[:500]
+    return ""
+
+
+@callback(
+    Output("datasets-results-store", "data"),
+    Input("datasets-search-input", "value"),
+    Input("datasets-search-button", "n_clicks"),
+)
+def load_datasets_data(query, _n_clicks):
+    """Fetch dataset search results from backend."""
+    search_term = (query or "").strip() if query else ""
+
+    if search_term:
+        # Client-side mode: fetch all matches (backend returns up to 1000)
+        data = fetch_search_results(
+            query=search_term,
+            page=1,
+            size=100,
+            search_mode="datasets",
+        )
+        return {
+            "results": data.get("results", []),
+            "facets": data.get("facets", {}),
+            "query": search_term,
+            "total": data.get("total", 0),
+            "total_pages": 1,
+            "current_page": 1,
+            "server_paginated": False,
+        }
+    else:
+        # Server-side mode: fetch first page only
+        data = fetch_search_results(
+            query=None,
+            page=1,
+            size=PAGE_SIZE,
+            search_mode="datasets",
+        )
+        return {
+            "results": data.get("results", []),
+            "facets": data.get("facets", {}),
+            "query": "",
+            "total": data.get("total", 0),
+            "total_pages": data.get("total_pages", 0),
+            "current_page": 1,
+            "server_paginated": True,
+        }
+
+
+@callback(
+    Output("datasets-results-table", "children"),
+    Output("datasets-pagination", "style"),
+    Output("datasets-page-info", "children"),
+    Output("datasets-page-prev", "disabled"),
+    Output("datasets-page-next", "disabled"),
+    Output("datasets-page-store", "data"),
+    Output("datasets-facets", "children"),
+    Output("datasets-download-container", "style"),
+    Input("datasets-results-store", "data"),
+    Input({"type": "datasets-facet-filter", "field": ALL}, "value"),
+    Input("datasets-page-prev", "n_clicks"),
+    Input("datasets-page-next", "n_clicks"),
+    State({"type": "datasets-facet-filter", "field": ALL}, "id"),
+    State("datasets-page-store", "data"),
+)
+def render_datasets_results(
+    store_data, selected_values, prev_clicks, next_clicks, filter_ids, current_page
+):
+    """Render dataset results with server-side or client-side filtering and pagination."""
+    ctx = callback_context
+    trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else None
+
+    if not store_data or not store_data.get("results"):
+        return (
+            filter_placeholder("No datasets found. Try a search query."),
+            {"display": "none"},
+            "Page 1 of 1",
+            True,
+            True,
+            1,
+            filter_placeholder("Search to see available filters."),
+            {"display": "none"},
+        )
+
+    # Build selected filters dict
+    selected_filters = {}
+    if selected_values and filter_ids:
+        for values, filter_id in zip(selected_values, filter_ids):
+            if values:
+                cleaned = [str(v).strip() for v in values if v not in (None, "")]
+                if cleaned:
+                    selected_filters[filter_id["field"]] = cleaned
+
+    server_paginated = store_data.get("server_paginated", False)
+    triggered_prop = trigger or ""
+
+    if server_paginated:
+        # --- SERVER-SIDE PAGINATION MODE ---
+        return _render_server_side(
+            store_data, selected_filters, triggered_prop, current_page
+        )
+    else:
+        # --- CLIENT-SIDE FILTERING MODE ---
+        return _render_client_side(
+            store_data, selected_filters, triggered_prop, current_page
+        )
+
+
+def _render_server_side(store_data, selected_filters, triggered_prop, current_page):
+    """Handle rendering in server-side pagination mode (no query)."""
+    current_page_number = store_data.get("current_page", 1) or 1
+
+    if "datasets-results-store" in triggered_prop:
+        # Initial load or new search: use data from store directly
+        results = store_data.get("results", [])
+        facets = store_data.get("facets", {})
+        total = store_data.get("total", 0)
+        total_pages = store_data.get("total_pages", 0)
+        current_page_number = store_data.get("current_page", 1)
+    elif "datasets-page-prev" in triggered_prop:
+        current_page_number = max(1, (current_page or 1) - 1)
+        data = fetch_search_results(
+            query=None,
+            filters=selected_filters or None,
+            page=current_page_number,
+            size=PAGE_SIZE,
+            search_mode="datasets",
+        )
+        results = data.get("results", [])
+        facets = data.get("facets", {})
+        total = data.get("total", 0)
+        total_pages = data.get("total_pages", 0)
+    elif "datasets-page-next" in triggered_prop:
+        old_total_pages = store_data.get("total_pages", 1)
+        current_page_number = min(old_total_pages, (current_page or 1) + 1)
+        data = fetch_search_results(
+            query=None,
+            filters=selected_filters or None,
+            page=current_page_number,
+            size=PAGE_SIZE,
+            search_mode="datasets",
+        )
+        results = data.get("results", [])
+        facets = data.get("facets", {})
+        total = data.get("total", 0)
+        total_pages = data.get("total_pages", 0)
+    elif "facet-filter" in triggered_prop:
+        # Facet changed: reset to page 1 with new filters
+        current_page_number = 1
+        data = fetch_search_results(
+            query=None,
+            filters=selected_filters or None,
+            page=1,
+            size=PAGE_SIZE,
+            search_mode="datasets",
+        )
+        results = data.get("results", [])
+        facets = data.get("facets", {})
+        total = data.get("total", 0)
+        total_pages = data.get("total_pages", 0)
+    else:
+        # Fallback: use store data
+        results = store_data.get("results", [])
+        facets = store_data.get("facets", {})
+        total = store_data.get("total", 0)
+        total_pages = store_data.get("total_pages", 0)
+        current_page_number = store_data.get("current_page", 1)
+
+    total_pages = max(1, total_pages)
+    if current_page_number > total_pages:
+        current_page_number = total_pages
+    if current_page_number < 1:
+        current_page_number = 1
+
+    if not results and total == 0:
+        filters_children = build_filter_controls(
+            facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+        )
+        return (
+            dbc.Alert(
+                [
+                    html.I(className="bi bi-info-circle me-2"),
+                    "No datasets found matching your filters.",
+                ],
+                color="info",
+                className="shadow-sm",
+                style={"borderRadius": "10px"},
+            ),
+            {"display": "none"},
+            f"Page 1 of 1 ({total} results)",
+            True,
+            True,
+            current_page_number,
+            filters_children,
+            {"display": "none"},
+        )
+
+    table = render_datasets_table(results)
+    filters_children = build_filter_controls(
+        facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+    )
+
+    pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
+    page_info = f"Page {current_page_number} of {total_pages} ({total} results)"
+    prev_disabled = current_page_number <= 1
+    next_disabled = current_page_number >= total_pages
+
+    return (
+        table,
+        pagination_style,
+        page_info,
+        prev_disabled,
+        next_disabled,
+        current_page_number,
+        filters_children,
+        {"display": "flex", "justifyContent": "flex-end"},
+    )
+
+
+def _render_client_side(store_data, selected_filters, triggered_prop, current_page):
+    """Handle rendering in client-side filtering mode (with query)."""
+    all_results = store_data.get("results", [])
+    original_facets = store_data.get("facets", {})
+
+    # Apply client-side filtering
+    def matches_filters(result, filters):
+        for field, sel_values in filters.items():
+            if not sel_values:
+                continue
+            actual_field = TARGET_TO_DATASET_FIELD.get(field, field)
+            result_value = result.get(actual_field)
+            if result_value is None:
+                return False
+            if isinstance(result_value, list):
+                if not any(v in sel_values for v in result_value):
+                    return False
+            else:
+                if result_value not in sel_values:
+                    return False
+        return True
+
+    if selected_filters:
+        filtered_results = [
+            r for r in all_results if matches_filters(r, selected_filters)
+        ]
+    else:
+        filtered_results = all_results
+
+    # Recalculate facet counts
+    if selected_filters:
+        facets = recalculate_facets(filtered_results, original_facets, "datasets")
+    else:
+        facets = original_facets
+
+    # Pagination
+    total_results = len(filtered_results)
+    total_pages = max(1, (total_results + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    current_page_number = current_page or 1
+
+    if "datasets-results-store" in triggered_prop or "facet-filter" in triggered_prop:
+        current_page_number = 1
+    elif "datasets-page-prev" in triggered_prop:
+        current_page_number = max(1, current_page_number - 1)
+    elif "datasets-page-next" in triggered_prop:
+        current_page_number = min(total_pages, current_page_number + 1)
+
+    if current_page_number > total_pages:
+        current_page_number = total_pages
+    if current_page_number < 1:
+        current_page_number = 1
+
+    start_idx = (current_page_number - 1) * PAGE_SIZE
+    end_idx = start_idx + PAGE_SIZE
+    page_results = filtered_results[start_idx:end_idx]
+
+    if not page_results and total_results == 0:
+        filters_children = build_filter_controls(
+            facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+        )
+        return (
+            dbc.Alert(
+                [
+                    html.I(className="bi bi-info-circle me-2"),
+                    "No datasets found matching your filters.",
+                ],
+                color="info",
+                className="shadow-sm",
+                style={"borderRadius": "10px"},
+            ),
+            {"display": "none"},
+            f"Page 1 of {total_pages} ({total_results} results)",
+            True,
+            True,
+            current_page_number,
+            filters_children,
+            {"display": "none"},
+        )
+
+    table = render_datasets_table(page_results)
+    filters_children = build_filter_controls(
+        facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+    )
+
+    pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
+    page_info = f"Page {current_page_number} of {total_pages} ({total_results} results)"
+    prev_disabled = current_page_number <= 1
+    next_disabled = current_page_number >= total_pages
+
+    return (
+        table,
+        pagination_style,
+        page_info,
+        prev_disabled,
+        next_disabled,
+        current_page_number,
+        filters_children,
+        {"display": "flex", "justifyContent": "flex-end"},
+    )
+
+
+@callback(
+    Output("datasets-download", "data"),
+    Input("datasets-download-btn", "n_clicks"),
+    State("datasets-results-store", "data"),
+    State({"type": "datasets-facet-filter", "field": ALL}, "value"),
+    State({"type": "datasets-facet-filter", "field": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def download_datasets_metadata(n_clicks, store_data, selected_values, filter_ids):
+    """Download all dataset results as CSV."""
+    if not n_clicks or not store_data:
+        return dash.no_update
+
+    query = store_data.get("query")
+
+    selected_filters = {}
+    if selected_values and filter_ids:
+        for values, filter_id in zip(selected_values, filter_ids):
+            if values:
+                cleaned = [str(v).strip() for v in values if v not in (None, "")]
+                if cleaned:
+                    selected_filters[filter_id["field"]] = cleaned
+
+    all_results = fetch_all_search_results(
+        query=query if query else None,
+        filters=selected_filters or None,
+        search_mode="datasets",
+    )
+
+    if not all_results:
+        return dash.no_update
+
+    columns = [
+        "dataset_id",
+        "study_title",
+        "study_year",
+        "data_modalities",
+    ]
+
+    csv_lines = [",".join(columns)]
+    for record in all_results:
+        row_values = []
+        for col in columns:
+            value = record.get(col, "")
+            if isinstance(value, list):
+                value = "; ".join(str(v) for v in value)
+            elif value is None:
+                value = ""
+            else:
+                value = str(value)
+            # Sanitize formula injection characters
+            if value and value[0:1] in ("=", "+", "-", "@", "\t", "\r"):
+                value = "'" + value
+            if "," in value or '"' in value or "\n" in value:
+                value = '"' + value.replace('"', '""') + '"'
+            row_values.append(value)
+        csv_lines.append(",".join(row_values))
+
+    csv_content = "\n".join(csv_lines)
+    safe_query = "".join(
+        c if c.isalnum() or c in "-_" else "_" for c in (query or "all")[:30]
+    )
+    filename = f"perturbation_catalogue_datasets_{safe_query}.csv"
+
+    return dict(content=csv_content, filename=filename, type="text/csv")
