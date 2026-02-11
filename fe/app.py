@@ -19,7 +19,7 @@ app = dash.Dash(
 )
 
 # Import pages to ensure they are registered
-from pages import api, about, dataset
+from pages import api, about, dataset, targets, datasets
 
 cookie_banner.register_callbacks(app)
 
@@ -49,6 +49,16 @@ app.layout = html.Div(
                     ),
                     html.Nav(
                         [
+                            html.A(
+                                "Targets",
+                                href="/perturbation-catalogue/targets",
+                                className="header-link",
+                            ),
+                            html.A(
+                                "Datasets",
+                                href="/perturbation-catalogue/datasets",
+                                className="header-link",
+                            ),
                             html.A(
                                 "API Documentation",
                                 href=os.getenv(
