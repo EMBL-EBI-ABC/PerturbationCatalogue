@@ -23,6 +23,7 @@ gprofiler-official
 pydantic
 google-cloud-bigquery
 thefuzz
+awscli
 
 # Local package install (editable mode)
 -e .
