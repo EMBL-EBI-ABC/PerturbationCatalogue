@@ -11,9 +11,7 @@ from utils import (
     fetch_all_search_results,
 )
 from components.search_table import (
-    TARGET_TO_DATASET_FIELD,
     render_datasets_table,
-    recalculate_facets,
     filter_placeholder,
     build_filter_controls,
 )
@@ -196,7 +194,6 @@ layout = html.Div(
                         "total": 0,
                         "total_pages": 0,
                         "current_page": 1,
-                        "server_paginated": True,
                     },
                 ),
                 dcc.Store(id="datasets-page-store", data=1),
@@ -230,40 +227,20 @@ def load_datasets_data(query, _n_clicks):
     """Fetch dataset search results from backend."""
     search_term = (query or "").strip() if query else ""
 
-    if search_term:
-        # Client-side mode: fetch all matches (backend returns up to 1000)
-        data = fetch_search_results(
-            query=search_term,
-            page=1,
-            size=100,
-            search_mode="datasets",
-        )
-        return {
-            "results": data.get("results", []),
-            "facets": data.get("facets", {}),
-            "query": search_term,
-            "total": data.get("total", 0),
-            "total_pages": 1,
-            "current_page": 1,
-            "server_paginated": False,
-        }
-    else:
-        # Server-side mode: fetch first page only
-        data = fetch_search_results(
-            query=None,
-            page=1,
-            size=PAGE_SIZE,
-            search_mode="datasets",
-        )
-        return {
-            "results": data.get("results", []),
-            "facets": data.get("facets", {}),
-            "query": "",
-            "total": data.get("total", 0),
-            "total_pages": data.get("total_pages", 0),
-            "current_page": 1,
-            "server_paginated": True,
-        }
+    data = fetch_search_results(
+        query=search_term or None,
+        page=1,
+        size=PAGE_SIZE,
+        search_mode="datasets",
+    )
+    return {
+        "results": data.get("results", []),
+        "facets": data.get("facets", {}),
+        "query": search_term,
+        "total": data.get("total", 0),
+        "total_pages": data.get("total_pages", 0),
+        "current_page": 1,
+    }
 
 
 @callback(
@@ -310,36 +287,45 @@ def render_datasets_results(
                 if cleaned:
                     selected_filters[filter_id["field"]] = cleaned
 
-    server_paginated = store_data.get("server_paginated", False)
     triggered_prop = trigger or ""
 
-    if server_paginated:
-        # --- SERVER-SIDE PAGINATION MODE ---
-        return _render_server_side(
-            store_data, selected_filters, triggered_prop, current_page
-        )
-    else:
-        # --- CLIENT-SIDE FILTERING MODE ---
-        return _render_client_side(
-            store_data, selected_filters, triggered_prop, current_page
-        )
+    return _render_server_side(
+        store_data, selected_filters, triggered_prop, current_page
+    )
 
 
 def _render_server_side(store_data, selected_filters, triggered_prop, current_page):
-    """Handle rendering in server-side pagination mode (no query)."""
+    """Handle rendering with server-side pagination and filtering."""
     current_page_number = store_data.get("current_page", 1) or 1
+    query = store_data.get("query") or None
 
     if "datasets-results-store" in triggered_prop:
-        # Initial load or new search: use data from store directly
-        results = store_data.get("results", [])
-        facets = store_data.get("facets", {})
-        total = store_data.get("total", 0)
-        total_pages = store_data.get("total_pages", 0)
-        current_page_number = store_data.get("current_page", 1)
+        # New search or initial load
+        if selected_filters:
+            # Active filters: re-fetch with both query and filters
+            current_page_number = 1
+            data = fetch_search_results(
+                query=query,
+                filters=selected_filters,
+                page=1,
+                size=PAGE_SIZE,
+                search_mode="datasets",
+            )
+            results = data.get("results", [])
+            facets = data.get("facets", {})
+            total = data.get("total", 0)
+            total_pages = data.get("total_pages", 0)
+        else:
+            # No filters: use store data directly
+            results = store_data.get("results", [])
+            facets = store_data.get("facets", {})
+            total = store_data.get("total", 0)
+            total_pages = store_data.get("total_pages", 0)
+            current_page_number = store_data.get("current_page", 1)
     elif "datasets-page-prev" in triggered_prop:
         current_page_number = max(1, (current_page or 1) - 1)
         data = fetch_search_results(
-            query=None,
+            query=query,
             filters=selected_filters or None,
             page=current_page_number,
             size=PAGE_SIZE,
@@ -353,7 +339,7 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
         old_total_pages = store_data.get("total_pages", 1)
         current_page_number = min(old_total_pages, (current_page or 1) + 1)
         data = fetch_search_results(
-            query=None,
+            query=query,
             filters=selected_filters or None,
             page=current_page_number,
             size=PAGE_SIZE,
@@ -367,7 +353,7 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
         # Facet changed: reset to page 1 with new filters
         current_page_number = 1
         data = fetch_search_results(
-            query=None,
+            query=query,
             filters=selected_filters or None,
             page=1,
             size=PAGE_SIZE,
@@ -421,108 +407,6 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
 
     pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
     page_info = f"Page {current_page_number} of {total_pages} ({total} results)"
-    prev_disabled = current_page_number <= 1
-    next_disabled = current_page_number >= total_pages
-
-    return (
-        table,
-        pagination_style,
-        page_info,
-        prev_disabled,
-        next_disabled,
-        current_page_number,
-        filters_children,
-        {"display": "flex", "justifyContent": "flex-end"},
-    )
-
-
-def _render_client_side(store_data, selected_filters, triggered_prop, current_page):
-    """Handle rendering in client-side filtering mode (with query)."""
-    all_results = store_data.get("results", [])
-    original_facets = store_data.get("facets", {})
-
-    # Apply client-side filtering
-    def matches_filters(result, filters):
-        for field, sel_values in filters.items():
-            if not sel_values:
-                continue
-            actual_field = TARGET_TO_DATASET_FIELD.get(field, field)
-            result_value = result.get(actual_field)
-            if result_value is None:
-                return False
-            if isinstance(result_value, list):
-                if not any(v in sel_values for v in result_value):
-                    return False
-            else:
-                if result_value not in sel_values:
-                    return False
-        return True
-
-    if selected_filters:
-        filtered_results = [
-            r for r in all_results if matches_filters(r, selected_filters)
-        ]
-    else:
-        filtered_results = all_results
-
-    # Recalculate facet counts
-    if selected_filters:
-        facets = recalculate_facets(filtered_results, original_facets, "datasets")
-    else:
-        facets = original_facets
-
-    # Pagination
-    total_results = len(filtered_results)
-    total_pages = max(1, (total_results + PAGE_SIZE - 1) // PAGE_SIZE)
-
-    current_page_number = current_page or 1
-
-    if "datasets-results-store" in triggered_prop or "facet-filter" in triggered_prop:
-        current_page_number = 1
-    elif "datasets-page-prev" in triggered_prop:
-        current_page_number = max(1, current_page_number - 1)
-    elif "datasets-page-next" in triggered_prop:
-        current_page_number = min(total_pages, current_page_number + 1)
-
-    if current_page_number > total_pages:
-        current_page_number = total_pages
-    if current_page_number < 1:
-        current_page_number = 1
-
-    start_idx = (current_page_number - 1) * PAGE_SIZE
-    end_idx = start_idx + PAGE_SIZE
-    page_results = filtered_results[start_idx:end_idx]
-
-    if not page_results and total_results == 0:
-        filters_children = build_filter_controls(
-            facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
-        )
-        return (
-            dbc.Alert(
-                [
-                    html.I(className="bi bi-info-circle me-2"),
-                    "No datasets found matching your filters.",
-                ],
-                color="info",
-                className="shadow-sm",
-                style={"borderRadius": "10px"},
-            ),
-            {"display": "none"},
-            f"Page 1 of {total_pages} ({total_results} results)",
-            True,
-            True,
-            current_page_number,
-            filters_children,
-            {"display": "none"},
-        )
-
-    table = render_datasets_table(page_results)
-    filters_children = build_filter_controls(
-        facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
-    )
-
-    pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
-    page_info = f"Page {current_page_number} of {total_pages} ({total_results} results)"
     prev_disabled = current_page_number <= 1
     next_disabled = current_page_number >= total_pages
 

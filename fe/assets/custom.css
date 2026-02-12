@@ -176,9 +176,9 @@ body {
     color: #495057;
 }
 
-/* Smooth transitions */
-* {
-    transition: all 0.3s ease;
+/* Smooth transitions – only animate visual properties, not layout ones */
+.card, .btn, .form-control, .form-select {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 /* Card hover effects */
@@ -370,13 +370,6 @@ body {
 
 .facet-controls {
     position: relative;
-    isolation: isolate;
-}
-
-.facet-controls .facet-filter-card {
-    position: relative;
-    overflow: visible !important;
-    z-index: 1;
 }
 
 .facet-controls .facet-filter-card .card-header {
@@ -385,46 +378,12 @@ body {
     font-weight: 600;
 }
 
-/* Stop hover lift (transforms) from creating a new stacking context */
+/* Prevent hover lift from creating a new stacking context on facet cards */
 .facet-controls .facet-filter-card.card:hover {
     transform: none !important;
     box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
-/* Raise the active card while it's focused (dropdown open clicks focus the control) */
-.facet-controls .facet-filter-card:focus-within {
-    z-index: 5000;
-}
-
-.facet-controls .facet-filter-card:has(.facet-dropdown.is-open) {
-    z-index: 6500;
-}
-
 .facet-controls .facet-filter-card .card-body {
     overflow: visible;
-}
-
-/* Dropdown shell */
-.facet-controls .facet-dropdown {
-    position: relative;
-}
-
-/* When the dropdown is open, elevate its wrapper and ensure menu sits above siblings */
-.facet-controls .facet-dropdown.is-open {
-    z-index: 6000;
-}
-
-.facet-controls .facet-dropdown.is-open .Select-menu-outer {
-    z-index: 7000;
-}
-
-.facet-controls .facet-dropdown.is-open .Select-menu-outer,
-.facet-controls .facet-dropdown.is-open .Select-menu {
-    overflow: visible !important;
-}
-
-/* Global safety net so menus elsewhere aren't clipped */
-.Select-menu-outer {
-    position: relative;
-    z-index: 8000;
 }

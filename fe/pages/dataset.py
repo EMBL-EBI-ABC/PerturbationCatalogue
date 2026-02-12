@@ -405,41 +405,136 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             # Standalone field
             standalone_fields[key] = value
 
-    # Build the field list
-    field_elements = []
+    # Define primary fields shown by default, in display order.
+    # study_uri is consumed by study_title link and hidden separately.
+    PRIMARY_STANDALONE_ORDER = [
+        "study_title",
+        "first_author",
+        "last_author",
+        "study_year",
+        "experiment_title",
+        "data_modalities",
+    ]
+    PRIMARY_GROUPED = {"perturbation_type"}
+    SKIP_STANDALONE = {"dataset_id", "max_ingested_at", "study_uri"}
 
-    # First, add standalone fields (excluding dataset_id which we show in the header)
-    for key, value in sorted(standalone_fields.items()):
-        if key not in ("dataset_id", "max_ingested_at"):
-            # Special handling for associated_datasets
-            if key == "associated_datasets":
-                field_elements.append(_create_associated_datasets_display(value))
-            # Special handling for timepoints - format ISO 8601 durations
-            elif key == "timepoints" and isinstance(value, list):
-                formatted_timepoints = _format_timepoints(value)
-                field_elements.append(_create_field_display(key, formatted_timepoints))
-            else:
-                field_elements.append(_create_field_display(key, value))
+    study_uri = standalone_fields.get("study_uri")
 
-    # Then, add grouped fields (those with _labels and potentially _ids)
-    for base_name in sorted(field_groups.keys()):
-        group = field_groups[base_name]
+    # Build primary fields in the specified order
+    primary_elements = []
+    for key in PRIMARY_STANDALONE_ORDER:
+        value = standalone_fields.get(key)
+        if value is None:
+            continue
+        if key == "study_title":
+            # Render as clickable link using study_uri
+            display_value = (
+                html.A(
+                    _format_value(value),
+                    href=study_uri,
+                    target="_blank",
+                    rel="noopener noreferrer",
+                    className="text-decoration-none",
+                    style={"color": COLORS["primary"]},
+                )
+                if study_uri
+                else html.Span(_format_value(value), className="text-muted")
+            )
+            primary_elements.append(
+                html.Div(
+                    [
+                        html.Dt("Study Title:", className="col-sm-4 fw-semibold"),
+                        html.Dd(display_value, className="col-sm-8"),
+                    ],
+                    className="row mb-3",
+                )
+            )
+        elif key == "data_modalities":
+            primary_elements.append(
+                html.Div(
+                    [
+                        html.Dt("Data Modality:", className="col-sm-4 fw-semibold"),
+                        html.Dd(
+                            html.Span(_format_value(value), className="text-muted"),
+                            className="col-sm-8",
+                        ),
+                    ],
+                    className="row mb-3",
+                )
+            )
+        else:
+            primary_elements.append(_create_field_display(key, value))
+
+    # Add primary grouped fields (perturbation_type)
+    for base_name in PRIMARY_GROUPED:
+        group = field_groups.get(base_name)
+        if not group:
+            continue
         labels = group.get("labels")
         ids = group.get("ids")
-        # Use _labels field name if labels exist, otherwise use _ids
         if labels is not None:
-            field_elements.append(
+            primary_elements.append(
                 _create_field_display(f"{base_name}_labels", labels, ids)
             )
         elif ids is not None:
-            # If only IDs exist, display them as standalone values
-            field_elements.append(
+            primary_elements.append(
                 _create_field_display(f"{base_name}_ids", ids, None)
             )
 
-    # Build metadata section
-    metadata_section = html.Dl(
-        field_elements,
+    # Build secondary fields (everything else)
+    primary_standalone_set = set(PRIMARY_STANDALONE_ORDER)
+    secondary_elements = []
+
+    for key, value in sorted(standalone_fields.items()):
+        if key in SKIP_STANDALONE or key in primary_standalone_set:
+            continue
+        if key == "associated_datasets":
+            secondary_elements.append(_create_associated_datasets_display(value))
+        elif key == "timepoints" and isinstance(value, list):
+            formatted_timepoints = _format_timepoints(value)
+            secondary_elements.append(_create_field_display(key, formatted_timepoints))
+        else:
+            secondary_elements.append(_create_field_display(key, value))
+
+    for base_name in sorted(field_groups.keys()):
+        if base_name in PRIMARY_GROUPED:
+            continue
+        group = field_groups[base_name]
+        labels = group.get("labels")
+        ids = group.get("ids")
+        if labels is not None:
+            secondary_elements.append(
+                _create_field_display(f"{base_name}_labels", labels, ids)
+            )
+        elif ids is not None:
+            secondary_elements.append(
+                _create_field_display(f"{base_name}_ids", ids, None)
+            )
+
+    # Build metadata section: primary fields + collapsible secondary
+    metadata_children = [html.Dl(primary_elements)]
+    if secondary_elements:
+        metadata_children.append(
+            html.Details(
+                [
+                    html.Summary(
+                        "Other Metadata Fields",
+                        className="fw-semibold",
+                        style={
+                            "cursor": "pointer",
+                            "color": COLORS["primary"],
+                            "fontSize": "1.1rem",
+                            "padding": "0.5rem 0",
+                        },
+                    ),
+                    html.Dl(secondary_elements, className="mt-3"),
+                ],
+                className="mt-2",
+            )
+        )
+
+    metadata_section = html.Div(
+        metadata_children,
         className="mt-4",
         style={"maxWidth": "900px", "margin": "0 auto"},
     )
@@ -596,7 +691,6 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             html.Hr(className="my-4"),
             html.H2(
                 "Data",
-                id="data-section-anchor",
                 className="fw-bold mb-3 text-center",
                 style={"color": COLORS["primary"]},
             ),
@@ -632,33 +726,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             "crispr_perturbation_gene_search": "",
         }
 
-    # Build header with optional "Data" button
-    header_children = [
-        # Empty spacer for balance when button is shown
-        html.Div(style={"width": "100px"}) if modality else None,
-        html.H1(
-            f"Dataset: {formatted_dataset_id}",
-            className="display-5 fw-bold mb-0",
-            style={"color": COLORS["primary"]},
-        ),
-        html.A(
-            dbc.Button(
-                ["Data ", html.Span("↓", style={"fontSize": "0.8em"})],
-                color="primary",
-                size="sm",
-                className="shadow",
-            ),
-            href="#data-section-anchor",
-            className="align-self-center text-decoration-none",
-        ) if modality else html.Div(style={"width": "100px"}),
-    ]
-    # Filter out None values
-    header_children = [child for child in header_children if child is not None]
-
-    header_section = html.Div(
-        header_children,
-        className="d-flex justify-content-between align-items-center mb-4",
-        style={"maxWidth": "1200px", "margin": "0 auto"},
+    header_section = html.H1(
+        f"Dataset: {formatted_dataset_id}",
+        className="display-5 fw-bold mb-4 text-center",
+        style={"color": COLORS["primary"]},
     )
 
     # Hidden inputs for no-modality case (needed for callback)
