@@ -14,19 +14,6 @@ from utils import (
 
 SEARCH_RESULTS_PAGE_SIZE = 15
 
-# Mapping from canonical (target) field names to dataset index field names.
-# Used for client-side filtering of dataset results.
-TARGET_TO_DATASET_FIELD = {
-    "license": "license_labels",
-    "data_modalities": "data_modalities",
-    "tissues_tested": "tissue_labels",
-    "cell_types_tested": "cell_type_labels",
-    "cell_lines_tested": "cell_line_labels",
-    "sex_tested": "sex_labels",
-    "developmental_stages_tested": "developmental_stage_labels",
-    "diseases_tested": "disease_labels",
-}
-
 
 def format_count(value):
     """Format numeric counts for display, falling back to '0' when missing."""
@@ -389,48 +376,6 @@ def render_datasets_table(results):
     return table
 
 
-def recalculate_facets(filtered_results, original_facets, search_mode="targets"):
-    """Recalculate facet counts based on currently filtered results."""
-    is_dataset_mode = search_mode == "datasets"
-    recalculated = {}
-    for field in FACET_FIELDS:
-        value_counts = {}
-        result_field = (
-            TARGET_TO_DATASET_FIELD.get(field, field) if is_dataset_mode else field
-        )
-        for result in filtered_results:
-            field_value = result.get(result_field)
-            if field_value is None:
-                continue
-            if isinstance(field_value, list):
-                for v in field_value:
-                    v_str = str(v).strip()
-                    if v_str:
-                        value_counts[v_str] = value_counts.get(v_str, 0) + 1
-            else:
-                v_str = str(field_value).strip()
-                if v_str:
-                    value_counts[v_str] = value_counts.get(v_str, 0) + 1
-
-        original_values = original_facets.get(field, [])
-        facet_list = []
-        seen = set()
-        for item in original_values:
-            val = item.get("value")
-            if val is not None:
-                val_str = str(val).strip()
-                count = value_counts.get(val_str, 0)
-                facet_list.append({"value": val_str, "count": count})
-                seen.add(val_str)
-        for val_str, count in value_counts.items():
-            if val_str not in seen:
-                facet_list.append({"value": val_str, "count": count})
-
-        recalculated[field] = facet_list
-
-    return recalculated
-
-
 def filter_placeholder(message="Search to enable filters."):
     """Placeholder message when filters are unavailable."""
     return dbc.Alert(
@@ -555,7 +500,8 @@ def build_filter_controls(
     }
 
     controls = []
-    for field in facet_fields:
+    total_fields = len(facet_fields)
+    for idx, field in enumerate(facet_fields):
         values = facets.get(field, [])
         if not values:
             continue
@@ -690,7 +636,7 @@ def build_filter_controls(
                     "borderRadius": "12px",
                     "overflow": "visible",
                     "position": "relative",
-                    "zIndex": 1,
+                    "zIndex": total_fields - idx,
                 },
             )
         )

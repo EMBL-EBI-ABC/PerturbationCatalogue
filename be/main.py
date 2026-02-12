@@ -275,7 +275,7 @@ def build_elasticsearch_query(
 
 
 def build_aggregations(facet_fields: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Build aggregations for all facet fields"""
+    """Build aggregations for all facet fields."""
     fields = facet_fields or FACET_FIELDS
     aggs = {}
     for field in fields:
@@ -387,37 +387,6 @@ def build_dataset_elasticsearch_query(
     return {"match_all": {}}
 
 
-def _calculate_facets_from_results(
-    results: List[Dict[str, Any]],
-    facet_fields: List[str],
-) -> Dict[str, List[FacetValue]]:
-    """Calculate facet counts from the returned results.
-
-    Used for search queries to ensure facets match the result set.
-    """
-    from collections import Counter
-
-    facets_dict = {}
-    for field in facet_fields:
-        counter: Counter = Counter()
-        for result in results:
-            value = result.get(field)
-            if value is None:
-                continue
-            if isinstance(value, list):
-                for v in value:
-                    if v:
-                        counter[v] += 1
-            elif value:
-                counter[value] += 1
-
-        facets_dict[field] = [
-            FacetValue(value=val, count=count)
-            for val, count in counter.most_common(100)
-        ]
-    return facets_dict
-
-
 def parse_filters_from_params(
     license: Optional[str] = None,
     data_modalities: Optional[str] = None,
@@ -505,19 +474,7 @@ async def perform_search(
 
     aggs = build_aggregations(facet_fields)
 
-    # For search queries, return all matching results so frontend can filter client-side
-    # For browsing (no query), use normal pagination
-    has_query = query and query.strip()
-    max_search_results = 1000  # Reasonable limit for search results
-
-    if has_query:
-        # Return all matching results (up to max) for client-side filtering
-        effective_size = max_search_results
-        from_ = 0
-    else:
-        # Normal pagination for browsing
-        effective_size = size
-        from_ = (page - 1) * size
+    from_ = (page - 1) * size
 
     # Execute search with aggregations
     try:
@@ -526,7 +483,7 @@ async def perform_search(
             query=es_query,
             aggs=aggs,
             from_=from_,
-            size=effective_size,
+            size=size,
         )
     except Exception as e:
         error_detail = str(e)
@@ -538,23 +495,37 @@ async def perform_search(
     hits = response.get("hits", {})
     results = [hit["_source"] for hit in hits.get("hits", [])]
 
-    if has_query:
-        # For search queries: calculate facets from returned results
-        total = len(results)
-        total_pages = 1  # All results returned in one response
-        facets_dict = _calculate_facets_from_results(results, facet_fields)
-    else:
-        # For browsing: use ES aggregations for full dataset facets
-        total = hits.get("total", {}).get("value", 0)
-        total_pages = (total + size - 1) // size if total > 0 else 0
-        aggregations = response.get("aggregations", {})
-        facets_dict = {}
-        for field in facet_fields:
-            buckets = aggregations.get(field, {}).get("buckets", [])
-            facets_dict[field] = [
-                FacetValue(value=bucket["key"], count=bucket["doc_count"])
-                for bucket in buckets
-            ]
+    total = hits.get("total", {}).get("value", 0)
+    total_pages = (total + size - 1) // size if total > 0 else 0
+    aggregations = response.get("aggregations", {})
+
+    # Build a lookup of lowercase → original-case values from result _source
+    # fields, so we can restore proper display case for aggregation keys
+    # (the lc_ascii normalizer lowercases all aggregation values).
+    original_case: Dict[str, Dict[str, str]] = {}
+    for field in facet_fields:
+        field_map: Dict[str, str] = {}
+        for result in results:
+            val = result.get(field)
+            if val is None:
+                continue
+            vals = val if isinstance(val, list) else [val]
+            for v in vals:
+                if v and isinstance(v, str):
+                    field_map.setdefault(v.lower(), v)
+        original_case[field] = field_map
+
+    facets_dict = {}
+    for field in facet_fields:
+        buckets = aggregations.get(field, {}).get("buckets", [])
+        case_map = original_case.get(field, {})
+        facets_dict[field] = [
+            FacetValue(
+                value=case_map.get(bucket["key"], bucket["key"]),
+                count=bucket["doc_count"],
+            )
+            for bucket in buckets
+        ]
 
     # Remap dataset field names to canonical target field names
     if is_dataset_mode:
@@ -567,7 +538,7 @@ async def perform_search(
     return SearchResponse(
         total=total,
         page=page,
-        size=len(results) if has_query else size,
+        size=size,
         total_pages=total_pages,
         results=results,
         facets=facets,
@@ -663,7 +634,8 @@ async def search_get(
         None, description="Comma-separated list of license labels (dataset mode)"
     ),
     library_perturbation_type_labels: Optional[str] = Query(
-        None, description="Comma-separated list of perturbation type labels (dataset mode)"
+        None,
+        description="Comma-separated list of perturbation type labels (dataset mode)",
     ),
     tissue_labels: Optional[str] = Query(
         None, description="Comma-separated list of tissue labels (dataset mode)"
@@ -678,7 +650,8 @@ async def search_get(
         None, description="Comma-separated list of sex labels (dataset mode)"
     ),
     developmental_stage_labels: Optional[str] = Query(
-        None, description="Comma-separated list of developmental stage labels (dataset mode)"
+        None,
+        description="Comma-separated list of developmental stage labels (dataset mode)",
     ),
     disease_labels: Optional[str] = Query(
         None, description="Comma-separated list of disease labels (dataset mode)"
@@ -717,7 +690,10 @@ async def search_post(request: SearchRequest):
     Accepts JSON body with search parameters.
     """
     return await perform_search(
-        request.query, request.filters, request.page, request.size,
+        request.query,
+        request.filters,
+        request.page,
+        request.size,
         getattr(request, "search_mode", "targets"),
     )
 
