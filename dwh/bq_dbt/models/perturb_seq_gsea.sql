@@ -22,5 +22,5 @@ select
     geneset_size,
     leading_edge,
     cell_type,
-    current_timestamp() as max_ingested_at
+    ingested_at as max_ingested_at
 from {{ source("perturb_seq", "pertpy_gsea") }}
