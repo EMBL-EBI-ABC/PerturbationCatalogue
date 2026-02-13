@@ -54,7 +54,8 @@ Note: you should set `$PG_CONN` to `$PG_CONN_INTERNAL` from the list of secrets,
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-location ${BQ_LOCATION} \
-    --pg-conn "${PG_CONN}"
+    --pg-conn "${PG_CONN}" \
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
 ```
 
 ## 6. Create indexes and summary views (only when the table is fully ingested)

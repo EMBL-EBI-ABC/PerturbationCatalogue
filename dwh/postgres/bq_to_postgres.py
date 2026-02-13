@@ -3,14 +3,12 @@ import logging
 import io
 import sys
 import uuid
-import threading
-import queue
-
-from google.cloud import bigquery
+from google.cloud import bigquery, storage
 import psycopg2
 from psycopg2 import sql
 from tqdm import tqdm
-import pyarrow.csv as pacsv
+import pyarrow.parquet as pq
+
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -20,82 +18,6 @@ TABLES_TO_SYNC = [
     "perturb_seq_dea",
     "perturb_seq_gsea",
 ]
-
-
-class BQToPGStream(io.RawIOBase):
-    """
-    High-performance stream that buffers Arrow batches from BQ (Producer)
-    and serves them in TSV format to Postgres COPY (Consumer).
-    """
-
-    def __init__(self, bq_client, temp_table_id, bq_schema, pbar=None):
-        self.bq_client = bq_client
-        self.temp_table_id = temp_table_id
-        self.bq_schema = bq_schema
-        self.pbar = pbar
-
-        self.queue = queue.Queue(maxsize=10)  # Buffer up to 10 batches
-        self.buffer = b""
-        self.finished = False
-        self.error = None
-
-        # Start the background producer thread
-        self.thread = threading.Thread(target=self._producer)
-        self.thread.daemon = True
-        self.thread.start()
-
-    def readable(self):
-        return True
-
-    def _producer(self):
-        """Background thread to fetch data from BigQuery and serialize to TSV."""
-        try:
-            # Fetch data in Arrow record batches
-            row_iterator = self.bq_client.list_rows(self.temp_table_id)
-            arrow_batches = row_iterator.to_arrow_iterable()
-
-            write_options = pacsv.WriteOptions(
-                include_header=False, delimiter="\t", quoting_style="none"
-            )
-
-            for batch in arrow_batches:
-                # Serialize the entire batch to TSV in-memory using C-based pyarrow
-                out = io.BytesIO()
-                pacsv.write_csv(batch, out, write_options=write_options)
-                tsv_chunk = out.getvalue()
-
-                self.queue.put(tsv_chunk)
-
-                if self.pbar:
-                    self.pbar.update(batch.num_rows)
-
-            self.queue.put(None)  # Sentinel for completion
-        except Exception as e:
-            self.error = e
-            self.queue.put(None)
-
-    def read(self, n=-1):
-        if self.error:
-            raise self.error
-
-        while not self.buffer:
-            if self.finished:
-                return b""
-
-            chunk = self.queue.get()
-            if chunk is None:
-                self.finished = True
-                continue
-
-            self.buffer = chunk
-
-        if n == -1 or n >= len(self.buffer):
-            result = self.buffer
-            self.buffer = b""
-        else:
-            result = self.buffer[:n]
-            self.buffer = self.buffer[n:]
-        return result
 
 
 def get_pg_type(field):
@@ -149,48 +71,108 @@ def get_bq_latest_timestamps_and_counts(bq_client, bq_dataset, bq_table, bq_loca
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
 
 
-def stream_bq_to_pg(
-    cursor,
-    pg_table,
-    bq_client,
-    bq_dataset,
-    bq_table,
-    bq_location,
-    dataset_id,
-    bq_schema,
-    total_rows,
-):
-    """High-performance stream from BQ to PG using Arrow, threading, and bulk serialization."""
-    temp_table_id = f"{bq_client.project}.{bq_dataset}.temp_sync_{uuid.uuid4().hex}"
+def format_row(row, schema):
+    """Formats a row for Postgres COPY command (TSV)."""
+    formatted = []
+    for i, field in enumerate(schema):
+        val = row[i]
+        if val is None:
+            formatted.append("")
+        elif field.mode == "REPEATED":
+            # Convert list to Postgres array literal: {"val1", "val2"}
+            inner = [str(x) if not isinstance(x, str) else x for x in val]
+            escaped = []
+            for x in inner:
+                x_str = str(x).replace('"', '\\"')
+                escaped.append(f'"{x_str}"')
+            formatted.append(f'{{{",".join(escaped)}}}')
+        elif field.field_type == "BOOLEAN":
+            formatted.append("true" if val else "false")
+        else:
+            formatted.append(str(val))
+    return "\t".join(formatted)
 
-    job_config = bigquery.QueryJobConfig(
-        destination=temp_table_id,
-        write_disposition="WRITE_TRUNCATE",
-    )
+
+def export_dataset_to_gcs(
+    bq_client, bq_dataset, bq_table, bq_location, gcs_bucket, gcs_prefix, dataset_id
+):
+    """Exports a specific dataset from BigQuery to GCS as Parquet."""
+    destination_uri = f"gs://{gcs_bucket}/{gcs_prefix}-*.parquet"
+    dataset_ref = bq_client.dataset(bq_dataset)
+
+    # Query to a temporary table to filter by dataset_id
+    temp_table_id = f"temp_sync_{uuid.uuid4().hex}"
+    temp_table_ref = dataset_ref.table(temp_table_id)
 
     query = f"SELECT * FROM `{bq_dataset}.{bq_table}` WHERE dataset_id = '{dataset_id}'"
+    job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
-    # query_job = bq_client.query(query, job_config=job_config, location=bq_location)
-    # query_job.result() # Wait for completion
+    query_job = None
+    extract_job = None
 
-    # Fetching the query results to a temp table is still needed for huge results scalability
-    query_job = bq_client.query(query, job_config=job_config, location=bq_location)
-    query_job.result()
+    try:
+        query_job = bq_client.query(query, job_config=job_config, location=bq_location)
+        query_job.result()
 
-    with tqdm(
-        total=total_rows, desc=f"    Syncing {dataset_id}", leave=False, unit="rows"
-    ) as pbar:
-        # Use our high-performance asynchronous stream
-        stream = BQToPGStream(bq_client, temp_table_id, bq_schema, pbar=pbar)
-        cursor.copy_expert(
-            sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
-                sql.Identifier(pg_table)
-            ),
-            stream,
+        # Extract temp table to GCS
+        extract_config = bigquery.ExtractJobConfig(destination_format="PARQUET")
+        extract_job = bq_client.extract_table(
+            temp_table_ref,
+            destination_uri,
+            location=bq_location,
+            job_config=extract_config,
         )
+        extract_job.result()
+    except (Exception, KeyboardInterrupt) as e:
+        if query_job and not query_job.done():
+            logging.info("        Cancelling BigQuery query job...")
+            query_job.cancel()
+        if extract_job and not extract_job.done():
+            logging.info("        Cancelling BigQuery extract job...")
+            extract_job.cancel()
+        raise e
+    finally:
+        # Clean up temp table
+        bq_client.delete_table(temp_table_ref, not_found_ok=True)
 
-    # Clean up temp table
-    bq_client.delete_table(temp_table_id, not_found_ok=True)
+    return destination_uri
+
+
+def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema):
+    """Loads Parquet files from GCS into Postgres using COPY."""
+    gcs_client = storage.Client()
+    bucket = gcs_client.get_bucket(gcs_bucket)
+    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+
+    for blob in tqdm(blobs, desc="        Loading shards", leave=False):
+        with blob.open("rb") as f:
+            parquet_file = pq.ParquetFile(f)
+            for i in range(parquet_file.num_row_groups):
+                table = parquet_file.read_row_group(i)
+                rows = table.to_pylist()
+
+                tsv_data = io.StringIO()
+                for row_dict in rows:
+                    row_val = [row_dict.get(field.name) for field in bq_schema]
+                    tsv_data.write(format_row(row_val, bq_schema) + "\n")
+
+                tsv_data.seek(0)
+                cursor.copy_expert(
+                    sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
+                        sql.Identifier(pg_table)
+                    ),
+                    tsv_data,
+                )
+
+
+def cleanup_gcs(gcs_bucket, gcs_prefix):
+    """Removes temporary files from GCS."""
+    logging.info(f"      - Cleaning up GCS files...")
+    gcs_client = storage.Client()
+    bucket = gcs_client.get_bucket(gcs_bucket)
+    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+    for blob in blobs:
+        blob.delete()
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
@@ -238,6 +220,7 @@ def main():
     parser.add_argument("--bq-dataset", required=True)
     parser.add_argument("--bq-location", required=True)
     parser.add_argument("--pg-conn", required=True)
+    parser.add_argument("--gcs-bucket", required=True)
     parser.add_argument(
         "--yes", action="store_true", help="Proceed without confirmation"
     )
@@ -339,18 +322,34 @@ def main():
                             if ds_id in plan["to_update"]:
                                 delete_dataset_from_pg(cursor, table_name, ds_id)
 
-                            # High-performance streaming
-                            stream_bq_to_pg(
-                                cursor,
-                                table_name,
-                                bq_client,
-                                args.bq_dataset,
-                                table_name,
-                                args.bq_location,
-                                ds_id,
-                                bq_table_obj.schema,
-                                row_count,
-                            )
+                            # Parquet-based sync via GCS
+                            gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+                            logging.info(f"    Processing {ds_id}:")
+
+                            try:
+                                logging.info(
+                                    f"      - Exporting from BigQuery to GCS..."
+                                )
+                                export_dataset_to_gcs(
+                                    bq_client,
+                                    args.bq_dataset,
+                                    table_name,
+                                    args.bq_location,
+                                    args.gcs_bucket,
+                                    gcs_prefix,
+                                    ds_id,
+                                )
+
+                                logging.info(f"      - Loading from GCS to Postgres...")
+                                load_parquet_from_gcs_to_pg(
+                                    cursor,
+                                    table_name,
+                                    args.gcs_bucket,
+                                    gcs_prefix,
+                                    bq_table_obj.schema,
+                                )
+                            finally:
+                                cleanup_gcs(args.gcs_bucket, gcs_prefix)
 
                             # Update sync states
                             update_sync_state(cursor, table_name, ds_id, bq_timestamp)
