@@ -3,11 +3,14 @@ import logging
 import io
 import sys
 import uuid
+import threading
+import queue
 
 from google.cloud import bigquery
 import psycopg2
 from psycopg2 import sql
 from tqdm import tqdm
+import pyarrow.csv as pacsv
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -19,28 +22,72 @@ TABLES_TO_SYNC = [
 ]
 
 
-class BQRowIteratorIO(io.RawIOBase):
-    """File-like object that streams rows from a BigQuery iterator in TSV format."""
+class BQToPGStream(io.RawIOBase):
+    """
+    High-performance stream that buffers Arrow batches from BQ (Producer)
+    and serves them in TSV format to Postgres COPY (Consumer).
+    """
 
-    def __init__(self, row_iterator, bq_schema, pbar=None):
-        self.row_iterator = row_iterator
+    def __init__(self, bq_client, temp_table_id, bq_schema, pbar=None):
+        self.bq_client = bq_client
+        self.temp_table_id = temp_table_id
         self.bq_schema = bq_schema
-        self.buffer = b""
         self.pbar = pbar
+
+        self.queue = queue.Queue(maxsize=10)  # Buffer up to 10 batches
+        self.buffer = b""
+        self.finished = False
+        self.error = None
+
+        # Start the background producer thread
+        self.thread = threading.Thread(target=self._producer)
+        self.thread.daemon = True
+        self.thread.start()
 
     def readable(self):
         return True
 
-    def read(self, n=-1):
-        while not self.buffer:
-            try:
-                row = next(self.row_iterator)
+    def _producer(self):
+        """Background thread to fetch data from BigQuery and serialize to TSV."""
+        try:
+            # Fetch data in Arrow record batches
+            row_iterator = self.bq_client.list_rows(self.temp_table_id)
+            arrow_batches = row_iterator.to_arrow_iterable()
+
+            write_options = pacsv.WriteOptions(
+                include_header=False, delimiter="\t", quoting_style="none"
+            )
+
+            for batch in arrow_batches:
+                # Serialize the entire batch to TSV in-memory using C-based pyarrow
+                out = io.BytesIO()
+                pacsv.write_csv(batch, out, write_options=write_options)
+                tsv_chunk = out.getvalue()
+
+                self.queue.put(tsv_chunk)
+
                 if self.pbar:
-                    self.pbar.update(1)
-                line = self._format_row(row) + "\n"
-                self.buffer = line.encode("utf-8")
-            except StopIteration:
+                    self.pbar.update(batch.num_rows)
+
+            self.queue.put(None)  # Sentinel for completion
+        except Exception as e:
+            self.error = e
+            self.queue.put(None)
+
+    def read(self, n=-1):
+        if self.error:
+            raise self.error
+
+        while not self.buffer:
+            if self.finished:
                 return b""
+
+            chunk = self.queue.get()
+            if chunk is None:
+                self.finished = True
+                continue
+
+            self.buffer = chunk
 
         if n == -1 or n >= len(self.buffer):
             result = self.buffer
@@ -49,26 +96,6 @@ class BQRowIteratorIO(io.RawIOBase):
             result = self.buffer[:n]
             self.buffer = self.buffer[n:]
         return result
-
-    def _format_row(self, row):
-        formatted = []
-        for field in self.bq_schema:
-            val = row[field.name]
-            if val is None:
-                formatted.append("")
-            elif field.mode == "REPEATED":
-                # Convert list to Postgres array literal: {"val1", "val2"}
-                inner = [str(x) if not isinstance(x, str) else x for x in val]
-                escaped = []
-                for x in inner:
-                    x_str = str(x).replace('"', '\\"')
-                    escaped.append(f'"{x_str}"')
-                formatted.append(f'{{{",".join(escaped)}}}')
-            elif field.field_type == "BOOLEAN":
-                formatted.append("true" if val else "false")
-            else:
-                formatted.append(str(val))
-        return "\t".join(formatted)
 
 
 def get_pg_type(field):
@@ -133,9 +160,7 @@ def stream_bq_to_pg(
     bq_schema,
     total_rows,
 ):
-    """Streams data from a large BQ query directly into a Postgres table using a temp destination table."""
-    # Use a destination table for the query result if it's potentially huge.
-    # To keep things robust, we'll ALWAYS use a destination table for dataset ingestion.
+    """High-performance stream from BQ to PG using Arrow, threading, and bulk serialization."""
     temp_table_id = f"{bq_client.project}.{bq_dataset}.temp_sync_{uuid.uuid4().hex}"
 
     job_config = bigquery.QueryJobConfig(
@@ -145,16 +170,18 @@ def stream_bq_to_pg(
 
     query = f"SELECT * FROM `{bq_dataset}.{bq_table}` WHERE dataset_id = '{dataset_id}'"
 
-    query_job = bq_client.query(query, job_config=job_config, location=bq_location)
-    query_job.result()  # Wait for completion
+    # query_job = bq_client.query(query, job_config=job_config, location=bq_location)
+    # query_job.result() # Wait for completion
 
-    # Fetch rows from the destination table. This avoids result size limits.
-    row_iterator = bq_client.list_rows(temp_table_id)
+    # Fetching the query results to a temp table is still needed for huge results scalability
+    query_job = bq_client.query(query, job_config=job_config, location=bq_location)
+    query_job.result()
 
     with tqdm(
-        total=total_rows, desc=f"    Loading {dataset_id}", leave=False, unit="rows"
+        total=total_rows, desc=f"    Syncing {dataset_id}", leave=False, unit="rows"
     ) as pbar:
-        stream = BQRowIteratorIO(row_iterator, bq_schema, pbar=pbar)
+        # Use our high-performance asynchronous stream
+        stream = BQToPGStream(bq_client, temp_table_id, bq_schema, pbar=pbar)
         cursor.copy_expert(
             sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
                 sql.Identifier(pg_table)
@@ -312,7 +339,7 @@ def main():
                             if ds_id in plan["to_update"]:
                                 delete_dataset_from_pg(cursor, table_name, ds_id)
 
-                            # Stream directly from BQ to PG using a temp destination table for safety
+                            # High-performance streaming
                             stream_bq_to_pg(
                                 cursor,
                                 table_name,
