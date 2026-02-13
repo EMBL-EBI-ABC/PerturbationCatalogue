@@ -1,12 +1,17 @@
 import argparse
+import concurrent.futures
 import logging
 import io
+import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from google.cloud import bigquery, storage
 import psycopg2
 from psycopg2 import sql
 from tqdm import tqdm
+import pyarrow as pa
+import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
 
 
@@ -118,26 +123,9 @@ def get_bq_latest_timestamps_and_counts(bq_client, bq_dataset, bq_table, bq_loca
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
 
 
-def format_row(row, schema):
-    """Formats a row for Postgres COPY command (TSV)."""
-    formatted = []
-    for i, field in enumerate(schema):
-        val = row[i]
-        if val is None:
-            formatted.append("")
-        elif field.mode == "REPEATED":
-            # Convert list to Postgres array literal: {"val1", "val2"}
-            inner = [str(x) if not isinstance(x, str) else x for x in val]
-            escaped = []
-            for x in inner:
-                x_str = str(x).replace('"', '\\"')
-                escaped.append(f'"{x_str}"')
-            formatted.append(f'{{{",".join(escaped)}}}')
-        elif field.field_type == "BOOLEAN":
-            formatted.append("true" if val else "false")
-        else:
-            formatted.append(str(val))
-    return "\t".join(formatted)
+# Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
+# Auto-detected from available CPUs; each worker holds one shard in memory.
+GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
 
 
 def export_dataset_to_gcs(
@@ -185,31 +173,118 @@ def export_dataset_to_gcs(
     return destination_uri
 
 
+def _convert_array_column(col):
+    """Convert a PyArrow list-typed column to Postgres array literal strings.
+
+    E.g. ["a", "b"] -> '{"a","b"}'
+    """
+    result = []
+    for val in col.to_pylist():
+        if val is None:
+            result.append(None)
+        else:
+            escaped = []
+            for x in val:
+                x_str = str(x).replace("\\", "\\\\").replace('"', '\\"')
+                escaped.append(f'"{ x_str}"')
+            result.append("{" + ",".join(escaped) + "}")
+    return pa.array(result, type=pa.string())
+
+
+def _prepare_table_for_copy(table, bq_schema):
+    """Prepare a PyArrow table for Postgres COPY: handle array columns and
+    convert to a CSV (tab-delimited) bytes buffer using PyArrow's C++ writer.
+    """
+    # Build a set of array column names for targeted conversion
+    array_cols = {f.name for f in bq_schema if f.mode == "REPEATED"}
+
+    if array_cols:
+        new_columns = []
+        for i, name in enumerate(table.column_names):
+            col = table.column(i)
+            if name in array_cols:
+                new_columns.append(_convert_array_column(col))
+            else:
+                new_columns.append(col)
+        table = pa.table(
+            {name: col for name, col in zip(table.column_names, new_columns)}
+        )
+
+    # Write to TSV bytes buffer using PyArrow's C++ CSV writer (very fast)
+    buf = io.BytesIO()
+    write_options = pa_csv.WriteOptions(
+        include_header=False,
+        delimiter="\t",
+    )
+    pa_csv.write_csv(table, buf, write_options=write_options)
+    buf.seek(0)
+    return buf
+
+
+def _download_and_convert_blob(blob, bq_schema):
+    """Download a single Parquet shard from GCS and convert to a TSV buffer.
+
+    This runs in a worker thread to overlap GCS I/O with CPU work.
+    Returns a BytesIO buffer ready for COPY FROM STDIN.
+    """
+    data = blob.download_as_bytes()
+    table = pq.read_table(io.BytesIO(data))
+    return _prepare_table_for_copy(table, bq_schema)
+
+
 def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema):
-    """Loads Parquet files from GCS into Postgres using COPY."""
+    """Loads Parquet files from GCS into Postgres using COPY.
+
+    Uses concurrent GCS downloads and PyArrow's native C++ CSV writer for
+    maximum throughput. Blobs are downloaded and converted to TSV in parallel
+    threads; the main thread feeds buffers to Postgres sequentially.
+
+    Memory is bounded: at most ``GCS_DOWNLOAD_WORKERS`` shard buffers exist in
+    memory at any time. New work is only submitted as previous results are
+    consumed by Postgres COPY.
+    """
     gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
 
-    for blob in tqdm(blobs, desc="        Loading shards", leave=False):
-        with blob.open("rb") as f:
-            parquet_file = pq.ParquetFile(f)
-            for i in range(parquet_file.num_row_groups):
-                table = parquet_file.read_row_group(i)
-                rows = table.to_pylist()
+    copy_sql = sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
+        sql.Identifier(pg_table)
+    )
 
-                tsv_data = io.StringIO()
-                for row_dict in rows:
-                    row_val = [row_dict.get(field.name) for field in bq_schema]
-                    tsv_data.write(format_row(row_val, bq_schema) + "\n")
+    max_workers = GCS_DOWNLOAD_WORKERS
+    blob_iter = iter(blobs)
+    pbar = tqdm(total=len(blobs), desc="        Loading shards", leave=False)
 
-                tsv_data.seek(0)
-                cursor.copy_expert(
-                    sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
-                        sql.Identifier(pg_table)
-                    ),
-                    tsv_data,
-                )
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        # Seed the pool with an initial batch (bounded to max_workers)
+        pending = {}
+        for blob in iter(lambda: next(blob_iter, None), None):
+            fut = pool.submit(_download_and_convert_blob, blob, bq_schema)
+            pending[fut] = blob
+            if len(pending) >= max_workers:
+                break
+
+        # Sliding window: consume one result, submit one new blob
+        while pending:
+            done, _ = concurrent.futures.wait(
+                pending, return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for fut in done:
+                tsv_buf = fut.result()
+                cursor.copy_expert(copy_sql, tsv_buf)
+                tsv_buf.close()
+                del pending[fut]
+                pbar.update(1)
+
+                # Submit next blob if available
+                next_blob = next(blob_iter, None)
+                if next_blob is not None:
+                    new_fut = pool.submit(
+                        _download_and_convert_blob, next_blob, bq_schema
+                    )
+                    pending[new_fut] = next_blob
+
+    pbar.close()
 
 
 def cleanup_gcs(gcs_bucket, gcs_prefix):

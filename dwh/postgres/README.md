@@ -24,7 +24,7 @@ dev_secrets
 gcloud compute instances create bq-to-pg-projector \
     --project=${GCLOUD_PROJECT} \
     --zone=${GCLOUD_ZONE} \
-    --machine-type=e2-standard-4 \
+    --machine-type=e2-highmem-4 \
     --network=default \
     --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
