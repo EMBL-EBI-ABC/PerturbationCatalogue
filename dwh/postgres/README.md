@@ -58,23 +58,11 @@ python3 bq_to_postgres.py \
     --gcs-bucket "${GCLOUD_TMP_BUCKET}"
 ```
 
-## 6. Create indexes and summary views (only when the table is fully ingested)
-Run `psql $PG_CONN` and create the indexes.
+## 6. Create summary views
+Run `psql $PG_CONN` and create the summary views.
 
-## Perturb-Seq
-
-### DEA
+### Perturb-Seq Summary Views
 ```sql
-CREATE INDEX CONCURRENTLY idx_perturbation_dea
-  ON public.perturb_seq_dea (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_phenotype_dea
-  ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_perturbation_phenotype_dea
-  ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_perturb_seq_dea_dataset_id_padj
-  ON public.perturb_seq_dea (dataset_id, padj)
-  WHERE gene IS NOT NULL;
-
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
     dataset_id,
@@ -112,29 +100,6 @@ CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk
   ON perturb_seq_summary_effect (dataset_id, gene);
 CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk
   ON perturb_seq_summary_dataset (dataset_id);
-```
-
-### GSEA
-```sql
-CREATE INDEX CONCURRENTLY idx_perturbation_gsea
-  ON public.perturb_seq_gsea (perturbed_target_symbol, dataset_id, fdr, nes);
-```
-
-## CRISPR
-```sql
-CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
-  ON public.crispr_data (dataset_id);
-CREATE INDEX CONCURRENTLY idx_crispr_data_target
-  ON public.crispr_data (perturbed_target_symbol);
-
-## MAVE
-```sql
-CREATE INDEX CONCURRENTLY idx_mave_data_dataset
-  ON public.mave_data (dataset_id);
-CREATE INDEX CONCURRENTLY idx_mave_data_target
-  ON public.mave_data (perturbed_target_symbol, dataset_id);
-```
-
 ```
 
 ## Monitoring
