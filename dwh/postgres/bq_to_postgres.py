@@ -28,54 +28,111 @@ INDEX_DEFINITIONS = {
     "perturb_seq_dea": [
         (
             "idx_perturbation_dea",
-            "CREATE INDEX idx_perturbation_dea ON public.perturb_seq_dea (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_phenotype_dea",
-            "CREATE INDEX idx_phenotype_dea ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (gene, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturbation_phenotype_dea",
-            "CREATE INDEX idx_perturbation_phenotype_dea ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturb_seq_dea_dataset_id_padj",
-            "CREATE INDEX idx_perturb_seq_dea_dataset_id_padj ON public.perturb_seq_dea (dataset_id, padj) WHERE gene IS NOT NULL",
+            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE gene IS NOT NULL",
         ),
     ],
     "perturb_seq_gsea": [
         (
             "idx_perturbation_gsea",
-            "CREATE INDEX idx_perturbation_gsea ON public.perturb_seq_gsea (perturbed_target_symbol, dataset_id, fdr, nes)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, fdr, nes)",
         ),
     ],
     "crispr_data": [
         (
             "idx_crispr_data_dataset",
-            "CREATE INDEX idx_crispr_data_dataset ON public.crispr_data (dataset_id)",
+            "CREATE INDEX {idx} ON {table} (dataset_id)",
         ),
         (
             "idx_crispr_data_target",
-            "CREATE INDEX idx_crispr_data_target ON public.crispr_data (perturbed_target_symbol)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
         ),
     ],
     "mave_data": [
         (
             "idx_mave_data_dataset",
-            "CREATE INDEX idx_mave_data_dataset ON public.mave_data (dataset_id)",
+            "CREATE INDEX {idx} ON {table} (dataset_id)",
         ),
         (
             "idx_mave_data_target",
-            "CREATE INDEX idx_mave_data_target ON public.mave_data (perturbed_target_symbol, dataset_id)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id)",
         ),
     ],
 }
 
-PERTURB_SEQ_DEA_MVIEWS = [
-    "perturb_seq_summary_perturbation",
-    "perturb_seq_summary_effect",
-    "perturb_seq_summary_dataset",
-]
+# Materialized view definitions, keyed by base table name.
+# Each entry is (view_name, create_sql_template, [(index_name, index_sql_template), ...]).
+# Templates use {view} for the view name and {source_table} for the base table.
+MATERIALIZED_VIEW_DEFINITIONS = {
+    "perturb_seq_dea": [
+        (
+            "perturb_seq_summary_perturbation",
+            """CREATE MATERIALIZED VIEW {view} AS
+SELECT
+    dataset_id,
+    perturbed_target_symbol,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+FROM {source_table}
+WHERE padj <= 0.05
+GROUP BY dataset_id, perturbed_target_symbol""",
+            [
+                (
+                    "idx_perturb_seq_summary_perturbation_pk",
+                    "CREATE UNIQUE INDEX {idx} ON {view} (dataset_id, perturbed_target_symbol)",
+                ),
+            ],
+        ),
+        (
+            "perturb_seq_summary_effect",
+            """CREATE MATERIALIZED VIEW {view} AS
+SELECT
+    dataset_id,
+    gene,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+    AVG(score_value) AS avg_score
+FROM {source_table}
+WHERE padj <= 0.05
+GROUP BY dataset_id, gene""",
+            [
+                (
+                    "idx_perturb_seq_summary_effect_pk",
+                    "CREATE UNIQUE INDEX {idx} ON {view} (dataset_id, gene)",
+                ),
+            ],
+        ),
+        (
+            "perturb_seq_summary_dataset",
+            """CREATE MATERIALIZED VIEW {view} AS
+SELECT
+    dataset_id,
+    COUNT(*) AS n_total
+FROM {source_table}
+WHERE gene IS NOT NULL
+GROUP BY dataset_id""",
+            [
+                (
+                    "idx_perturb_seq_summary_dataset_pk",
+                    "CREATE UNIQUE INDEX {idx} ON {view} (dataset_id)",
+                ),
+            ],
+        ),
+    ],
+}
 
 
 def get_pg_type(field):
@@ -238,9 +295,7 @@ def _download_and_convert_blob(blob, bq_schema):
     return _prepare_table_for_copy(table, bq_schema)
 
 
-def load_parquet_from_gcs_to_pg(
-    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, debug_limit=None
-):
+def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema):
     """Loads Parquet files from GCS into Postgres using COPY.
 
     Uses concurrent GCS downloads and PyArrow's native C++ CSV writer for
@@ -254,12 +309,6 @@ def load_parquet_from_gcs_to_pg(
     gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-
-    if debug_limit:
-        logging.info(
-            f"        Debug limit set: reducing shards from {len(blobs)} to {debug_limit}"
-        )
-        blobs = blobs[:debug_limit]
 
     copy_sql = sql.SQL(
         "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
@@ -351,40 +400,150 @@ def ensure_pg_table_exists(cursor, pg_table, bq_schema):
         )
 
 
-def drop_indexes(cursor, table_name):
+def copy_table(cursor, src_table, dst_table):
+    """Creates a copy of a table with all its data.
+
+    The new table has the same column definitions but no indexes or constraints.
+    """
+    logging.info(f"      - Copying {src_table} -> {dst_table}...")
+    cursor.execute(
+        sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(dst_table))
+    )
+    cursor.execute(
+        sql.SQL("CREATE TABLE {} (LIKE {})").format(
+            sql.Identifier(dst_table), sql.Identifier(src_table)
+        )
+    )
+    cursor.execute(
+        sql.SQL("INSERT INTO {} SELECT * FROM {}").format(
+            sql.Identifier(dst_table), sql.Identifier(src_table)
+        )
+    )
+
+
+def drop_indexes(cursor, table_name, suffix=""):
     """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
     if table_name not in INDEX_DEFINITIONS:
         return
-    logging.info(f"      - Dropping indexes for {table_name}...")
+    logging.info(f"      - Dropping indexes for {table_name}{suffix}...")
     for index_name, _ in INDEX_DEFINITIONS[table_name]:
-        logging.info(f"        Dropping {index_name}...")
-        cursor.execute(
-            sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name))
-        )
+        idx = f"{index_name}{suffix}"
+        logging.info(f"        Dropping {idx}...")
+        cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
-def create_indexes(cursor, table_name):
-    """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
+def create_indexes(cursor, table_name, suffix=""):
+    """Creates all indexes for a given table based on INDEX_DEFINITIONS.
+
+    When suffix is provided, creates indexes with the suffix in both the index
+    name and the target table name.
+    """
     if table_name not in INDEX_DEFINITIONS:
         return
     logging.info(
-        f"      - Reinstating indexes for {table_name} (this may take a while)..."
+        f"      - Creating indexes for {table_name}{suffix} (this may take a while)..."
     )
-    for index_name, index_sql in INDEX_DEFINITIONS[table_name]:
-        logging.info(f"        Creating {index_name}...")
+    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+        idx = f"{index_name}{suffix}"
+        logging.info(f"        Creating {idx}...")
+        index_sql = index_sql_template.format(
+            idx=sql.Identifier(idx).as_string(cursor.connection),
+            table=sql.Identifier(f"{table_name}{suffix}").as_string(cursor.connection),
+        )
         cursor.execute(index_sql)
 
 
-def refresh_materialized_views(cursor, table_name):
-    """Refreshes materialized views dependent on the table."""
-    if table_name == "perturb_seq_dea":
-        for view_name in PERTURB_SEQ_DEA_MVIEWS:
-            logging.info(f"      - Refreshing materialized view {view_name}...")
+def create_materialized_views(cursor, table_name, suffix=""):
+    """Creates materialized views (with optional suffix) from definitions.
+
+    Views are created against {table_name}{suffix} and named {view_name}{suffix}.
+    """
+    if table_name not in MATERIALIZED_VIEW_DEFINITIONS:
+        return
+    for view_name, create_sql_template, view_indexes in MATERIALIZED_VIEW_DEFINITIONS[
+        table_name
+    ]:
+        view = f"{view_name}{suffix}"
+        source = f"{table_name}{suffix}"
+        logging.info(f"      - Creating materialized view {view}...")
+        # Drop if exists (e.g. from a previous failed run)
+        cursor.execute(
+            sql.SQL("DROP MATERIALIZED VIEW IF EXISTS {}").format(sql.Identifier(view))
+        )
+        create_sql = create_sql_template.format(
+            view=sql.Identifier(view).as_string(cursor.connection),
+            source_table=sql.Identifier(source).as_string(cursor.connection),
+        )
+        cursor.execute(create_sql)
+        # Create indexes on the materialized view
+        for mv_index_name, mv_index_sql_template in view_indexes:
+            idx = f"{mv_index_name}{suffix}"
+            logging.info(f"        Creating index {idx}...")
+            mv_index_sql = mv_index_sql_template.format(
+                idx=sql.Identifier(idx).as_string(cursor.connection),
+                view=sql.Identifier(view).as_string(cursor.connection),
+            )
+            cursor.execute(mv_index_sql)
+
+
+def swap_table(conn, table_name):
+    """Atomically swaps {table_name}_upd into {table_name} in a single short transaction.
+
+    Steps (all inside one transaction):
+    1. DROP the original table CASCADE (also drops its materialized views)
+    2. RENAME the _upd table to the original name
+    3. RENAME each _upd materialized view to the original name
+    4. RENAME each _upd index to the original name
+    """
+    upd = f"{table_name}_upd"
+    logging.info(f"      - Swapping {upd} -> {table_name} (short transaction)...")
+
+    with conn:
+        with conn.cursor() as cursor:
+            # 1. Drop original table (CASCADE drops dependent materialized views)
             cursor.execute(
-                sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
-                    sql.Identifier(view_name)
+                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                    sql.Identifier(table_name)
                 )
             )
+
+            # 2. Rename _upd table to original
+            cursor.execute(
+                sql.SQL("ALTER TABLE {} RENAME TO {}").format(
+                    sql.Identifier(upd), sql.Identifier(table_name)
+                )
+            )
+
+            # 3. Rename indexes on the table
+            if table_name in INDEX_DEFINITIONS:
+                for index_name, _ in INDEX_DEFINITIONS[table_name]:
+                    cursor.execute(
+                        sql.SQL("ALTER INDEX {} RENAME TO {}").format(
+                            sql.Identifier(f"{index_name}_upd"),
+                            sql.Identifier(index_name),
+                        )
+                    )
+
+            # 4. Rename materialized views and their indexes
+            if table_name in MATERIALIZED_VIEW_DEFINITIONS:
+                for view_name, _, view_indexes in MATERIALIZED_VIEW_DEFINITIONS[
+                    table_name
+                ]:
+                    cursor.execute(
+                        sql.SQL("ALTER MATERIALIZED VIEW {} RENAME TO {}").format(
+                            sql.Identifier(f"{view_name}_upd"),
+                            sql.Identifier(view_name),
+                        )
+                    )
+                    for mv_index_name, _ in view_indexes:
+                        cursor.execute(
+                            sql.SQL("ALTER INDEX {} RENAME TO {}").format(
+                                sql.Identifier(f"{mv_index_name}_upd"),
+                                sql.Identifier(mv_index_name),
+                            )
+                        )
+
+    logging.info(f"      - Swap complete for {table_name}.")
 
 
 def main():
@@ -395,16 +554,6 @@ def main():
     parser.add_argument("--gcs-bucket", required=True)
     parser.add_argument(
         "--yes", action="store_true", help="Proceed without confirmation"
-    )
-    parser.add_argument(
-        "--drop-and-recreate-indexes",
-        action="store_true",
-        help="Drop indexes before loading and recreate them after (faster for bulk loads)",
-    )
-    parser.add_argument(
-        "--debug-limit-N-shards",
-        type=int,
-        help="Only load the first N shards for every dataset (debugging)",
     )
     args = parser.parse_args()
 
@@ -481,106 +630,114 @@ def main():
                 logging.info("Sync cancelled by user.")
                 sys.exit(0)
 
-        # 4. Execution (Per-table connection and transaction)
+        # 4. Execution (Per-table: non-transactional work on _upd copy, then atomic swap)
         overall_pbar = tqdm(
             total=total_datasets, desc="Overall Progress", unit="dataset"
         )
 
         for table_name, plan in sync_plan.items():
             logging.info(f"Syncing table {table_name}...")
+            upd_table = f"{table_name}_upd"
 
             try:
-                # Open a NEW connection for this table
+                # Phase A: Non-transactional work on the _upd copy.
+                # We use autocommit so each statement commits immediately.
+                # This avoids holding a long transaction lock on the original table.
                 conn = psycopg2.connect(args.pg_conn)
+                conn.autocommit = True
                 try:
-                    # Open a transaction block. If this block raises, it rolls back.
-                    # If it exits successfully, it commits.
-                    with conn:
-                        with conn.cursor() as cursor:
-                            bq_table_obj = bq_client.get_table(
-                                f"{args.bq_dataset}.{table_name}"
-                            )
-                            ensure_pg_table_exists(
-                                cursor, table_name, bq_table_obj.schema
-                            )
+                    with conn.cursor() as cursor:
+                        bq_table_obj = bq_client.get_table(
+                            f"{args.bq_dataset}.{table_name}"
+                        )
+                        ensure_pg_table_exists(cursor, table_name, bq_table_obj.schema)
 
-                            # Drop indexes before bulk update (if requested)
-                            if args.drop_and_recreate_indexes:
-                                drop_indexes(cursor, table_name)
+                        # A1. Copy original table -> _upd table
+                        copy_table(cursor, table_name, upd_table)
 
-                            all_to_process = sorted(
-                                plan["to_update"] + plan["to_insert"]
-                            )
+                        # A2. Drop indexes on _upd table (they were not copied, but
+                        #     drop just in case from a previous partial run)
+                        drop_indexes(cursor, table_name, suffix="_upd")
 
-                            for ds_id in all_to_process:
-                                row_count = plan["bq_info"][ds_id][1]
-                                bq_timestamp = plan["bq_info"][ds_id][0]
+                        # A3. For each dataset: delete old rows, load new data
+                        all_to_process = sorted(plan["to_update"] + plan["to_insert"])
 
-                                # Delete if update
-                                if ds_id in plan["to_update"]:
-                                    delete_dataset_from_pg(cursor, table_name, ds_id)
+                        for ds_id in all_to_process:
+                            bq_timestamp = plan["bq_info"][ds_id][0]
 
-                                # Parquet-based sync via GCS
-                                gcs_prefix = (
-                                    f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+                            # Delete old data if this is an update
+                            if ds_id in plan["to_update"]:
+                                delete_dataset_from_pg(cursor, upd_table, ds_id)
+
+                            # Export from BQ and load into _upd table
+                            gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+                            logging.info(f"    Processing {ds_id}:")
+
+                            try:
+                                logging.info(
+                                    f"      - Exporting from BigQuery to GCS..."
                                 )
-                                logging.info(f"    Processing {ds_id}:")
-
-                                try:
-                                    logging.info(
-                                        f"      - Exporting from BigQuery to GCS..."
-                                    )
-                                    export_dataset_to_gcs(
-                                        bq_client,
-                                        args.bq_dataset,
-                                        table_name,
-                                        args.bq_location,
-                                        args.gcs_bucket,
-                                        gcs_prefix,
-                                        ds_id,
-                                    )
-
-                                    logging.info(
-                                        f"      - Loading from GCS to Postgres..."
-                                    )
-                                    load_parquet_from_gcs_to_pg(
-                                        cursor,
-                                        table_name,
-                                        args.gcs_bucket,
-                                        gcs_prefix,
-                                        bq_table_obj.schema,
-                                        debug_limit=args.debug_limit_N_shards,
-                                    )
-                                finally:
-                                    cleanup_gcs(args.gcs_bucket, gcs_prefix)
-
-                                # Update sync states
-                                update_sync_state(
-                                    cursor, table_name, ds_id, bq_timestamp
+                                export_dataset_to_gcs(
+                                    bq_client,
+                                    args.bq_dataset,
+                                    table_name,
+                                    args.bq_location,
+                                    args.gcs_bucket,
+                                    gcs_prefix,
+                                    ds_id,
                                 )
 
-                                overall_pbar.update(1)
+                                logging.info(f"      - Loading from GCS to Postgres...")
+                                load_parquet_from_gcs_to_pg(
+                                    cursor,
+                                    upd_table,
+                                    args.gcs_bucket,
+                                    gcs_prefix,
+                                    bq_table_obj.schema,
+                                )
+                            finally:
+                                cleanup_gcs(args.gcs_bucket, gcs_prefix)
 
-                            # Rebuild indexes after all data for this table is loaded
-                            if args.drop_and_recreate_indexes:
-                                create_indexes(cursor, table_name)
+                            # Update sync state (uses the original table name as key)
+                            update_sync_state(cursor, table_name, ds_id, bq_timestamp)
 
-                            # Refresh materialized views dependent on this table
-                            refresh_materialized_views(cursor, table_name)
+                            overall_pbar.update(1)
 
-                    # Transaction commits here automatically for this table.
-                    logging.info(f"Successfully synced {table_name}.")
+                        # A4. Recreate indexes on _upd table
+                        create_indexes(cursor, table_name, suffix="_upd")
+
+                        # A5. Create materialized views from _upd table
+                        create_materialized_views(cursor, table_name, suffix="_upd")
 
                 finally:
                     conn.close()
 
+                # Phase B: Atomic swap (short transaction).
+                conn = psycopg2.connect(args.pg_conn)
+                try:
+                    swap_table(conn, table_name)
+                finally:
+                    conn.close()
+
+                logging.info(f"Successfully synced {table_name}.")
+
             except Exception as e:
-                # This catches errors for THIS table's transaction.
-                # The 'with conn:' block already rolled back the DB transaction.
-                # We log the error and continue to the next table.
                 if isinstance(e, KeyboardInterrupt):
                     raise e  # Allow Ctrl+C to stop everything
                 logging.error(f"Error syncing {table_name}: {e}. Skipping this table.")
+                # Clean up _upd table if it exists
+                try:
+                    cleanup_conn = psycopg2.connect(args.pg_conn)
+                    cleanup_conn.autocommit = True
+                    with cleanup_conn.cursor() as cleanup_cursor:
+                        cleanup_cursor.execute(
+                            sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                                sql.Identifier(upd_table)
+                            )
+                        )
+                    cleanup_conn.close()
+                except Exception:
+                    pass
 
         overall_pbar.close()
         logging.info("Multi-table sync operations completed.")

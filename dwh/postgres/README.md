@@ -55,53 +55,11 @@ python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
-    --gcs-bucket "${GCLOUD_TMP_BUCKET}" \
-    --drop-and-recreate-indexes
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
 ```
 
-## 6. Create summary views
-Run `psql $PG_CONN` and create the summary views.
-
-### Perturb-Seq Summary Views
-```sql
-CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
-SELECT
-    dataset_id,
-    perturbed_target_symbol,
-    COUNT(*) AS n_total,
-    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
-    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
-FROM public.perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, perturbed_target_symbol;
-
-CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
-SELECT
-    dataset_id,
-    gene,
-    COUNT(*) AS n_total,
-    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
-    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
-    AVG(score_value) AS avg_score
-FROM public.perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, gene;
-
-CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
-SELECT
-    dataset_id,
-    COUNT(*) AS n_total
-FROM public.perturb_seq_dea
-WHERE gene IS NOT NULL
-GROUP BY dataset_id;
-
-CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk
-  ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
-CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk
-  ON perturb_seq_summary_effect (dataset_id, gene);
-CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk
-  ON perturb_seq_summary_dataset (dataset_id);
-```
+## 6. Summary views
+Summary materialized views (e.g. `perturb_seq_summary_perturbation`, `perturb_seq_summary_effect`, `perturb_seq_summary_dataset`) and their indexes are now created automatically by the script. No manual SQL is needed.
 
 ## Monitoring
 You can use this query in a separate psql session to monitor the progress of index creation:
