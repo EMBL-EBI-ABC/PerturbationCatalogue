@@ -55,7 +55,8 @@ python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
-    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}" \
+    --drop-and-recreate-indexes
 ```
 
 ## 6. Create summary views

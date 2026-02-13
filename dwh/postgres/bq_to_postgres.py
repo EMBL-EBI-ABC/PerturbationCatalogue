@@ -368,6 +368,11 @@ def main():
     parser.add_argument(
         "--yes", action="store_true", help="Proceed without confirmation"
     )
+    parser.add_argument(
+        "--drop-and-recreate-indexes",
+        action="store_true",
+        help="Drop indexes before loading and recreate them after (faster for bulk loads)",
+    )
     args = parser.parse_args()
 
     bq_client = bigquery.Client()
@@ -455,8 +460,9 @@ def main():
                     )
                     ensure_pg_table_exists(cursor, table_name, bq_table_obj.schema)
 
-                    # Drop indexes before bulk update
-                    drop_indexes(cursor, table_name)
+                    # Drop indexes before bulk update (if requested)
+                    if args.drop_and_recreate_indexes:
+                        drop_indexes(cursor, table_name)
 
                     all_to_process = sorted(plan["to_update"] + plan["to_insert"])
 
@@ -517,7 +523,8 @@ def main():
                             sys.exit(1)
 
                     # Rebuild indexes after all data for this table is loaded
-                    create_indexes(cursor, table_name)
+                    if args.drop_and_recreate_indexes:
+                        create_indexes(cursor, table_name)
 
                     # COMMIT ONCE PER TABLE
                     conn.commit()
