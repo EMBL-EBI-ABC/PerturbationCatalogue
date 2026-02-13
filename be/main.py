@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any
 from elasticsearch import AsyncElasticsearch
 import asyncpg
 from dotenv import load_dotenv
+import json
 import re
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -458,6 +459,7 @@ async def perform_search(
     page: int,
     size: int,
     search_mode: str = "targets",
+    search_after: Optional[List[Any]] = None,
 ) -> SearchResponse:
     """Perform the actual search operation"""
     is_dataset_mode = search_mode == "datasets"
@@ -467,24 +469,36 @@ async def perform_search(
         es_query = build_dataset_elasticsearch_query(query, filters)
         facet_fields = DATASET_FACET_FIELDS
         es_index = ES_DATASET_SUMMARY
+        sort_field = "dataset_id"
     else:
         es_query = build_elasticsearch_query(query, filters)
         facet_fields = FACET_FIELDS
         es_index = ES_TARGET_SUMMARY
+        sort_field = "perturbed_target_symbol"
 
     aggs = build_aggregations(facet_fields)
 
-    from_ = (page - 1) * size
+    # Deterministic sort for search_after pagination support.
+    # Always include _score first (1.0 for match_all) and a unique tiebreaker.
+    sort = [{"_score": "desc"}, {sort_field: "asc"}]
+
+    search_kwargs = {
+        "index": es_index,
+        "query": es_query,
+        "aggs": aggs,
+        "size": size,
+        "sort": sort,
+        "track_total_hits": True,
+    }
+
+    if search_after is not None:
+        search_kwargs["search_after"] = search_after
+    else:
+        search_kwargs["from_"] = (page - 1) * size
 
     # Execute search with aggregations
     try:
-        response = await db_pools["es"].search(
-            index=es_index,
-            query=es_query,
-            aggs=aggs,
-            from_=from_,
-            size=size,
-        )
+        response = await db_pools["es"].search(**search_kwargs)
     except Exception as e:
         error_detail = str(e)
         raise HTTPException(
@@ -493,11 +507,15 @@ async def perform_search(
 
     # Process results
     hits = response.get("hits", {})
-    results = [hit["_source"] for hit in hits.get("hits", [])]
+    hit_list = hits.get("hits", [])
+    results = [hit["_source"] for hit in hit_list]
 
     total = hits.get("total", {}).get("value", 0)
     total_pages = (total + size - 1) // size if total > 0 else 0
     aggregations = response.get("aggregations", {})
+
+    # Extract search_after cursor from last hit for deep pagination
+    last_sort = hit_list[-1]["sort"] if hit_list else None
 
     # Build a lookup of lowercase → original-case values from result _source
     # fields, so we can restore proper display case for aggregation keys
@@ -542,6 +560,7 @@ async def perform_search(
         total_pages=total_pages,
         results=results,
         facets=facets,
+        search_after=last_sort,
     )
 
 
@@ -658,6 +677,10 @@ async def search_get(
     ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     size: int = Query(6, ge=1, le=100, description="Number of results per page"),
+    search_after: Optional[str] = Query(
+        None,
+        description="JSON-encoded search_after cursor for deep pagination beyond 10k results",
+    ),
 ):
     """
     Search endpoint (GET) with pagination, facets, filtering, and text search.
@@ -680,7 +703,15 @@ async def search_get(
         developmental_stage_labels,
         disease_labels,
     )
-    return await perform_search(query, filters, page, size, search_mode)
+    parsed_search_after = None
+    if search_after:
+        try:
+            parsed_search_after = json.loads(search_after)
+        except (json.JSONDecodeError, TypeError):
+            parsed_search_after = None
+    return await perform_search(
+        query, filters, page, size, search_mode, parsed_search_after
+    )
 
 
 @app.post("/search", response_model=SearchResponse)
@@ -695,6 +726,7 @@ async def search_post(request: SearchRequest):
         request.page,
         request.size,
         getattr(request, "search_mode", "targets"),
+        request.search_after,
     )
 
 

@@ -83,6 +83,7 @@ def fetch_search_results(
     page: int = 1,
     size: int = 6,
     search_mode: str = "targets",
+    search_after: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """Fetch search results from backend API"""
     try:
@@ -96,6 +97,9 @@ def fetch_search_results(
                 if values:
                     params[field] = ",".join(values)
 
+        if search_after is not None:
+            params["search_after"] = json.dumps(search_after)
+
         response = requests.get(f"{BACKEND_URL}/search", params=params, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -108,6 +112,7 @@ def fetch_search_results(
             "total_pages": 0,
             "results": [],
             "facets": {},
+            "search_after": None,
         }
 
 
@@ -117,7 +122,9 @@ def fetch_all_search_results(
     page_size: int = 100,
     search_mode: str = "targets",
 ) -> List[Dict[str, Any]]:
-    """Fetch all search results by paginating through the API.
+    """Fetch all search results using cursor-based pagination.
+
+    Uses search_after cursors to paginate beyond the 10k ES limit.
 
     Args:
         query: Search query string
@@ -129,18 +136,24 @@ def fetch_all_search_results(
         List of all result records
     """
     all_results = []
+    cursor = None
     page = 1
 
     while True:
         data = fetch_search_results(
-            query=query, filters=filters, page=page, size=page_size,
+            query=query,
+            filters=filters,
+            page=page,
+            size=page_size,
             search_mode=search_mode,
+            search_after=cursor,
         )
         results = data.get("results", [])
         all_results.extend(results)
 
+        cursor = data.get("search_after")
         total_pages = data.get("total_pages", 1)
-        if page >= total_pages or not results:
+        if not results or cursor is None or page >= total_pages:
             break
         page += 1
 

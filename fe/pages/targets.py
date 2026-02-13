@@ -194,9 +194,11 @@ layout = html.Div(
                         "total": 0,
                         "total_pages": 0,
                         "current_page": 1,
+                        "search_after": None,
                     },
                 ),
                 dcc.Store(id="targets-page-store", data=1),
+                dcc.Store(id="targets-cursor-store", data={}),
             ],
             className="content-container",
         ),
@@ -240,6 +242,7 @@ def load_targets_data(query, _n_clicks):
         "total": data.get("total", 0),
         "total_pages": data.get("total_pages", 0),
         "current_page": 1,
+        "search_after": data.get("search_after"),
     }
 
 
@@ -252,15 +255,23 @@ def load_targets_data(query, _n_clicks):
     Output("targets-page-store", "data"),
     Output("targets-facets", "children"),
     Output("targets-download-container", "style"),
+    Output("targets-cursor-store", "data"),
     Input("targets-results-store", "data"),
     Input({"type": "targets-facet-filter", "field": ALL}, "value"),
     Input("targets-page-prev", "n_clicks"),
     Input("targets-page-next", "n_clicks"),
     State({"type": "targets-facet-filter", "field": ALL}, "id"),
     State("targets-page-store", "data"),
+    State("targets-cursor-store", "data"),
 )
 def render_targets_results(
-    store_data, selected_values, prev_clicks, next_clicks, filter_ids, current_page
+    store_data,
+    selected_values,
+    prev_clicks,
+    next_clicks,
+    filter_ids,
+    current_page,
+    cursor_store,
 ):
     """Render target results with server-side or client-side filtering and pagination."""
     ctx = callback_context
@@ -276,6 +287,7 @@ def render_targets_results(
             1,
             filter_placeholder("Search to see available filters."),
             {"display": "none"},
+            {},
         )
 
     # Build selected filters dict
@@ -290,19 +302,22 @@ def render_targets_results(
     triggered_prop = trigger or ""
 
     return _render_server_side(
-        store_data, selected_filters, triggered_prop, current_page
+        store_data, selected_filters, triggered_prop, current_page, cursor_store or {}
     )
 
 
-def _render_server_side(store_data, selected_filters, triggered_prop, current_page):
-    """Handle rendering with server-side pagination and filtering."""
+def _render_server_side(
+    store_data, selected_filters, triggered_prop, current_page, cursor_store
+):
+    """Handle rendering with server-side pagination and cursor-based deep pagination."""
     current_page_number = store_data.get("current_page", 1) or 1
     query = store_data.get("query") or None
+    new_cursor_store = dict(cursor_store)
+    response_search_after = None
 
     if "targets-results-store" in triggered_prop:
-        # New search or initial load
+        # New search or initial load — reset cursors
         if selected_filters:
-            # Active filters: re-fetch with both query and filters
             current_page_number = 1
             data = fetch_search_results(
                 query=query,
@@ -315,40 +330,59 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
             facets = data.get("facets", {})
             total = data.get("total", 0)
             total_pages = data.get("total_pages", 0)
+            response_search_after = data.get("search_after")
         else:
-            # No filters: use store data directly
             results = store_data.get("results", [])
             facets = store_data.get("facets", {})
             total = store_data.get("total", 0)
             total_pages = store_data.get("total_pages", 0)
             current_page_number = store_data.get("current_page", 1)
+            response_search_after = store_data.get("search_after")
+        # Reset cursor store for the new search context
+        new_cursor_store = {}
+        if response_search_after is not None:
+            new_cursor_store["2"] = response_search_after
     elif "targets-page-prev" in triggered_prop:
         current_page_number = max(1, (current_page or 1) - 1)
+        cursor = (
+            new_cursor_store.get(str(current_page_number))
+            if current_page_number > 1
+            else None
+        )
         data = fetch_search_results(
             query=query,
             filters=selected_filters or None,
             page=current_page_number,
             size=PAGE_SIZE,
             search_mode="targets",
+            search_after=cursor,
         )
         results = data.get("results", [])
         facets = data.get("facets", {})
         total = data.get("total", 0)
         total_pages = data.get("total_pages", 0)
+        response_search_after = data.get("search_after")
+        if response_search_after is not None:
+            new_cursor_store[str(current_page_number + 1)] = response_search_after
     elif "targets-page-next" in triggered_prop:
         old_total_pages = store_data.get("total_pages", 1)
         current_page_number = min(old_total_pages, (current_page or 1) + 1)
+        cursor = new_cursor_store.get(str(current_page_number))
         data = fetch_search_results(
             query=query,
             filters=selected_filters or None,
             page=current_page_number,
             size=PAGE_SIZE,
             search_mode="targets",
+            search_after=cursor,
         )
         results = data.get("results", [])
         facets = data.get("facets", {})
         total = data.get("total", 0)
         total_pages = data.get("total_pages", 0)
+        response_search_after = data.get("search_after")
+        if response_search_after is not None:
+            new_cursor_store[str(current_page_number + 1)] = response_search_after
     elif "facet-filter" in triggered_prop:
         # Facet changed: reset to page 1 with new filters
         current_page_number = 1
@@ -363,6 +397,10 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
         facets = data.get("facets", {})
         total = data.get("total", 0)
         total_pages = data.get("total_pages", 0)
+        response_search_after = data.get("search_after")
+        new_cursor_store = {}
+        if response_search_after is not None:
+            new_cursor_store["2"] = response_search_after
     else:
         # Fallback: use store data
         results = store_data.get("results", [])
@@ -398,6 +436,7 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
             current_page_number,
             filters_children,
             {"display": "none"},
+            new_cursor_store,
         )
 
     table = render_targets_table(results)
@@ -419,6 +458,7 @@ def _render_server_side(store_data, selected_filters, triggered_prop, current_pa
         current_page_number,
         filters_children,
         {"display": "flex", "justifyContent": "flex-end"},
+        new_cursor_store,
     )
 
 
