@@ -55,8 +55,30 @@ python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
-    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}" \
+    --ingestion-mode copy_nonblocking
 ```
+
+### Ingestion Modes
+
+The script supports three modes of operation via `--ingestion-mode`:
+
+1.  `live_nonblocking` (Live):
+    -   Perform all operations (delete old rows, add new rows) in a single transaction.
+    -   Does not create table copies or drop indexes.
+    -   Ideal for small datasets or frequent updates where table availability is paramount.
+    -   Non-blocking (keeps indexes online), but slower ingestion.
+
+2.  `copy_nonblocking` (Copy & Swap):
+    -   The default mode.
+    -   Creates a copy of the table (without indexes), ingests data into it, and then swaps it with the original table.
+    -   Non-blocking (original table remains available during ingestion).
+    -   Slowest due to full table copy, but safe and robust.
+
+3.  `direct_blocking` (Direct):
+    -   Drops indexes, ingests new data directly into the table, then recreates indexes and refreshes materialized views in a single huge transaction.
+    -   Most efficient (no copying), but **blocking** (table is locked/indexes dropped during the process).
+    -   Ideal for overnight synchronization or when the environment is not in use.
 
 ## 6. Remove the VM
 Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
