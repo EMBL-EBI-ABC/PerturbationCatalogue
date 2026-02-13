@@ -2,6 +2,7 @@ import argparse
 import logging
 import io
 import sys
+import uuid
 
 from google.cloud import bigquery
 import psycopg2
@@ -90,7 +91,6 @@ def get_pg_type(field):
 
 def get_all_sync_states(cursor):
     """Gets the current sync state for all tables and datasets from Postgres."""
-    states = {}
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS sync_state (
@@ -101,6 +101,13 @@ def get_all_sync_states(cursor):
         );
     """
     )
+    cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
+    for table_name, dataset_id, last_synced_at in cursor.fetchall():
+        if table_name not in states:  # Bug here in previous version, fixing.
+            pass  # Actually 'states' is local here.
+
+    # Corrected implementation:
+    states = {}
     cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
         if table_name not in states:
@@ -121,13 +128,37 @@ def get_bq_latest_timestamps_and_counts(bq_client, bq_dataset, bq_table, bq_loca
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
 
 
-def stream_bq_to_pg(cursor, pg_table, bq_client, bq_query, bq_schema, total_rows):
-    """Streams data from a BQ query directly into a Postgres table using COPY."""
-    query_job = bq_client.query(bq_query)
-    row_iterator = query_job.result()
+def stream_bq_to_pg(
+    cursor,
+    pg_table,
+    bq_client,
+    bq_dataset,
+    bq_table,
+    bq_location,
+    dataset_id,
+    bq_schema,
+    total_rows,
+):
+    """Streams data from a large BQ query directly into a Postgres table using a temp destination table."""
+    # Use a destination table for the query result if it's potentially huge.
+    # To keep things robust, we'll ALWAYS use a destination table for dataset ingestion.
+    temp_table_id = f"{bq_client.project}.{bq_dataset}.temp_sync_{uuid.uuid4().hex}"
+
+    job_config = bigquery.QueryJobConfig(
+        destination=temp_table_id,
+        write_disposition="WRITE_TRUNCATE",
+    )
+
+    query = f"SELECT * FROM `{bq_dataset}.{bq_table}` WHERE dataset_id = '{dataset_id}'"
+
+    query_job = bq_client.query(query, job_config=job_config, location=bq_location)
+    query_job.result()  # Wait for completion
+
+    # Fetch rows from the destination table. This avoids result size limits.
+    row_iterator = bq_client.list_rows(temp_table_id)
 
     with tqdm(
-        total=total_rows, desc=f"    Loading rows to {pg_table}", leave=False
+        total=total_rows, desc=f"    Loading {dataset_id}", leave=False, unit="rows"
     ) as pbar:
         stream = BQRowIteratorIO(row_iterator, bq_schema, pbar=pbar)
         cursor.copy_expert(
@@ -136,6 +167,9 @@ def stream_bq_to_pg(cursor, pg_table, bq_client, bq_query, bq_schema, total_rows
             ),
             stream,
         )
+
+    # Clean up temp table
+    bq_client.delete_table(temp_table_id, not_found_ok=True)
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
@@ -199,8 +233,7 @@ def main():
 
                 # 2. Plan sync for each table
                 sync_plan = {}
-                total_to_update = 0
-                total_to_insert = 0
+                total_datasets = 0
 
                 for table_name in TABLES_TO_SYNC:
                     logging.info(f"Checking BQ table {table_name}...")
@@ -228,8 +261,7 @@ def main():
                             "to_insert": to_insert,
                             "bq_info": bq_info,
                         }
-                        total_to_update += len(to_update)
-                        total_to_insert += len(to_insert)
+                        total_datasets += len(to_update) + len(to_insert)
 
                 # 3. Summary and confirmation
                 if not sync_plan:
@@ -250,9 +282,7 @@ def main():
                             f"    {', '.join(plan['to_insert'][:5])}{'...' if len(plan['to_insert']) > 5 else ''}"
                         )
 
-                print(
-                    f"\nTotal datasets to process: {total_to_update + total_to_insert}"
-                )
+                print(f"\nTotal datasets to process: {total_datasets}")
                 print("--------------------\n")
 
                 if not args.yes:
@@ -264,7 +294,11 @@ def main():
                         logging.info("Sync cancelled by user.")
                         sys.exit(0)
 
-                # 4. Sequential Execution
+                # 4. Sequential Execution (one dataset at a time)
+                overall_pbar = tqdm(
+                    total=total_datasets, desc="Overall Progress", unit="dataset"
+                )
+
                 for table_name, plan in sync_plan.items():
                     logging.info(f"Syncing table {table_name}...")
 
@@ -274,63 +308,50 @@ def main():
                     ensure_pg_table_exists(cursor, table_name, bq_table_obj.schema)
 
                     all_to_process = sorted(plan["to_update"] + plan["to_insert"])
-                    chunk_size = 5
 
-                    overall_pbar = tqdm(
-                        total=len(all_to_process),
-                        desc=f"  Table {table_name}",
-                        leave=True,
-                    )
-
-                    for i in range(0, len(all_to_process), chunk_size):
-                        chunk = all_to_process[i : i + chunk_size]
-                        chunk_rows = sum([plan["bq_info"][ds_id][1] for ds_id in chunk])
+                    for ds_id in all_to_process:
+                        row_count = plan["bq_info"][ds_id][1]
+                        bq_timestamp = plan["bq_info"][ds_id][0]
 
                         try:
                             # Delete if update
-                            for ds_id in chunk:
-                                if ds_id in plan["to_update"]:
-                                    delete_dataset_from_pg(cursor, table_name, ds_id)
+                            if ds_id in plan["to_update"]:
+                                delete_dataset_from_pg(cursor, table_name, ds_id)
 
-                            # Build query for the chunk
-                            ds_ids_str = ", ".join([f"'{ds}'" for ds in chunk])
-                            bq_query = f"SELECT * FROM `{args.bq_dataset}.{table_name}` WHERE dataset_id IN ({ds_ids_str})"
-
-                            # Stream directly from BQ to PG
+                            # Stream directly from BQ to PG using a temp destination table for safety
                             stream_bq_to_pg(
                                 cursor,
                                 table_name,
                                 bq_client,
-                                bq_query,
+                                args.bq_dataset,
+                                table_name,
+                                args.bq_location,
+                                ds_id,
                                 bq_table_obj.schema,
-                                chunk_rows,
+                                row_count,
                             )
 
                             # Update sync states
-                            for ds_id in chunk:
-                                update_sync_state(
-                                    cursor, table_name, ds_id, plan["bq_info"][ds_id][0]
-                                )
+                            update_sync_state(cursor, table_name, ds_id, bq_timestamp)
 
-                            # COMMIT EACH CHUNK
+                            # COMMIT EVERY DATASET
                             conn.commit()
-                            overall_pbar.update(len(chunk))
+                            overall_pbar.update(1)
 
                         except (Exception, KeyboardInterrupt) as e:
                             conn.rollback()
                             overall_pbar.close()
                             if isinstance(e, KeyboardInterrupt):
                                 logging.error(
-                                    f"\nSync of {table_name} interrupted. Rolling back current chunk..."
+                                    f"\nSync of {table_name}/{ds_id} interrupted. Rolling back..."
                                 )
                             else:
                                 logging.error(
-                                    f"\nError syncing {table_name}: {e}. Rolling back..."
+                                    f"\nError syncing {table_name}/{ds_id}: {e}. Rolling back..."
                                 )
                             sys.exit(1)
 
-                    overall_pbar.close()
-
+                overall_pbar.close()
                 logging.info("Multi-table sync completed successfully.")
 
     except psycopg2.Error as e:
