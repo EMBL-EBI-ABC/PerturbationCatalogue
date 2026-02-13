@@ -186,7 +186,7 @@ def _convert_array_column(col):
             escaped = []
             for x in val:
                 x_str = str(x).replace("\\", "\\\\").replace('"', '\\"')
-                escaped.append(f'"{ x_str}"')
+                escaped.append(f'"{x_str}"')
             result.append("{" + ",".join(escaped) + "}")
     return pa.array(result, type=pa.string())
 
@@ -247,9 +247,9 @@ def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_sch
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
 
-    copy_sql = sql.SQL("COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')").format(
-        sql.Identifier(pg_table)
-    )
+    copy_sql = sql.SQL(
+        "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
+    ).format(sql.Identifier(pg_table))
 
     max_workers = GCS_DOWNLOAD_WORKERS
     blob_iter = iter(blobs)
