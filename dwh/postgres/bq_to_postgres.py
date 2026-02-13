@@ -8,6 +8,7 @@ import os
 import sys
 import uuid
 import time
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional, Any
 
@@ -580,6 +581,8 @@ def main():
                         to_insert.append(ds_id)
                     else:
                         pg_ts = pg_info[ds_id]
+                        if pg_ts and pg_ts.tzinfo is None:
+                            pg_ts = pg_ts.replace(tzinfo=timezone.utc)
                         if bq_ts > pg_ts:
                             to_update.append(ds_id)
 
