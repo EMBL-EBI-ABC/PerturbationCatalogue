@@ -356,7 +356,7 @@ def drop_indexes(cursor, table_name, suffix=""):
     """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
     if table_name not in INDEX_DEFINITIONS:
         return
-    logging.info(f"      - Dropping indexes for {table_name}{suffix}...")
+    logging.info(f"    Dropping indexes for {table_name}{suffix}...")
     for index_name, _ in INDEX_DEFINITIONS[table_name]:
         idx = f"{index_name}{suffix}"
         logging.info(f"        Dropping {idx}...")
