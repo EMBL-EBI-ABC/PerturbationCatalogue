@@ -19,6 +19,53 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+INDEX_DEFINITIONS = {
+    "perturb_seq_dea": [
+        (
+            "idx_perturbation_dea",
+            "CREATE INDEX idx_perturbation_dea ON public.perturb_seq_dea (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_phenotype_dea",
+            "CREATE INDEX idx_phenotype_dea ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_perturbation_phenotype_dea",
+            "CREATE INDEX idx_perturbation_phenotype_dea ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_perturb_seq_dea_dataset_id_padj",
+            "CREATE INDEX idx_perturb_seq_dea_dataset_id_padj ON public.perturb_seq_dea (dataset_id, padj) WHERE gene IS NOT NULL",
+        ),
+    ],
+    "perturb_seq_gsea": [
+        (
+            "idx_perturbation_gsea",
+            "CREATE INDEX idx_perturbation_gsea ON public.perturb_seq_gsea (perturbed_target_symbol, dataset_id, fdr, nes)",
+        ),
+    ],
+    "crispr_data": [
+        (
+            "idx_crispr_data_dataset",
+            "CREATE INDEX idx_crispr_data_dataset ON public.crispr_data (dataset_id)",
+        ),
+        (
+            "idx_crispr_data_target",
+            "CREATE INDEX idx_crispr_data_target ON public.crispr_data (perturbed_target_symbol)",
+        ),
+    ],
+    "mave_data": [
+        (
+            "idx_mave_data_dataset",
+            "CREATE INDEX idx_mave_data_dataset ON public.mave_data (dataset_id)",
+        ),
+        (
+            "idx_mave_data_target",
+            "CREATE INDEX idx_mave_data_target ON public.mave_data (perturbed_target_symbol, dataset_id)",
+        ),
+    ],
+}
+
 
 def get_pg_type(field):
     """Maps BigQuery types to PostgreSQL types."""
@@ -215,6 +262,28 @@ def ensure_pg_table_exists(cursor, pg_table, bq_schema):
         )
 
 
+def drop_indexes(cursor, table_name):
+    """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
+    if table_name not in INDEX_DEFINITIONS:
+        return
+    logging.info(f"      - Dropping indexes for {table_name}...")
+    for index_name, _ in INDEX_DEFINITIONS[table_name]:
+        cursor.execute(
+            sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name))
+        )
+
+
+def create_indexes(cursor, table_name):
+    """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
+    if table_name not in INDEX_DEFINITIONS:
+        return
+    logging.info(
+        f"      - Reinstating indexes for {table_name} (this may take a while)..."
+    )
+    for _, index_sql in INDEX_DEFINITIONS[table_name]:
+        cursor.execute(index_sql)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bq-dataset", required=True)
@@ -311,6 +380,9 @@ def main():
                     )
                     ensure_pg_table_exists(cursor, table_name, bq_table_obj.schema)
 
+                    # Drop indexes before bulk update
+                    drop_indexes(cursor, table_name)
+
                     all_to_process = sorted(plan["to_update"] + plan["to_insert"])
 
                     for ds_id in all_to_process:
@@ -354,8 +426,6 @@ def main():
                             # Update sync states
                             update_sync_state(cursor, table_name, ds_id, bq_timestamp)
 
-                            # COMMIT EVERY DATASET
-                            conn.commit()
                             overall_pbar.update(1)
 
                         except (Exception, KeyboardInterrupt) as e:
@@ -370,6 +440,12 @@ def main():
                                     f"\nError syncing {table_name}/{ds_id}: {e}. Rolling back..."
                                 )
                             sys.exit(1)
+
+                    # Rebuild indexes after all data for this table is loaded
+                    create_indexes(cursor, table_name)
+
+                    # COMMIT ONCE PER TABLE
+                    conn.commit()
 
                 overall_pbar.close()
                 logging.info("Multi-table sync completed successfully.")
