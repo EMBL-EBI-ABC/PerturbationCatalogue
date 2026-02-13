@@ -101,12 +101,6 @@ def get_all_sync_states(cursor):
         );
     """
     )
-    cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
-    for table_name, dataset_id, last_synced_at in cursor.fetchall():
-        if table_name not in states:  # Bug here in previous version, fixing.
-            pass  # Actually 'states' is local here.
-
-    # Corrected implementation:
     states = {}
     cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
