@@ -50,40 +50,73 @@ pip3 install -r requirements.txt
 ## 5. Run the script
 Note: you should set `$PG_CONN` to `$PG_CONN_INTERNAL` from the list of secrets, as the VM is connected to the VPC and should connect to the SQL instance via its private IP.
 
+Standard mode (keeps indexes, updates data):
+```bash
+python3 bq_to_postgres.py \
+    --bq-dataset ${BQ_DATASET} \
+    --bq-location ${BQ_LOCATION} \
+    --pg-conn "${PG_CONN}" \
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
+```
+
+Mode with index dropping (drops indexes -> updates data -> recreates indexes):
+Use this for large updates where updating indexes row-by-row is too slow.
 ```bash
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
     --gcs-bucket "${GCLOUD_TMP_BUCKET}" \
-    --ingestion-mode copy_nonblocking
+    --drop-and-recreate-indexes
 ```
-
-### Ingestion Modes
-
-The script supports three modes of operation via `--ingestion-mode`:
-
-1.  `live_nonblocking` (Live):
-    -   Perform all operations (delete old rows, add new rows) in a single transaction.
-    -   Does not create table copies or drop indexes.
-    -   Ideal for small datasets or frequent updates where table availability is paramount.
-    -   Non-blocking (keeps indexes online), but slower ingestion.
-
-2.  `copy_nonblocking` (Copy & Swap):
-    -   The default mode.
-    -   Creates a copy of the table (without indexes), ingests data into it, and then swaps it with the original table.
-    -   Non-blocking (original table remains available during ingestion).
-    -   Slowest due to full table copy, but safe and robust.
-
-3.  `direct_blocking` (Direct):
-    -   Drops indexes, ingests new data directly into the table, then recreates indexes and refreshes materialized views in a single huge transaction.
-    -   Most efficient (no copying), but **blocking** (table is locked/indexes dropped during the process).
-    -   Ideal for overnight synchronization or when the environment is not in use.
 
 ## 6. Remove the VM
 Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
 ```bash
 gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
+```
+
+# Materialized Views
+
+The script expects the following materialized views to exist for `perturb_seq_dea`. It will refresh them concurrently after data sync.
+
+```sql
+CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
+SELECT
+    dataset_id,
+    perturbed_target_symbol,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+FROM perturb_seq_dea
+WHERE padj <= 0.05
+GROUP BY dataset_id, perturbed_target_symbol;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+
+CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
+SELECT
+    dataset_id,
+    gene,
+    COUNT(*) AS n_total,
+    COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+    COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+    AVG(score_value) AS avg_score
+FROM perturb_seq_dea
+WHERE padj <= 0.05
+GROUP BY dataset_id, gene;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, gene);
+
+CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
+SELECT
+    dataset_id,
+    COUNT(*) AS n_total
+FROM perturb_seq_dea
+WHERE gene IS NOT NULL
+GROUP BY dataset_id;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);
 ```
 
 # Migrate tables and indexes from development to production
