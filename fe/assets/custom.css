@@ -384,6 +384,11 @@ body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
+/* When a dropdown inside a facet card is open, raise that card above siblings */
+.facet-controls .facet-filter-card:focus-within {
+    z-index: 9999 !important;
+}
+
 .facet-controls .facet-filter-card .card-body {
     overflow: visible;
 }
