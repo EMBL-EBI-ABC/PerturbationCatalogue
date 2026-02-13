@@ -49,15 +49,12 @@ pip3 install -r requirements.txt
 
 ## 5. Run the script
 Note: you should set `$PG_CONN` to `$PG_CONN_INTERNAL` from the list of secrets, as the VM is connected to the VPC and should connect to the SQL instance via its private IP.
+
 ```bash
-export BQ_TABLE=...
-export PG_TABLE=...
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
-    --bq-table ${BQ_TABLE} \
     --bq-location ${BQ_LOCATION} \
-    --pg-conn "${PG_CONN}" \
-    --pg-table ${PG_TABLE}
+    --pg-conn "${PG_CONN}"
 ```
 
 ## 6. Create indexes and summary views (only when the table is fully ingested)
