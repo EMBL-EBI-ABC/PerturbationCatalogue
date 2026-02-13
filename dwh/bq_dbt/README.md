@@ -31,3 +31,7 @@ These commands should be run from this directory, `bq_dbt`.
 - A specific model and its upstream dependencies: `dbt run --select +dataset_summary`
 - A specific model and its upstream dependencies with full refresh: `dbt run --full-refresh --select +dataset_summary`. For example, this is needed if the schema has changed and all data needs to be reingested, not only the new rows.
 - Full refresh of all models (non-incremental): `dbt run --full-refresh`
+
+### Suppress datasets
+To exclude specific datasets from `unified_metadata` and downstream summary tables (while keeping them in data tables), use the `suppress_datasets` variable:
+`dbt run --vars '{"suppress_datasets": "dataset_id_1,dataset_id_2"}'`
