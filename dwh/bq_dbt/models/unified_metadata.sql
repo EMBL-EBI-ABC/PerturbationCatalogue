@@ -17,3 +17,11 @@ with
 
 select *
 from unified
+{% if var('suppress_datasets', None) %}
+    where dataset_id not in (
+        {% set suppressed_ids = var('suppress_datasets').split(',') %}
+        {% for id in suppressed_ids %}
+            '{{ id | trim }}'{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    )
+{% endif %}
