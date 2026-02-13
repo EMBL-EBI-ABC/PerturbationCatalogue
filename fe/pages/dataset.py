@@ -413,6 +413,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         "last_author",
         "study_year",
         "experiment_title",
+        "experiment_summary",
         "data_modalities",
     ]
     PRIMARY_GROUPED = {"perturbation_type"}
