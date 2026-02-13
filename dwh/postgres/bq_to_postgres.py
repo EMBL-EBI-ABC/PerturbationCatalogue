@@ -71,6 +71,12 @@ INDEX_DEFINITIONS = {
     ],
 }
 
+PERTURB_SEQ_DEA_MVIEWS = [
+    "perturb_seq_summary_perturbation",
+    "perturb_seq_summary_effect",
+    "perturb_seq_summary_dataset",
+]
+
 
 def get_pg_type(field):
     """Maps BigQuery types to PostgreSQL types."""
@@ -232,7 +238,9 @@ def _download_and_convert_blob(blob, bq_schema):
     return _prepare_table_for_copy(table, bq_schema)
 
 
-def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema):
+def load_parquet_from_gcs_to_pg(
+    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, debug_limit=None
+):
     """Loads Parquet files from GCS into Postgres using COPY.
 
     Uses concurrent GCS downloads and PyArrow's native C++ CSV writer for
@@ -246,6 +254,12 @@ def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_sch
     gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+
+    if debug_limit:
+        logging.info(
+            f"        Debug limit set: reducing shards from {len(blobs)} to {debug_limit}"
+        )
+        blobs = blobs[:debug_limit]
 
     copy_sql = sql.SQL(
         "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
@@ -343,6 +357,7 @@ def drop_indexes(cursor, table_name):
         return
     logging.info(f"      - Dropping indexes for {table_name}...")
     for index_name, _ in INDEX_DEFINITIONS[table_name]:
+        logging.info(f"        Dropping {index_name}...")
         cursor.execute(
             sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name))
         )
@@ -355,8 +370,21 @@ def create_indexes(cursor, table_name):
     logging.info(
         f"      - Reinstating indexes for {table_name} (this may take a while)..."
     )
-    for _, index_sql in INDEX_DEFINITIONS[table_name]:
+    for index_name, index_sql in INDEX_DEFINITIONS[table_name]:
+        logging.info(f"        Creating {index_name}...")
         cursor.execute(index_sql)
+
+
+def refresh_materialized_views(cursor, table_name):
+    """Refreshes materialized views dependent on the table."""
+    if table_name == "perturb_seq_dea":
+        for view_name in PERTURB_SEQ_DEA_MVIEWS:
+            logging.info(f"      - Refreshing materialized view {view_name}...")
+            cursor.execute(
+                sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
+                    sql.Identifier(view_name)
+                )
+            )
 
 
 def main():
@@ -373,13 +401,19 @@ def main():
         action="store_true",
         help="Drop indexes before loading and recreate them after (faster for bulk loads)",
     )
+    parser.add_argument(
+        "--debug-limit-N-shards",
+        type=int,
+        help="Only load the first N shards for every dataset (debugging)",
+    )
     args = parser.parse_args()
 
     bq_client = bigquery.Client()
 
     try:
-        with psycopg2.connect(args.pg_conn) as conn:
-            with conn.cursor() as cursor:
+        # Phase 1: Planning (Read-only / Meta-data fetch)
+        with psycopg2.connect(args.pg_conn) as plan_conn:
+            with plan_conn.cursor() as cursor:
                 # 1. Fetch current sync states for all tables
                 logging.info("Fetching current sync states from Postgres...")
                 all_states = get_all_sync_states(cursor)
@@ -416,121 +450,140 @@ def main():
                         }
                         total_datasets += len(to_update) + len(to_insert)
 
-                # 3. Summary and confirmation
-                if not sync_plan:
-                    logging.info("Everything is up to date. Nothing to sync.")
-                    return
+        # 3. Summary and confirmation
+        if not sync_plan:
+            logging.info("Everything is up to date. Nothing to sync.")
+            return
 
-                print("\n--- Sync Summary ---")
-                for table_name, plan in sync_plan.items():
-                    print(f"Table: {table_name}")
-                    if plan["to_update"]:
-                        print(f"  Datasets to update: {len(plan['to_update'])}")
-                        print(
-                            f"    {', '.join(plan['to_update'][:5])}{'...' if len(plan['to_update']) > 5 else ''}"
-                        )
-                    if plan["to_insert"]:
-                        print(f"  Datasets to insert: {len(plan['to_insert'])}")
-                        print(
-                            f"    {', '.join(plan['to_insert'][:5])}{'...' if len(plan['to_insert']) > 5 else ''}"
-                        )
-
-                print(f"\nTotal datasets to process: {total_datasets}")
-                print("--------------------\n")
-
-                if not args.yes:
-                    try:
-                        confirm = input("Proceed with sync? (y/N): ")
-                    except EOFError:
-                        confirm = "n"
-                    if confirm.lower() != "y":
-                        logging.info("Sync cancelled by user.")
-                        sys.exit(0)
-
-                # 4. Sequential Execution (one dataset at a time)
-                overall_pbar = tqdm(
-                    total=total_datasets, desc="Overall Progress", unit="dataset"
+        print("\n--- Sync Summary ---")
+        for table_name, plan in sync_plan.items():
+            print(f"Table: {table_name}")
+            if plan["to_update"]:
+                print(f"  Datasets to update: {len(plan['to_update'])}")
+                print(
+                    f"    {', '.join(plan['to_update'][:5])}{'...' if len(plan['to_update']) > 5 else ''}"
+                )
+            if plan["to_insert"]:
+                print(f"  Datasets to insert: {len(plan['to_insert'])}")
+                print(
+                    f"    {', '.join(plan['to_insert'][:5])}{'...' if len(plan['to_insert']) > 5 else ''}"
                 )
 
-                for table_name, plan in sync_plan.items():
-                    logging.info(f"Syncing table {table_name}...")
+        print(f"\nTotal datasets to process: {total_datasets}")
+        print("--------------------\n")
 
-                    bq_table_obj = bq_client.get_table(
-                        f"{args.bq_dataset}.{table_name}"
-                    )
-                    ensure_pg_table_exists(cursor, table_name, bq_table_obj.schema)
+        if not args.yes:
+            try:
+                confirm = input("Proceed with sync? (y/N): ")
+            except EOFError:
+                confirm = "n"
+            if confirm.lower() != "y":
+                logging.info("Sync cancelled by user.")
+                sys.exit(0)
 
-                    # Drop indexes before bulk update (if requested)
-                    if args.drop_and_recreate_indexes:
-                        drop_indexes(cursor, table_name)
+        # 4. Execution (Per-table connection and transaction)
+        overall_pbar = tqdm(
+            total=total_datasets, desc="Overall Progress", unit="dataset"
+        )
 
-                    all_to_process = sorted(plan["to_update"] + plan["to_insert"])
+        for table_name, plan in sync_plan.items():
+            logging.info(f"Syncing table {table_name}...")
 
-                    for ds_id in all_to_process:
-                        row_count = plan["bq_info"][ds_id][1]
-                        bq_timestamp = plan["bq_info"][ds_id][0]
+            try:
+                # Open a NEW connection for this table
+                conn = psycopg2.connect(args.pg_conn)
+                try:
+                    # Open a transaction block. If this block raises, it rolls back.
+                    # If it exits successfully, it commits.
+                    with conn:
+                        with conn.cursor() as cursor:
+                            bq_table_obj = bq_client.get_table(
+                                f"{args.bq_dataset}.{table_name}"
+                            )
+                            ensure_pg_table_exists(
+                                cursor, table_name, bq_table_obj.schema
+                            )
 
-                        try:
-                            # Delete if update
-                            if ds_id in plan["to_update"]:
-                                delete_dataset_from_pg(cursor, table_name, ds_id)
+                            # Drop indexes before bulk update (if requested)
+                            if args.drop_and_recreate_indexes:
+                                drop_indexes(cursor, table_name)
 
-                            # Parquet-based sync via GCS
-                            gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
-                            logging.info(f"    Processing {ds_id}:")
+                            all_to_process = sorted(
+                                plan["to_update"] + plan["to_insert"]
+                            )
 
-                            try:
-                                logging.info(
-                                    f"      - Exporting from BigQuery to GCS..."
+                            for ds_id in all_to_process:
+                                row_count = plan["bq_info"][ds_id][1]
+                                bq_timestamp = plan["bq_info"][ds_id][0]
+
+                                # Delete if update
+                                if ds_id in plan["to_update"]:
+                                    delete_dataset_from_pg(cursor, table_name, ds_id)
+
+                                # Parquet-based sync via GCS
+                                gcs_prefix = (
+                                    f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
                                 )
-                                export_dataset_to_gcs(
-                                    bq_client,
-                                    args.bq_dataset,
-                                    table_name,
-                                    args.bq_location,
-                                    args.gcs_bucket,
-                                    gcs_prefix,
-                                    ds_id,
+                                logging.info(f"    Processing {ds_id}:")
+
+                                try:
+                                    logging.info(
+                                        f"      - Exporting from BigQuery to GCS..."
+                                    )
+                                    export_dataset_to_gcs(
+                                        bq_client,
+                                        args.bq_dataset,
+                                        table_name,
+                                        args.bq_location,
+                                        args.gcs_bucket,
+                                        gcs_prefix,
+                                        ds_id,
+                                    )
+
+                                    logging.info(
+                                        f"      - Loading from GCS to Postgres..."
+                                    )
+                                    load_parquet_from_gcs_to_pg(
+                                        cursor,
+                                        table_name,
+                                        args.gcs_bucket,
+                                        gcs_prefix,
+                                        bq_table_obj.schema,
+                                        debug_limit=args.debug_limit_N_shards,
+                                    )
+                                finally:
+                                    cleanup_gcs(args.gcs_bucket, gcs_prefix)
+
+                                # Update sync states
+                                update_sync_state(
+                                    cursor, table_name, ds_id, bq_timestamp
                                 )
 
-                                logging.info(f"      - Loading from GCS to Postgres...")
-                                load_parquet_from_gcs_to_pg(
-                                    cursor,
-                                    table_name,
-                                    args.gcs_bucket,
-                                    gcs_prefix,
-                                    bq_table_obj.schema,
-                                )
-                            finally:
-                                cleanup_gcs(args.gcs_bucket, gcs_prefix)
+                                overall_pbar.update(1)
 
-                            # Update sync states
-                            update_sync_state(cursor, table_name, ds_id, bq_timestamp)
+                            # Rebuild indexes after all data for this table is loaded
+                            if args.drop_and_recreate_indexes:
+                                create_indexes(cursor, table_name)
 
-                            overall_pbar.update(1)
+                            # Refresh materialized views dependent on this table
+                            refresh_materialized_views(cursor, table_name)
 
-                        except (Exception, KeyboardInterrupt) as e:
-                            conn.rollback()
-                            overall_pbar.close()
-                            if isinstance(e, KeyboardInterrupt):
-                                logging.error(
-                                    f"\nSync of {table_name}/{ds_id} interrupted. Rolling back..."
-                                )
-                            else:
-                                logging.error(
-                                    f"\nError syncing {table_name}/{ds_id}: {e}. Rolling back..."
-                                )
-                            sys.exit(1)
+                    # Transaction commits here automatically for this table.
+                    logging.info(f"Successfully synced {table_name}.")
 
-                    # Rebuild indexes after all data for this table is loaded
-                    if args.drop_and_recreate_indexes:
-                        create_indexes(cursor, table_name)
+                finally:
+                    conn.close()
 
-                    # COMMIT ONCE PER TABLE
-                    conn.commit()
+            except Exception as e:
+                # This catches errors for THIS table's transaction.
+                # The 'with conn:' block already rolled back the DB transaction.
+                # We log the error and continue to the next table.
+                if isinstance(e, KeyboardInterrupt):
+                    raise e  # Allow Ctrl+C to stop everything
+                logging.error(f"Error syncing {table_name}: {e}. Skipping this table.")
 
-                overall_pbar.close()
-                logging.info("Multi-table sync completed successfully.")
+        overall_pbar.close()
+        logging.info("Multi-table sync operations completed.")
 
     except psycopg2.Error as e:
         logging.error(f"Postgres connection error: {e}")
