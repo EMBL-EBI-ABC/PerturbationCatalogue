@@ -19,6 +19,9 @@ class SearchRequest(BaseModel):
     )
     page: int = Field(1, ge=1, description="Page number (1-indexed)")
     size: int = Field(6, ge=1, le=100, description="Number of results per page")
+    search_after: Optional[List[Any]] = Field(
+        None, description="search_after cursor for deep pagination beyond 10k results"
+    )
 
 
 class FacetValue(BaseModel):
@@ -44,6 +47,7 @@ class SearchResponse(BaseModel):
     total_pages: int
     results: List[Dict[str, Any]]
     facets: Any
+    search_after: Optional[List[Any]] = None
 
 
 class SummaryTopEntry(BaseModel):
