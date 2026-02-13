@@ -58,28 +58,7 @@ python3 bq_to_postgres.py \
     --gcs-bucket "${GCLOUD_TMP_BUCKET}"
 ```
 
-## 6. Summary views
-Summary materialized views (e.g. `perturb_seq_summary_perturbation`, `perturb_seq_summary_effect`, `perturb_seq_summary_dataset`) and their indexes are now created automatically by the script. No manual SQL is needed.
-
-## Monitoring
-You can use this query in a separate psql session to monitor the progress of index creation:
-```sql
-SELECT
-    p.pid,
-    p.datname,
-    c.relname AS table_name,
-    i.relname AS index_name,
-    p.phase,
-    p.blocks_total,
-    p.blocks_done,
-    ROUND(100.0 * p.blocks_done / NULLIF(p.blocks_total, 0), 1) AS pct_done
-FROM pg_stat_progress_create_index p
-JOIN pg_class c ON p.relid = c.oid
-LEFT JOIN pg_class i ON p.index_relid = i.oid;
-\watch 10
-```
-
-## 7. Remove the VM
+## 6. Remove the VM
 Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
 ```bash
 gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
