@@ -57,8 +57,7 @@ python3 bq_to_postgres.py \
     --bq-table ${BQ_TABLE} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
-    --pg-table ${PG_TABLE} \
-    --gcs-bucket ${GCLOUD_TMP_BUCKET}
+    --pg-table ${PG_TABLE}
 ```
 
 ## 6. Create indexes and summary views (only when the table is fully ingested)
