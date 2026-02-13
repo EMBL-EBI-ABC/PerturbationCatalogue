@@ -166,6 +166,8 @@ def export_dataset_to_gcs(
     destination_uri = f"gs://{gcs_bucket}/{gcs_prefix}-*.parquet"
     dataset_ref = bq_client.dataset(bq_dataset)
 
+    logging.info(f"        Exporting {dataset_id} to GCS...")
+
     # Query to a temporary table to filter by dataset_id
     temp_table_id = f"temp_sync_{uuid.uuid4().hex}"
     temp_table_ref = dataset_ref.table(temp_table_id)
@@ -256,6 +258,7 @@ def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_sch
     """Loads Parquet files from GCS into Postgres using COPY."""
     gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
+    logging.info(f"        Listing blobs in {gcs_prefix}...")
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
 
     if not blobs:
@@ -310,6 +313,7 @@ def cleanup_gcs(gcs_bucket, gcs_prefix):
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
     """Deletes all rows for a given dataset_id from a Postgres table."""
+    logging.info(f"        Deleting {dataset_id} from {pg_table}...")
     cursor.execute(
         sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
             sql.Identifier(pg_table)
@@ -355,6 +359,7 @@ def drop_indexes(cursor, table_name, suffix=""):
     logging.info(f"      - Dropping indexes for {table_name}{suffix}...")
     for index_name, _ in INDEX_DEFINITIONS[table_name]:
         idx = f"{index_name}{suffix}"
+        logging.info(f"        Dropping {idx}...")
         cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
