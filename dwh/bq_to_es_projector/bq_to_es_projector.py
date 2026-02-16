@@ -18,6 +18,7 @@ from typing import Any, Dict, Iterable, Tuple
 
 from google.cloud import bigquery
 from elasticsearch import Elasticsearch, helpers, ApiError
+from tqdm import tqdm
 
 # ---------------- Config ----------------
 BQ_PROJECT = os.getenv("GCLOUD_PROJECT")
@@ -54,6 +55,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
+# Silence noisy dependency logs
+logging.getLogger("elastic_transport").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 # ------------- ES client ----------------
 def make_es_client() -> Elasticsearch:
@@ -63,7 +68,7 @@ def make_es_client() -> Elasticsearch:
         ES_URL,
         basic_auth=(ES_USER, ES_PASS),
         request_timeout=BULK_TIMEOUT,
-        verify_certs=False,
+        verify_certs=True,
     )
     return es
 
@@ -316,19 +321,44 @@ def main() -> int:
         logging.info("Starting sync for %s -> %s", table, es_index)
 
         try:
+            # If current date index already exists, delete it first
+            if es.indices.exists(index=es_index):
+                logging.info(
+                    "Index %s already exists for today. Deleting it first...", es_index
+                )
+                es.indices.delete(index=es_index)
+
             ensure_index(es, es_index, prefix)
+
+            # Use BigQuery client to get total row count for progress bar
+            bq_client = bigquery.Client(project=BQ_PROJECT)
+            table_ref = f"{BQ_PROJECT}.{BQ_DATASET}.{table}"
+            bq_table = bq_client.get_table(table_ref)
+            total_rows = bq_table.num_rows
+
             rows_iter = stream_rows_from_bq(BQ_PROJECT, BQ_DATASET, table)
 
-            logging.info("Starting bulk indexing into %s …", es_index)
+            logging.info(
+                "Starting bulk indexing into %s (total: %s) …", es_index, total_rows
+            )
+
+            pbar = tqdm(total=total_rows, desc=table, unit="rows")
+
+            def actions_with_progress():
+                for action in actions_generator(rows_iter, es_index, prefix, key_field):
+                    pbar.update(1)
+                    yield action
+
             success, errors = helpers.bulk(
                 es,
-                actions_generator(rows_iter, es_index, prefix, key_field),
+                actions_with_progress(),
                 chunk_size=BULK_CHUNK_SIZE,
                 max_retries=BULK_MAX_RETRIES,
                 request_timeout=BULK_TIMEOUT,
                 raise_on_error=False,
                 stats_only=False,
             )
+            pbar.close()
 
             if errors:
                 sample = errors[:5] if isinstance(errors, list) else errors
