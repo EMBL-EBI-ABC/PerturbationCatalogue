@@ -13,6 +13,7 @@ import os
 import sys
 import json
 import logging
+import datetime
 from typing import Any, Dict, Iterable, Tuple
 
 from google.cloud import bigquery
@@ -21,10 +22,26 @@ from elasticsearch import Elasticsearch, helpers, ApiError
 # ---------------- Config ----------------
 BQ_PROJECT = os.getenv("GCLOUD_PROJECT")
 BQ_DATASET = os.getenv("BQ_DATASET")
-BQ_TABLE = os.getenv("BQ_TABLE")
+
+TABLE_CONFIG = {
+    "dataset_summary": {
+        "index_base": "dataset-summary",
+        "key_field": "dataset_id",
+        "prefix": "dataset",
+    },
+    "target_summary": {
+        "index_base": "target-summary",
+        "key_field": "perturbed_target_symbol",
+        "prefix": "target",
+    },
+    "landing_page_summary": {
+        "index_base": "landing-page-summary",
+        "key_field": "summary",
+        "prefix": "landing-page",
+    },
+}
 
 ES_URL = (os.getenv("ES_URL") or "").rstrip("/")
-ES_INDEX = os.getenv("ES_INDEX")
 
 ES_USER = os.getenv("ES_USERNAME")
 ES_PASS = os.getenv("ES_PASSWORD")
@@ -51,18 +68,14 @@ def make_es_client() -> Elasticsearch:
     return es
 
 
-def get_index_metadata(es_index_name: str) -> Tuple[str, str]:
+def get_index_metadata(index_base: str) -> Tuple[str, str]:
     """
-    Returns (index_prefix, key_field_name) for a given ES index name.
+    Returns (index_prefix, key_field_name) for a given ES base index name.
     """
-    if es_index_name.endswith("dataset-summary"):
-        return "dataset", "dataset_id"
-    elif es_index_name.endswith("target-summary"):
-        return "target", "perturbed_target_symbol"
-    elif es_index_name.endswith("landing-page-summary"):
-        return "landing-page", "summary"
-    else:
-        raise ValueError(f"Unknown index name: {es_index_name}")
+    for cfg in TABLE_CONFIG.values():
+        if cfg["index_base"] == index_base:
+            return cfg["prefix"], cfg["key_field"]
+    raise ValueError(f"Unknown index base: {index_base}")
 
 
 def generate_dataset_summary_mapping() -> Dict[str, Any]:
@@ -124,14 +137,13 @@ def get_mapping(index_prefix: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def ensure_index(es: Elasticsearch, index: str) -> None:
+def ensure_index(es: Elasticsearch, index: str, prefix: str) -> None:
     try:
         if es.indices.exists(index=index):
             logging.info("Index %s exists.", index)
             return
 
         logging.info("Index %s does not exist. Creating...", index)
-        prefix, _ = get_index_metadata(index)
         mapping_body = get_mapping(prefix)
 
         es.indices.create(index=index, body=mapping_body)
@@ -184,13 +196,14 @@ def _coerce_num(v, to_float=False):
         return v
 
 
-def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+def transform_row(
+    row: Dict[str, Any], es_index: str, prefix: str, key_field: str
+) -> Tuple[str, Dict[str, Any]]:
     """
     Convert a BQ row to ES document.
     Ensures numerics are numeric and nested arrays are cleaned.
     """
     doc: Dict[str, Any] = {}
-    index_prefix, key_field = get_index_metadata(ES_INDEX)
 
     if key_field != "summary":
         symbol = row.get(key_field)
@@ -199,9 +212,7 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     else:
         symbol = "summary"
 
-    numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(
-        index_prefix
-    )
+    numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(prefix)
     for k, v in row.items():
         if k in numeric_int_fields:
             doc[k] = _coerce_num(v)
@@ -232,46 +243,130 @@ def transform_row(row: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     return symbol, doc
 
 
-def actions_generator(rows_iter: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+def actions_generator(
+    rows_iter: Iterable[Dict[str, Any]], es_index: str, prefix: str, key_field: str
+) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
         try:
-            _id, doc = transform_row(row)
-            yield {"_op_type": "index", "_index": ES_INDEX, "_id": _id, "_source": doc}
+            _id, doc = transform_row(row, es_index, prefix, key_field)
+            yield {"_op_type": "index", "_index": es_index, "_id": _id, "_source": doc}
         except ValueError:
             pass
 
 
-# ----------------- Main ------------------
+def prune_old_indexes(es: Elasticsearch) -> None:
+    """
+    Prune indexes for the summary families.
+    Keep live version (pointed by alias) + up to 2 older versions.
+    """
+    logging.info("Starting index pruning...")
+    index_bases = [cfg["index_base"] for cfg in TABLE_CONFIG.values()]
+
+    for base in index_bases:
+        pattern = f"*-{base}"
+        try:
+            indices = es.indices.get(index=pattern).body
+        except ApiError:
+            logging.info("No indexes found for %s", base)
+            continue
+
+        # Sort indices by name (YYYY-MM-DD prefix) descending
+        index_names = sorted(indices.keys(), reverse=True)
+        if not index_names:
+            continue
+
+        # Find the live index (pointed to by the alias)
+        try:
+            alias_info = es.indices.get_alias(name=base).body
+            live_index = list(alias_info.keys())[0] if alias_info else None
+        except ApiError:
+            live_index = None
+
+        logging.info("Index %s: live version is %s", base, live_index)
+
+        if not live_index:
+            continue
+
+        # Since live is the latest, we keep it + 2 previous versions (first 3 in sorted list)
+        to_keep = index_names[:3]
+        to_delete = [idx for idx in index_names if idx not in to_keep]
+
+        for idx in to_delete:
+            logging.info("Deleting old index: %s", idx)
+            es.indices.delete(index=idx)
+
+
 def main() -> int:
     if not ES_URL:
         logging.error("ES_URL is not set")
         return 2
 
+    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     es = make_es_client()
-    ensure_index(es, ES_INDEX)
 
-    rows_iter = stream_rows_from_bq(BQ_PROJECT, BQ_DATASET, BQ_TABLE)
+    sync_results = {}  # index_base -> new_index
 
-    logging.info("Starting bulk indexing into %s …", ES_INDEX)
-    success, errors = helpers.bulk(
-        es,
-        actions_generator(rows_iter),
-        chunk_size=BULK_CHUNK_SIZE,
-        max_retries=BULK_MAX_RETRIES,
-        request_timeout=BULK_TIMEOUT,
-        raise_on_error=False,  # collect item errors
-        stats_only=False,
-    )
+    for table, cfg in TABLE_CONFIG.items():
+        base = cfg["index_base"]
+        prefix = cfg["prefix"]
+        key_field = cfg["key_field"]
 
-    if errors:
-        # errors is a list of per-item failure dicts (can be large); show first few
-        sample = errors[:5] if isinstance(errors, list) else errors
-        logging.error(
-            "Bulk completed with item errors. Sample: %s",
-            json.dumps(sample, indent=2)[:1200],
-        )
+        es_index = f"{date_str}-{base}"
 
-    logging.info("Bulk done. Successful actions: %s", success)
+        logging.info("Starting sync for %s -> %s", table, es_index)
+
+        try:
+            ensure_index(es, es_index, prefix)
+            rows_iter = stream_rows_from_bq(BQ_PROJECT, BQ_DATASET, table)
+
+            logging.info("Starting bulk indexing into %s …", es_index)
+            success, errors = helpers.bulk(
+                es,
+                actions_generator(rows_iter, es_index, prefix, key_field),
+                chunk_size=BULK_CHUNK_SIZE,
+                max_retries=BULK_MAX_RETRIES,
+                request_timeout=BULK_TIMEOUT,
+                raise_on_error=False,
+                stats_only=False,
+            )
+
+            if errors:
+                sample = errors[:5] if isinstance(errors, list) else errors
+                logging.error(
+                    "Bulk completed with item errors. Sample: %s",
+                    json.dumps(sample, indent=2)[:1200],
+                )
+
+            logging.info("Sync for %s done. Successful: %s", table, success)
+            sync_results[base] = es_index
+
+        except Exception as e:
+            logging.error("Failed to sync table %s: %s", table, e)
+            return 1
+
+    # If all successful, move aliases
+    if len(sync_results) == len(TABLE_CONFIG):
+        logging.info("All tables synced successfully. Moving aliases...")
+        actions = []
+        for base, new_index in sync_results.items():
+            # Remove existing alias from any old indexes
+            try:
+                old_indices = es.indices.get_alias(name=base).body
+                for old_idx in old_indices:
+                    actions.append({"remove": {"index": old_idx, "alias": base}})
+            except ApiError:
+                pass
+
+            # Add new alias
+            actions.append({"add": {"index": new_index, "alias": base}})
+
+        if actions:
+            es.indices.update_aliases(body={"actions": actions})
+            logging.info("Aliases updated successfully.")
+
+        # Prune old indexes
+        prune_old_indexes(es)
+
     return 0
 
 
