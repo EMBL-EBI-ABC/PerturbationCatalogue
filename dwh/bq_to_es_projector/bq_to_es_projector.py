@@ -165,7 +165,6 @@ def stream_rows_from_bq(
 ) -> Iterable[Dict[str, Any]]:
     client = bigquery.Client(project=project)
     table_ref = f"{project}.{dataset}.{table}"
-    logging.info("Reading BigQuery rows: %s", table_ref)
     for row in client.list_rows(table_ref):
         yield dict(row)
 
@@ -341,6 +340,7 @@ def main() -> int:
             logging.info(
                 "Starting bulk indexing into %s (total: %s) …", es_index, total_rows
             )
+            logging.info("Reading BigQuery rows: %s", table_ref)
 
             pbar = tqdm(total=total_rows, desc=table, unit="rows")
 
@@ -350,11 +350,10 @@ def main() -> int:
                     yield action
 
             success, errors = helpers.bulk(
-                es,
+                es.options(request_timeout=BULK_TIMEOUT),
                 actions_with_progress(),
                 chunk_size=BULK_CHUNK_SIZE,
                 max_retries=BULK_MAX_RETRIES,
-                request_timeout=BULK_TIMEOUT,
                 raise_on_error=False,
                 stats_only=False,
             )
