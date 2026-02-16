@@ -66,7 +66,7 @@ with
 
     -- Supersets of symbols to ensure we don't miss any target that might exist only
     -- in data (unlikely but safe)
-    symbols as (
+    symbols_raw as (
         select perturbed_target_symbol
         from agg_meta
         union distinct
@@ -81,6 +81,9 @@ with
         union distinct
         select perturbed_target_symbol
         from agg_gsea
+    ),
+    symbols as (
+        select * from symbols_raw where perturbed_target_symbol is not null
     )
 
 select
