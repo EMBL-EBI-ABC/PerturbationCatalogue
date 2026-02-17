@@ -11,14 +11,12 @@ with
         select distinct * except (sample_id)
         from {{ source("perturb_seq", "metadata") }}
         where not (
-            -- Exclude rows where every '|' separated part contains 'control',
-            -- meaning that the sample *only* contains controls.
-            array_size(
-                array_filter(
-                    split(perturbed_target_symbol, '|'),
-                    x -> lower(x) not like '%control%'
-                )
-            ) = 0
+            -- Exclude rows where EVERY '|' separated part contains "control"
+            not exists (
+                select 1
+                from unnest(split(perturbed_target_symbol, '|')) as part
+                where lower(part) not like '%control%'
+            )
         )
     )
 
