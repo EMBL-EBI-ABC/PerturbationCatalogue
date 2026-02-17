@@ -11,7 +11,8 @@ with
         select distinct * except (sample_id)
         from {{ source("perturb_seq", "metadata") }}
         where not (
-            -- Exclude rows where EVERY '|' separated part contains "control"
+            -- Exclude rows where EVERY '|' separated part contains "control",
+            -- meaning that the sample *only* contains controls.
             not exists (
                 select 1
                 from unnest(split(perturbed_target_symbol, '|')) as part
