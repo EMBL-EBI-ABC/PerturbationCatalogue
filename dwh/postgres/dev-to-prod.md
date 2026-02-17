@@ -56,3 +56,23 @@ gcloud sql backups restore ${BACKUP_ID} \
   --project=${GCLOUD_PROJECT}
 # Might need to run a manual wait command suggested by the command above after that.
 ```
+
+## 4. Do the release
+1. Edit the production BE deployment to point to the new instance internal IP.
+1. Export updated metadata into production Elastic.
+1. Merge `dev` branch into `main`.
+1. Test the updated deployment.
+1. Publish release on GitHub.
+
+## 5. Clean up
+
+### 5.1. Delete migration backup
+```bash
+dev_secrets
+gcloud sql backups delete ${BACKUP_ID} \
+  --instance=${BACKUP_INSTANCE} \
+  --project=${GCLOUD_PROJECT}
+```
+
+### 5.2. Delete the old instance in prod
+Do this manually once the new instance is up and running, and the Cloud Run deployment is switched to it.
