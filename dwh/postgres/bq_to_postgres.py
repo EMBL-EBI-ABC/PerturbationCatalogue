@@ -5,9 +5,7 @@ import enum
 import io
 import logging
 import os
-import sys
 import uuid
-import time
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Tuple, Optional, Any
@@ -191,7 +189,7 @@ def export_dataset_to_gcs(
             job_config=extract_config,
         )
         extract_job.result()
-    except (Exception, KeyboardInterrupt) as e:
+    except BaseException as e:
         if query_job and not query_job.done():
             logging.info("        Cancelling BigQuery query job...")
             query_job.cancel()
@@ -254,9 +252,10 @@ def _download_and_convert_blob(blob, bq_schema):
     return _prepare_table_for_copy(table, bq_schema)
 
 
-def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema):
+def load_parquet_from_gcs_to_pg(
+    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, gcs_client
+):
     """Loads Parquet files from GCS into Postgres using COPY."""
-    gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     logging.info(f"        Listing blobs in {gcs_prefix}...")
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
@@ -301,10 +300,9 @@ def load_parquet_from_gcs_to_pg(cursor, pg_table, gcs_bucket, gcs_prefix, bq_sch
     pbar.close()
 
 
-def cleanup_gcs(gcs_bucket, gcs_prefix):
+def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
     """Removes temporary files from GCS."""
     logging.info(f"      - Cleaning up GCS files...")
-    gcs_client = storage.Client()
     bucket = gcs_client.get_bucket(gcs_bucket)
     blobs = list(bucket.list_blobs(prefix=gcs_prefix))
     for blob in blobs:
@@ -398,9 +396,8 @@ def refresh_materialized_views(cursor, table_name, concurrently=False):
                 f"        Failed to refresh {view_name} {conc_clause.strip()}: {e}. Trying without CONCURRENTLY."
             )
             if concurrently:
-                cursor.connection.rollback()  # Required to recover from error in transaction if any (though we are usually autocommit here if using concurrent)
                 # If we were in a transaction block, we can't retry easily without rollback.
-                # Assuming this runs in a state where we can retry.
+                # Assuming this runs in a state where we can retry (autocommit=True for MV refresh).
                 cursor.execute(
                     sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
                         sql.Identifier(view_name)
@@ -428,6 +425,7 @@ class TableSynchronizer:
         self.bq_location = bq_location
         self.gcs_bucket = gcs_bucket
         self.bq_client = bigquery.Client()
+        self.gcs_client = storage.Client()
 
     def sync_table(self, table_name: str, plan: Dict[str, Any]):
         logging.info(f"Syncing table {table_name}...")
@@ -435,9 +433,7 @@ class TableSynchronizer:
             self._sync_unified(table_name, plan)
             logging.info(f"Successfully synced {table_name}.")
 
-        except Exception as e:
-            if isinstance(e, KeyboardInterrupt):
-                raise e
+        except BaseException as e:
             logging.error(f"Error syncing {table_name}: {e}.")
             raise e
 
@@ -465,9 +461,10 @@ class TableSynchronizer:
                 self.gcs_bucket,
                 gcs_prefix,
                 bq_schema,
+                self.gcs_client,
             )
         finally:
-            cleanup_gcs(self.gcs_bucket, gcs_prefix)
+            cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
 
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
@@ -560,7 +557,7 @@ def main():
         with conn.cursor() as cursor:
             # fetch current state
             pg_states = get_all_sync_states(cursor)
-            bq_client = bigquery.Client()
+            bq_client = synchronizer.bq_client
 
             for table_name in TABLES_TO_SYNC:
                 logging.info(f"Checking {table_name}...")
