@@ -10,9 +10,15 @@ with
         union all by name
         select distinct * except (sample_id)
         from {{ source("perturb_seq", "metadata") }}
-        where
-            perturbed_target_symbol not like 'control%'
-            and perturbed_target_symbol not like '%None%'
+        where not (
+            -- Exclude rows where EVERY '|' separated part contains "control",
+            -- meaning that the sample *only* contains controls.
+            not exists (
+                select 1
+                from unnest(split(perturbed_target_symbol, '|')) as part
+                where lower(part) not like '%control%'
+            )
+        )
     )
 
 select *
