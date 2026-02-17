@@ -24,7 +24,7 @@ dev_secrets
 gcloud compute instances create bq-to-pg-projector \
     --project=${GCLOUD_PROJECT} \
     --zone=${GCLOUD_ZONE} \
-    --machine-type=e2-medium \
+    --machine-type=e2-highmem-4 \
     --network=default \
     --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
@@ -49,35 +49,38 @@ pip3 install -r requirements.txt
 
 ## 5. Run the script
 Note: you should set `$PG_CONN` to `$PG_CONN_INTERNAL` from the list of secrets, as the VM is connected to the VPC and should connect to the SQL instance via its private IP.
+
+Standard mode (keeps indexes, updates data):
 ```bash
-export BQ_TABLE=...
-export PG_TABLE=...
 python3 bq_to_postgres.py \
     --bq-dataset ${BQ_DATASET} \
-    --bq-table ${BQ_TABLE} \
     --bq-location ${BQ_LOCATION} \
     --pg-conn "${PG_CONN}" \
-    --pg-table ${PG_TABLE} \
-    --gcs-bucket ${GCLOUD_TMP_BUCKET}
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}"
 ```
 
-## 6. Create indexes and summary views (only when the table is fully ingested)
-Run `psql $PG_CONN` and create the indexes.
+Mode with index dropping (drops indexes -> updates data -> recreates indexes):
+Use this for large updates where updating indexes row-by-row is too slow.
+```bash
+python3 bq_to_postgres.py \
+    --bq-dataset ${BQ_DATASET} \
+    --bq-location ${BQ_LOCATION} \
+    --pg-conn "${PG_CONN}" \
+    --gcs-bucket "${GCLOUD_TMP_BUCKET}" \
+    --drop-and-recreate-indexes
+```
 
-## Perturb-Seq
+## 6. Remove the VM
+Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
+```bash
+gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
+```
 
-### DEA
+# Materialized Views
+
+The script expects the following materialized views to exist for `perturb_seq_dea`. It will refresh them concurrently after data sync.
+
 ```sql
-CREATE INDEX CONCURRENTLY idx_perturbation_dea
-  ON public.perturb_seq_dea (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_phenotype_dea
-  ON public.perturb_seq_dea (gene, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_perturbation_phenotype_dea
-  ON public.perturb_seq_dea (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange);
-CREATE INDEX CONCURRENTLY idx_perturb_seq_dea_dataset_id_padj
-  ON public.perturb_seq_dea (dataset_id, padj)
-  WHERE gene IS NOT NULL;
-
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
     dataset_id,
@@ -85,9 +88,11 @@ SELECT
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
-FROM public.perturb_seq_dea
+FROM perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, perturbed_target_symbol;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
 SELECT
@@ -97,71 +102,21 @@ SELECT
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
     AVG(score_value) AS avg_score
-FROM public.perturb_seq_dea
+FROM perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, gene;
+
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, gene);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
 SELECT
     dataset_id,
     COUNT(*) AS n_total
-FROM public.perturb_seq_dea
+FROM perturb_seq_dea
 WHERE gene IS NOT NULL
 GROUP BY dataset_id;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk
-  ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
-CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk
-  ON perturb_seq_summary_effect (dataset_id, gene);
-CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk
-  ON perturb_seq_summary_dataset (dataset_id);
-```
-
-### GSEA
-```sql
-CREATE INDEX CONCURRENTLY idx_perturbation_gsea
-  ON public.perturb_seq_gsea (perturbed_target_symbol, dataset_id, fdr, nes);
-```
-
-## CRISPR
-```sql
-CREATE INDEX CONCURRENTLY idx_crispr_data_dataset
-  ON public.crispr_data (dataset_id);
-CREATE INDEX CONCURRENTLY idx_crispr_data_target
-  ON public.crispr_data (perturbed_target_symbol);
-
-## MAVE
-```sql
-CREATE INDEX CONCURRENTLY idx_mave_data_dataset
-  ON public.mave_data (dataset_id);
-CREATE INDEX CONCURRENTLY idx_mave_data_target
-  ON public.mave_data (perturbed_target_symbol, dataset_id);
-```
-
-```
-
-## Monitoring
-You can use this query in a separate psql session to monitor the progress of index creation:
-```sql
-SELECT
-    p.pid,
-    p.datname,
-    c.relname AS table_name,
-    i.relname AS index_name,
-    p.phase,
-    p.blocks_total,
-    p.blocks_done,
-    ROUND(100.0 * p.blocks_done / NULLIF(p.blocks_total, 0), 1) AS pct_done
-FROM pg_stat_progress_create_index p
-JOIN pg_class c ON p.relid = c.oid
-LEFT JOIN pg_class i ON p.index_relid = i.oid;
-\watch 10
-```
-
-## 7. Remove the VM
-Once the ingestion is complete (including any index creation as described above), exit the session and remove the instance:
-```bash
-gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
+CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);
 ```
 
 # Migrate tables and indexes from development to production

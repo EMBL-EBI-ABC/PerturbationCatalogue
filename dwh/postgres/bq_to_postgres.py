@@ -1,192 +1,107 @@
 import argparse
-import logging
-import uuid
+import concurrent.futures
+import contextlib
+import enum
 import io
-import json
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Tuple, Optional, Any
 
-from google.cloud import bigquery, storage
 import psycopg2
 from psycopg2 import sql
+from google.cloud import bigquery, storage
 from tqdm import tqdm
+import pyarrow as pa
+import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
 
-logging.basicConfig(level=logging.INFO)
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# ------------------------------------------------------------------------------
+# Configuration & Constants
+# ------------------------------------------------------------------------------
+
+TABLES_TO_SYNC = [
+    "crispr_data",
+    "mave_data",
+    "perturb_seq_dea",
+    "perturb_seq_gsea",
+]
+
+# Defines indexes for each table.
+# Format: { table_name: [ (index_name, create_sql_template), ... ] }
+INDEX_DEFINITIONS = {
+    "perturb_seq_dea": [
+        (
+            "idx_perturbation_dea",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_phenotype_dea",
+            "CREATE INDEX {idx} ON {table} (gene, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_perturbation_phenotype_dea",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+        ),
+        (
+            "idx_perturb_seq_dea_dataset_id_padj",
+            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE gene IS NOT NULL",
+        ),
+    ],
+    "perturb_seq_gsea": [
+        (
+            "idx_perturbation_gsea",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, fdr, nes)",
+        ),
+    ],
+    "crispr_data": [
+        (
+            "idx_crispr_data_dataset",
+            "CREATE INDEX {idx} ON {table} (dataset_id)",
+        ),
+        (
+            "idx_crispr_data_target",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+        ),
+    ],
+    "mave_data": [
+        (
+            "idx_mave_data_dataset",
+            "CREATE INDEX {idx} ON {table} (dataset_id)",
+        ),
+        (
+            "idx_mave_data_target",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id)",
+        ),
+    ],
+}
+
+# Names of materialized views to refresh for each table.
+# Definitions are no longer managed here (assumed to exist).
+TABLE_MATERIALIZED_VIEWS = {
+    "perturb_seq_dea": [
+        "perturb_seq_summary_perturbation",
+        "perturb_seq_summary_effect",
+        "perturb_seq_summary_dataset",
+    ],
+}
+
+# Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
+GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
 
 
-def get_last_synced_at(pg_conn, pg_table):
-    """Gets the last synced timestamp from the sync_state table."""
-    with psycopg2.connect(pg_conn) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sync_state (
-                    table_name TEXT NOT NULL PRIMARY KEY,
-                    last_synced_at TIMESTAMP WITHOUT TIME ZONE
-                );
-            """
-            )
-            cursor.execute(
-                "SELECT last_synced_at FROM sync_state WHERE table_name = %s",
-                (pg_table,),
-            )
-            result = cursor.fetchone()
-            return result[0] if result else None
-
-
-def export_bq_to_gcs(
-    bq_client,
-    bq_dataset,
-    bq_table,
-    bq_location,
-    gcs_bucket,
-    gcs_file_path_prefix,
-    last_synced_at,
-):
-    """Exports data from BigQuery to a GCS bucket in Parquet format."""
-    dataset_ref = bq_client.dataset(bq_dataset)
-    table_ref = dataset_ref.table(bq_table)
-    destination_uri = f"gs://{gcs_bucket}/{gcs_file_path_prefix}-*.parquet"
-
-    job_config = bigquery.ExtractJobConfig(destination_format="PARQUET")
-
-    if last_synced_at:
-        # Incremental load: query to a temporary table, then export.
-        temp_table_id = f"temp_export_{uuid.uuid4().hex}"
-        temp_table_ref = dataset_ref.table(temp_table_id)
-
-        query = f"""
-        SELECT *
-        FROM `{bq_dataset}.{bq_table}`
-        WHERE max_ingested_at > TIMESTAMP('{last_synced_at.isoformat()}')
-        """
-        query_job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
-
-        query_job = bq_client.query(
-            query, job_config=query_job_config, location=bq_location
-        )
-        query_job.result()  # Wait for the query to finish
-
-        extract_job = bq_client.extract_table(
-            temp_table_ref,
-            destination_uri,
-            location=bq_location,
-            job_config=job_config,
-        )
-        extract_job.result()  # Wait for the extract to finish
-
-        bq_client.delete_table(temp_table_ref)  # Clean up temp table
-
-    else:
-        # Full load: direct export
-        extract_job = bq_client.extract_table(
-            table_ref,
-            destination_uri,
-            location=bq_location,
-            job_config=job_config,
-        )
-        extract_job.result()
-
-    logging.info(f"Exported data to gs://{gcs_bucket}/{gcs_file_path_prefix}-*.parquet")
-
-
-def load_to_postgres(
-    pg_conn,
-    pg_table,
-    gcs_bucket,
-    gcs_file_path_prefix,
-    last_synced_at,
-    bq_client,
-    bq_dataset,
-    bq_table_name,
-    force_full=False,
-):
-    """Loads data from a GCS Parquet file into a PostgreSQL table."""
-    gcs_client = storage.Client()
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    blobs = list(bucket.list_blobs(prefix=gcs_file_path_prefix))
-
-    table = bq_client.get_table(f"{bq_dataset}.{bq_table_name}")
-    schema = table.schema
-
-    def format_row(row, schema):
-        formatted = []
-        for i, field in enumerate(schema):
-            val = row[i]
-            if val is None:
-                formatted.append("")
-            elif field.mode == "REPEATED":
-                # Convert list to Postgres array literal: {"val1", "val2"}
-                # We use json.dumps to handle basic quoting for strings.
-                inner = [str(x) if not isinstance(x, str) else x for x in val]
-                # Simple quoting for postgres array format
-                escaped = []
-                for x in inner:
-                    x_str = str(x).replace('"', '\\"')
-                    escaped.append(f'"{x_str}"')
-                formatted.append(f'{{{",".join(escaped)}}}')
-            elif field.field_type == "BOOLEAN":
-                formatted.append("true" if val else "false")
-            else:
-                formatted.append(str(val))
-        return "\t".join(formatted)
-
-    def stream_parquet_to_pg(cursor, target_table, blobs, schema):
-        for blob in tqdm(blobs, desc=f"Loading shards to {target_table}"):
-            with blob.open("rb") as f:
-                parquet_file = pq.ParquetFile(f)
-                for i in range(parquet_file.num_row_groups):
-                    table = parquet_file.read_row_group(i)
-                    rows = table.to_pylist()
-
-                    # Convert rows to TSV format for COPY
-                    tsv_data = io.StringIO()
-                    for row_dict in rows:
-                        # Convert dict to ordered list based on schema
-                        row_val = [row_dict.get(field.name) for field in schema]
-                        tsv_data.write(format_row(row_val, schema) + "\n")
-
-                    tsv_data.seek(0)
-                    cursor.copy_expert(
-                        sql.SQL(
-                            "COPY {} FROM STDIN WITH (FORMAT TEXT, NULL '')"
-                        ).format(sql.Identifier(target_table)),
-                        tsv_data,
-                    )
-
-    with psycopg2.connect(pg_conn) as conn:
-        with conn.cursor() as cursor:
-            # Check if table exists
-            cursor.execute(
-                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
-                (pg_table,),
-            )
-            table_exists = cursor.fetchone()[0]
-
-            if not force_full and last_synced_at and table_exists:
-                # Incremental load: append to existing table
-                stream_parquet_to_pg(cursor, pg_table, blobs, schema)
-            else:
-                # Full load or first load
-                if table_exists:
-                    # preserve indexes by truncating instead of dropping
-                    logging.info(
-                        f"Table {pg_table} exists. Truncating for full reload."
-                    )
-                    cursor.execute(
-                        sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(pg_table))
-                    )
-                    stream_parquet_to_pg(cursor, pg_table, blobs, schema)
-                else:
-                    # Initial load: create table and load
-                    logging.info(f"Table {pg_table} does not exist. Creating.")
-                    columns = [f"{field.name} {get_pg_type(field)}" for field in schema]
-                    cursor.execute(
-                        sql.SQL("CREATE TABLE {} ({})").format(
-                            sql.Identifier(pg_table),
-                            sql.SQL(", ").join(map(sql.SQL, columns)),
-                        )
-                    )
-                    stream_parquet_to_pg(cursor, pg_table, blobs, schema)
+# ------------------------------------------------------------------------------
+# Helper Functions
+# ------------------------------------------------------------------------------
 
 
 def get_pg_type(field):
@@ -207,87 +122,492 @@ def get_pg_type(field):
     return pg_type
 
 
-def update_sync_state(
-    pg_conn, pg_table, bq_client, bq_dataset, bq_table_name, bq_location
-):
-    """Updates the sync_state table with the latest timestamp."""
-    query = f"SELECT MAX(max_ingested_at) FROM `{bq_dataset}.{bq_table_name}`"
-    query_job = bq_client.query(query, location=bq_location)
-    max_ingested_at = list(query_job.result())[0][0]
+def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
+    """Gets the current sync state for all tables and datasets from Postgres."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_state (
+            table_name TEXT NOT NULL,
+            dataset_id TEXT NOT NULL,
+            last_synced_at TIMESTAMP WITHOUT TIME ZONE,
+            PRIMARY KEY (table_name, dataset_id)
+        );
+    """
+    )
+    states = {}
+    cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
+    for table_name, dataset_id, last_synced_at in cursor.fetchall():
+        if table_name not in states:
+            states[table_name] = {}
+        states[table_name][dataset_id] = last_synced_at
+    return states
 
-    if max_ingested_at:
-        with psycopg2.connect(pg_conn) as conn:
-            with conn.cursor() as cursor:
+
+def get_bq_latest_timestamps_and_counts(
+    bq_client, bq_dataset, bq_table, bq_location
+) -> Dict[str, Tuple[Any, int]]:
+    """Gets the latest max_ingested_at and row count for every dataset_id in a BQ table."""
+    query = f"""
+        SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
+        FROM `{bq_dataset}.{bq_table}`
+        GROUP BY dataset_id
+    """
+    query_job = bq_client.query(query, location=bq_location)
+    results = query_job.result()
+    return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
+
+
+def export_dataset_to_gcs(
+    bq_client, bq_dataset, bq_table, bq_location, gcs_bucket, gcs_prefix, dataset_id
+) -> str:
+    """Exports a specific dataset from BigQuery to GCS as Parquet via a temp table."""
+    destination_uri = f"gs://{gcs_bucket}/{gcs_prefix}-*.parquet"
+    dataset_ref = bq_client.dataset(bq_dataset)
+
+    logging.info(f"        Exporting {dataset_id} to GCS...")
+
+    # Query to a temporary table to filter by dataset_id
+    temp_table_id = f"temp_sync_{uuid.uuid4().hex}"
+    temp_table_ref = dataset_ref.table(temp_table_id)
+
+    query = f"SELECT * FROM `{bq_dataset}.{bq_table}` WHERE dataset_id = '{dataset_id}'"
+    job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
+
+    query_job = None
+    extract_job = None
+
+    try:
+        query_job = bq_client.query(query, job_config=job_config, location=bq_location)
+        query_job.result()
+
+        # Extract temp table to GCS
+        extract_config = bigquery.ExtractJobConfig(destination_format="PARQUET")
+        extract_job = bq_client.extract_table(
+            temp_table_ref,
+            destination_uri,
+            location=bq_location,
+            job_config=extract_config,
+        )
+        extract_job.result()
+    except BaseException as e:
+        if query_job and not query_job.done():
+            logging.info("        Cancelling BigQuery query job...")
+            query_job.cancel()
+        if extract_job and not extract_job.done():
+            logging.info("        Cancelling BigQuery extract job...")
+            extract_job.cancel()
+        raise e
+    finally:
+        # Clean up temp table
+        bq_client.delete_table(temp_table_ref, not_found_ok=True)
+
+    return destination_uri
+
+
+def _convert_array_column(col):
+    """Convert a PyArrow list-typed column to Postgres array literal strings."""
+    result = []
+    for val in col.to_pylist():
+        if val is None:
+            result.append(None)
+        else:
+            escaped = []
+            for x in val:
+                x_str = str(x).replace("\\", "\\\\").replace('"', '\\"')
+                escaped.append(f'"{x_str}"')
+            result.append("{" + ",".join(escaped) + "}")
+    return pa.array(result, type=pa.string())
+
+
+def _prepare_table_for_copy(table, bq_schema):
+    """Prepare a PyArrow table for Postgres COPY."""
+    array_cols = {f.name for f in bq_schema if f.mode == "REPEATED"}
+
+    if array_cols:
+        new_columns = []
+        for i, name in enumerate(table.column_names):
+            col = table.column(i)
+            if name in array_cols:
+                new_columns.append(_convert_array_column(col))
+            else:
+                new_columns.append(col)
+        table = pa.table(
+            {name: col for name, col in zip(table.column_names, new_columns)}
+        )
+
+    buf = io.BytesIO()
+    write_options = pa_csv.WriteOptions(
+        include_header=False,
+        delimiter="\t",
+    )
+    pa_csv.write_csv(table, buf, write_options=write_options)
+    buf.seek(0)
+    return buf
+
+
+def _download_and_convert_blob(blob, bq_schema):
+    """Download a single Parquet shard and convert to a TSV buffer."""
+    data = blob.download_as_bytes()
+    table = pq.read_table(io.BytesIO(data))
+    return _prepare_table_for_copy(table, bq_schema)
+
+
+def load_parquet_from_gcs_to_pg(
+    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, gcs_client
+):
+    """Loads Parquet files from GCS into Postgres using COPY."""
+    bucket = gcs_client.get_bucket(gcs_bucket)
+    logging.info(f"        Listing blobs in {gcs_prefix}...")
+    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+
+    if not blobs:
+        return
+
+    copy_sql = sql.SQL(
+        "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
+    ).format(sql.Identifier(pg_table))
+
+    max_workers = GCS_DOWNLOAD_WORKERS
+    blob_iter = iter(blobs)
+    pbar = tqdm(total=len(blobs), desc="        Loading shards", leave=False)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        pending = {}
+        for blob in iter(lambda: next(blob_iter, None), None):
+            fut = pool.submit(_download_and_convert_blob, blob, bq_schema)
+            pending[fut] = blob
+            if len(pending) >= max_workers:
+                break
+
+        while pending:
+            done, _ = concurrent.futures.wait(
+                pending, return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for fut in done:
+                tsv_buf = fut.result()
+                cursor.copy_expert(copy_sql, tsv_buf)
+                tsv_buf.close()
+                del pending[fut]
+                pbar.update(1)
+
+                next_blob = next(blob_iter, None)
+                if next_blob is not None:
+                    new_fut = pool.submit(
+                        _download_and_convert_blob, next_blob, bq_schema
+                    )
+                    pending[new_fut] = next_blob
+
+    pbar.close()
+
+
+def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
+    """Removes temporary files from GCS."""
+    logging.info(f"      - Cleaning up GCS files...")
+    bucket = gcs_client.get_bucket(gcs_bucket)
+    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+    for blob in blobs:
+        blob.delete()
+
+
+def delete_dataset_from_pg(cursor, pg_table, dataset_id):
+    """Deletes all rows for a given dataset_id from a Postgres table."""
+    logging.info(f"        Deleting {dataset_id} from {pg_table}...")
+    cursor.execute(
+        sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
+            sql.Identifier(pg_table)
+        ),
+        (dataset_id,),
+    )
+
+
+def update_sync_state(cursor, pg_table, dataset_id, timestamp):
+    """Updates or inserts the sync state for a specific dataset."""
+    cursor.execute(
+        """
+        INSERT INTO sync_state (table_name, dataset_id, last_synced_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (table_name, dataset_id) DO UPDATE
+        SET last_synced_at = EXCLUDED.last_synced_at;
+    """,
+        (pg_table, dataset_id, timestamp),
+    )
+
+
+def ensure_pg_table_exists(cursor, pg_table, bq_schema):
+    """Ensures the target table exists in Postgres, creating it if necessary."""
+    cursor.execute(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
+        (pg_table,),
+    )
+    if not cursor.fetchone()[0]:
+        logging.info(f"Table {pg_table} does not exist. Creating.")
+        columns = [f"{field.name} {get_pg_type(field)}" for field in bq_schema]
+        cursor.execute(
+            sql.SQL("CREATE TABLE {} ({})").format(
+                sql.Identifier(pg_table),
+                sql.SQL(", ").join(map(sql.SQL, columns)),
+            )
+        )
+
+
+def drop_indexes(cursor, table_name, suffix=""):
+    """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
+    if table_name not in INDEX_DEFINITIONS:
+        return
+    logging.info(f"    Dropping indexes for {table_name}{suffix}...")
+    for index_name, _ in INDEX_DEFINITIONS[table_name]:
+        idx = f"{index_name}{suffix}"
+        logging.info(f"        Dropping {idx}...")
+        cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
+
+
+def create_indexes(cursor, table_name, suffix=""):
+    """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
+    if table_name not in INDEX_DEFINITIONS:
+        return
+    logging.info(
+        f"      - Creating indexes for {table_name}{suffix} (this may take a while)..."
+    )
+    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+        idx = f"{index_name}{suffix}"
+        logging.info(f"        Creating {idx}...")
+        index_sql = index_sql_template.format(
+            idx=sql.Identifier(idx).as_string(cursor.connection),
+            table=sql.Identifier(f"{table_name}{suffix}").as_string(cursor.connection),
+        )
+        cursor.execute(index_sql)
+
+
+def refresh_materialized_views(cursor, table_name, concurrently=False):
+    """Refreshes materialized views associated with the table."""
+    if table_name not in TABLE_MATERIALIZED_VIEWS:
+        return
+    for view_name in TABLE_MATERIALIZED_VIEWS[table_name]:
+        logging.info(f"      - Refreshing materialized view {view_name}...")
+        conc_clause = "CONCURRENTLY " if concurrently else ""
+        try:
+            cursor.execute(
+                sql.SQL("REFRESH MATERIALIZED VIEW {}{}").format(
+                    sql.SQL(conc_clause), sql.Identifier(view_name)
+                )
+            )
+        except psycopg2.Error as e:
+            logging.warning(
+                f"        Failed to refresh {view_name} {conc_clause.strip()}: {e}. Trying without CONCURRENTLY."
+            )
+            if concurrently:
+                # If we were in a transaction block, we can't retry easily without rollback.
+                # Assuming this runs in a state where we can retry (autocommit=True for MV refresh).
                 cursor.execute(
-                    """
-                    INSERT INTO sync_state (table_name, last_synced_at)
-                    VALUES (%s, %s)
-                    ON CONFLICT (table_name) DO UPDATE
-                    SET last_synced_at = EXCLUDED.last_synced_at;
-                """,
-                    (pg_table, max_ingested_at),
+                    sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
+                        sql.Identifier(view_name)
+                    )
                 )
 
 
-def cleanup_gcs(gcs_bucket, gcs_file_path_prefix):
-    """Removes the temporary files from GCS."""
-    gcs_client = storage.Client()
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    blobs = list(bucket.list_blobs(prefix=gcs_file_path_prefix))
-    for blob in blobs:
-        blob.delete()
-    logging.info(f"Deleted files with prefix gs://{gcs_bucket}/{gcs_file_path_prefix}")
+# ------------------------------------------------------------------------------
+# Core Logic Class
+# ------------------------------------------------------------------------------
+
+
+class TableSynchronizer:
+    def __init__(
+        self,
+        drop_and_recreate_indexes: bool,
+        pg_conn_str: str,
+        bq_dataset: str,
+        bq_location: str,
+        gcs_bucket: str,
+    ):
+        self.drop_and_recreate_indexes = drop_and_recreate_indexes
+        self.pg_conn_str = pg_conn_str
+        self.bq_dataset = bq_dataset
+        self.bq_location = bq_location
+        self.gcs_bucket = gcs_bucket
+        self.bq_client = bigquery.Client()
+        self.gcs_client = storage.Client()
+
+    def sync_table(self, table_name: str, plan: Dict[str, Any]):
+        logging.info(f"Syncing table {table_name}...")
+        try:
+            self._sync_unified(table_name, plan)
+            logging.info(f"Successfully synced {table_name}.")
+
+        except BaseException as e:
+            logging.error(f"Error syncing {table_name}: {e}.")
+            raise e
+
+    def _get_bq_schema(self, table_name):
+        return self.bq_client.get_table(f"{self.bq_dataset}.{table_name}").schema
+
+    def _ingest_dataset_logic(self, cursor, pg_table, table_name, ds_id, bq_schema):
+        """Standard ingestion: export, delete, copy."""
+        gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+        logging.info(f"    Processing {ds_id}...")
+        try:
+            export_dataset_to_gcs(
+                self.bq_client,
+                self.bq_dataset,
+                table_name,
+                self.bq_location,
+                self.gcs_bucket,
+                gcs_prefix,
+                ds_id,
+            )
+            delete_dataset_from_pg(cursor, pg_table, ds_id)
+            load_parquet_from_gcs_to_pg(
+                cursor,
+                pg_table,
+                self.gcs_bucket,
+                gcs_prefix,
+                bq_schema,
+                self.gcs_client,
+            )
+        finally:
+            cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
+
+    def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
+        """
+        Unified Sync Mode:
+        - Single transaction for:
+            1. (Optional) Drop Indexes
+            2. Data Updates (Delete + Insert) for all datasets
+            3. (Optional) Recreate Indexes
+            4. Update sync_state
+        - (Separate) Refresh MVs concurrently.
+        """
+        bq_schema = self._get_bq_schema(table_name)
+        datasets = sorted(plan["to_update"] + plan["to_insert"])
+
+        # 1. Main Transaction Block
+        with psycopg2.connect(self.pg_conn_str) as conn:
+            with conn.cursor() as cursor:
+                ensure_pg_table_exists(cursor, table_name, bq_schema)
+
+                logging.info(
+                    f"    Starting transaction for {len(datasets)} datasets..."
+                )
+
+                # A. Drop Indexes (if requested)
+                if self.drop_and_recreate_indexes:
+                    drop_indexes(cursor, table_name)
+
+                # B. Ingest Loop
+                for ds_id in tqdm(
+                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
+                ):
+                    # Data Ingestion
+                    self._ingest_dataset_logic(
+                        cursor, table_name, table_name, ds_id, bq_schema
+                    )
+
+                    # Update sync state
+                    bq_ts = plan["bq_info"][ds_id][0]
+                    update_sync_state(cursor, table_name, ds_id, bq_ts)
+
+                # C. Recreate Indexes (if requested)
+                if self.drop_and_recreate_indexes:
+                    create_indexes(cursor, table_name)
+
+        # 2. Materialized View Refresh (concurrently, separate connection)
+        # Only if we successfully committed the transaction above.
+        with psycopg2.connect(self.pg_conn_str) as conn:
+            conn.autocommit = (
+                True  # Required for REFRESH MATERIALIZED VIEW CONCURRENTLY
+            )
+            with conn.cursor() as cursor:
+                refresh_materialized_views(cursor, table_name, concurrently=True)
+
+
+# ------------------------------------------------------------------------------
+# Main Execution
+# ------------------------------------------------------------------------------
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--bq-dataset", required=True)
-    parser.add_argument("--bq-table", required=True)
-    parser.add_argument("--bq-location", required=True)
-    parser.add_argument("--pg-conn", required=True)
-    parser.add_argument("--pg-table", required=True)
-    parser.add_argument("--gcs-bucket", required=True)
+    parser = argparse.ArgumentParser(description="BigQuery to PostgreSQL Sync Script")
+    parser.add_argument("--bq-dataset", required=True, help="BigQuery dataset name")
+    parser.add_argument("--bq-location", required=True, help="BigQuery location")
+    parser.add_argument("--pg-conn", required=True, help="PostgreSQL connection string")
     parser.add_argument(
-        "--full", action="store_true", help="Perform a full reload of the table"
+        "--gcs-bucket", required=True, help="GCS bucket for temporary files"
     )
+    parser.add_argument(
+        "--drop-and-recreate-indexes",
+        action="store_true",
+        help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
+    )
+
     args = parser.parse_args()
 
-    bq_client = bigquery.Client()
-    gcs_file_path_prefix = f"tmp/{args.bq_dataset}_{args.bq_table}_{uuid.uuid4()}"
-
-    last_synced_at = (
-        get_last_synced_at(args.pg_conn, args.pg_table) if not args.full else None
+    # Initialize synchronizer
+    synchronizer = TableSynchronizer(
+        drop_and_recreate_indexes=args.drop_and_recreate_indexes,
+        pg_conn_str=args.pg_conn,
+        bq_dataset=args.bq_dataset,
+        bq_location=args.bq_location,
+        gcs_bucket=args.gcs_bucket,
     )
 
-    export_bq_to_gcs(
-        bq_client,
-        args.bq_dataset,
-        args.bq_table,
-        args.bq_location,
-        args.gcs_bucket,
-        gcs_file_path_prefix,
-        last_synced_at,
-    )
-    load_to_postgres(
-        args.pg_conn,
-        args.pg_table,
-        args.gcs_bucket,
-        gcs_file_path_prefix,
-        last_synced_at,
-        bq_client,
-        args.bq_dataset,
-        args.bq_table,
-        force_full=args.full,
-    )
-    update_sync_state(
-        args.pg_conn,
-        args.pg_table,
-        bq_client,
-        args.bq_dataset,
-        args.bq_table,
-        args.bq_location,
-    )
-    cleanup_gcs(args.gcs_bucket, gcs_file_path_prefix)
+    # Database connection for planning
+    conn = psycopg2.connect(args.pg_conn)
+    conn.autocommit = True
+
+    try:
+        with conn.cursor() as cursor:
+            # fetch current state
+            pg_states = get_all_sync_states(cursor)
+            bq_client = synchronizer.bq_client
+
+            for table_name in TABLES_TO_SYNC:
+                logging.info(f"Checking {table_name}...")
+
+                # 1. Get BQ state
+                try:
+                    bq_info = get_bq_latest_timestamps_and_counts(
+                        bq_client, args.bq_dataset, table_name, args.bq_location
+                    )
+                except Exception as e:
+                    logging.warning(
+                        f"Could not fetch BQ info for {table_name}: {e}. Skipping."
+                    )
+                    continue
+
+                # 2. Compare with PG state
+                pg_info = pg_states.get(table_name, {})
+                to_insert = []
+                to_update = []
+
+                for ds_id, (bq_ts, bq_count) in bq_info.items():
+                    if ds_id not in pg_info:
+                        to_insert.append(ds_id)
+                    else:
+                        pg_ts = pg_info[ds_id]
+                        if pg_ts and pg_ts.tzinfo is None:
+                            pg_ts = pg_ts.replace(tzinfo=timezone.utc)
+                        if bq_ts > pg_ts:
+                            to_update.append(ds_id)
+
+                if not to_insert and not to_update:
+                    logging.info(f"  {table_name} is up to date.")
+                    continue
+
+                # 3. Create plan
+                plan = {
+                    "to_insert": to_insert,
+                    "to_update": to_update,
+                    "bq_info": bq_info,
+                }
+
+                logging.info(f"  Plan for {table_name}:")
+                logging.info(f"    To Insert: {len(to_insert)}")
+                logging.info(f"    To Update: {len(to_update)}")
+
+                # 4. Execute Sync
+                synchronizer.sync_table(table_name, plan)
+
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
