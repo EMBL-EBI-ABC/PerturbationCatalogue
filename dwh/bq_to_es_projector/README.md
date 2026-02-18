@@ -9,7 +9,7 @@ The script is automated and will:
 2. If the sync is successful, move aliases such as `dataset-summary` to point to the latest index version.
 3. If the sync is successful, prune old index versions to keep only the live one + up to two earlier versions. 
 
-```python
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

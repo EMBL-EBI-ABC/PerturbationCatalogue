@@ -73,16 +73,6 @@ def make_es_client() -> Elasticsearch:
     return es
 
 
-def get_index_metadata(index_base: str) -> Tuple[str, str]:
-    """
-    Returns (index_prefix, key_field_name) for a given ES base index name.
-    """
-    for cfg in TABLE_CONFIG.values():
-        if cfg["index_base"] == index_base:
-            return cfg["prefix"], cfg["key_field"]
-    raise ValueError(f"Unknown index base: {index_base}")
-
-
 def generate_dataset_summary_mapping() -> Dict[str, Any]:
     """Dynamically generate mapping for dataset-summary from be/dataset_metadata.json"""
     mapping = {
@@ -103,8 +93,6 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     metadata_path = os.path.join(script_dir, "../../be/dataset_metadata.json")
-    if not os.path.exists(metadata_path):
-        metadata_path = "dataset_metadata.json"
 
     with open(metadata_path, "r") as f:
         meta = json.load(f)
@@ -135,7 +123,12 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
 def get_mapping(index_prefix: str) -> Dict[str, Any]:
     if index_prefix == "dataset":
         return generate_dataset_summary_mapping()
-    mapping_file = f"{index_prefix}-summary_settings+mapping.json"
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mapping_file = os.path.join(
+        script_dir, f"{index_prefix}-summary_settings+mapping.json"
+    )
+
     if not os.path.exists(mapping_file):
         raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
     with open(mapping_file, "r") as f:
@@ -201,7 +194,7 @@ def _coerce_num(v, to_float=False):
 
 
 def transform_row(
-    row: Dict[str, Any], es_index: str, prefix: str, key_field: str
+    row: Dict[str, Any], prefix: str, key_field: str
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Convert a BQ row to ES document.
@@ -252,7 +245,7 @@ def actions_generator(
 ) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
         try:
-            _id, doc = transform_row(row, es_index, prefix, key_field)
+            _id, doc = transform_row(row, prefix, key_field)
             yield {"_op_type": "index", "_index": es_index, "_id": _id, "_source": doc}
         except ValueError:
             pass
@@ -267,7 +260,7 @@ def prune_old_indexes(es: Elasticsearch) -> None:
     index_bases = [cfg["index_base"] for cfg in TABLE_CONFIG.values()]
 
     for base in index_bases:
-        pattern = f"*-{base}"
+        pattern = f"????-??-??-{base}"
         try:
             indices = es.indices.get(index=pattern).body
         except ApiError:
@@ -292,7 +285,10 @@ def prune_old_indexes(es: Elasticsearch) -> None:
             continue
 
         # Since live is the latest, we keep it + 2 previous versions (first 3 in sorted list)
-        to_keep = index_names[:3]
+        to_keep = set(index_names[:3])
+        if live_index:
+            to_keep.add(live_index)
+
         to_delete = [idx for idx in index_names if idx not in to_keep]
 
         for idx in to_delete:
@@ -305,8 +301,13 @@ def main() -> int:
         logging.error("ES_URL is not set")
         return 2
 
+    if not BQ_PROJECT or not BQ_DATASET:
+        logging.error("GCLOUD_PROJECT and BQ_DATASET must be set")
+        return 2
+
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     es = make_es_client()
+    bq_client = bigquery.Client(project=BQ_PROJECT)
 
     sync_results = {}  # index_base -> new_index
 
@@ -330,7 +331,6 @@ def main() -> int:
             ensure_index(es, es_index, prefix)
 
             # Use BigQuery client to get total row count for progress bar
-            bq_client = bigquery.Client(project=BQ_PROJECT)
             table_ref = f"{BQ_PROJECT}.{BQ_DATASET}.{table}"
             bq_table = bq_client.get_table(table_ref)
             total_rows = bq_table.num_rows
@@ -349,7 +349,7 @@ def main() -> int:
                     pbar.update(1)
                     yield action
 
-            success, errors = helpers.bulk(
+            success, bulk_errors = helpers.bulk(
                 es.options(request_timeout=BULK_TIMEOUT),
                 actions_with_progress(),
                 chunk_size=BULK_CHUNK_SIZE,
@@ -359,8 +359,10 @@ def main() -> int:
             )
             pbar.close()
 
-            if errors:
-                sample = errors[:5] if isinstance(errors, list) else errors
+            if bulk_errors:
+                sample = (
+                    bulk_errors[:5] if isinstance(bulk_errors, list) else bulk_errors
+                )
                 logging.error(
                     "Bulk completed with item errors. Sample: %s",
                     json.dumps(sample, indent=2)[:1200],
