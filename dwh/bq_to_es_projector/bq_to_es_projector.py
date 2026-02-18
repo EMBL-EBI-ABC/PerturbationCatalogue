@@ -14,6 +14,7 @@ import sys
 import json
 import logging
 import datetime
+import re
 from typing import Any, Dict, Iterable, Tuple
 
 from google.cloud import bigquery
@@ -260,16 +261,21 @@ def prune_old_indexes(es: Elasticsearch) -> None:
     index_bases = [cfg["index_base"] for cfg in TABLE_CONFIG.values()]
 
     for base in index_bases:
-        pattern = f"????-??-??-{base}"
+        pattern = f"*-{base}"
         try:
             indices = es.indices.get(index=pattern).body
+            all_names = sorted(indices.keys(), reverse=True)
+            # Specifically match YYYY-MM-DD-index-name
+            regex = re.compile(r"^\d{4}-\d{2}-\d{2}-" + re.escape(base) + r"$")
+            index_names = [n for n in all_names if regex.match(n)]
         except ApiError:
-            logging.info("No indexes found for %s", base)
-            continue
+            index_names = []
 
-        # Sort indices by name (YYYY-MM-DD prefix) descending
-        index_names = sorted(indices.keys(), reverse=True)
         if not index_names:
+            logging.error(
+                "No indices found for %s! This is unexpected as there should be at least the live version.",
+                base,
+            )
             continue
 
         # Find the live index (pointed to by the alias)
@@ -279,10 +285,8 @@ def prune_old_indexes(es: Elasticsearch) -> None:
         except ApiError:
             live_index = None
 
-        logging.info("Index %s: live version is %s", base, live_index)
-
         if not live_index:
-            continue
+            logging.warning("No live index found for alias %s", base)
 
         # Since live is the latest, we keep it + 2 previous versions (first 3 in sorted list)
         to_keep = set(index_names[:3])
@@ -291,9 +295,22 @@ def prune_old_indexes(es: Elasticsearch) -> None:
 
         to_delete = [idx for idx in index_names if idx not in to_keep]
 
-        for idx in to_delete:
-            logging.info("Deleting old index: %s", idx)
-            es.indices.delete(index=idx)
+        if not to_delete:
+            logging.info(
+                "3 or less total versions found for %s and all kept: %s",
+                base,
+                ", ".join(sorted(list(to_keep))),
+            )
+        else:
+            logging.info(
+                "More than 3 versions found for %s. Keeping: %s. Pruning: %s",
+                base,
+                ", ".join(sorted(list(to_keep))),
+                ", ".join(to_delete),
+            )
+            for idx in to_delete:
+                logging.info("Deleting old index: %s", idx)
+                es.indices.delete(index=idx)
 
 
 def main() -> int:
