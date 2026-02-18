@@ -3,17 +3,28 @@
 ## 1. Create a manual backup in dev
 ```bash
 dev_secrets
-gcloud sql backups create \
+export BACKUP_DESCRIPTION="cross-project migration backup"
+# Capture the operation ID from the backup creation
+export BACKUP_OP=$(gcloud sql backups create \
   --instance=${PG_INSTANCE_ID} \
   --project=${GCLOUD_PROJECT} \
-  --description="cross-project migration backup"
+  --description="${BACKUP_DESCRIPTION}" \
+  --async \
+  --format="value(name)")
+# Wait for the backup operation to complete
+gcloud beta sql operations wait ${BACKUP_OP} \
+  --project=${GCLOUD_PROJECT}
+# Retrieve the ID of the backup we just created, filtering by description
 export BACKUP_ID=$(gcloud sql backups list \
   --instance="${PG_INSTANCE_ID}" \
   --project="${GCLOUD_PROJECT}" \
+  --filter="description='${BACKUP_DESCRIPTION}'" \
   --sort-by="~windowStartTime" \
   --limit=1 \
   --format="value(id)")
-export DATABASE_VERSION=$(gcloud sql instances describe ${PG_INSTANCE_ID} --project=${GCLOUD_PROJECT} --format="value(databaseVersion)")
+export DATABASE_VERSION=$(gcloud sql instances describe ${PG_INSTANCE_ID} \
+  --project=${GCLOUD_PROJECT} \
+  --format="value(databaseVersion)")
 export BACKUP_INSTANCE=${PG_INSTANCE_ID}
 export BACKUP_PROJECT=${GCLOUD_PROJECT}
 ```
@@ -49,16 +60,19 @@ gcloud sql users set-password postgres \
 ## 3. Restore the backup to the new instance
 ```bash
 prod_secrets
-gcloud sql backups restore ${BACKUP_ID} \
+export RESTORE_OP=$(gcloud sql backups restore ${BACKUP_ID} \
   --backup-instance=${BACKUP_INSTANCE} \
   --backup-project=${BACKUP_PROJECT} \
   --restore-instance=${NEW_INSTANCE_ID} \
+  --project=${GCLOUD_PROJECT} \
+  --async \
+  --format="value(name)")
+gcloud beta sql operations wait ${RESTORE_OP} \
   --project=${GCLOUD_PROJECT}
-# Might need to run a manual wait command suggested by the command above after that.
 ```
 
 ## 4. Do the release
-1. Edit the production BE deployment to point to the new instance internal IP.
+1. Edit the production BE deployment to point to the new instance internal IP (in the Cloud Run settings).
 1. Export updated metadata into production Elastic.
 1. Merge `dev` branch into `main`.
 1. Test the updated deployment.

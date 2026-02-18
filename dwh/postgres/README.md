@@ -76,9 +76,10 @@ Once the ingestion is complete (including any index creation as described above)
 gcloud compute instances delete bq-to-pg-projector --project ${GCLOUD_PROJECT} --zone=${GCLOUD_ZONE}
 ```
 
-# Materialized Views
-
 The script expects the following materialized views to exist for `perturb_seq_dea`. It will refresh them concurrently after data sync.
+
+> [!NOTE]
+> Create these views once manually after the initial data load. They'll only need to be recreated if the database is wiped.
 
 ```sql
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
@@ -92,6 +93,7 @@ FROM perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, perturbed_target_symbol;
 
+-- Unique index is required for REFRESH MATERIALIZED VIEW CONCURRENTLY
 CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
@@ -106,6 +108,7 @@ FROM perturb_seq_dea
 WHERE padj <= 0.05
 GROUP BY dataset_id, gene;
 
+-- Unique index is required for REFRESH MATERIALIZED VIEW CONCURRENTLY
 CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, gene);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
@@ -116,5 +119,6 @@ FROM perturb_seq_dea
 WHERE gene IS NOT NULL
 GROUP BY dataset_id;
 
+-- Unique index is required for REFRESH MATERIALIZED VIEW CONCURRENTLY
 CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);
 ```
