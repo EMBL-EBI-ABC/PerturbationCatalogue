@@ -89,6 +89,7 @@ BUILD_ID=$(gcloud builds submit "$REPO_ROOT" \
     --project="$GCLOUD_PROJECT" \
     --region="$GCLOUD_REGION" \
     --config="$SCRIPT_DIR/cloudbuild.yaml" \
+    --gcs-source-staging-dir="gs://$GCLOUD_TMP_BUCKET/cloudbuild-source" \
     --substitutions="\
 _GCLOUD_PROJECT=$GCLOUD_PROJECT,\
 _GCLOUD_REGION=$GCLOUD_REGION,\

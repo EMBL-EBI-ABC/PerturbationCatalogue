@@ -2,6 +2,8 @@
 
 Automated pipeline for transforming and loading data from BigQuery to Postgres and Elasticsearch.
 
+> **Before running any commands in this document**, set up the environment by running `dev_secrets`.
+
 ## Pipeline stages
 
 The pipeline runs three stages sequentially:
@@ -27,7 +29,6 @@ gcloud auth application-default login
 ### 2. Enable required APIs
 
 ```bash
-dev_secrets
 gcloud services enable cloudbuild.googleapis.com --project=$GCLOUD_PROJECT
 gcloud services enable compute.googleapis.com --project=$GCLOUD_PROJECT
 gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJECT
@@ -35,19 +36,13 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-Source your secrets before running the pipeline:
-```bash
-dev_secrets
-```
-
-Required variables: `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
+The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
 
 ### 4. Grant IAM permissions to Cloud Build service account
 
 The Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`) needs the following roles:
 
 ```bash
-dev_secrets
 export CB_SA=$(gcloud projects describe $GCLOUD_PROJECT --format='value(projectNumber)')@cloudbuild.gserviceaccount.com
 
 gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
@@ -69,41 +64,20 @@ gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
 
 ### 5. Create Cloud Build private worker pool
 
-The pipeline connects to Cloud SQL via its internal (VPC) IP. This requires a Cloud Build [private worker pool](https://cloud.google.com/build/docs/private-pools/create-manage-private-pools) connected to your VPC.
+The pipeline connects to Cloud SQL via its internal (VPC) IP. This requires a Cloud Build private worker pool connected to your VPC.
 
 **One-time setup:**
 
 ```bash
-dev_secrets
-
-# Create the private worker pool connected to the default VPC
 gcloud builds worker-pools create dwh-pipeline-pool \
     --project=$GCLOUD_PROJECT \
     --region=$GCLOUD_REGION \
     --peered-network=projects/$GCLOUD_PROJECT/global/networks/default
 ```
 
-> **Note:** If the `servicenetworking.googleapis.com` API was just enabled, you may need to wait a few minutes before creating the pool. If you get an error about a service networking connection, create it first:
-> ```bash
-> gcloud compute addresses create cloudbuild-worker-range \
->     --global \
->     --purpose=VPC_PEERING \
->     --addresses=192.168.0.0 \
->     --prefix-length=24 \
->     --network=default \
->     --project=$GCLOUD_PROJECT
->
-> gcloud services vpc-peerings connect \
->     --service=servicenetworking.googleapis.com \
->     --ranges=cloudbuild-worker-range \
->     --network=default \
->     --project=$GCLOUD_PROJECT
-> ```
-
 ## Running the pipeline
 
 ```bash
-dev_secrets
 ./dwh/trigger_pipeline.sh
 ```
 
