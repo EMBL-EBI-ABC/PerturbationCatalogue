@@ -33,9 +33,7 @@
       clearBtn.addEventListener("click", function () {
         var portal = document.getElementById("chat-data-portal");
         if (portal) portal.innerHTML = "";
-        clearBtn.style.display = "none";
-        var ph = document.getElementById("chat-portal-placeholder");
-        if (ph) ph.style.display = "";
+        updatePortalVisibility();
       });
     }
 
@@ -261,6 +259,15 @@
 
   // --- Visualizations ---
 
+  function updatePortalVisibility() {
+    var portal = document.getElementById("chat-data-portal");
+    var clearBtn = document.getElementById("chat-clear-portal-btn");
+    var ph = document.getElementById("chat-portal-placeholder");
+    var hasItems = portal && portal.children.length > 0;
+    if (clearBtn) clearBtn.style.display = hasItems ? "" : "none";
+    if (ph) ph.style.display = hasItems ? "none" : "";
+  }
+
   function renderVisualization(data) {
     var portal = document.getElementById("chat-data-portal");
     if (!portal) return;
@@ -276,10 +283,24 @@
     var wrapper = document.createElement("div");
     wrapper.className = "viz-container";
 
+    var header = document.createElement("div");
+    header.className = "viz-header";
+
     var title = document.createElement("h6");
     title.className = "viz-title";
     title.textContent = data.title || "Visualization";
-    wrapper.appendChild(title);
+    header.appendChild(title);
+
+    var removeBtn = document.createElement("button");
+    removeBtn.className = "viz-remove-btn";
+    removeBtn.textContent = "Clear";
+    removeBtn.addEventListener("click", function () {
+      wrapper.remove();
+      updatePortalVisibility();
+    });
+    header.appendChild(removeBtn);
+
+    wrapper.appendChild(header);
 
     var content = document.createElement("div");
     content.className = "viz-content";

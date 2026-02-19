@@ -112,7 +112,7 @@ layout = dbc.Container(
                             "Data Portal", className="mb-0", style={"fontWeight": "600"}
                         ),
                         html.Button(
-                            "Clear",
+                            "Clear all",
                             id="chat-clear-portal-btn",
                             className="btn btn-sm btn-outline-secondary",
                             style={"display": "none"},
