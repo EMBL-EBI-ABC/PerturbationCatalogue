@@ -9,7 +9,7 @@
 #   - gcloud CLI installed and authenticated
 #   - dev_secrets function available (sourced from shell profile)
 #   - Required env vars set by dev_secrets:
-#       GCLOUD_PROJECT, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
+#       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
 #
 
@@ -39,6 +39,7 @@ done
 # ---------------------------------------------------------------------------
 REQUIRED_VARS=(
     GCLOUD_PROJECT
+    GCLOUD_REGION
     BQ_DATASET
     BQ_LOCATION
     GCLOUD_TMP_BUCKET
@@ -76,6 +77,7 @@ echo "============================================"
 echo " DWH Pipeline — Cloud Build"
 echo "============================================"
 echo "  Project:            $GCLOUD_PROJECT"
+echo "  Region:             $GCLOUD_REGION"
 echo "  BQ Dataset:         $BQ_DATASET"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
@@ -85,9 +87,11 @@ echo ""
 
 BUILD_ID=$(gcloud builds submit "$REPO_ROOT" \
     --project="$GCLOUD_PROJECT" \
+    --region="$GCLOUD_REGION" \
     --config="$SCRIPT_DIR/cloudbuild.yaml" \
     --substitutions="\
 _GCLOUD_PROJECT=$GCLOUD_PROJECT,\
+_GCLOUD_REGION=$GCLOUD_REGION,\
 _BQ_DATASET=$BQ_DATASET,\
 _BQ_LOCATION=$BQ_LOCATION,\
 _GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET,\
@@ -103,15 +107,16 @@ echo ""
 echo "Build submitted: $BUILD_ID"
 echo ""
 echo "Streaming logs (safe to interrupt — build continues in the cloud)..."
-echo "To re-attach later:  gcloud builds log --stream $BUILD_ID --project=$GCLOUD_PROJECT"
+echo "To re-attach later:  gcloud builds log --stream $BUILD_ID --region=$GCLOUD_REGION --project=$GCLOUD_PROJECT"
 echo ""
 
 # Stream logs. If interrupted (e.g. laptop sleep), the build continues.
-gcloud builds log --stream "$BUILD_ID" --project="$GCLOUD_PROJECT" || true
+gcloud builds log --stream "$BUILD_ID" --region="$GCLOUD_REGION" --project="$GCLOUD_PROJECT" || true
 
 # Check final status
 STATUS=$(gcloud builds describe "$BUILD_ID" \
     --project="$GCLOUD_PROJECT" \
+    --region="$GCLOUD_REGION" \
     --format='value(status)')
 
 echo ""
@@ -121,6 +126,6 @@ echo "============================================"
 
 if [[ "$STATUS" != "SUCCESS" ]]; then
     echo "Build did not succeed. Check logs:"
-    echo "  gcloud builds log $BUILD_ID --project=$GCLOUD_PROJECT"
+    echo "  gcloud builds log $BUILD_ID --region=$GCLOUD_REGION --project=$GCLOUD_PROJECT"
     exit 1
 fi

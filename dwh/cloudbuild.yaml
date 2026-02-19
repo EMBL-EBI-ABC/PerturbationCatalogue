@@ -9,15 +9,17 @@
 #
 # Substitution variables (passed by trigger_pipeline.sh):
 #   _GCLOUD_PROJECT, _BQ_DATASET, _BQ_LOCATION, _GCLOUD_TMP_BUCKET,
-#   _PG_CONN, _PG_CONN_INTERNAL,
+#   _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
 
-timeout: 28800s  # 8 hours
+timeout: 43200s  # 12 hours
 
 options:
   machineType: E2_HIGHCPU_8
   logging: CLOUD_LOGGING_ONLY
+  pool:
+    name: projects/$PROJECT_ID/locations/$_GCLOUD_REGION/workerPools/dwh-pipeline-pool
 
 steps:
   # Step 0: Build the pipeline Docker image
@@ -86,3 +88,4 @@ steps:
 
 substitutions:
   _SUPPRESS_DATASETS: ""
+  _GCLOUD_REGION: europe-west2

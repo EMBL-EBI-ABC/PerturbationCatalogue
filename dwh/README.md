@@ -16,22 +16,89 @@ Each stage depends on the previous one. If any stage fails, the pipeline stops.
 
 ## Prerequisites
 
-1. **Google Cloud SDK** (`gcloud`) installed and authenticated
-2. **Cloud Build API** enabled in your GCP project
-3. **Environment variables** — source your secrets before running:
-   ```bash
-   dev_secrets
-   ```
-   Required variables: `GCLOUD_PROJECT`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
+### 1. Google Cloud SDK
 
-4. **Cloud Build permissions** — the Cloud Build service account needs:
-   - BigQuery Data Editor & Job User
-   - Cloud Storage Object Admin (for temp GCS files)
-   - Cloud SQL Client (for Postgres access)
+Install and authenticate the [gcloud CLI](https://cloud.google.com/sdk/docs/install):
+```bash
+gcloud auth login
+gcloud auth application-default login
+```
 
-5. **Network access** — if your Postgres instance uses a private IP, you need either:
-   - A [Cloud Build private pool](https://cloud.google.com/build/docs/private-pools/create-manage-private-pools) with VPC access, or
-   - The Cloud SQL instance's public IP enabled
+### 2. Enable required APIs
+
+```bash
+dev_secrets
+gcloud services enable cloudbuild.googleapis.com --project=$GCLOUD_PROJECT
+gcloud services enable compute.googleapis.com --project=$GCLOUD_PROJECT
+gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJECT
+```
+
+### 3. Environment variables
+
+Source your secrets before running the pipeline:
+```bash
+dev_secrets
+```
+
+Required variables: `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
+
+### 4. Grant IAM permissions to Cloud Build service account
+
+The Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`) needs the following roles:
+
+```bash
+dev_secrets
+export CB_SA=$(gcloud projects describe $GCLOUD_PROJECT --format='value(projectNumber)')@cloudbuild.gserviceaccount.com
+
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/bigquery.dataEditor"
+
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/bigquery.jobUser"
+
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/storage.objectAdmin"
+
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/cloudsql.client"
+```
+
+### 5. Create Cloud Build private worker pool
+
+The pipeline connects to Cloud SQL via its internal (VPC) IP. This requires a Cloud Build [private worker pool](https://cloud.google.com/build/docs/private-pools/create-manage-private-pools) connected to your VPC.
+
+**One-time setup:**
+
+```bash
+dev_secrets
+
+# Create the private worker pool connected to the default VPC
+gcloud builds worker-pools create dwh-pipeline-pool \
+    --project=$GCLOUD_PROJECT \
+    --region=$GCLOUD_REGION \
+    --peered-network=projects/$GCLOUD_PROJECT/global/networks/default
+```
+
+> **Note:** If the `servicenetworking.googleapis.com` API was just enabled, you may need to wait a few minutes before creating the pool. If you get an error about a service networking connection, create it first:
+> ```bash
+> gcloud compute addresses create cloudbuild-worker-range \
+>     --global \
+>     --purpose=VPC_PEERING \
+>     --addresses=192.168.0.0 \
+>     --prefix-length=24 \
+>     --network=default \
+>     --project=$GCLOUD_PROJECT
+>
+> gcloud services vpc-peerings connect \
+>     --service=servicenetworking.googleapis.com \
+>     --ranges=cloudbuild-worker-range \
+>     --network=default \
+>     --project=$GCLOUD_PROJECT
+> ```
 
 ## Running the pipeline
 
@@ -54,11 +121,11 @@ To exclude datasets from metadata tables (while keeping them in data tables):
 2. You can **safely close your laptop** — the build continues in Google Cloud
 3. To re-attach to logs later:
    ```bash
-   gcloud builds log --stream BUILD_ID --project=$GCLOUD_PROJECT
+   gcloud builds log --stream BUILD_ID --region=$GCLOUD_REGION --project=$GCLOUD_PROJECT
    ```
 4. To list recent builds:
    ```bash
-   gcloud builds list --project=$GCLOUD_PROJECT --limit=5
+   gcloud builds list --region=$GCLOUD_REGION --project=$GCLOUD_PROJECT --limit=5
    ```
 
 ## Running stages individually
