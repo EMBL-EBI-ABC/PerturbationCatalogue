@@ -8,7 +8,7 @@
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
 #
 # Substitution variables (passed by trigger_pipeline.sh):
-#   _GCLOUD_PROJECT, _BQ_DATASET, _BQ_LOCATION, _GCLOUD_TMP_BUCKET,
+#   _GCLOUD_PROJECT, _GCLOUD_REGION, _BQ_DATASET, _BQ_LOCATION, _GCLOUD_TMP_BUCKET,
 #   _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
@@ -30,7 +30,7 @@ steps:
       - -t
       - gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
       - -f
-      - dwh/Dockerfile
+      - Dockerfile
       - .
 
   # Step 1: dbt run
@@ -88,4 +88,3 @@ steps:
 
 substitutions:
   _SUPPRESS_DATASETS: ""
-  _GCLOUD_REGION: europe-west2

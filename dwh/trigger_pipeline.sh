@@ -7,8 +7,7 @@
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
-#   - dev_secrets function available (sourced from shell profile)
-#   - Required env vars set by dev_secrets:
+#   - Environment variables set (via dev_secrets or equivalent):
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
 #
@@ -65,10 +64,17 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Resolve repository root (one level up from dwh/)
+# Resolve paths
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ---------------------------------------------------------------------------
+# Copy files needed from outside dwh/ into the build context
+# ---------------------------------------------------------------------------
+mkdir -p "$SCRIPT_DIR/be"
+cp "$REPO_ROOT/be/dataset_metadata.json" "$SCRIPT_DIR/be/dataset_metadata.json"
+trap 'rm -rf "$SCRIPT_DIR/be"' EXIT
 
 # ---------------------------------------------------------------------------
 # Submit Cloud Build
@@ -85,7 +91,7 @@ echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
 echo "============================================"
 echo ""
 
-BUILD_ID=$(gcloud builds submit "$REPO_ROOT" \
+BUILD_ID=$(gcloud builds submit "$SCRIPT_DIR" \
     --project="$GCLOUD_PROJECT" \
     --region="$GCLOUD_REGION" \
     --config="$SCRIPT_DIR/cloudbuild.yaml" \
