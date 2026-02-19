@@ -60,7 +60,7 @@ app.layout = html.Div(
                                 className="header-link",
                             ),
                             html.A(
-                                "AI Explorer",
+                                "AI Explorer (Beta)",
                                 href="/perturbation-catalogue/chat",
                                 className="header-link header-link-ai",
                             ),

@@ -9,7 +9,7 @@ dash.register_page(
     __name__,
     path="/chat",
     relative_path="/chat",
-    name="AI Explorer",
+    name="AI Explorer (Beta)",
     description="Ask questions about perturbation data using natural language.",
 )
 
@@ -26,7 +26,7 @@ layout = dbc.Container(
         # Page title
         html.Div(
             [
-                html.H3("AI Explorer", className="mb-1", style={"fontWeight": "700"}),
+                html.H3("AI Explorer (Beta)", className="mb-1", style={"fontWeight": "700"}),
                 html.P(
                     "Ask questions about perturbation data in natural language",
                     className="text-muted mb-0",

@@ -293,7 +293,9 @@
 
     var removeBtn = document.createElement("button");
     removeBtn.className = "viz-remove-btn";
-    removeBtn.textContent = "Clear";
+    var removeIcon = document.createElement("i");
+    removeIcon.className = "bi bi-x-circle-fill";
+    removeBtn.appendChild(removeIcon);
     removeBtn.addEventListener("click", function () {
       wrapper.remove();
       updatePortalVisibility();
