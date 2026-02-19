@@ -1,0 +1,11 @@
+es_data_marts:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCLOUD_PROJECT') }}"
+      dataset: "{{ env_var('BQ_DATASET') }}"
+      threads: 4
+      timeout_seconds: 3600
+      location: "{{ env_var('BQ_LOCATION', 'europe-west2') }}"

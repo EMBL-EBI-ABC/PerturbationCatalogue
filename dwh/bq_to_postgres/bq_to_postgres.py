@@ -526,11 +526,25 @@ class TableSynchronizer:
 
 def main():
     parser = argparse.ArgumentParser(description="BigQuery to PostgreSQL Sync Script")
-    parser.add_argument("--bq-dataset", required=True, help="BigQuery dataset name")
-    parser.add_argument("--bq-location", required=True, help="BigQuery location")
-    parser.add_argument("--pg-conn", required=True, help="PostgreSQL connection string")
     parser.add_argument(
-        "--gcs-bucket", required=True, help="GCS bucket for temporary files"
+        "--bq-dataset",
+        default=os.getenv("BQ_DATASET"),
+        help="BigQuery dataset name (env: BQ_DATASET)",
+    )
+    parser.add_argument(
+        "--bq-location",
+        default=os.getenv("BQ_LOCATION"),
+        help="BigQuery location (env: BQ_LOCATION)",
+    )
+    parser.add_argument(
+        "--pg-conn",
+        default=os.getenv("PG_CONN"),
+        help="PostgreSQL connection string (env: PG_CONN)",
+    )
+    parser.add_argument(
+        "--gcs-bucket",
+        default=os.getenv("GCLOUD_TMP_BUCKET"),
+        help="GCS bucket for temporary files (env: GCLOUD_TMP_BUCKET)",
     )
     parser.add_argument(
         "--drop-and-recreate-indexes",
@@ -539,6 +553,19 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Validate required arguments
+    missing = []
+    if not args.bq_dataset:
+        missing.append("--bq-dataset / BQ_DATASET")
+    if not args.bq_location:
+        missing.append("--bq-location / BQ_LOCATION")
+    if not args.pg_conn:
+        missing.append("--pg-conn / PG_CONN")
+    if not args.gcs_bucket:
+        missing.append("--gcs-bucket / GCLOUD_TMP_BUCKET")
+    if missing:
+        parser.error("The following arguments are required: " + ", ".join(missing))
 
     # Initialize synchronizer
     synchronizer = TableSynchronizer(
