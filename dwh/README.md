@@ -143,7 +143,7 @@ python3 bq_to_postgres/bq_to_postgres.py \
 cd dwh
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 bq_to_elastic/bq_to_es_projector.py
+python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
 ## Creating the PostgreSQL instance

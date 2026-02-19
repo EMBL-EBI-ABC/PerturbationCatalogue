@@ -15,7 +15,8 @@ import json
 import logging
 import datetime
 import re
-from typing import Any, Dict, Iterable, Tuple
+import argparse
+from typing import Any, Dict, Iterable, Tuple, List
 
 from google.cloud import bigquery
 from elasticsearch import Elasticsearch, helpers, ApiError
@@ -74,8 +75,8 @@ def make_es_client() -> Elasticsearch:
     return es
 
 
-def generate_dataset_summary_mapping() -> Dict[str, Any]:
-    """Dynamically generate mapping for dataset-summary from be/dataset_metadata.json"""
+def generate_dataset_summary_mapping(metadata_path: str) -> Dict[str, Any]:
+    """Dynamically generate mapping for dataset-summary from dataset_metadata.json"""
     mapping = {
         "settings": {
             "analysis": {
@@ -92,8 +93,8 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
         "mappings": {"properties": {}},
     }
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    metadata_path = os.path.join(script_dir, "../../be/dataset_metadata.json")
+    if not os.path.exists(metadata_path):
+        raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
 
     with open(metadata_path, "r") as f:
         meta = json.load(f)
@@ -121,9 +122,13 @@ def generate_dataset_summary_mapping() -> Dict[str, Any]:
     return mapping
 
 
-def get_mapping(index_prefix: str) -> Dict[str, Any]:
+def get_mapping(index_prefix: str, metadata_path: str = None) -> Dict[str, Any]:
     if index_prefix == "dataset":
-        return generate_dataset_summary_mapping()
+        if not metadata_path:
+            raise ValueError(
+                "metadata_path is required for generating dataset summary mapping"
+            )
+        return generate_dataset_summary_mapping(metadata_path)
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     mapping_file = os.path.join(
@@ -136,15 +141,13 @@ def get_mapping(index_prefix: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def ensure_index(es: Elasticsearch, index: str, prefix: str) -> None:
+def ensure_index(es: Elasticsearch, index: str, mapping_body: Dict[str, Any]) -> None:
     try:
         if es.indices.exists(index=index):
             logging.info("Index %s exists.", index)
             return
 
         logging.info("Index %s does not exist. Creating...", index)
-        mapping_body = get_mapping(prefix)
-
         es.indices.create(index=index, body=mapping_body)
         logging.info("Index %s created successfully.", index)
 
@@ -164,13 +167,12 @@ def stream_rows_from_bq(
 
 
 # --------- Transform / Actions ----------
-def get_typed_fields(index_prefix: str) -> tuple[list[str], list[str], list[str]]:
+def get_typed_fields(mapping: Dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
     int_fields: list[str] = []
     float_fields: list[str] = []
     nested_fields: list[str] = []
 
-    settings_mapping = get_mapping(index_prefix)
-    for k, v in settings_mapping["mappings"]["properties"].items():
+    for k, v in mapping["mappings"]["properties"].items():
         if v["type"] == "integer":
             int_fields.append(k)
         elif v["type"] == "float":
@@ -195,7 +197,7 @@ def _coerce_num(v, to_float=False):
 
 
 def transform_row(
-    row: Dict[str, Any], prefix: str, key_field: str
+    row: Dict[str, Any], key_field: str, typed_fields: tuple
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Convert a BQ row to ES document.
@@ -210,7 +212,7 @@ def transform_row(
     else:
         symbol = "summary"
 
-    numeric_int_fields, numeric_float_fields, nested_fields = get_typed_fields(prefix)
+    numeric_int_fields, numeric_float_fields, nested_fields = typed_fields
     for k, v in row.items():
         if k in numeric_int_fields:
             doc[k] = _coerce_num(v)
@@ -242,11 +244,14 @@ def transform_row(
 
 
 def actions_generator(
-    rows_iter: Iterable[Dict[str, Any]], es_index: str, prefix: str, key_field: str
+    rows_iter: Iterable[Dict[str, Any]],
+    es_index: str,
+    key_field: str,
+    typed_fields: tuple,
 ) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
         try:
-            _id, doc = transform_row(row, prefix, key_field)
+            _id, doc = transform_row(row, key_field, typed_fields)
             yield {"_op_type": "index", "_index": es_index, "_id": _id, "_source": doc}
         except ValueError:
             pass
@@ -314,6 +319,14 @@ def prune_old_indexes(es: Elasticsearch) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="BigQuery to Elasticsearch Projector")
+    parser.add_argument(
+        "--dataset-metadata",
+        required=True,
+        help="Path to dataset_metadata.json (required for dataset summary mapping)",
+    )
+    args = parser.parse_args()
+
     if not ES_URL:
         logging.error("ES_URL is not set")
         return 2
@@ -338,6 +351,12 @@ def main() -> int:
         logging.info("Starting sync for %s -> %s", table, es_index)
 
         try:
+            # 1. Load mapping
+            mapping = get_mapping(prefix, args.dataset_metadata)
+
+            # 2. Extract typed fields for transformation
+            typed_fields = get_typed_fields(mapping)
+
             # If current date index already exists, delete it first
             if es.indices.exists(index=es_index):
                 logging.info(
@@ -345,7 +364,7 @@ def main() -> int:
                 )
                 es.indices.delete(index=es_index)
 
-            ensure_index(es, es_index, prefix)
+            ensure_index(es, es_index, mapping)
 
             # Use BigQuery client to get total row count for progress bar
             table_ref = f"{BQ_PROJECT}.{BQ_DATASET}.{table}"
@@ -362,7 +381,9 @@ def main() -> int:
             pbar = tqdm(total=total_rows, desc=table, unit="rows")
 
             def actions_with_progress():
-                for action in actions_generator(rows_iter, es_index, prefix, key_field):
+                for action in actions_generator(
+                    rows_iter, es_index, key_field, typed_fields
+                ):
                     pbar.update(1)
                     yield action
 

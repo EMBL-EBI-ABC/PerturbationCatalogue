@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
 # Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
     git \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Copy and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -q -r requirements.txt
 
 # Copy dbt project
 COPY bq_dbt/ bq_dbt/

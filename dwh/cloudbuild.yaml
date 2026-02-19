@@ -78,6 +78,8 @@ steps:
     entrypoint: python3
     args:
       - bq_to_es_projector.py
+      - --dataset-metadata
+      - /app/be/dataset_metadata.json
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - BQ_DATASET=$_BQ_DATASET
