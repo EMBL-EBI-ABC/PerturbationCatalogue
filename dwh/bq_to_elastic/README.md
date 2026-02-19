@@ -13,7 +13,7 @@ The script is automated and will:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cd bq_to_es_projector
+cd bq_to_es
 dev_secrets
 python3 bq_to_es_projector.py
 ```
