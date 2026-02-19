@@ -30,6 +30,10 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
 
+# Import AI chat router.
+import ai_chat
+from ai_chat import router as ai_chat_router
+
 load_dotenv()
 
 
@@ -49,6 +53,9 @@ class Settings(BaseSettings):
     es_url: str
     es_username: str
     es_password: str
+    google_cloud_project: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: str = ""
 
 
 settings = Settings()
@@ -66,6 +73,11 @@ async def lifespan(app: FastAPI):
     )
     db_pools["es"] = AsyncElasticsearch(
         [settings.es_url], basic_auth=(settings.es_username, settings.es_password)
+    )
+    ai_chat.configure(
+        google_cloud_project=settings.google_cloud_project,
+        gemini_model=settings.gemini_model,
+        gemini_api_key=settings.gemini_api_key,
     )
     yield
     # Shutdown: Close connections
@@ -85,6 +97,7 @@ app.add_middleware(
 )
 
 app.include_router(data_query_router)
+app.include_router(ai_chat_router)
 
 
 # Facet fields for target-summary index

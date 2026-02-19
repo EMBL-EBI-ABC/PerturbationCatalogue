@@ -19,7 +19,7 @@ app = dash.Dash(
 )
 
 # Import pages to ensure they are registered
-from pages import api, about, dataset, targets, datasets
+from pages import api, about, dataset, targets, datasets, chat
 
 cookie_banner.register_callbacks(app)
 
@@ -58,6 +58,11 @@ app.layout = html.Div(
                                 "Datasets",
                                 href="/perturbation-catalogue/datasets",
                                 className="header-link",
+                            ),
+                            html.A(
+                                "AI Explorer",
+                                href="/perturbation-catalogue/chat",
+                                className="header-link header-link-ai",
                             ),
                             html.A(
                                 "API Documentation",
