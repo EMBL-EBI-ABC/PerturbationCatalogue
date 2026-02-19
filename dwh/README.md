@@ -72,7 +72,8 @@ The pipeline connects to Cloud SQL via its internal (VPC) IP. This requires a Cl
 gcloud builds worker-pools create dwh-pipeline-pool \
     --project=$GCLOUD_PROJECT \
     --region=$GCLOUD_REGION \
-    --peered-network=projects/$GCLOUD_PROJECT/global/networks/default
+    --peered-network=projects/$GCLOUD_PROJECT/global/networks/default \
+    --worker-machine-type=e2-highmem-4
 ```
 
 ## Running the pipeline
