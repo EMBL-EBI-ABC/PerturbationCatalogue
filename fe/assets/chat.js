@@ -1,19 +1,9 @@
 (function () {
   "use strict";
 
-  // Rotating spinner words
-  var SPINNER_WORDS = [
-    "Perturbation", "CRISPR", "Perturb-seq", "MAVE", "Gene knockout",
-    "Differential expression", "Pathway enrichment", "Log2 fold change",
-    "Functional genomics", "Variant effect", "Guide RNA", "Cell fitness",
-    "Transcriptome", "Phenotype", "Loss of function", "Gain of function",
-    "Essentiality"
-  ];
-
   // Project color palette
   var COLORS = ["#007B53", "#193F90", "#A6093D", "#563D82", "#3B6FB6", "#54585A", "#0A5032", "#D4A843"];
 
-  var spinnerInterval = null;
   var sessionId = null;
   var currentController = null;
 
@@ -64,7 +54,12 @@
     var input = document.getElementById("chat-input");
     var text = (input.value || "").trim();
     if (!text) return;
-    input.value = "";
+    // Use native setter + event to sync React/Dash controlled state.
+    var nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype, "value"
+    ).set;
+    nativeSetter.call(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     hideSuggestions();
     sendMessage(text);
   }
@@ -189,30 +184,12 @@
     el.style.display = "flex";
 
     var statusEl = el.querySelector(".spinner-status");
-    if (statusEl && status) statusEl.textContent = "— " + status;
-
-    if (!spinnerInterval) {
-      var wordIdx = 0;
-      var wordEl = el.querySelector(".spinner-word");
-      spinnerInterval = setInterval(function () {
-        if (!wordEl) return;
-        wordEl.style.opacity = "0";
-        setTimeout(function () {
-          wordIdx = (wordIdx + 1) % SPINNER_WORDS.length;
-          wordEl.textContent = SPINNER_WORDS[wordIdx];
-          wordEl.style.opacity = "1";
-        }, 300);
-      }, 2000);
-    }
+    if (statusEl && status) statusEl.textContent = status;
   }
 
   function hideSpinner() {
     var el = document.getElementById("chat-spinner");
     if (el) el.style.display = "none";
-    if (spinnerInterval) {
-      clearInterval(spinnerInterval);
-      spinnerInterval = null;
-    }
   }
 
   // --- Chat messages ---

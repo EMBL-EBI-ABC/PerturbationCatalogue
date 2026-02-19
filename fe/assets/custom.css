@@ -464,13 +464,6 @@ body {
     color: #6c757d;
 }
 
-.spinner-word {
-    font-weight: 600;
-    color: #007B53;
-    transition: opacity 0.3s ease;
-    min-width: 80px;
-}
-
 .spinner-status {
     color: #6c757d;
     font-size: 0.85rem;

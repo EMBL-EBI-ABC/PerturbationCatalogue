@@ -45,8 +45,7 @@ layout = dbc.Container(
                         html.Div(
                             className="spinner-border spinner-border-sm text-success me-2"
                         ),
-                        html.Span("Exploring", className="spinner-word"),
-                        html.Span("", className="spinner-status ms-1"),
+                        html.Span("", className="spinner-status"),
                     ],
                     id="chat-spinner",
                     className="chat-spinner",
@@ -133,6 +132,5 @@ layout = dbc.Container(
             className="data-portal-panel",
         ),
     ],
-    fluid=True,
-    className="px-4 pb-4",
+    className="content-container pb-4",
 )
