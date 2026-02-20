@@ -345,6 +345,12 @@
       case "bar_chart":
         renderBarChart(content, data.data);
         break;
+      case "protein_structure":
+        renderProteinStructure(content, data.data);
+        break;
+      case "gene_card":
+        renderGeneCard(content, data.data);
+        break;
       default:
         content.textContent = "Unknown visualization type: " + data.type;
     }
@@ -467,6 +473,159 @@
       },
       { responsive: true, displayModeBar: false }
     );
+  }
+
+  function renderProteinStructure(container, data) {
+    var viewerDiv = document.createElement("div");
+    viewerDiv.style.width = "100%";
+    viewerDiv.style.height = "450px";
+    viewerDiv.style.position = "relative";
+    viewerDiv.style.overflow = "hidden";
+    container.appendChild(viewerDiv);
+
+    var entryId = data.entry_id || "";
+    var uniprotId = data.uniprot_id || "";
+
+    // Use pdbe-molstar web component
+    var viewer = document.createElement("pdbe-molstar");
+    viewer.setAttribute("alphafold-view", "true");
+    viewer.setAttribute("hide-water", "true");
+    viewer.setAttribute("hide-controls", "true");
+    viewer.setAttribute("bg-color-r", "255");
+    viewer.setAttribute("bg-color-g", "255");
+    viewer.setAttribute("bg-color-b", "255");
+    viewer.style.width = "100%";
+    viewer.style.height = "100%";
+    viewer.style.display = "block";
+
+    // Load from AlphaFold using custom-data URL for the CIF file
+    var cifUrl = data.cif_url || "";
+    if (cifUrl) {
+      viewer.setAttribute("custom-data-url", cifUrl);
+      viewer.setAttribute("custom-data-format", "cif");
+    } else if (entryId) {
+      // Fallback: construct the AlphaFold CIF URL from entry ID
+      viewer.setAttribute("custom-data-url",
+        "https://alphafold.ebi.ac.uk/files/" + entryId + "-model_v4.cif");
+      viewer.setAttribute("custom-data-format", "cif");
+    }
+
+    viewerDiv.appendChild(viewer);
+
+    // Info row below viewer
+    var info = document.createElement("div");
+    info.style.cssText = "padding: 8px 4px; font-size: 0.85rem; color: #54585A;";
+    var parts = [];
+    if (data.gene) parts.push("<strong>" + escapeHtml(data.gene) + "</strong>");
+    if (data.organism) parts.push(escapeHtml(data.organism));
+    if (uniprotId) {
+      parts.push('<a href="https://www.uniprot.org/uniprot/' + encodeURIComponent(uniprotId) +
+        '" target="_blank" rel="noopener">UniProt: ' + escapeHtml(uniprotId) + '</a>');
+    }
+    if (entryId) {
+      parts.push('<a href="https://alphafold.ebi.ac.uk/entry/' + encodeURIComponent(uniprotId || entryId) +
+        '" target="_blank" rel="noopener">AlphaFold</a>');
+    }
+    info.innerHTML = parts.join(" &middot; ");
+    container.appendChild(info);
+  }
+
+  function renderGeneCard(container, data) {
+    var card = document.createElement("div");
+    card.className = "gene-card";
+    card.style.cssText = "font-size: 0.9rem;";
+
+    // Header
+    var header = document.createElement("div");
+    header.style.cssText = "margin-bottom: 10px;";
+    header.innerHTML = '<div style="font-size: 1.1rem; font-weight: 600; color: #193F90;">' +
+      escapeHtml(data.gene_name || "") + '</div>' +
+      '<div style="color: #54585A; font-size: 0.85rem;">' +
+      escapeHtml(data.protein_name || "") + '</div>';
+    card.appendChild(header);
+
+    // Function
+    if (data.function) {
+      var funcDiv = document.createElement("div");
+      funcDiv.style.cssText = "margin-bottom: 10px;";
+      var funcText = data.function;
+      var truncated = funcText.length > 200;
+      var funcId = "gene-card-func-" + Date.now();
+      funcDiv.innerHTML = '<div style="font-weight: 600; margin-bottom: 2px;">Function</div>' +
+        '<div id="' + funcId + '">' +
+        escapeHtml(truncated ? funcText.substring(0, 200) + "..." : funcText) +
+        (truncated ? ' <a href="#" style="color: #007B53;" onclick="' +
+          "this.parentElement.textContent='" + escapeAttr(funcText) + "'; return false;" +
+          '">show more</a>' : '') +
+        '</div>';
+      card.appendChild(funcDiv);
+    }
+
+    // Key facts grid
+    var facts = [];
+    if (data.subcellular_location) {
+      facts.push({label: "Location", value: data.subcellular_location});
+    }
+    if (data.domains && data.domains.length) {
+      facts.push({label: "Domains", value: data.domains.join(", ")});
+    }
+    if (data.diseases && data.diseases.length) {
+      facts.push({label: "Disease associations", value: data.diseases.join(", ")});
+    }
+    if (data.go_terms && data.go_terms.length) {
+      facts.push({label: "GO terms", value: data.go_terms.slice(0, 8).join(", ")});
+    }
+
+    if (facts.length) {
+      var factsDiv = document.createElement("div");
+      factsDiv.style.cssText = "margin-bottom: 10px;";
+      facts.forEach(function (fact) {
+        var row = document.createElement("div");
+        row.style.cssText = "margin-bottom: 4px;";
+        row.innerHTML = '<span style="font-weight: 600;">' + escapeHtml(fact.label) + ':</span> ' +
+          escapeHtml(fact.value);
+        factsDiv.appendChild(row);
+      });
+      card.appendChild(factsDiv);
+    }
+
+    // External links
+    var links = [];
+    if (data.uniprot_id) {
+      links.push('<a href="https://www.uniprot.org/uniprot/' + encodeURIComponent(data.uniprot_id) +
+        '" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none; margin-right: 12px;">' +
+        '<i class="bi bi-box-arrow-up-right"></i> UniProt</a>');
+    }
+    if (data.alphafold_id || data.uniprot_id) {
+      var afId = data.uniprot_id || data.alphafold_id;
+      links.push('<a href="https://alphafold.ebi.ac.uk/entry/' + encodeURIComponent(afId) +
+        '" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none; margin-right: 12px;">' +
+        '<i class="bi bi-box-arrow-up-right"></i> AlphaFold</a>');
+    }
+    if (data.gene_name) {
+      links.push('<a href="https://platform.opentargets.org/search?q=' + encodeURIComponent(data.gene_name) +
+        '&page=1&entities=target" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none;">' +
+        '<i class="bi bi-box-arrow-up-right"></i> Open Targets</a>');
+    }
+
+    if (links.length) {
+      var linksDiv = document.createElement("div");
+      linksDiv.style.cssText = "padding-top: 8px; border-top: 1px solid #e9ecef;";
+      linksDiv.innerHTML = links.join("");
+      card.appendChild(linksDiv);
+    }
+
+    container.appendChild(card);
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, " ");
   }
 
   // --- Initialize when chat page is rendered ---

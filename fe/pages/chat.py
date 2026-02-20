@@ -94,6 +94,13 @@ layout = dbc.Container(
                             className="chat-suggestion-btn",
                             **{"data-query": "Show me CRISPR screen results for TP53"},
                         ),
+                        html.Button(
+                            "Disease associations for BRCA2",
+                            className="chat-suggestion-btn",
+                            **{
+                                "data-query": "What diseases are associated with BRCA2 according to Open Targets?"
+                            },
+                        ),
                     ],
                     id="chat-suggestions",
                     className="chat-suggestions",

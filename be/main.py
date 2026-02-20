@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     google_cloud_project: str = ""
     gemini_model: str = "gemini-2.5-flash"
     gemini_api_key: str = ""
+    ot_mcp_url: str = ""
 
 
 settings = Settings()
@@ -78,7 +79,9 @@ async def lifespan(app: FastAPI):
         google_cloud_project=settings.google_cloud_project,
         gemini_model=settings.gemini_model,
         gemini_api_key=settings.gemini_api_key,
+        ot_mcp_url=settings.ot_mcp_url,
     )
+    await ai_chat.init_open_targets_mcp()
     yield
     # Shutdown: Close connections
     await db_pools["pg"].close()
