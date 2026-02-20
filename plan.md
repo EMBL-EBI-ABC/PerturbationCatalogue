@@ -96,7 +96,7 @@ The following visualizations render in the existing Data Portal using Plotly.js 
 ### 6. Volcano Plot (Perturb-seq DEA)
 The gold-standard differential expression visualization. The `perturb_seq_dea` table already has `log2_fc` and `padj` -- just add a `renderVolcanoPlot` function in `chat.js` using Plotly scatter traces. **Zero new dependencies.**
 
-**Status: TODO**
+**Status: DONE** (Implemented: `renderVolcanoPlot` in chat.js with significance coloring, threshold lines, hover labels; `volcano_plot` viz_type in `CREATE_VISUALIZATION_DECLARATION`; system prompt guidance for Gemini)
 
 ### 7. Needle/Lollipop Plot (MAVE Variants)
 Show variant effect scores mapped along protein sequence with domain annotations. The `mave_data` table has `position` and `score`. Render with Plotly scatter + shapes. **Zero new dependencies.**
@@ -191,7 +191,7 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 | Phase | Integrations | New Viz Types | Effort |
 |-------|-------------|---------------|--------|
 | **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
-| **Phase 2** | ProtVar (REST) **DONE**, volcano plot, needle plot | `volcano_plot`, `needle_plot` | 1-2 weeks |
+| **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, needle plot | `volcano_plot`, `needle_plot` | 1-2 weeks |
 | **Phase 3** | DepMap (REST), MaveDB (REST), Cytoscape networks | `network` | 2-3 weeks |
 | **Phase 4** | Reactome, STRING, Ensembl VEP | `clustergram`, pathway diagrams | 2-3 weeks |
 

@@ -147,7 +147,7 @@ QUERY_PERTURBATION_DATA_DECLARATION = types.FunctionDeclaration(
             ),
             "limit": types.Schema(
                 type="INTEGER",
-                description="Maximum rows to return (default 20, max 50)",
+                description="Maximum rows to return (default 20, max 500). Use higher limits (e.g. 500) for volcano plots.",
             ),
         },
         required=["modality"],
@@ -172,7 +172,8 @@ CREATE_VISUALIZATION_DECLARATION = types.FunctionDeclaration(
         "Create a visualization (table, pie chart, bar chart, or gene card) to display in the data portal below the chat. "
         "Always create visualizations when you have data to show the user. "
         "Use pie charts for 2-6 categories, bar charts for comparisons or >6 categories, tables for detailed data. "
-        "Use gene_card to display a summary card for a gene with protein info, diseases, domains, and links."
+        "Use gene_card to display a summary card for a gene with protein info, diseases, domains, and links. "
+        "For volcano plots, use the dedicated create_volcano_plot tool instead."
     ),
     parameters=types.Schema(
         type="OBJECT",
@@ -263,6 +264,38 @@ CREATE_VISUALIZATION_DECLARATION = types.FunctionDeclaration(
             ),
         },
         required=["viz_type", "title", "data"],
+    ),
+)
+
+CREATE_VOLCANO_PLOT_DECLARATION = types.FunctionDeclaration(
+    name="create_volcano_plot",
+    description=(
+        "Create a volcano plot for Perturb-seq differential expression data. "
+        "The backend queries the database and renders the plot directly — much faster than using create_visualization. "
+        "Use this whenever a user asks about differential expression effects of a perturbation, "
+        "or explicitly requests a volcano plot."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Perturbed gene name to show DEA results for (e.g. 'BRCA2', 'TP53')",
+            ),
+            "dataset_id": types.Schema(
+                type="STRING",
+                description="Optional dataset ID to filter by. If omitted, uses data from all datasets for this gene.",
+            ),
+            "fc_threshold": types.Schema(
+                type="NUMBER",
+                description="log2 fold-change threshold for significance coloring (default 0, meaning padj-only). Set to e.g. 1.0 to require both statistical and fold-change significance.",
+            ),
+            "padj_threshold": types.Schema(
+                type="NUMBER",
+                description="Adjusted p-value threshold for significance coloring (default 0.05)",
+            ),
+        },
+        required=["gene_name"],
     ),
 )
 
@@ -461,6 +494,7 @@ INTERNAL_TOOL_DECLARATIONS = [
     QUERY_PERTURBATION_DATA_DECLARATION,
     GET_CATALOGUE_SUMMARY_DECLARATION,
     CREATE_VISUALIZATION_DECLARATION,
+    CREATE_VOLCANO_PLOT_DECLARATION,
     LOOKUP_PROTEIN_DECLARATION,
     GET_PROTEIN_STRUCTURE_DECLARATION,
     MAP_IDENTIFIERS_DECLARATION,
@@ -646,7 +680,7 @@ async def _tool_query_perturbation_data(args: dict) -> dict:
     modality = args.get("modality", "crispr-screen")
     gene_name = args.get("gene_name")
     dataset_id = args.get("dataset_id")
-    limit = min(args.get("limit", 20), 50)
+    limit = min(args.get("limit", 20), 500)
 
     pg_table = PG_TABLES.get(modality)
     if not pg_table:
@@ -694,6 +728,135 @@ async def _tool_query_perturbation_data(args: dict) -> dict:
         clean_rows.append(clean)
 
     return {"total_returned": len(clean_rows), "rows": clean_rows}
+
+
+async def _tool_create_volcano_plot(args: dict) -> dict:
+    """Query perturb_seq_dea and return pre-formatted volcano plot data + summary.
+
+    Two-step flow:
+    1. If no dataset_id: return available datasets ranked by significance count
+       so Gemini can ask the user which one to plot.
+    2. If dataset_id provided: query DEA data sorted by padj ASC, build plot.
+    """
+    gene_name = args.get("gene_name", "")
+    dataset_id = args.get("dataset_id")
+    fc_threshold = float(args.get("fc_threshold", 0))
+    padj_threshold = float(args.get("padj_threshold", 0.05))
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    pg_pool = db_pools["pg"]
+
+    # Step 1: No dataset_id — list available datasets for this gene
+    if not dataset_id:
+        ds_query = """
+            SELECT dataset_id,
+                   COUNT(*) AS total_genes,
+                   COUNT(*) FILTER (WHERE padj < 0.05) AS significant_genes
+            FROM perturb_seq_dea
+            WHERE perturbed_target_symbol = $1 AND gene IS NOT NULL
+            GROUP BY dataset_id
+            ORDER BY significant_genes DESC
+        """
+        ds_rows = await pg_pool.fetch(ds_query, gene_name.upper())
+
+        if not ds_rows:
+            return {"error": f"No Perturb-seq DEA data found for {gene_name.upper()}"}
+
+        if len(ds_rows) == 1:
+            # Only one dataset — proceed directly
+            dataset_id = ds_rows[0]["dataset_id"]
+        else:
+            # Multiple datasets — return list for Gemini to present
+            datasets = [
+                {
+                    "dataset_id": row["dataset_id"],
+                    "total_genes": row["total_genes"],
+                    "significant_genes": row["significant_genes"],
+                }
+                for row in ds_rows
+            ]
+            return {
+                "action": "choose_dataset",
+                "perturbed_gene": gene_name.upper(),
+                "available_datasets": datasets,
+                "message": (
+                    f"{gene_name.upper()} has Perturb-seq DEA data in {len(datasets)} datasets. "
+                    "Ask the user which dataset they want to see the volcano plot for."
+                ),
+            }
+
+    # Step 2: Query DEA data for specific dataset, sorted by padj
+    query = """
+        SELECT gene, log2foldchange, padj
+        FROM perturb_seq_dea
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND gene IS NOT NULL
+        ORDER BY padj ASC
+        LIMIT 500
+    """
+    rows = await pg_pool.fetch(query, gene_name.upper(), dataset_id)
+
+    if not rows:
+        return {"error": f"No Perturb-seq DEA data found for {gene_name.upper()} in dataset {dataset_id}"}
+
+    genes = []
+    log2fc = []
+    padj_vals = []
+    n_up = 0
+    n_down = 0
+    n_ns = 0
+
+    for row in rows:
+        g = row["gene"]
+        fc = row["log2foldchange"]
+        pv = row["padj"]
+        if g is None or fc is None or pv is None:
+            continue
+        fc = float(fc)
+        pv = float(pv)
+        genes.append(str(g))
+        log2fc.append(fc)
+        padj_vals.append(pv)
+
+        if pv < padj_threshold and fc > fc_threshold:
+            n_up += 1
+        elif pv < padj_threshold and fc < -fc_threshold:
+            n_down += 1
+        else:
+            n_ns += 1
+
+    if not genes:
+        return {"error": f"No valid DEA data points for {gene_name.upper()} in dataset {dataset_id}"}
+
+    # Build the visualization payload (sent directly to frontend via SSE)
+    viz_data = {
+        "type": "volcano_plot",
+        "title": f"Volcano Plot: {gene_name.upper()} Perturbation",
+        "data": {
+            "genes": genes,
+            "log2fc": log2fc,
+            "padj": padj_vals,
+            "fc_threshold": fc_threshold,
+            "padj_threshold": padj_threshold,
+            "perturbed_gene": gene_name.upper(),
+        },
+    }
+
+    # Summary returned to Gemini so it can write an informative text response
+    summary = {
+        "status": "success",
+        "perturbed_gene": gene_name.upper(),
+        "dataset_id": dataset_id,
+        "total_genes": len(genes),
+        "significantly_upregulated": n_up,
+        "significantly_downregulated": n_down,
+        "not_significant": n_ns,
+        "fc_threshold": fc_threshold,
+        "padj_threshold": padj_threshold,
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
 
 
 async def _tool_get_catalogue_summary() -> dict:
@@ -1702,6 +1865,7 @@ _OT_TOOL_DESCRIPTIONS = {
     "get_druggability": "Checking druggability on Pharos...",
     "annotate_variant": "Annotating variant with ProtVar...",
     "get_variant_structural_context": "Fetching structural context from ProtVar...",
+    "create_volcano_plot": "Building volcano plot...",
 }
 
 
@@ -1769,8 +1933,16 @@ Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
 - Use bar charts for comparisons or >6 categories
 - Use tables for detailed data rows (limit to 20 rows for readability)
+- For volcano plots of Perturb-seq DEA data, use the dedicated create_volcano_plot tool (NOT create_visualization)
 - When showing datasets, include dataset_id, title, modality, and key metadata
 - When showing perturbation data, highlight significant results
+
+VOLCANO PLOT:
+When a user asks about Perturb-seq differential expression for a perturbation (e.g., "Show me the effect of knocking out BRCA2", "Volcano plot for TP53"), call create_volcano_plot with the gene name. The backend queries the database and renders the plot directly — do NOT query with query_perturbation_data separately.
+
+Two-step flow:
+1. If the gene has data in MULTIPLE datasets, the tool returns a list of available datasets with their significance counts. You MUST present these datasets to the user and ask which one they want to visualize. Then call create_volcano_plot again with the chosen dataset_id.
+2. If the gene has data in only ONE dataset, the plot is rendered immediately and you receive a summary with counts of up/down/not-significant genes — use this to write an informative interpretation.
 
 Available data modalities:
 - Perturb-seq: Single-cell transcriptomic readout of gene perturbations. Key fields: perturbation gene, effect gene, log2FC, padj
@@ -1963,6 +2135,45 @@ async def chat_stream(request: ChatRequest):
                                 },
                             )
                         )
+                    elif tool_name == "create_volcano_plot":
+                        # create_volcano_plot: backend queries DB, emits viz, returns summary to LLM
+                        yield _sse_event(
+                            "tool_call",
+                            {"tool": tool_name, "description": "Building volcano plot..."},
+                        )
+                        yield _sse_event(
+                            "thinking", {"status": "Building volcano plot..."}
+                        )
+                        try:
+                            result = await _tool_create_volcano_plot(tool_args)
+                        except Exception as exc:
+                            logger.exception("Tool %s failed", tool_name)
+                            result = {"error": str(exc)}
+
+                        if "error" in result:
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        elif result.get("action") == "choose_dataset":
+                            # Multiple datasets — pass list to Gemini to ask the user
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        else:
+                            # Plot built — emit visualization and return summary
+                            yield _sse_event("visualization", result["viz_data"])
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result["summary"],
+                                )
+                            )
                     elif tool_name == "get_protein_structure":
                         # get_protein_structure emits a visualization AND returns data to LLM
                         yield _sse_event(

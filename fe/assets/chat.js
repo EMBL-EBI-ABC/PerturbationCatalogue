@@ -271,6 +271,9 @@
   // --- Simple markdown formatting ---
 
   function formatMarkdown(text) {
+    // Bullet lists (before bold/italic so "* " at line start isn't treated as emphasis)
+    text = text.replace(/(^|\n)\* /g, "$1\u2022 ");
+    text = text.replace(/(^|\n)- /g, "$1\u2022 ");
     // Bold
     text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
     // Italic
@@ -344,6 +347,9 @@
         break;
       case "bar_chart":
         renderBarChart(content, data.data);
+        break;
+      case "volcano_plot":
+        renderVolcanoPlot(content, data.data);
         break;
       case "protein_structure":
         renderProteinStructure(content, data.data);
@@ -470,6 +476,142 @@
         yaxis: { title: ylabel },
         font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
         height: 350
+      },
+      { responsive: true, displayModeBar: false }
+    );
+  }
+
+  function renderVolcanoPlot(container, data) {
+    var rawGenes = data.genes || [];
+    var rawLog2fc = data.log2fc || [];
+    var rawPadj = data.padj || [];
+    var fcThreshold = data.fc_threshold != null ? parseFloat(data.fc_threshold) : 1.0;
+    var padjThreshold = data.padj_threshold != null ? parseFloat(data.padj_threshold) : 0.05;
+    var perturbedGene = data.perturbed_gene || "";
+
+    var chartDiv = document.createElement("div");
+    chartDiv.style.width = "100%";
+    container.appendChild(chartDiv);
+
+    if (typeof Plotly === "undefined") {
+      chartDiv.textContent = "Chart library not loaded";
+      return;
+    }
+
+    // Coerce to numbers and filter out invalid rows
+    var genes = [], log2fc = [], padj = [];
+    var len = Math.min(rawGenes.length, rawLog2fc.length, rawPadj.length);
+    for (var i = 0; i < len; i++) {
+      var fc = parseFloat(rawLog2fc[i]);
+      var pv = parseFloat(rawPadj[i]);
+      if (isFinite(fc) && isFinite(pv) && pv >= 0) {
+        genes.push(String(rawGenes[i] || ""));
+        log2fc.push(fc);
+        padj.push(pv);
+      }
+    }
+
+    if (genes.length === 0) {
+      chartDiv.textContent = "No valid data points for volcano plot";
+      return;
+    }
+
+    // Transform padj to -log10(padj), clamping minimum padj to 1e-300
+    var negLog10Padj = padj.map(function (p) {
+      if (p <= 0) return 300;
+      return -Math.log10(Math.max(p, 1e-300));
+    });
+    var negLog10Threshold = -Math.log10(padjThreshold);
+
+    // Classify points: up (significant + positive FC), down (significant + negative FC), ns (not significant)
+    var upIdx = [], downIdx = [], nsIdx = [];
+    for (var j = 0; j < genes.length; j++) {
+      var sig = negLog10Padj[j] >= negLog10Threshold;
+      if (sig && log2fc[j] > fcThreshold) {
+        upIdx.push(j);
+      } else if (sig && log2fc[j] < -fcThreshold) {
+        downIdx.push(j);
+      } else {
+        nsIdx.push(j);
+      }
+    }
+
+    function subset(arr, indices) {
+      return indices.map(function (k) { return arr[k]; });
+    }
+
+    function makeHoverText(geneArr, fcArr, pArr) {
+      return geneArr.map(function (g, k) {
+        return g + "<br>log2FC: " + fcArr[k].toFixed(3) + "<br>padj: " + pArr[k].toExponential(2);
+      });
+    }
+
+    function makeTrace(name, indices, color, opacity) {
+      var tGenes = subset(genes, indices);
+      var tFc = subset(log2fc, indices);
+      var tPadj = subset(padj, indices);
+      return {
+        type: "scatter",
+        mode: "markers",
+        name: name + " (" + indices.length + ")",
+        x: tFc,
+        y: subset(negLog10Padj, indices),
+        text: makeHoverText(tGenes, tFc, tPadj),
+        hoverinfo: "text",
+        marker: { size: 5, color: color, opacity: opacity }
+      };
+    }
+
+    var traces = [];
+    if (nsIdx.length > 0) traces.push(makeTrace("Not significant", nsIdx, "#B0B0B0", 0.5));
+    if (upIdx.length > 0) traces.push(makeTrace("Up", upIdx, "#A6093D", 0.7));
+    if (downIdx.length > 0) traces.push(makeTrace("Down", downIdx, "#193F90", 0.7));
+
+    // Threshold lines
+    var fcAbsMax = 0;
+    for (var m = 0; m < log2fc.length; m++) {
+      var absVal = Math.abs(log2fc[m]);
+      if (absVal > fcAbsMax) fcAbsMax = absVal;
+    }
+    var xMax = Math.max(fcAbsMax, (fcThreshold || 1) + 0.5);
+
+    var yMax = 0;
+    for (var n = 0; n < negLog10Padj.length; n++) {
+      if (negLog10Padj[n] > yMax) yMax = negLog10Padj[n];
+    }
+
+    // Horizontal padj threshold line (always shown)
+    var shapes = [
+      { type: "line", x0: -xMax - 0.5, x1: xMax + 0.5, y0: negLog10Threshold, y1: negLog10Threshold, line: { color: "#54585A", width: 1, dash: "dash" } }
+    ];
+    // Vertical FC threshold lines (only if fc_threshold > 0)
+    if (fcThreshold > 0) {
+      shapes.push({ type: "line", x0: fcThreshold, x1: fcThreshold, y0: 0, y1: yMax * 1.05, line: { color: "#54585A", width: 1, dash: "dash" } });
+      shapes.push({ type: "line", x0: -fcThreshold, x1: -fcThreshold, y0: 0, y1: yMax * 1.05, line: { color: "#54585A", width: 1, dash: "dash" } });
+    }
+
+    var subtitle = perturbedGene ? "Perturbation: " + perturbedGene : "";
+
+    Plotly.newPlot(
+      chartDiv,
+      traces,
+      {
+        margin: { t: subtitle ? 30 : 10, b: 60, l: 60, r: 20 },
+        xaxis: { title: "log<sub>2</sub> Fold Change", zeroline: true, zerolinecolor: "#ddd" },
+        yaxis: { title: "-log<sub>10</sub>(p<sub>adj</sub>)", rangemode: "tozero" },
+        shapes: shapes,
+        font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+        legend: { orientation: "h", y: -0.2, x: 0.5, xanchor: "center" },
+        annotations: subtitle ? [{
+          text: subtitle,
+          xref: "paper", yref: "paper",
+          x: 0.5, y: 1.02,
+          xanchor: "center", yanchor: "bottom",
+          showarrow: false,
+          font: { size: 12, color: "#54585A" }
+        }] : [],
+        height: 450,
+        hovermode: "closest"
       },
       { responsive: true, displayModeBar: false }
     );
