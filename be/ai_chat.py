@@ -304,6 +304,99 @@ GET_PROTEIN_STRUCTURE_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+MAP_IDENTIFIERS_DECLARATION = types.FunctionDeclaration(
+    name="map_identifiers",
+    description=(
+        "Map gene symbols, UniProt accessions, or Ensembl gene IDs between identifier systems. "
+        "Bridges gene names to UniProt/Ensembl IDs and vice versa. Human proteins only."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "ids": types.Schema(
+                type="ARRAY",
+                items=types.Schema(type="STRING"),
+                description="List of identifiers to map (e.g., ['TP53', 'BRCA2'] or ['P04637'])",
+            ),
+            "from_db": types.Schema(
+                type="STRING",
+                description="Source database: 'gene_name', 'uniprot', or 'ensembl'",
+            ),
+            "to_db": types.Schema(
+                type="STRING",
+                description="Target database: 'gene_name', 'uniprot', or 'ensembl'",
+            ),
+        },
+        required=["ids", "from_db", "to_db"],
+    ),
+)
+
+GET_PROTEIN_VARIANTS_DECLARATION = types.FunctionDeclaration(
+    name="get_protein_variants",
+    description=(
+        "Get known protein variants and mutagenesis data from UniProt for a given accession. "
+        "Returns natural variants (e.g., disease-associated SNPs) and experimental mutagenesis data. "
+        "Particularly useful for interpreting MAVE variant effect scores."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "uniprot_id": types.Schema(
+                type="STRING",
+                description="UniProt accession like 'P04637', 'P51587'",
+            ),
+        },
+        required=["uniprot_id"],
+    ),
+)
+
+SEARCH_LITERATURE_DECLARATION = types.FunctionDeclaration(
+    name="search_literature",
+    description=(
+        "Search biomedical literature via Europe PMC. Finds papers about genes, diseases, "
+        "perturbation experiments, CRISPR screens, etc. Returns titles, authors, journals, "
+        "citation counts, and links. Useful for finding relevant publications about a gene or topic."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "query": types.Schema(
+                type="STRING",
+                description="Search query (e.g., 'BRCA2 CRISPR screen', 'TP53 perturbation')",
+            ),
+            "max_results": types.Schema(
+                type="INTEGER",
+                description="Maximum number of papers to return (default 10, max 20)",
+            ),
+            "sort": types.Schema(
+                type="STRING",
+                description="Sort order: 'relevance' (default) or 'date'",
+            ),
+        },
+        required=["query"],
+    ),
+)
+
+GET_DRUGGABILITY_DECLARATION = types.FunctionDeclaration(
+    name="get_druggability",
+    description=(
+        "Check if a gene/protein target is druggable using the Pharos database (NIH). "
+        "Returns the Target Development Level (Tclin=approved drug, Tchem=active compound, "
+        "Tbio=biological evidence, Tdark=understudied), protein family, description, "
+        "and known drugs/ligands. Use after identifying interesting perturbation targets."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Gene symbol like 'TP53', 'BRCA2', 'KRAS'",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
@@ -312,6 +405,10 @@ INTERNAL_TOOL_DECLARATIONS = [
     CREATE_VISUALIZATION_DECLARATION,
     LOOKUP_PROTEIN_DECLARATION,
     GET_PROTEIN_STRUCTURE_DECLARATION,
+    MAP_IDENTIFIERS_DECLARATION,
+    GET_PROTEIN_VARIANTS_DECLARATION,
+    SEARCH_LITERATURE_DECLARATION,
+    GET_DRUGGABILITY_DECLARATION,
 ]
 
 
@@ -712,6 +809,290 @@ async def _tool_get_protein_structure(args: dict) -> dict:
     }
 
 
+async def _tool_map_identifiers(args: dict) -> dict:
+    ids = args.get("ids", [])
+    from_db = args.get("from_db", "gene_name")
+    to_db = args.get("to_db", "uniprot")
+
+    if not ids:
+        return {"error": "ids list is required"}
+
+    ids = ids[:20]
+    results = []
+    fields = "accession,gene_primary,xref_ensembl"
+
+    async with aiohttp.ClientSession() as http:
+        for id_val in ids:
+            if from_db == "gene_name":
+                query = f"gene_exact:{id_val} AND organism_id:9606 AND reviewed:true"
+            elif from_db == "uniprot":
+                query = f"accession:{id_val}"
+            elif from_db == "ensembl":
+                query = f"xref:ensembl-{id_val} AND organism_id:9606 AND reviewed:true"
+            else:
+                return {
+                    "error": f"Unknown from_db: {from_db}. Use 'gene_name', 'uniprot', or 'ensembl'"
+                }
+
+            url = "https://rest.uniprot.org/uniprotkb/search"
+            params = {
+                "query": query,
+                "fields": fields,
+                "format": "json",
+                "size": "1",
+            }
+
+            try:
+                async with http.get(
+                    url, params=params, timeout=aiohttp.ClientTimeout(total=15)
+                ) as resp:
+                    if resp.status != 200:
+                        results.append({"input": id_val, "error": f"HTTP {resp.status}"})
+                        continue
+                    data = await resp.json()
+            except Exception as exc:
+                results.append({"input": id_val, "error": str(exc)})
+                continue
+
+            entries = data.get("results", [])
+            if not entries:
+                results.append({"input": id_val, "error": "Not found"})
+                continue
+
+            entry = entries[0]
+            mapping = {"input": id_val}
+            mapping["uniprot_id"] = entry.get("primaryAccession", "")
+
+            genes = entry.get("genes", [])
+            mapping["gene_name"] = (
+                genes[0].get("geneName", {}).get("value", "") if genes else ""
+            )
+
+            ensembl_ids = []
+            for xref in entry.get("uniProtKBCrossReferences", []):
+                if xref.get("database") == "Ensembl":
+                    for prop in xref.get("properties", []):
+                        if prop.get("key") == "GeneId":
+                            eid = prop.get("value", "")
+                            if eid and eid not in ensembl_ids:
+                                ensembl_ids.append(eid)
+            mapping["ensembl_ids"] = ensembl_ids
+
+            results.append(mapping)
+
+    return {"mappings": results}
+
+
+async def _tool_get_protein_variants(args: dict) -> dict:
+    uniprot_id = args.get("uniprot_id", "")
+    if not uniprot_id:
+        return {"error": "uniprot_id is required"}
+
+    url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}"
+    params = {
+        "fields": "ft_variant,ft_mutagen,gene_primary,protein_name",
+        "format": "json",
+    }
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status == 404:
+                    return {"error": f"No UniProt entry found for {uniprot_id}"}
+                if resp.status != 200:
+                    return {"error": f"UniProt API returned status {resp.status}"}
+                entry = await resp.json()
+    except Exception as exc:
+        return {"error": f"UniProt API error: {str(exc)}"}
+
+    gene_name = ""
+    genes = entry.get("genes", [])
+    if genes:
+        gene_name = genes[0].get("geneName", {}).get("value", "")
+
+    variants = []
+    mutagenesis = []
+
+    for feat in entry.get("features", []):
+        if feat.get("type") == "Natural variant":
+            v = {
+                "position": feat.get("location", {}).get("start", {}).get("value"),
+                "original": feat.get("alternativeSequence", {}).get(
+                    "originalSequence", ""
+                ),
+                "variant": ", ".join(
+                    feat.get("alternativeSequence", {}).get(
+                        "alternativeSequences", []
+                    )
+                ),
+                "description": feat.get("description", ""),
+            }
+            if feat.get("featureId"):
+                v["feature_id"] = feat["featureId"]
+            variants.append(v)
+        elif feat.get("type") == "Mutagenesis":
+            m = {
+                "position": feat.get("location", {}).get("start", {}).get("value"),
+                "original": feat.get("alternativeSequence", {}).get(
+                    "originalSequence", ""
+                ),
+                "variant": ", ".join(
+                    feat.get("alternativeSequence", {}).get(
+                        "alternativeSequences", []
+                    )
+                ),
+                "description": feat.get("description", ""),
+            }
+            mutagenesis.append(m)
+
+    return {
+        "uniprot_id": uniprot_id,
+        "gene_name": gene_name,
+        "natural_variants": variants[:50],
+        "mutagenesis": mutagenesis[:50],
+        "total_variants": len(variants),
+        "total_mutagenesis": len(mutagenesis),
+    }
+
+
+async def _tool_search_literature(args: dict) -> dict:
+    query = args.get("query", "")
+    if not query:
+        return {"error": "query is required"}
+
+    max_results = min(args.get("max_results", 10), 20)
+    sort = args.get("sort", "relevance")
+
+    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+    params = {
+        "query": query,
+        "format": "json",
+        "pageSize": str(max_results),
+        "resultType": "lite",
+    }
+    if sort == "date":
+        params["sort"] = "P_PDATE_D desc"
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status != 200:
+                    return {"error": f"Europe PMC API returned status {resp.status}"}
+                data = await resp.json()
+    except Exception as exc:
+        return {"error": f"Europe PMC API error: {str(exc)}"}
+
+    result_list = data.get("resultList", {}).get("result", [])
+    hit_count = data.get("hitCount", 0)
+
+    articles = []
+    for article in result_list:
+        a = {
+            "title": article.get("title", ""),
+            "authors": article.get("authorString", ""),
+            "journal": article.get("journalTitle", ""),
+            "year": article.get("pubYear", ""),
+            "cited_by": article.get("citedByCount", 0),
+            "pmid": article.get("pmid", ""),
+            "doi": article.get("doi", ""),
+        }
+        if a["pmid"]:
+            a["url"] = f"https://europepmc.org/article/MED/{a['pmid']}"
+        elif a["doi"]:
+            a["url"] = f"https://doi.org/{a['doi']}"
+
+        abstract = article.get("abstractText", "")
+        if abstract:
+            a["abstract"] = (
+                abstract[:300] + ("..." if len(abstract) > 300 else "")
+            )
+
+        articles.append(a)
+
+    return {
+        "total_hits": hit_count,
+        "articles": articles,
+    }
+
+
+async def _tool_get_druggability(args: dict) -> dict:
+    gene_name = args.get("gene_name", "")
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    url = "https://pharos-api.ncats.io/graphql"
+    payload = {
+        "query": """
+        query TargetDruggability($term: String!) {
+          targets(filter: {term: $term}, top: 10) {
+            targets {
+              name
+              sym
+              tdl
+              fam
+              description
+              novelty
+            }
+          }
+        }
+        """,
+        "variables": {"term": gene_name.upper()},
+    }
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30),
+                headers={"Content-Type": "application/json"},
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {"error": f"Pharos API returned status {resp.status}: {body[:200]}"}
+                data = await resp.json()
+    except Exception as exc:
+        return {"error": f"Pharos API error: {str(exc)}"}
+
+    if "errors" in data:
+        return {
+            "error": f"Pharos GraphQL error: {data['errors'][0].get('message', '')}"
+        }
+
+    targets = data.get("data", {}).get("targets", {}).get("targets", [])
+    if not targets:
+        return {"error": f"No Pharos entry found for gene '{gene_name}'"}
+
+    # Pharos term search is fuzzy — find exact gene symbol match
+    exact = [t for t in targets if t.get("sym", "").upper() == gene_name.upper()]
+    if exact:
+        targets = exact
+
+    target = targets[0]
+    tdl = target.get("tdl", "")
+    tdl_desc = {
+        "Tclin": "Approved drug target — has at least one approved drug",
+        "Tchem": "Chemical tool target — has active compounds but no approved drug",
+        "Tbio": "Biological target — has biological evidence but no active compounds",
+        "Tdark": "Understudied target — little known about this protein",
+    }
+
+    return {
+        "gene_name": target.get("sym", gene_name),
+        "protein_name": target.get("name", ""),
+        "tdl": tdl,
+        "tdl_description": tdl_desc.get(tdl, "Unknown"),
+        "protein_family": target.get("fam", ""),
+        "description": target.get("description", ""),
+        "novelty_score": target.get("novelty"),
+        "pharos_url": f"https://pharos.nih.gov/targets/{target.get('sym', gene_name)}",
+    }
+
+
 TOOL_HANDLERS = {
     "search_datasets": _tool_search_datasets,
     "search_target_summary": _tool_search_target_summary,
@@ -719,6 +1100,10 @@ TOOL_HANDLERS = {
     "get_catalogue_summary": lambda args: _tool_get_catalogue_summary(),
     "lookup_protein": _tool_lookup_protein,
     "get_protein_structure": _tool_get_protein_structure,
+    "map_identifiers": _tool_map_identifiers,
+    "get_protein_variants": _tool_get_protein_variants,
+    "search_literature": _tool_search_literature,
+    "get_druggability": _tool_get_druggability,
 }
 
 
@@ -824,6 +1209,10 @@ _OT_TOOL_DESCRIPTIONS = {
     "search_target_summary": "Looking up gene targets...",
     "query_perturbation_data": "Querying perturbation data...",
     "get_catalogue_summary": "Getting catalogue summary...",
+    "map_identifiers": "Mapping identifiers across databases...",
+    "get_protein_variants": "Fetching protein variants from UniProt...",
+    "search_literature": "Searching biomedical literature...",
+    "get_druggability": "Checking druggability on Pharos...",
 }
 
 
@@ -878,6 +1267,13 @@ CRITICAL RULES FOR RESPONSES:
 - ALL data (tables, charts) MUST be sent via the create_visualization tool, which displays them in a separate data portal below the chat.
 - After calling create_visualization, write a short summary (2-3 sentences) interpreting the results. Do NOT repeat the data in text.
 
+CRITICAL TOOL ROUTING — follow these rules for tool selection:
+- "Is X druggable?" / "drugs for X" / "target X" → call get_druggability FIRST (Pharos), NOT Open Targets
+- "What papers..." / "literature on..." → call search_literature (Europe PMC)
+- "What diseases are linked to X?" → use Open Targets
+- "Show structure of X" → call get_protein_structure (AlphaFold)
+- "What variants does X have?" → call get_protein_variants (UniProt)
+
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
 - Use bar charts for comparisons or >6 categories
@@ -907,7 +1303,7 @@ Disease associations for a target (gene):
 Target associations for a disease:
   query_string: "query { disease(efoId: \\"MONDO_0007254\\") { name associatedTargets(page: {index: 0, size: 25}) { count rows { target { id approvedSymbol } score } } } }"
 
-Drugs for a target:
+Drugs for a target (ONLY use AFTER calling get_druggability first — never as the first tool for druggability questions):
   query_string: "query { target(ensemblId: \\"ENSG00000139618\\") { approvedSymbol knownDrugs(size: 25) { count rows { drug { id name } mechanismOfAction phase status } } } }"
 
 Target details (pathways, GO terms):
@@ -915,9 +1311,9 @@ Target details (pathways, GO terms):
 
 Use Open Targets when users ask about:
 - Disease associations for a gene (e.g. "What diseases are linked to BRCA2?")
-- Drug targets and mechanisms of action
 - Genetic evidence and GWAS associations
 - Known pathways and biological functions from curated databases
+- Detailed drug mechanisms of action and clinical trial phases (AFTER checking druggability with get_druggability first)
 
 When combining data from both our Catalogue and Open Targets, clearly distinguish between the two sources in your response.
 
@@ -926,14 +1322,32 @@ You have access to UniProt and AlphaFold tools for protein-level information.
 
 - lookup_protein: Look up protein function, domains, disease associations, and GO terms from UniProt for any gene. Use this when users ask "What does gene X do?" or when you want to provide biological context for a perturbation target.
 - get_protein_structure: Fetch AlphaFold predicted 3D structure. This automatically renders an interactive 3D viewer in the data portal. Use when users ask to "show the structure" of a gene/protein.
+- map_identifiers: Map between gene symbols, UniProt accessions, and Ensembl gene IDs. Use when you need to bridge identifiers across databases (e.g., gene symbol to Ensembl ID for Open Targets queries).
+- get_protein_variants: Get known natural variants and mutagenesis data from UniProt for a given accession. Returns position, amino acid change, and clinical/functional description. Especially useful for interpreting MAVE variant effect scores.
 
 After calling lookup_protein, use create_visualization with viz_type "gene_card" to display a summary card in the data portal. The gene card should include the gene name, protein function, UniProt ID, diseases, domains, and links.
+
+LITERATURE SEARCH:
+- search_literature: Search Europe PMC for biomedical papers. Use when users ask "What papers describe perturbation of gene X?" or want to find publications about a gene, disease, or experimental method. Returns titles, authors, journals, citation counts, and links. Display results as a table with create_visualization.
+
+DRUGGABILITY (PHAROS) — ALWAYS USE FOR DRUGGABILITY QUESTIONS:
+When users ask "Is gene X druggable?", "Can we target X?", "What drugs target X?", or anything about druggability, you MUST call get_druggability FIRST (before Open Targets). Pharos provides the authoritative Target Development Level classification that Open Targets does not have.
+
+- get_druggability: Check if a gene/protein target is druggable using the Pharos database (NIH). Returns the Target Development Level:
+  * Tclin = approved drug target — has at least one approved drug
+  * Tchem = chemical tool target — has active compounds but no approved drug
+  * Tbio = biological target — has biological evidence but no active compounds
+  * Tdark = understudied target — little known about this protein
+  Also returns protein family, description, disease count, and ligand count.
+  After calling get_druggability, you may OPTIONALLY also query Open Targets knownDrugs for detailed drug names and mechanisms.
 
 Workflow for gene queries:
 1. First use our Catalogue tools (search_target_summary, query_perturbation_data) for perturbation data
 2. Use lookup_protein to add protein context
 3. Optionally use get_protein_structure for 3D visualization
-4. Use Open Targets for disease/drug associations"""
+4. Use get_druggability (Pharos) for druggability classification — ALWAYS before Open Targets for drug questions
+5. Use Open Targets for disease associations and additional drug detail
+6. Use search_literature for relevant publications"""
 
 # --- SSE streaming endpoint ---
 

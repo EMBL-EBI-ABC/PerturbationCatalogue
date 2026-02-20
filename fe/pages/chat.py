@@ -76,29 +76,52 @@ layout = dbc.Container(
                             style={"fontSize": "0.85rem"},
                         ),
                         html.Button(
-                            "What data modalities are available?",
+                            "What perturbation data exists for TP53?",
                             className="chat-suggestion-btn",
                             **{
-                                "data-query": "What data modalities are available and how many datasets are there for each?"
+                                "data-query": "What perturbation data is available for TP53 across all modalities?"
                             },
                         ),
                         html.Button(
-                            "BRCA2 perturbation data",
+                            "Tell me about the BRCA2 protein",
                             className="chat-suggestion-btn",
                             **{
-                                "data-query": "What perturbation data is available for BRCA2?"
+                                "data-query": "Look up the BRCA2 protein and show me a gene card with its function, domains, and disease associations"
                             },
                         ),
                         html.Button(
-                            "Show CRISPR screen results for TP53",
-                            className="chat-suggestion-btn",
-                            **{"data-query": "Show me CRISPR screen results for TP53"},
-                        ),
-                        html.Button(
-                            "Disease associations for BRCA2",
+                            "Show 3D structure of KRAS",
                             className="chat-suggestion-btn",
                             **{
-                                "data-query": "What diseases are associated with BRCA2 according to Open Targets?"
+                                "data-query": "Show me the predicted 3D protein structure for KRAS"
+                            },
+                        ),
+                        html.Button(
+                            "Is EGFR druggable?",
+                            className="chat-suggestion-btn",
+                            **{
+                                "data-query": "Use Pharos to check if EGFR is druggable. What is its target development level?"
+                            },
+                        ),
+                        html.Button(
+                            "Papers on CRISPR screens in cancer",
+                            className="chat-suggestion-btn",
+                            **{
+                                "data-query": "Find recent papers about CRISPR screens in cancer"
+                            },
+                        ),
+                        html.Button(
+                            "Known variants of BRCA1",
+                            className="chat-suggestion-btn",
+                            **{
+                                "data-query": "What are the known protein variants and mutagenesis data for BRCA1?"
+                            },
+                        ),
+                        html.Button(
+                            "Disease associations for MYC",
+                            className="chat-suggestion-btn",
+                            **{
+                                "data-query": "What diseases are associated with MYC according to Open Targets?"
                             },
                         ),
                     ],

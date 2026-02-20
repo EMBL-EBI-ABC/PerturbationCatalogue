@@ -33,7 +33,7 @@ The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying intern
 - `map_identifiers(ids, from_db, to_db)` -- bridge gene symbols to UniProt/Ensembl IDs
 - `get_protein_variants(uniprot_id)` -- known variants + mutagenesis (especially relevant for MAVE interpretation)
 
-**Status: PARTIALLY DONE** (Phase 1 implemented `lookup_protein`; `map_identifiers` and `get_protein_variants` remain)
+**Status: DONE** (All three tools implemented: `lookup_protein`, `map_identifiers`, `get_protein_variants`)
 
 ---
 
@@ -45,7 +45,7 @@ The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying intern
 
 **MCP servers available:** [BioMCP](https://github.com/genomoncology/biomcp) wraps Europe PMC + PubMed/PubTator3 + bioRxiv + clinical trials + variant annotations (COSMIC, ClinVar, CIViC) in one package. This is the most efficient single integration -- adding BioMCP as a second MCP server alongside Open Targets would immediately give you literature, variant annotation, and clinical trial search.
 
-**Status: TODO**
+**Status: DONE** (Direct REST integration via `search_literature` tool querying Europe PMC API)
 
 ---
 
@@ -57,7 +57,7 @@ The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying intern
 
 **MCP server:** [pharos-mcp-server](https://github.com/QuentinCody/pharos-mcp-server) exists and is ready to integrate using your existing MCP client pattern.
 
-**Status: TODO**
+**Status: DONE** (Direct GraphQL integration via `get_druggability` tool querying Pharos API)
 
 ---
 
