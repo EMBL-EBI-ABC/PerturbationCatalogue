@@ -1,31 +1,28 @@
 # BigQuery to Elasticsearch projector
 
-## Environment configuration
+## Running the projector
 
 These commands should be run from the parent directory, `dwh`.
 
-```python
+The script is automated and will:
+1. Load the three tables (`dataset_summary`, `target_summary`, and `landing_page_summary`) into Elastic under the format `YYYY-MM-DD-index-name`.
+2. If the sync is successful, move aliases such as `dataset-summary` to point to the latest index version.
+3. If the sync is successful, prune old index versions to keep only the live one + up to two earlier versions. 
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cd bq_to_es_projector
+dev_secrets
+python3 bq_to_es_projector.py
 ```
 
-## Running the projector
+## Additional configuration
 
-These commands should be run from the current directory, `bq_to_es_projector`.
-
-First, load environment variables using `dev_secrets`.
-
-Then, additionally set the following variables:
-* BQ_TABLE: which BQ table to ingest from, for example `dataset_summary`.
-* ES_INDEX: which Elastic index to ingest to in the format `YYYY-MM-DD-dataset-summary`. Note that the name of the index must be at the end of the string.
-
-Optional parameters that can also be set using environmental variables include:
+Optional parameters that can be set using environmental variables:
 ```bash
 BULK_CHUNK_SIZE=2000
 BULK_MAX_RETRIES=5
 BULK_TIMEOUT=120
 ```
-
-Finally, run the projector: `python bq_to_es_projector.py`.

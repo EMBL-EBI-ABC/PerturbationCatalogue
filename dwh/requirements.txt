@@ -3,3 +3,4 @@ dbt-bigquery==1.9.2
 dbt-core==1.9.2
 shandy-sqlfmt[jinjafmt]
 elasticsearch
+tqdm
