@@ -397,6 +397,64 @@ GET_DRUGGABILITY_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+ANNOTATE_VARIANT_DECLARATION = types.FunctionDeclaration(
+    name="annotate_variant",
+    description=(
+        "Annotate a human missense variant with molecular consequence data from ProtVar (EBI). "
+        "Returns protein mapping, pathogenicity predictions (AlphaMissense, EVE, ESM-1b, Conservation), "
+        "protein stability change (FoldX ddG), CADD score, gnomAD allele frequency, and affected "
+        "gene/isoform details. Accepts variants in many formats: dbSNP IDs (rs1042779), "
+        "gnomAD (19-1010539-G-C), VCF-like (19 1010539 G C), HGVS genomic (NC_000019.10:g.1010539G>C), "
+        "or UniProt+change (P80404 Gln56Arg). Human missense variants only."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "variant": types.Schema(
+                type="STRING",
+                description=(
+                    "Variant identifier in any supported format: "
+                    "dbSNP ID (e.g., 'rs1042779'), "
+                    "gnomAD format (e.g., '19-1010539-G-C'), "
+                    "VCF-like (e.g., '19 1010539 G C'), "
+                    "HGVS genomic (e.g., 'NC_000019.10:g.1010539G>C'), "
+                    "or UniProt+change (e.g., 'P80404 Gln56Arg')"
+                ),
+            ),
+        },
+        required=["variant"],
+    ),
+)
+
+GET_VARIANT_STRUCTURAL_CONTEXT_DECLARATION = types.FunctionDeclaration(
+    name="get_variant_structural_context",
+    description=(
+        "Get structural context for a specific residue position in a protein from ProtVar (EBI). "
+        "Returns PDB structure mappings, predicted binding pockets, protein-protein interaction "
+        "interfaces, FoldX stability predictions for all possible substitutions, and functional "
+        "annotations (domains, active sites, PTMs) at that position. "
+        "Use after identifying a variant of interest to understand its structural impact."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "uniprot_id": types.Schema(
+                type="STRING",
+                description="UniProt accession like 'P04637', 'Q9NUW8'",
+            ),
+            "position": types.Schema(
+                type="INTEGER",
+                description="Amino acid residue position (1-based)",
+            ),
+            "variant_aa": types.Schema(
+                type="STRING",
+                description="Optional: variant amino acid (1- or 3-letter code, e.g., 'R' or 'Arg') for specific substitution predictions",
+            ),
+        },
+        required=["uniprot_id", "position"],
+    ),
+)
+
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
@@ -409,6 +467,8 @@ INTERNAL_TOOL_DECLARATIONS = [
     GET_PROTEIN_VARIANTS_DECLARATION,
     SEARCH_LITERATURE_DECLARATION,
     GET_DRUGGABILITY_DECLARATION,
+    ANNOTATE_VARIANT_DECLARATION,
+    GET_VARIANT_STRUCTURAL_CONTEXT_DECLARATION,
 ]
 
 
@@ -1093,6 +1153,431 @@ async def _tool_get_druggability(args: dict) -> dict:
     }
 
 
+PROTVAR_BASE = "https://www.ebi.ac.uk/ProtVar/api"
+
+
+async def _tool_annotate_variant(args: dict) -> dict:
+    """Annotate a human missense variant using ProtVar mapping + scores + FoldX."""
+    variant = args.get("variant", "").strip()
+    if not variant:
+        return {"error": "variant is required"}
+
+    # Step 1: Map the variant via ProtVar
+    url = f"{PROTVAR_BASE}/mapping"
+    params = {"input": variant}
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=20)
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {
+                        "error": f"ProtVar mapping API returned status {resp.status}: {body[:300]}"
+                    }
+                data = await resp.json()
+    except Exception as exc:
+        return {"error": f"ProtVar API error: {str(exc)}"}
+
+    inputs = data.get("inputs", [])
+    if not inputs:
+        return {"error": f"No ProtVar results for variant '{variant}'"}
+
+    user_input = inputs[0]
+    input_type = user_input.get("type", "")
+
+    # Handle ID-based inputs (dbSNP, ClinVar, COSMIC) which have derivedGenomicInputs
+    genomic_inputs = user_input.get("derivedGenomicInputs", [])
+    if genomic_inputs:
+        # Use the first derived genomic input for mapping
+        user_input = genomic_inputs[0]
+
+    mappings = user_input.get("mappings", [])
+    if not mappings:
+        messages = data.get("messages", [])
+        msg_texts = [m.get("text", "") for m in messages if m.get("text")]
+        return {
+            "error": f"No gene mappings found for variant '{variant}'",
+            "messages": msg_texts or None,
+        }
+
+    # Extract results from the first gene mapping
+    results = []
+    for mapping in mappings[:3]:  # Limit to top 3 gene mappings
+        genes = mapping.get("genes", [])
+        for gene in genes[:2]:
+            gene_name = gene.get("geneName", "")
+            ensg = gene.get("ensg", "")
+            cadd_score = gene.get("caddScore")
+            allele_freq = gene.get("alleleFreq")
+
+            isoforms = gene.get("isoforms", [])
+            for iso in isoforms[:2]:
+                accession = iso.get("accession", "")
+                canonical = iso.get("canonical", False)
+                position = iso.get("isoformPosition")
+                ref_aa = iso.get("refAA", "")
+                var_aa = iso.get("variantAA", "")
+                consequences = iso.get("consequences", [])
+                codon_change = iso.get("codonChange", "")
+                aa_change = iso.get("aminoAcidChange", "")
+
+                # Inline scores from mapping response
+                conserv_score = iso.get("conservScore")
+                am_score = iso.get("amScore")
+                esm_score = iso.get("esmScore")
+
+                entry = {
+                    "gene": gene_name,
+                    "ensembl_gene": ensg,
+                    "uniprot_accession": accession,
+                    "canonical_isoform": canonical,
+                    "position": position,
+                    "ref_aa": ref_aa,
+                    "variant_aa": var_aa,
+                    "consequences": consequences,
+                    "codon_change": codon_change,
+                    "amino_acid_change": aa_change,
+                    "cadd_score": cadd_score,
+                    "gnomad_allele_frequency": allele_freq,
+                }
+
+                # Add inline scores
+                predictions = {}
+                if conserv_score is not None:
+                    predictions["conservation"] = conserv_score
+                if am_score is not None:
+                    predictions["alphamissense"] = am_score
+                if esm_score is not None:
+                    predictions["esm1b"] = esm_score
+
+                # Step 2: Fetch EVE score and full score details if we have accession + position + variant_aa
+                if accession and position and var_aa:
+                    try:
+                        score_url = f"{PROTVAR_BASE}/score/{accession}/{position}"
+                        score_params = {"mt": var_aa}
+                        async with aiohttp.ClientSession() as http:
+                            async with http.get(
+                                score_url,
+                                params=score_params,
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as score_resp:
+                                if score_resp.status == 200:
+                                    scores = await score_resp.json()
+                                    for s in scores:
+                                        name = s.get("name", "")
+                                        if name == "EVE":
+                                            predictions["eve_score"] = s.get("score")
+                                            predictions["eve_class"] = s.get(
+                                                "eveClass"
+                                            )
+                                        elif name == "AM":
+                                            predictions["alphamissense"] = s.get(
+                                                "amPathogenicity"
+                                            )
+                                            predictions["alphamissense_class"] = (
+                                                s.get("amClass")
+                                            )
+                                        elif name == "CONSERV":
+                                            predictions["conservation"] = s.get(
+                                                "score"
+                                            )
+                                        elif name == "ESM":
+                                            predictions["esm1b"] = s.get("score")
+                    except Exception:
+                        pass  # Scores are supplementary; don't fail the whole call
+
+                    # Step 3: Fetch FoldX stability prediction
+                    try:
+                        foldx_url = (
+                            f"{PROTVAR_BASE}/foldx/{accession}/{position}"
+                        )
+                        foldx_params = {"variantAA": var_aa}
+                        async with aiohttp.ClientSession() as http:
+                            async with http.get(
+                                foldx_url,
+                                params=foldx_params,
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as foldx_resp:
+                                if foldx_resp.status == 200:
+                                    foldx_data = await foldx_resp.json()
+                                    if foldx_data:
+                                        fx = foldx_data[0]
+                                        predictions["foldx_ddg"] = fx.get(
+                                            "foldxDdg"
+                                        )
+                                        predictions["alphafold_plddt"] = fx.get(
+                                            "plddt"
+                                        )
+                                        # Interpret stability
+                                        ddg = fx.get("foldxDdg")
+                                        if ddg is not None:
+                                            if ddg > 2:
+                                                predictions[
+                                                    "stability_effect"
+                                                ] = "Destabilizing"
+                                            elif ddg > 0.5:
+                                                predictions[
+                                                    "stability_effect"
+                                                ] = "Mildly destabilizing"
+                                            elif ddg < -2:
+                                                predictions[
+                                                    "stability_effect"
+                                                ] = "Stabilizing"
+                                            else:
+                                                predictions[
+                                                    "stability_effect"
+                                                ] = "Neutral"
+                    except Exception:
+                        pass  # FoldX is supplementary
+
+                if predictions:
+                    entry["predictions"] = predictions
+
+                results.append(entry)
+
+    # Extract any messages from ProtVar
+    messages = data.get("messages", [])
+    msg_texts = [m.get("text", "") for m in messages if m.get("text")]
+
+    output = {
+        "input_variant": variant,
+        "annotations": results,
+        "protvar_url": f"https://www.ebi.ac.uk/ProtVar/query?search={variant}",
+    }
+    if msg_texts:
+        output["messages"] = msg_texts
+
+    return output
+
+
+async def _tool_get_variant_structural_context(args: dict) -> dict:
+    """Get structural context for a residue position from ProtVar."""
+    uniprot_id = args.get("uniprot_id", "").strip()
+    position = args.get("position")
+    variant_aa = args.get("variant_aa", "")
+
+    if not uniprot_id:
+        return {"error": "uniprot_id is required"}
+    if not position:
+        return {"error": "position is required"}
+
+    result = {
+        "uniprot_id": uniprot_id,
+        "position": position,
+    }
+
+    async with aiohttp.ClientSession() as http:
+        # 1. Functional annotations (domains, active sites, PTMs)
+        try:
+            func_url = f"{PROTVAR_BASE}/function/{uniprot_id}/{position}"
+            func_params = {}
+            if variant_aa:
+                func_params["variantAA"] = variant_aa
+            async with http.get(
+                func_url,
+                params=func_params if func_params else None,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status == 200:
+                    func_data = await resp.json()
+                    # Extract key functional features
+                    features = []
+                    for feat in func_data.get("features", []):
+                        f = {
+                            "type": feat.get("type", ""),
+                            "description": feat.get("description", ""),
+                        }
+                        loc = feat.get("location", {})
+                        if loc:
+                            f["start"] = loc.get("start", {}).get("value")
+                            f["end"] = loc.get("end", {}).get("value")
+                        if f["type"]:
+                            features.append(f)
+
+                    if features:
+                        result["functional_features"] = features[:20]
+
+                    # Gene/protein info
+                    gene_name = ""
+                    genes = func_data.get("genes", [])
+                    if genes:
+                        gene_name = (
+                            genes[0].get("geneName", {}).get("value", "")
+                        )
+                    if gene_name:
+                        result["gene_name"] = gene_name
+
+                    protein_name = (
+                        func_data.get("proteinDescription", {})
+                        .get("recommendedName", {})
+                        .get("fullName", {})
+                        .get("value", "")
+                    )
+                    if protein_name:
+                        result["protein_name"] = protein_name
+
+                    # Pockets from function endpoint
+                    pockets = func_data.get("pockets", [])
+                    if pockets:
+                        pocket_info = []
+                        for p in pockets[:5]:
+                            pocket_info.append(
+                                {
+                                    "pocket_id": p.get("pocketId"),
+                                    "score": p.get("score"),
+                                    "energy_per_vol": p.get("energyPerVol"),
+                                    "buriedness": p.get("buriedness"),
+                                    "mean_plddt": p.get("meanPlddt"),
+                                }
+                            )
+                        result["binding_pockets"] = pocket_info
+
+                    # Interactions from function endpoint
+                    interactions = func_data.get("interactions", [])
+                    if interactions:
+                        interaction_info = []
+                        for inter in interactions[:5]:
+                            interaction_info.append(
+                                {
+                                    "partner_a": inter.get("a", ""),
+                                    "partner_b": inter.get("b", ""),
+                                    "pdockq": inter.get("pdockq"),
+                                }
+                            )
+                        result["protein_interactions"] = interaction_info
+
+                    # FoldX data from function endpoint
+                    foldx_list = func_data.get("foldxs", [])
+                    if foldx_list:
+                        foldx_info = []
+                        for fx in foldx_list[:20]:
+                            foldx_info.append(
+                                {
+                                    "wild_type": fx.get("wildType", ""),
+                                    "mutated_type": fx.get("mutatedType", ""),
+                                    "foldx_ddg": fx.get("foldxDdg"),
+                                    "plddt": fx.get("plddt"),
+                                }
+                            )
+                        result["foldx_predictions"] = foldx_info
+                elif resp.status == 404:
+                    return {
+                        "error": f"No ProtVar data for {uniprot_id} position {position}"
+                    }
+                else:
+                    result["function_error"] = (
+                        f"Function endpoint returned status {resp.status}"
+                    )
+        except Exception as exc:
+            result["function_error"] = str(exc)
+
+        # 2. PDB structure mappings
+        try:
+            struct_url = f"{PROTVAR_BASE}/structure/{uniprot_id}/{position}"
+            async with http.get(
+                struct_url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    struct_data = await resp.json()
+                    if struct_data:
+                        structures = []
+                        for s in struct_data[:10]:
+                            structures.append(
+                                {
+                                    "pdb_id": s.get("pdb_id", ""),
+                                    "chain_id": s.get("chain_id", ""),
+                                    "experimental_method": s.get(
+                                        "experimental_method", ""
+                                    ),
+                                    "resolution": s.get("resolution"),
+                                }
+                            )
+                        if structures:
+                            result["pdb_structures"] = structures
+        except Exception:
+            pass  # Structural data is supplementary
+
+        # 3. Co-located variants (population data)
+        try:
+            pop_url = f"{PROTVAR_BASE}/population/{uniprot_id}/{position}"
+            async with http.get(
+                pop_url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    pop_data = await resp.json()
+                    colocated = []
+                    for var in pop_data.get(
+                        "proteinColocatedVariant", []
+                    )[:10]:
+                        v = {
+                            "wild_type": var.get("wildType", ""),
+                            "variant": var.get("alternativeSequence", ""),
+                        }
+                        # Clinical significance
+                        clin_sigs = var.get("clinicalSignificances", [])
+                        if clin_sigs:
+                            v["clinical_significance"] = clin_sigs[0]
+                        # Disease associations
+                        assocs = var.get("association", [])
+                        if assocs:
+                            v["disease_associations"] = [
+                                a.get("name", "") for a in assocs[:3]
+                            ]
+                        # dbSNP xrefs
+                        xrefs = var.get("xrefs", [])
+                        for xref in xrefs:
+                            if xref.get("source") == "dbSNP":
+                                v["dbsnp_id"] = xref.get("id", "")
+                                break
+                        colocated.append(v)
+                    if colocated:
+                        result["colocated_variants"] = colocated
+        except Exception:
+            pass  # Population data is supplementary
+
+        # 4. Pathogenicity scores (if variant_aa specified)
+        if variant_aa:
+            try:
+                score_url = f"{PROTVAR_BASE}/score/{uniprot_id}/{position}"
+                score_params = {"mt": variant_aa}
+                async with http.get(
+                    score_url,
+                    params=score_params,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        scores = await resp.json()
+                        predictions = {}
+                        for s in scores:
+                            name = s.get("name", "")
+                            if name == "EVE":
+                                predictions["eve_score"] = s.get("score")
+                                predictions["eve_class"] = s.get("eveClass")
+                            elif name == "AM":
+                                predictions["alphamissense"] = s.get(
+                                    "amPathogenicity"
+                                )
+                                predictions["alphamissense_class"] = s.get(
+                                    "amClass"
+                                )
+                            elif name == "CONSERV":
+                                predictions["conservation"] = s.get("score")
+                            elif name == "ESM":
+                                predictions["esm1b"] = s.get("score")
+                        if predictions:
+                            result["pathogenicity_scores"] = predictions
+            except Exception:
+                pass
+
+    result["protvar_url"] = (
+        f"https://www.ebi.ac.uk/ProtVar/query?search={uniprot_id}+{position}"
+    )
+
+    return result
+
+
 TOOL_HANDLERS = {
     "search_datasets": _tool_search_datasets,
     "search_target_summary": _tool_search_target_summary,
@@ -1104,6 +1589,8 @@ TOOL_HANDLERS = {
     "get_protein_variants": _tool_get_protein_variants,
     "search_literature": _tool_search_literature,
     "get_druggability": _tool_get_druggability,
+    "annotate_variant": _tool_annotate_variant,
+    "get_variant_structural_context": _tool_get_variant_structural_context,
 }
 
 
@@ -1213,6 +1700,8 @@ _OT_TOOL_DESCRIPTIONS = {
     "get_protein_variants": "Fetching protein variants from UniProt...",
     "search_literature": "Searching biomedical literature...",
     "get_druggability": "Checking druggability on Pharos...",
+    "annotate_variant": "Annotating variant with ProtVar...",
+    "get_variant_structural_context": "Fetching structural context from ProtVar...",
 }
 
 
@@ -1273,6 +1762,8 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "What diseases are linked to X?" → use Open Targets
 - "Show structure of X" → call get_protein_structure (AlphaFold)
 - "What variants does X have?" → call get_protein_variants (UniProt)
+- "What does variant rs123 do?" / "Is this variant pathogenic?" / "Effect of mutation X" → call annotate_variant (ProtVar)
+- "Structural impact at position X" / "What's at residue 493?" → call get_variant_structural_context (ProtVar)
 
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
@@ -1340,6 +1831,18 @@ When users ask "Is gene X druggable?", "Can we target X?", "What drugs target X?
   * Tdark = understudied target — little known about this protein
   Also returns protein family, description, disease count, and ligand count.
   After calling get_druggability, you may OPTIONALLY also query Open Targets knownDrugs for detailed drug names and mechanisms.
+
+VARIANT MOLECULAR CONSEQUENCES (PROTVAR):
+You have access to ProtVar (EBI) for deep molecular annotation of human missense variants.
+
+- annotate_variant: Annotate a variant with full molecular consequences. Accepts many input formats: dbSNP IDs (rs1042779), gnomAD (19-1010539-G-C), VCF-like (19 1010539 G C), HGVS, or UniProt+change (P80404 Gln56Arg). Returns pathogenicity predictions (AlphaMissense, EVE, ESM-1b, Conservation), protein stability (FoldX ddG), CADD score, gnomAD allele frequency, and gene/isoform mapping. Use when users ask "What does this variant do?", "Is rs123456 pathogenic?", "What's the effect of this mutation?", or when interpreting MAVE variant results.
+
+- get_variant_structural_context: Get detailed structural context at a specific protein residue position. Returns PDB structure mappings, binding pocket information, protein-protein interaction interfaces, FoldX stability predictions for all substitutions, functional features (domains, active sites), and co-located variants with clinical significance. Use when users ask "What's special about position 493 in Q9NUW8?" or to understand the structural impact of a variant identified by annotate_variant.
+
+ProtVar workflow:
+1. Use annotate_variant for initial variant annotation (pathogenicity + stability)
+2. If the variant maps to a protein position, optionally use get_variant_structural_context for deeper structural analysis
+3. Combine with get_protein_variants (UniProt) and get_protein_structure (AlphaFold) for full context
 
 Workflow for gene queries:
 1. First use our Catalogue tools (search_target_summary, query_perturbation_data) for perturbation data

@@ -61,26 +61,54 @@ The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying intern
 
 ---
 
-## Tier 2 -- Rich Visualizations (Zero New Backend Dependencies)
+## Tier 2 -- Molecular Consequence & Visualization
 
-These all render in the existing Data Portal using Plotly.js (already loaded) or lightweight CDN scripts:
+### 5. ProtVar -- Variant Molecular Consequences
 
-### 5. Volcano Plot (Perturb-seq DEA)
+**Why:** The key bridge between perturbation results and molecular impact. When the Catalogue shows a variant hit, ProtVar answers "What does this variant do to the protein?" with stability predictions (FoldX ddG), pathogenicity scores (EVE, ESM-1b, CADD), binding pocket/interface disruption, and PTM context. This data is **not available through Open Targets** -- OT links out to ProtVar but does not ingest its annotations. ProtVar is an EBI tool, making it a natural fit.
+
+**API:** REST at `https://www.ebi.ac.uk/ProtVar/api/` ([Swagger docs](https://www.ebi.ac.uk/ProtVar/api/swagger-ui/index.html)). No auth, free. Accepts VCF, HGVS, dbSNP IDs, or UniProt accession + position. Pre-computes all 28M+ possible human missense variants for near-instant retrieval.
+
+**Key data returned:**
+- Protein stability change (FoldX ddG, >200M pre-computed values)
+- Pathogenicity predictions (EVE, ESM-1b, CADD v1.6, AlphaMissense)
+- Structural context (AlphaFold mapping, binding pockets via AutoSite, PPI interfaces)
+- PTM disruption and active site proximity
+- Population frequencies (gnomAD, TOPMed, ExAC)
+- ClinVar/COSMIC classifications
+
+**Key tools added:**
+- `annotate_variant(variant)` -- full molecular consequence annotation for a missense variant (mapping + pathogenicity scores + FoldX stability)
+- `get_variant_structural_context(uniprot_id, position)` -- structural impact at a specific residue (PDB structures, pockets, interactions, co-located variants)
+
+**Limitation:** Human missense variants only (not indels, splicing, or structural variants).
+
+**MCP server:** None exists. Direct REST integration (fits existing pattern).
+
+**OT overlap note:** Open Targets includes basic VEP consequence terms and AlphaMissense scores, but ProtVar provides deeper protein-centric context (stability, pockets, interfaces, PTM) that OT does not have.
+
+**Status: DONE** (Both tools implemented: `annotate_variant`, `get_variant_structural_context`)
+
+---
+
+The following visualizations render in the existing Data Portal using Plotly.js (already loaded) or lightweight CDN scripts:
+
+### 6. Volcano Plot (Perturb-seq DEA)
 The gold-standard differential expression visualization. The `perturb_seq_dea` table already has `log2_fc` and `padj` -- just add a `renderVolcanoPlot` function in `chat.js` using Plotly scatter traces. **Zero new dependencies.**
 
 **Status: TODO**
 
-### 6. Needle/Lollipop Plot (MAVE Variants)
+### 7. Needle/Lollipop Plot (MAVE Variants)
 Show variant effect scores mapped along protein sequence with domain annotations. The `mave_data` table has `position` and `score`. Render with Plotly scatter + shapes. **Zero new dependencies.**
 
 **Status: TODO**
 
-### 7. Gene Interaction Network (Cytoscape.js)
+### 8. Gene Interaction Network (Cytoscape.js)
 Interactive network: perturbed gene in center, differentially expressed genes radiating out with edge width = |log2FC|. Load `cytoscape.js` from CDN (~250KB). Transforms Perturb-seq results from a table into a visual network. **One CDN dependency.**
 
 **Status: TODO**
 
-### 8. Gene Summary Cards
+### 9. Gene Summary Cards
 Structured HTML cards with gene name, function (from UniProt), druggability (from Pharos), key stats from the Catalogue, and quick links to AlphaFold/UniProt/Open Targets. **Zero dependencies, just HTML/CSS.**
 
 **Status: DONE** (Phase 1 implemented as `gene_card` viz_type)
@@ -89,7 +117,7 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 ## Tier 3 -- Domain-Specific Data Enrichment
 
-### 9. DepMap -- Cancer CRISPR Dependencies
+### 10. DepMap -- Cancer CRISPR Dependencies
 **Why:** The world's largest CRISPR screen dataset (1,865+ cancer cell lines). When the Catalogue shows a CRISPR hit for gene X, DepMap answers "Is X essential across all cancers or just this lineage?"
 
 **API:** [Sanger DepMap REST API](https://api.cellmodelpassports.sanger.ac.uk/swagger) (JSONAPI v1.0, free). Broad's API is more download-oriented. A partial MCP tool exists via [BioAgent](https://zitniklab.hms.harvard.edu/bioagent/tools/remote/depmap_24q2.html).
@@ -98,24 +126,42 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 **Status: TODO**
 
-### 10. MaveDB -- External MAVE Score Sets
+### 11. MaveDB -- External MAVE Score Sets
 **Why:** The Catalogue already has MAVE data, but MaveDB is the canonical source with 7M+ variant measurements. Cross-referencing lets the AI pull the latest scores and additional datasets.
 
 **API:** Excellent FastAPI at `https://api.mavedb.org/docs`. No auth. Add as direct REST function declarations.
 
 **Status: TODO**
 
-### 11. Reactome -- Pathway Enrichment
+### 12. Reactome -- Pathway Enrichment
 **Why:** "What pathways are affected by this perturbation?" is a core analysis question. Submit a gene list from Perturb-seq results and get enriched pathways back.
 
 **API:** REST at `https://reactome.org/AnalysisService/identifiers/` (POST gene list, get enrichment). No MCP server yet, but the REST API is straightforward.
 
 **Status: TODO**
 
-### 12. STRING -- Protein Interaction Networks
+### 13. STRING -- Protein Interaction Networks
 **Why:** Known physical and functional protein associations provide mechanistic context for perturbation effects.
 
 **API:** REST at `https://string-db.org/api/`. MCP server available via [MCPMed](https://mcpmed.org/).
+
+**Status: TODO**
+
+### 14. Ensembl VEP -- Advanced Variant Consequence Prediction
+
+**Why:** While Open Targets already ingests basic VEP consequence terms, direct VEP access unlocks the full plugin ecosystem: **SpliceAI** (splicing impact), **LOFTEE** (loss-of-function), **regulatory feature consequences** (enhancer/promoter/CTCF disruption), **motif feature consequences** (TF binding disruption), and **real-time annotation of novel variants** not yet in OT's release cycle. Handles all variant types (SNPs, indels, CNVs, structural) unlike ProtVar's missense-only scope.
+
+**API:** REST at `https://rest.ensembl.org/vep/:species/hgvs/:hgvs_notation` (GET) or batch POST for up to 200 variants. No auth, free. [Full docs](https://rest.ensembl.org/documentation/info/vep_hgvs_get).
+
+**Key tools to add:**
+- `predict_variant_consequence(variant)` -- consequence terms, affected transcripts, amino acid changes, regulatory impact
+- `batch_variant_consequences(variants)` -- batch annotation for variant lists from MAVE/CRISPR results
+
+**MCP server:** An [unofficial Ensembl MCP server](https://github.com/Augmented-Nature/Ensembl-MCP-Server) exists with 25 tools including `get_variant_consequences`. No official Ensembl MCP yet.
+
+**OT overlap note:** OT already has VEP consequence terms for variants in its index. Direct VEP is most valuable for: (1) regulatory/splicing consequences OT doesn't expose, (2) novel variants not yet in OT, (3) the SpliceAI/LOFTEE plugin annotations.
+
+**Priority:** Lower than ProtVar -- add after ProtVar is integrated, since OT covers basic VEP needs.
 
 **Status: TODO**
 
@@ -144,10 +190,10 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 
 | Phase | Integrations | New Viz Types | Effort |
 |-------|-------------|---------------|--------|
-| **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer | `protein_structure`, `gene_card` | **DONE** |
-| **Phase 2** | BioMCP (literature + variants), Pharos (MCP) | Volcano plot, needle plot | 1-2 weeks |
-| **Phase 3** | DepMap (REST), MaveDB (REST), Cytoscape networks | `network`, `volcano_plot`, `needle_plot` | 2-3 weeks |
-| **Phase 4** | Reactome, STRING, heatmaps | `clustergram`, pathway diagrams | 2-3 weeks |
+| **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
+| **Phase 2** | ProtVar (REST) **DONE**, volcano plot, needle plot | `volcano_plot`, `needle_plot` | 1-2 weeks |
+| **Phase 3** | DepMap (REST), MaveDB (REST), Cytoscape networks | `network` | 2-3 weeks |
+| **Phase 4** | Reactome, STRING, Ensembl VEP | `clustergram`, pathway diagrams | 2-3 weeks |
 
 ---
 
