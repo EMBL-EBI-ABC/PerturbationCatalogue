@@ -299,6 +299,44 @@ CREATE_VOLCANO_PLOT_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+CREATE_MAVE_HEATMAP_DECLARATION = types.FunctionDeclaration(
+    name="create_mave_heatmap",
+    description=(
+        "Create an interactive heatmap of MAVE (Multiplexed Assay of Variant Effect) data. "
+        "Shows functional scores as a position × amino acid matrix: columns are protein positions, "
+        "rows are amino acid substitutions, and cell color indicates the effect score. "
+        "The backend queries the database and renders the heatmap directly. "
+        "Use this whenever a user asks about MAVE variant effects, functional scores, "
+        "or deep mutational scanning results for a gene."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Gene name to show MAVE data for (e.g. 'BRCA1', 'TP53')",
+            ),
+            "dataset_id": types.Schema(
+                type="STRING",
+                description="Optional dataset ID. If omitted and multiple datasets exist, returns a list for user selection.",
+            ),
+            "score_name": types.Schema(
+                type="STRING",
+                description="Score metric name to display (default 'score'). Use query_perturbation_data with modality='mave' to discover available score names first if unsure.",
+            ),
+            "position_start": types.Schema(
+                type="INTEGER",
+                description="Start position for the heatmap window (default: first available position). Use to zoom into a region of interest.",
+            ),
+            "position_end": types.Schema(
+                type="INTEGER",
+                description="End position for the heatmap window (default: position_start + 29, i.e. 30 positions). Use to zoom into a region of interest.",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
 LOOKUP_PROTEIN_DECLARATION = types.FunctionDeclaration(
     name="lookup_protein",
     description=(
@@ -495,6 +533,7 @@ INTERNAL_TOOL_DECLARATIONS = [
     GET_CATALOGUE_SUMMARY_DECLARATION,
     CREATE_VISUALIZATION_DECLARATION,
     CREATE_VOLCANO_PLOT_DECLARATION,
+    CREATE_MAVE_HEATMAP_DECLARATION,
     LOOKUP_PROTEIN_DECLARATION,
     GET_PROTEIN_STRUCTURE_DECLARATION,
     MAP_IDENTIFIERS_DECLARATION,
@@ -854,6 +893,214 @@ async def _tool_create_volcano_plot(args: dict) -> dict:
         "not_significant": n_ns,
         "fc_threshold": fc_threshold,
         "padj_threshold": padj_threshold,
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
+
+
+async def _tool_create_mave_heatmap(args: dict) -> dict:
+    """Query mave_data and return pre-formatted heatmap data + summary.
+
+    Two-step flow (same as volcano plot):
+    1. If no dataset_id: return available datasets ranked by variant count
+       so Gemini can ask the user which one to plot.
+    2. If dataset_id provided: query MAVE data, build position × amino acid
+       matrix, and return viz payload.
+    """
+    gene_name = args.get("gene_name", "")
+    dataset_id = args.get("dataset_id")
+    score_name = args.get("score_name", "score")
+    position_start = args.get("position_start")
+    position_end = args.get("position_end")
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    pg_pool = db_pools["pg"]
+
+    # Step 1: No dataset_id — list available datasets for this gene
+    if not dataset_id:
+        ds_query = """
+            SELECT dataset_id,
+                   COUNT(*) AS total_variants,
+                   COUNT(DISTINCT perturbation_position) AS positions_covered
+            FROM mave_data
+            WHERE perturbed_target_symbol = $1 AND score_name = $2
+                  AND perturbation_position IS NOT NULL
+            GROUP BY dataset_id
+            ORDER BY total_variants DESC
+        """
+        ds_rows = await pg_pool.fetch(ds_query, gene_name.upper(), score_name)
+
+        if not ds_rows:
+            # Discover what score names are available for this gene
+            score_query = """
+                SELECT DISTINCT score_name, COUNT(*) AS n
+                FROM mave_data
+                WHERE perturbed_target_symbol = $1 AND perturbation_position IS NOT NULL
+                GROUP BY score_name ORDER BY n DESC
+            """
+            score_rows = await pg_pool.fetch(score_query, gene_name.upper())
+            available = [r["score_name"] for r in score_rows]
+            error_msg = f"No MAVE data found for {gene_name.upper()} with score_name='{score_name}'"
+            if available:
+                error_msg += f". Available score names: {', '.join(available)}"
+            return {"error": error_msg}
+
+        if len(ds_rows) == 1:
+            dataset_id = ds_rows[0]["dataset_id"]
+        else:
+            datasets = [
+                {
+                    "dataset_id": row["dataset_id"],
+                    "total_variants": row["total_variants"],
+                    "positions_covered": row["positions_covered"],
+                }
+                for row in ds_rows
+            ]
+            return {
+                "action": "choose_dataset",
+                "gene_name": gene_name.upper(),
+                "available_datasets": datasets,
+                "message": (
+                    f"{gene_name.upper()} has MAVE data in {len(datasets)} datasets. "
+                    "Ask the user which dataset they want to see the heatmap for."
+                ),
+            }
+
+    # Step 2: Query MAVE data for specific dataset
+    # First, determine position range if not provided
+    if position_start is None:
+        range_query = """
+            SELECT MIN(perturbation_position) AS min_pos,
+                   MAX(perturbation_position) AS max_pos
+            FROM mave_data
+            WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND score_name = $3
+                  AND perturbation_position IS NOT NULL
+        """
+        range_row = await pg_pool.fetchrow(
+            range_query, gene_name.upper(), dataset_id, score_name
+        )
+        if not range_row or range_row["min_pos"] is None:
+            return {
+                "error": f"No MAVE data found for {gene_name.upper()} in dataset {dataset_id}"
+            }
+        position_start = range_row["min_pos"]
+        total_positions = range_row["max_pos"] - range_row["min_pos"] + 1
+        # Default window: 30 positions
+        if position_end is None:
+            position_end = position_start + min(29, total_positions - 1)
+    elif position_end is None:
+        position_end = position_start + 29
+
+    query = """
+        SELECT perturbation_position, perturbation_aa_wt, perturbation_aa_change, score_value
+        FROM mave_data
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND score_name = $3
+              AND perturbation_position >= $4 AND perturbation_position <= $5
+              AND perturbation_position IS NOT NULL
+        ORDER BY perturbation_position, perturbation_aa_change
+    """
+    rows = await pg_pool.fetch(
+        query, gene_name.upper(), dataset_id, score_name, position_start, position_end
+    )
+
+    if not rows:
+        return {
+            "error": f"No MAVE data found for {gene_name.upper()} in dataset {dataset_id} "
+            f"at positions {position_start}-{position_end}"
+        }
+
+    # Build position × amino acid matrix
+    # Collect all data points and unique amino acids
+    positions_data = {}  # {position: {aa: score}}
+    wt_residues = {}  # {position: wt_aa}
+    all_aas = set()
+
+    for row in rows:
+        pos = row["perturbation_position"]
+        aa_wt = row["perturbation_aa_wt"]
+        aa_change = row["perturbation_aa_change"]
+        score = row["score_value"]
+
+        if pos is None or score is None:
+            continue
+
+        is_ref = aa_change == "="
+        aa = aa_wt if is_ref else aa_change
+
+        if aa is None:
+            continue
+
+        if pos not in positions_data:
+            positions_data[pos] = {}
+        positions_data[pos][aa] = float(score)
+        all_aas.add(aa)
+
+        if aa_wt:
+            wt_residues[pos] = aa_wt
+
+    if not positions_data:
+        return {
+            "error": f"No valid MAVE data points for {gene_name.upper()} in dataset {dataset_id}"
+        }
+
+    # Sort amino acids and positions
+    sorted_aas = sorted(all_aas)
+    sorted_positions = sorted(positions_data.keys())
+
+    # Build 2D matrix: rows = amino acids, columns = positions
+    # Each cell is the score value (or null if not measured)
+    z_matrix = []
+    wt_annotations = []  # [{row, col}] for WT residue markers
+
+    for aa_idx, aa in enumerate(sorted_aas):
+        row_values = []
+        for pos_idx, pos in enumerate(sorted_positions):
+            score = positions_data[pos].get(aa)
+            row_values.append(score)
+            # Mark WT residue positions (only if cell has a score)
+            if wt_residues.get(pos) == aa and score is not None:
+                wt_annotations.append({"row": aa_idx, "col": pos_idx})
+        z_matrix.append(row_values)
+
+    position_labels = [str(p) for p in sorted_positions]
+
+    viz_data = {
+        "type": "mave_heatmap",
+        "title": f"MAVE Heatmap: {gene_name.upper()} (positions {position_start}-{position_end})",
+        "data": {
+            "z": z_matrix,
+            "amino_acids": sorted_aas,
+            "positions": position_labels,
+            "wt_annotations": wt_annotations,
+            "gene_name": gene_name.upper(),
+            "position_start": position_start,
+            "position_end": position_end,
+        },
+    }
+
+    # Summary for Gemini
+    total_variants = sum(
+        1 for row in z_matrix for v in row if v is not None
+    )
+    n_positions = len(sorted_positions)
+    n_aas = len(sorted_aas)
+
+    summary = {
+        "status": "success",
+        "gene_name": gene_name.upper(),
+        "dataset_id": dataset_id,
+        "score_name": score_name,
+        "position_range": f"{position_start}-{position_end}",
+        "positions_with_data": n_positions,
+        "amino_acids_observed": n_aas,
+        "total_variants_shown": total_variants,
+        "message": (
+            f"Heatmap displayed for {gene_name.upper()} showing {total_variants} variant scores "
+            f"across {n_positions} positions ({position_start}-{position_end}) "
+            f"and {n_aas} amino acid substitutions."
+        ),
     }
 
     return {"viz_data": viz_data, "summary": summary}
@@ -1928,12 +2175,14 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "What variants does X have?" → call get_protein_variants (UniProt)
 - "What does variant rs123 do?" / "Is this variant pathogenic?" / "Effect of mutation X" → call annotate_variant (ProtVar)
 - "Structural impact at position X" / "What's at residue 493?" → call get_variant_structural_context (ProtVar)
+- "Show MAVE data for X" / "Variant effects for X" / "Heatmap for X" / "Deep mutational scanning" → call create_mave_heatmap
 
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
 - Use bar charts for comparisons or >6 categories
 - Use tables for detailed data rows (limit to 20 rows for readability)
 - For volcano plots of Perturb-seq DEA data, use the dedicated create_volcano_plot tool (NOT create_visualization)
+- For MAVE variant effect heatmaps, use the dedicated create_mave_heatmap tool (NOT create_visualization)
 - When showing datasets, include dataset_id, title, modality, and key metadata
 - When showing perturbation data, highlight significant results
 
@@ -1943,6 +2192,15 @@ When a user asks about Perturb-seq differential expression for a perturbation (e
 Two-step flow:
 1. If the gene has data in MULTIPLE datasets, the tool returns a list of available datasets with their significance counts. You MUST present these datasets to the user and ask which one they want to visualize. Then call create_volcano_plot again with the chosen dataset_id.
 2. If the gene has data in only ONE dataset, the plot is rendered immediately and you receive a summary with counts of up/down/not-significant genes — use this to write an informative interpretation.
+
+MAVE HEATMAP:
+When a user asks about MAVE variant effects, functional scores, or deep mutational scanning results (e.g., "Show me MAVE data for BRCA1", "What are the variant effects for TP53?", "Heatmap for VKORC1"), call create_mave_heatmap with the gene name. The backend queries the database and renders the heatmap directly — do NOT query with query_perturbation_data separately.
+
+Two-step flow (same as volcano plot):
+1. If the gene has MAVE data in MULTIPLE datasets, the tool returns a list of available datasets with their variant counts. You MUST present these datasets to the user and ask which one they want to visualize. Then call create_mave_heatmap again with the chosen dataset_id.
+2. If the gene has data in only ONE dataset, the heatmap is rendered immediately and you receive a summary — use this to write an informative interpretation about the variant effect landscape.
+
+The heatmap shows 30 positions by default. If the user wants to see a specific region, pass position_start and position_end parameters. Tell the user the displayed position range and total available positions so they can request other regions.
 
 Available data modalities:
 - Perturb-seq: Single-cell transcriptomic readout of gene perturbations. Key fields: perturbation gene, effect gene, log2FC, padj
@@ -2167,6 +2425,45 @@ async def chat_stream(request: ChatRequest):
                             )
                         else:
                             # Plot built — emit visualization and return summary
+                            yield _sse_event("visualization", result["viz_data"])
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result["summary"],
+                                )
+                            )
+                    elif tool_name == "create_mave_heatmap":
+                        # create_mave_heatmap: backend queries DB, emits viz, returns summary to LLM
+                        yield _sse_event(
+                            "tool_call",
+                            {"tool": tool_name, "description": "Building MAVE heatmap..."},
+                        )
+                        yield _sse_event(
+                            "thinking", {"status": "Building MAVE heatmap..."}
+                        )
+                        try:
+                            result = await _tool_create_mave_heatmap(tool_args)
+                        except Exception as exc:
+                            logger.exception("Tool %s failed", tool_name)
+                            result = {"error": str(exc)}
+
+                        if "error" in result:
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        elif result.get("action") == "choose_dataset":
+                            # Multiple datasets — pass list to Gemini to ask the user
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        else:
+                            # Heatmap built — emit visualization and return summary
                             yield _sse_event("visualization", result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(

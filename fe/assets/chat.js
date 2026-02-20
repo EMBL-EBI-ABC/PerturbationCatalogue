@@ -351,6 +351,9 @@
       case "volcano_plot":
         renderVolcanoPlot(content, data.data);
         break;
+      case "mave_heatmap":
+        renderMaveHeatmap(content, data.data);
+        break;
       case "protein_structure":
         renderProteinStructure(content, data.data);
         break;
@@ -610,6 +613,96 @@
           showarrow: false,
           font: { size: 12, color: "#54585A" }
         }] : [],
+        height: 450,
+        hovermode: "closest"
+      },
+      { responsive: true, displayModeBar: false }
+    );
+  }
+
+  function renderMaveHeatmap(container, data) {
+    var z = data.z || [];
+    var aminoAcids = data.amino_acids || [];
+    var positions = data.positions || [];
+    var wtAnnotations = data.wt_annotations || [];
+    var geneName = data.gene_name || "";
+    var posStart = data.position_start;
+    var posEnd = data.position_end;
+
+    var chartDiv = document.createElement("div");
+    chartDiv.style.width = "100%";
+    container.appendChild(chartDiv);
+
+    if (typeof Plotly === "undefined") {
+      chartDiv.textContent = "Chart library not loaded";
+      return;
+    }
+
+    if (z.length === 0 || positions.length === 0 || aminoAcids.length === 0) {
+      chartDiv.textContent = "No valid data for MAVE heatmap";
+      return;
+    }
+
+    // Build annotation list for WT residues
+    var annotations = [];
+    for (var i = 0; i < wtAnnotations.length; i++) {
+      var wt = wtAnnotations[i];
+      annotations.push({
+        x: positions[wt.col],
+        y: aminoAcids[wt.row],
+        text: "WT",
+        showarrow: false,
+        font: { color: "#000", size: 9 }
+      });
+    }
+
+    var subtitle = "";
+    if (posStart != null && posEnd != null) {
+      subtitle = "Positions " + posStart + "–" + posEnd;
+    }
+
+    var trace = {
+      type: "heatmap",
+      z: z,
+      x: positions,
+      y: aminoAcids,
+      colorscale: "RdYlGn",
+      hoverongaps: false,
+      hovertemplate: "Position: %{x}<br>AA: %{y}<br>Score: %{z:.3f}<extra></extra>",
+      colorbar: {
+        title: { text: "Score", side: "right" },
+        thickness: 15,
+        len: 0.9
+      }
+    };
+
+    Plotly.newPlot(
+      chartDiv,
+      [trace],
+      {
+        margin: { t: subtitle ? 30 : 10, b: 60, l: 50, r: 80 },
+        xaxis: {
+          title: "Position",
+          tickmode: "linear",
+          dtick: positions.length > 40 ? 5 : 1,
+          tickangle: positions.length > 20 ? -45 : 0
+        },
+        yaxis: {
+          title: "Amino Acid",
+          tickmode: "linear",
+          autorange: "reversed"
+        },
+        font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+        annotations: subtitle
+          ? annotations.concat([{
+              text: subtitle,
+              xref: "paper", yref: "paper",
+              x: 0.5, y: 1.02,
+              xanchor: "center", yanchor: "bottom",
+              showarrow: false,
+              font: { size: 12, color: "#54585A" }
+            }])
+          : annotations,
         height: 450,
         hovermode: "closest"
       },

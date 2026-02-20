@@ -98,8 +98,8 @@ The gold-standard differential expression visualization. The `perturb_seq_dea` t
 
 **Status: DONE** (Implemented: `renderVolcanoPlot` in chat.js with significance coloring, threshold lines, hover labels; `volcano_plot` viz_type in `CREATE_VISUALIZATION_DECLARATION`; system prompt guidance for Gemini)
 
-### 7. Needle/Lollipop Plot (MAVE Variants)
-Show variant effect scores mapped along protein sequence with domain annotations. The `mave_data` table has `position` and `score`. Render with Plotly scatter + shapes. **Zero new dependencies.**
+### 7. MAVE Heatmap (Variant Effect Map)
+Interactive position × amino acid heatmap showing functional scores from deep mutational scanning. The `mave_data` table has `position`, `aa_wt`, `aa_change`, and `score`. Render with Plotly heatmap (`Plotly.newPlot` with `type: 'heatmap'`). Consistent with the existing Dash frontend heatmap (`fe/components/target_data_table.py`) and the MaveDB standard visualization. Color scale: diverging (e.g. RdBu or RdYlGn) with WT residues annotated. **Zero new dependencies.**
 
 **Status: TODO**
 
@@ -191,7 +191,7 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 | Phase | Integrations | New Viz Types | Effort |
 |-------|-------------|---------------|--------|
 | **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
-| **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, needle plot | `volcano_plot`, `needle_plot` | 1-2 weeks |
+| **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, MAVE heatmap | `volcano_plot`, `mave_heatmap` | 1-2 weeks |
 | **Phase 3** | DepMap (REST), MaveDB (REST), Cytoscape networks | `network` | 2-3 weeks |
 | **Phase 4** | Reactome, STRING, Ensembl VEP | `clustergram`, pathway diagrams | 2-3 weeks |
 
