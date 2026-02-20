@@ -174,7 +174,15 @@
     }
   }
 
-  // --- Spinner ---
+  // --- Spinner with cycling brightness icons ---
+
+  var spinnerIconInterval = null;
+  var SPINNER_ICONS = [
+    "bi bi-flower1 spinner-icon",
+    "bi bi-flower2 spinner-icon",
+    "bi bi-flower3 spinner-icon"
+  ];
+  var spinnerIconIndex = 0;
 
   function showSpinner(status) {
     var el = document.getElementById("chat-spinner");
@@ -183,11 +191,28 @@
 
     var statusEl = el.querySelector(".spinner-status");
     if (statusEl && status) statusEl.textContent = status;
+
+    // Start icon cycling
+    if (!spinnerIconInterval) {
+      spinnerIconIndex = 0;
+      var iconEl = el.querySelector(".spinner-icon");
+      if (iconEl) {
+        spinnerIconInterval = setInterval(function () {
+          spinnerIconIndex = (spinnerIconIndex + 1) % SPINNER_ICONS.length;
+          iconEl.className = SPINNER_ICONS[spinnerIconIndex];
+        }, 400);
+      }
+    }
   }
 
   function hideSpinner() {
     var el = document.getElementById("chat-spinner");
     if (el) el.style.display = "none";
+
+    if (spinnerIconInterval) {
+      clearInterval(spinnerIconInterval);
+      spinnerIconInterval = null;
+    }
   }
 
   // --- Chat messages ---

@@ -461,17 +461,30 @@ a.header-link.active {
     border-bottom-left-radius: 4px;
 }
 
+@keyframes icon-wave {
+    0% { color: #007B53; }
+    50% { color: #00a86b; }
+    100% { color: #007B53; }
+}
+
 .chat-spinner {
     display: flex;
     align-items: center;
     padding: 0.5rem 0;
     font-size: 0.9rem;
-    color: #6c757d;
+}
+
+.spinner-icon {
+    font-size: 1rem;
+    margin-right: 0.5rem;
+    animation: icon-wave 2s ease-in-out infinite;
 }
 
 .spinner-status {
-    color: #6c757d;
     font-size: 0.85rem;
+    font-weight: 500;
+    color: #007B53;
+    animation: icon-wave 2s ease-in-out infinite;
 }
 
 .chat-input-area {

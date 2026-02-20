@@ -42,9 +42,7 @@ layout = dbc.Container(
                 # Spinner
                 html.Div(
                     [
-                        html.Div(
-                            className="spinner-border spinner-border-sm text-success me-2"
-                        ),
+                        html.I(className="bi bi-flower1 spinner-icon"),
                         html.Span("", className="spinner-status"),
                     ],
                     id="chat-spinner",
