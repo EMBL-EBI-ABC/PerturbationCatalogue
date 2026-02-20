@@ -14,7 +14,7 @@ import logging
 
 from pydantic import ValidationError
 from typing import Literal
-import pandera as pa
+import pandera.pandas as pa
 from pandera.typing import Series, Int64, String
 from tqdm import tqdm
 from thefuzz import process
@@ -2196,7 +2196,7 @@ def download_file(
     if unarchive:
         if dest_path.endswith(".zip"):
             subprocess.run(["unzip", "-o", dest_path, "-d", os.path.dirname(dest_path)])
-        elif dest_path.endswith((".tar.gz", ".tgz")):
+        elif dest_path.endswith((".tar.gz", ".tgz", ".tar")):
             subprocess.run(["tar", "-xzf", dest_path, "-C", os.path.dirname(dest_path)])
         else:
             print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")

@@ -1,5 +1,5 @@
 import pandas as pd
-from pandera import Field, DataFrameModel
+from pandera.pandas import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
