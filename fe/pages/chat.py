@@ -26,6 +26,23 @@ layout = html.Div(
         # ── Chat sidebar ──
         html.Div(
             [
+                # Collapsed strip (visible only when sidebar is collapsed)
+                html.Div(
+                    [
+                        html.Button(
+                            html.I(className="bi bi-chat-dots-fill"),
+                            id="chat-strip-expand-btn",
+                            className="chat-strip-btn",
+                            title="Open chat",
+                        ),
+                        html.Span(
+                            "",
+                            id="chat-unread-badge",
+                            className="chat-unread-badge",
+                        ),
+                    ],
+                    className="chat-collapsed-strip",
+                ),
                 # Sidebar header
                 html.Div(
                     [
@@ -46,7 +63,96 @@ layout = html.Div(
                     className="chat-sidebar-header",
                 ),
                 # Messages area
-                html.Div(id="chat-messages", className="chat-messages"),
+                html.Div(
+                    [
+                        # Welcome section (shown when chat is empty)
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.I(
+                                            className="bi bi-stars",
+                                            style={
+                                                "fontSize": "1.25rem",
+                                                "color": "#007B53",
+                                            },
+                                        ),
+                                        html.Span(
+                                            "How can I help you explore?",
+                                            style={
+                                                "fontWeight": "600",
+                                                "fontSize": "0.9rem",
+                                                "color": "#1a1d21",
+                                            },
+                                        ),
+                                    ],
+                                    className="chat-welcome-header",
+                                ),
+                                html.P(
+                                    "Ask about genes, proteins, and perturbation experiments.",
+                                    className="chat-welcome-subtitle",
+                                ),
+                                html.Div(
+                                    [
+                                        html.Button(
+                                            [
+                                                html.I(
+                                                    className="bi bi-search me-2"
+                                                ),
+                                                "TP53 perturbation data",
+                                            ],
+                                            className="chat-suggestion-card",
+                                            **{
+                                                "data-query": "What perturbation data is available for TP53 across all modalities?"
+                                            },
+                                        ),
+                                        html.Button(
+                                            [
+                                                html.I(
+                                                    className="bi bi-card-text me-2"
+                                                ),
+                                                "BRCA2 protein info",
+                                            ],
+                                            className="chat-suggestion-card",
+                                            **{
+                                                "data-query": "Look up the BRCA2 protein and show me a gene card with its function, domains, and disease associations"
+                                            },
+                                        ),
+                                        html.Button(
+                                            [
+                                                html.I(
+                                                    className="bi bi-box me-2"
+                                                ),
+                                                "KRAS 3D structure",
+                                            ],
+                                            className="chat-suggestion-card",
+                                            **{
+                                                "data-query": "Show me the predicted 3D protein structure for KRAS"
+                                            },
+                                        ),
+                                        html.Button(
+                                            [
+                                                html.I(
+                                                    className="bi bi-capsule me-2"
+                                                ),
+                                                "Is EGFR druggable?",
+                                            ],
+                                            className="chat-suggestion-card",
+                                            **{
+                                                "data-query": "Use Pharos to check if EGFR is druggable. What is its target development level?"
+                                            },
+                                        ),
+                                    ],
+                                    className="chat-suggestion-cards",
+                                ),
+                            ],
+                            id="chat-welcome",
+                            className="chat-welcome",
+                        ),
+                    ],
+                    id="chat-messages",
+                    className="chat-messages",
+                ),
                 # Spinner
                 html.Div(
                     [
@@ -62,12 +168,10 @@ layout = html.Div(
                     [
                         html.Div(
                             [
-                                dcc.Input(
+                                dcc.Textarea(
                                     id="chat-input",
-                                    type="text",
                                     placeholder="Ask about perturbation data...",
                                     className="chat-input",
-                                    autoComplete="off",
                                 ),
                                 html.Button(
                                     [html.I(className="bi bi-send-fill")],
@@ -76,55 +180,6 @@ layout = html.Div(
                                 ),
                             ],
                             className="chat-input-area",
-                        ),
-                        # Suggestion buttons
-                        html.Div(
-                            [
-                                html.Button(
-                                    "TP53 perturbation data",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "What perturbation data is available for TP53 across all modalities?"
-                                    },
-                                ),
-                                html.Button(
-                                    "BRCA2 protein info",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "Look up the BRCA2 protein and show me a gene card with its function, domains, and disease associations"
-                                    },
-                                ),
-                                html.Button(
-                                    "KRAS 3D structure",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "Show me the predicted 3D protein structure for KRAS"
-                                    },
-                                ),
-                                html.Button(
-                                    "Is EGFR druggable?",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "Use Pharos to check if EGFR is druggable. What is its target development level?"
-                                    },
-                                ),
-                                html.Button(
-                                    "CRISPR cancer papers",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "Find recent papers about CRISPR screens in cancer"
-                                    },
-                                ),
-                                html.Button(
-                                    "BRCA1 variants",
-                                    className="chat-suggestion-btn",
-                                    **{
-                                        "data-query": "What are the known protein variants and mutagenesis data for BRCA1?"
-                                    },
-                                ),
-                            ],
-                            id="chat-suggestions",
-                            className="chat-suggestions",
                         ),
                     ],
                     className="chat-sidebar-bottom",

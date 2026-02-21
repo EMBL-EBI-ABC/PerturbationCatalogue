@@ -25,6 +25,14 @@
       }
     });
 
+    // Auto-grow textarea height
+    input.addEventListener("input", function () {
+      this.style.height = "auto";
+      var newHeight = Math.min(this.scrollHeight, 120);
+      this.style.height = newHeight + "px";
+      this.style.overflowY = newHeight >= 120 ? "auto" : "hidden";
+    });
+
     sendBtn.addEventListener("click", function () {
       sendCurrentMessage();
     });
@@ -37,9 +45,9 @@
       });
     }
 
-    // Suggestion buttons
-    var suggestions = document.querySelectorAll(".chat-suggestion-btn");
-    suggestions.forEach(function (btn) {
+    // Suggestion card buttons (welcome section)
+    var suggestionCards = document.querySelectorAll(".chat-suggestion-card");
+    suggestionCards.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var query = btn.getAttribute("data-query") || btn.textContent;
         input.value = query;
@@ -65,6 +73,19 @@
         if (layout) layout.classList.remove("sidebar-collapsed");
         expandBtn.style.display = "none";
         input.focus();
+        resetUnreadBadge();
+        resizeAllViz();
+      });
+    }
+
+    // Collapsed strip expand button
+    var stripBtn = document.getElementById("chat-strip-expand-btn");
+    if (stripBtn) {
+      stripBtn.addEventListener("click", function () {
+        if (layout) layout.classList.remove("sidebar-collapsed");
+        if (expandBtn) expandBtn.style.display = "none";
+        input.focus();
+        resetUnreadBadge();
         resizeAllViz();
       });
     }
@@ -76,17 +97,18 @@
     if (!text) return;
     // Use native setter + event to sync React/Dash controlled state.
     var nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, "value"
+      window.HTMLTextAreaElement.prototype, "value"
     ).set;
     nativeSetter.call(input, "");
+    input.style.height = "auto";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     hideSuggestions();
     sendMessage(text);
   }
 
   function hideSuggestions() {
-    var el = document.getElementById("chat-suggestions");
-    if (el) el.style.display = "none";
+    var welcome = document.getElementById("chat-welcome");
+    if (welcome) welcome.style.display = "none";
   }
 
   function sendMessage(text) {
@@ -244,6 +266,14 @@
   function appendUserMessage(text) {
     var container = document.getElementById("chat-messages");
     if (!container) return;
+    // Add turn separator if there are existing messages
+    if (container.querySelector(".chat-message")) {
+      var sep = document.createElement("div");
+      sep.className = "chat-turn-separator";
+      var now = new Date();
+      sep.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      container.appendChild(sep);
+    }
     var msg = document.createElement("div");
     msg.className = "chat-message chat-message-user";
     msg.textContent = text;
@@ -259,6 +289,7 @@
       currentAssistantBubble = document.createElement("div");
       currentAssistantBubble.className = "chat-message chat-message-assistant";
       container.appendChild(currentAssistantBubble);
+      incrementUnread();
     }
     currentAssistantBubble.innerHTML += formatMarkdown(chunk);
     scrollToBottom(container);
@@ -280,6 +311,30 @@
 
   function scrollToBottom(el) {
     el.scrollTop = el.scrollHeight;
+  }
+
+  // --- Unread badge tracking ---
+
+  var unreadCount = 0;
+
+  function incrementUnread() {
+    var layout = document.getElementById("ai-explorer-layout");
+    if (!layout || !layout.classList.contains("sidebar-collapsed")) return;
+    unreadCount++;
+    var badge = document.getElementById("chat-unread-badge");
+    if (badge) {
+      badge.textContent = unreadCount;
+      badge.classList.add("visible");
+    }
+  }
+
+  function resetUnreadBadge() {
+    unreadCount = 0;
+    var badge = document.getElementById("chat-unread-badge");
+    if (badge) {
+      badge.textContent = "";
+      badge.classList.remove("visible");
+    }
   }
 
   function setInputEnabled(enabled) {
