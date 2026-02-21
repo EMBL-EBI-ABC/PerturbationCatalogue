@@ -46,6 +46,28 @@
         sendCurrentMessage();
       });
     });
+
+    // Sidebar collapse / expand
+    var layout = document.getElementById("ai-explorer-layout");
+    var collapseBtn = document.getElementById("chat-collapse-btn");
+    var expandBtn = document.getElementById("chat-expand-btn");
+
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", function () {
+        if (layout) layout.classList.add("sidebar-collapsed");
+        if (expandBtn) expandBtn.style.display = "";
+        resizeAllViz();
+      });
+    }
+
+    if (expandBtn) {
+      expandBtn.addEventListener("click", function () {
+        if (layout) layout.classList.remove("sidebar-collapsed");
+        expandBtn.style.display = "none";
+        input.focus();
+        resizeAllViz();
+      });
+    }
   }
 
   function sendCurrentMessage() {
@@ -291,9 +313,37 @@
     var portal = document.getElementById("chat-data-portal");
     var clearBtn = document.getElementById("chat-clear-portal-btn");
     var ph = document.getElementById("chat-portal-placeholder");
-    var hasItems = portal && portal.children.length > 0;
+    var countEl = document.getElementById("chat-panel-count");
+    var count = portal ? portal.children.length : 0;
+    var hasItems = count > 0;
     if (clearBtn) clearBtn.style.display = hasItems ? "" : "none";
     if (ph) ph.style.display = hasItems ? "none" : "";
+    if (countEl) countEl.textContent = hasItems ? count + (count === 1 ? " panel" : " panels") : "";
+  }
+
+  // Resize Plotly charts and Cytoscape instances after layout changes
+  function resizeAllViz() {
+    // Small delay to let CSS transition finish
+    setTimeout(function () {
+      var portal = document.getElementById("chat-data-portal");
+      if (!portal) return;
+
+      // Resize all Plotly charts
+      if (typeof Plotly !== "undefined") {
+        var plotDivs = portal.querySelectorAll(".js-plotly-plot");
+        plotDivs.forEach(function (div) {
+          Plotly.Plots.resize(div);
+        });
+      }
+
+      // Resize all Cytoscape instances
+      portal.querySelectorAll(".viz-container").forEach(function (container) {
+        if (container._cyInstance) {
+          container._cyInstance.resize();
+          container._cyInstance.fit();
+        }
+      });
+    }, 300);
   }
 
   function renderVisualization(data) {
@@ -919,6 +969,7 @@
       style: [
         {
           selector: "node[type='perturbed']",
+
           style: {
             "background-color": "#193F90",
             "label": "data(label)",
@@ -997,6 +1048,9 @@
       userPanningEnabled: true,
       boxSelectionEnabled: false
     });
+
+    // Store cy instance for resize handling
+    container.closest(".viz-container")._cyInstance = cy;
 
     // Tooltip on tap
     var tooltip = document.createElement("div");
@@ -1171,6 +1225,9 @@
       userPanningEnabled: true,
       boxSelectionEnabled: false
     });
+
+    // Store cy instance for resize handling
+    container.closest(".viz-container")._cyInstance = cy;
 
     // Tooltip
     var tooltip = document.createElement("div");
