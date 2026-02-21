@@ -734,13 +734,17 @@ a.header-link.active {
     padding: 3rem 1rem;
 }
 
-/* ── Viz Containers ── */
+/* ── Dashboard Grid ── */
 
 .data-portal-content {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
+    align-items: start;
 }
+
+.viz-container[data-size="small"] { grid-column: span 1; }
+.viz-container[data-size="large"] { grid-column: span 2; }
 
 .viz-container {
     background: #ffffff;
@@ -865,5 +869,15 @@ a.header-link.active {
 
     .dashboard-scroll-area {
         padding: 0.75rem;
+    }
+
+    /* Single-column grid on mobile */
+    .data-portal-content {
+        grid-template-columns: 1fr;
+    }
+
+    .viz-container[data-size="small"],
+    .viz-container[data-size="large"] {
+        grid-column: span 1;
     }
 }

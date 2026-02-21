@@ -309,6 +309,19 @@
 
   // --- Visualizations ---
 
+  // Viz type → grid size mapping (small = 1 col, large = 2 cols)
+  var VIZ_SIZE_MAP = {
+    pie_chart: "small",
+    bar_chart: "small",
+    gene_card: "small",
+    protein_structure: "small",
+    table: "large",
+    volcano_plot: "large",
+    mave_heatmap: "large",
+    gene_interaction_network: "large",
+    string_interaction_network: "large"
+  };
+
   function updatePortalVisibility() {
     var portal = document.getElementById("chat-data-portal");
     var clearBtn = document.getElementById("chat-clear-portal-btn");
@@ -360,6 +373,8 @@
 
     var wrapper = document.createElement("div");
     wrapper.className = "viz-container";
+    wrapper.setAttribute("data-viz-type", data.type || "");
+    wrapper.setAttribute("data-size", VIZ_SIZE_MAP[data.type] || "large");
 
     var header = document.createElement("div");
     header.className = "viz-header";
@@ -467,8 +482,6 @@
 
     var chartDiv = document.createElement("div");
     chartDiv.style.width = "100%";
-    chartDiv.style.maxWidth = "500px";
-    chartDiv.style.margin = "0 auto";
     container.appendChild(chartDiv);
 
     if (typeof Plotly === "undefined") {
@@ -496,7 +509,7 @@
         showlegend: true,
         legend: { orientation: "h", y: -0.1 },
         font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-        height: 350
+        height: 280
       },
       { responsive: true, displayModeBar: false }
     );
@@ -534,7 +547,7 @@
         xaxis: { title: xlabel, tickangle: labels.length > 6 ? -45 : 0 },
         yaxis: { title: ylabel },
         font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-        height: 350
+        height: 280
       },
       { responsive: true, displayModeBar: false }
     );
@@ -769,7 +782,7 @@
   function renderProteinStructure(container, data) {
     var viewerDiv = document.createElement("div");
     viewerDiv.style.width = "100%";
-    viewerDiv.style.height = "450px";
+    viewerDiv.style.height = "380px";
     viewerDiv.style.position = "relative";
     viewerDiv.style.overflow = "hidden";
     container.appendChild(viewerDiv);
@@ -916,7 +929,7 @@
 
     var cyDiv = document.createElement("div");
     cyDiv.style.width = "100%";
-    cyDiv.style.height = "500px";
+    cyDiv.style.height = "420px";
     cyDiv.style.border = "1px solid #e9ecef";
     cyDiv.style.borderRadius = "6px";
     cyDiv.style.background = "#ffffff";
@@ -1111,7 +1124,7 @@
 
     var cyDiv = document.createElement("div");
     cyDiv.style.width = "100%";
-    cyDiv.style.height = "520px";
+    cyDiv.style.height = "420px";
     cyDiv.style.border = "1px solid #e9ecef";
     cyDiv.style.borderRadius = "6px";
     cyDiv.style.background = "#fafafa";
@@ -1300,11 +1313,59 @@
     return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, " ");
   }
 
+  // --- ResizeObserver to keep Plotly/Cytoscape in sync with grid ---
+
+  var resizeObserverActive = false;
+
+  function setupResizeObserver() {
+    if (resizeObserverActive) return;
+    var portal = document.getElementById("chat-data-portal");
+    if (!portal || typeof ResizeObserver === "undefined") return;
+
+    var ro = new ResizeObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var target = entries[i].target;
+        // Resize Plotly charts inside the resized container
+        if (typeof Plotly !== "undefined") {
+          var plots = target.querySelectorAll(".js-plotly-plot");
+          plots.forEach(function (div) {
+            Plotly.Plots.resize(div);
+          });
+        }
+        // Resize Cytoscape instances
+        var vizContainer = target.closest(".viz-container") || target;
+        if (vizContainer._cyInstance) {
+          vizContainer._cyInstance.resize();
+          vizContainer._cyInstance.fit();
+        }
+      }
+    });
+
+    // Observe each viz-container's content area for size changes
+    var containers = portal.querySelectorAll(".viz-content");
+    containers.forEach(function (el) { ro.observe(el); });
+
+    // Also observe new containers as they're added
+    var portalObserver = new MutationObserver(function (mutations) {
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
+          if (node.nodeType === 1) {
+            var content = node.querySelector ? node.querySelector(".viz-content") : null;
+            if (content) ro.observe(content);
+          }
+        });
+      });
+    });
+    portalObserver.observe(portal, { childList: true });
+    resizeObserverActive = true;
+  }
+
   // --- Initialize when chat page is rendered ---
 
   // Use MutationObserver to detect when Dash renders the chat page
   var observer = new MutationObserver(function () {
     init();
+    setupResizeObserver();
   });
 
   // Start observing
@@ -1314,10 +1375,10 @@
 
   // Also try immediately in case page is already rendered
   if (document.readyState === "complete" || document.readyState === "interactive") {
-    setTimeout(init, 100);
+    setTimeout(function () { init(); setupResizeObserver(); }, 100);
   } else {
     document.addEventListener("DOMContentLoaded", function () {
-      setTimeout(init, 100);
+      setTimeout(function () { init(); setupResizeObserver(); }, 100);
     });
   }
 })();
