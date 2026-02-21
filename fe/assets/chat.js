@@ -1403,9 +1403,157 @@
   }
 
   function openFullscreen(container, title) {
-    // Phase 4 will implement a full modal overlay.
-    // For now, scroll the card into center view.
-    container.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Create overlay backdrop
+    var overlay = document.createElement("div");
+    overlay.className = "viz-fullscreen-overlay";
+
+    var panel = document.createElement("div");
+    panel.className = "viz-fullscreen-content";
+
+    // ── Header with icon, title, and action buttons ──
+    var header = document.createElement("div");
+    header.className = "viz-fullscreen-header";
+
+    // Clone the type icon from the card header
+    var origIcon = container.querySelector(".viz-type-icon");
+    if (origIcon) {
+      header.appendChild(origIcon.cloneNode(true));
+    }
+
+    var titleEl = document.createElement("span");
+    titleEl.className = "viz-fullscreen-title";
+    titleEl.textContent = title;
+    header.appendChild(titleEl);
+
+    var actions = document.createElement("div");
+    actions.className = "viz-actions";
+
+    // Download button (if viz type supports it)
+    var vizType = container.getAttribute("data-viz-type");
+    if (DOWNLOADABLE_TYPES[vizType]) {
+      var dlBtn = document.createElement("button");
+      dlBtn.className = "viz-action-btn";
+      dlBtn.title = "Download image";
+      dlBtn.innerHTML = '<i class="bi bi-download"></i>';
+      dlBtn.addEventListener("click", function () {
+        downloadViz(container, vizType, title);
+      });
+      actions.appendChild(dlBtn);
+    }
+
+    // Close button
+    var closeBtn = document.createElement("button");
+    closeBtn.className = "viz-action-btn";
+    closeBtn.title = "Close";
+    closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+    closeBtn.addEventListener("click", close);
+    actions.appendChild(closeBtn);
+
+    header.appendChild(actions);
+    panel.appendChild(header);
+
+    // ── Body — move the original viz-content into fullscreen ──
+    var body = document.createElement("div");
+    body.className = "viz-fullscreen-body";
+    panel.appendChild(body);
+
+    var vizContent = container.querySelector(".viz-content");
+    // Insert a placeholder so we know where to put it back
+    var placeholder = document.createElement("div");
+    placeholder.className = "viz-content-placeholder";
+    vizContent.parentNode.insertBefore(placeholder, vizContent);
+    body.appendChild(vizContent);
+
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    document.body.style.overflow = "hidden";
+
+    // Expand chart/network heights to fill the modal
+    requestAnimationFrame(function () {
+      var bodyRect = body.getBoundingClientRect();
+      var expandHeight = Math.max(bodyRect.height - 32, 400);
+
+      // Store and expand inline-height children (cytoscape divs, protein viewer, etc.)
+      var expandedEls = [];
+      var children = vizContent.children;
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        if (child.style.height && child.style.height.indexOf("px") !== -1) {
+          expandedEls.push({ el: child, orig: child.style.height });
+          child.style.height = expandHeight + "px";
+        }
+      }
+      vizContent._expandedEls = expandedEls;
+
+      // Expand Plotly chart heights
+      if (typeof Plotly !== "undefined") {
+        var plots = vizContent.querySelectorAll(".js-plotly-plot");
+        plots.forEach(function (div) {
+          div._origHeight = (div.layout || {}).height;
+          Plotly.relayout(div, { height: expandHeight });
+        });
+      }
+
+      // Resize Cytoscape to fit new container
+      if (container._cyInstance) {
+        container._cyInstance.resize();
+        container._cyInstance.fit();
+      }
+    });
+
+    // Click on backdrop closes
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) close();
+    });
+
+    // Escape key closes
+    function onKeyDown(e) {
+      if (e.key === "Escape") close();
+    }
+    document.addEventListener("keydown", onKeyDown);
+
+    function close() {
+      // Restore inline-height children
+      var expandedEls = vizContent._expandedEls || [];
+      expandedEls.forEach(function (item) {
+        item.el.style.height = item.orig;
+      });
+      delete vizContent._expandedEls;
+
+      // Restore Plotly chart heights
+      if (typeof Plotly !== "undefined") {
+        var plots = vizContent.querySelectorAll(".js-plotly-plot");
+        plots.forEach(function (div) {
+          if (div._origHeight != null) {
+            Plotly.relayout(div, { height: div._origHeight });
+            delete div._origHeight;
+          }
+        });
+      }
+
+      // Move viz-content back to its original card
+      placeholder.parentNode.insertBefore(vizContent, placeholder);
+      placeholder.remove();
+
+      // Remove overlay
+      overlay.remove();
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+
+      // Trigger resize back to card size
+      setTimeout(function () {
+        if (typeof Plotly !== "undefined") {
+          var plots = vizContent.querySelectorAll(".js-plotly-plot");
+          plots.forEach(function (div) {
+            Plotly.Plots.resize(div);
+          });
+        }
+        if (container._cyInstance) {
+          container._cyInstance.resize();
+          container._cyInstance.fit();
+        }
+      }, 50);
+    }
   }
 
   function escapeHtml(str) {

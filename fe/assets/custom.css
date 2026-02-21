@@ -839,6 +839,85 @@ a.header-link.active {
     padding: 0.75rem;
 }
 
+/* ===== Fullscreen Viz Overlay ===== */
+
+.viz-fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    animation: viz-overlay-in 0.2s ease;
+}
+
+@keyframes viz-overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.viz-fullscreen-content {
+    background: #ffffff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 1400px;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: viz-content-in 0.2s ease;
+}
+
+@keyframes viz-content-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.viz-fullscreen-header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eef0f3;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.viz-fullscreen-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #1a1d21;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.viz-fullscreen-body {
+    flex: 1;
+    padding: 1rem;
+    overflow: auto;
+    min-height: 0;
+}
+
+.viz-fullscreen-body .viz-content {
+    padding: 0;
+    height: 100%;
+}
+
+@media (max-width: 767px) {
+    .viz-fullscreen-overlay {
+        padding: 0.5rem;
+    }
+
+    .viz-fullscreen-content {
+        height: 95vh;
+        border-radius: 8px;
+    }
+}
+
 .viz-table {
     font-size: 0.85rem;
     margin-bottom: 0;
