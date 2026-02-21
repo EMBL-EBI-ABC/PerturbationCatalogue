@@ -117,30 +117,7 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 ## Tier 3 -- Domain-Specific Data Enrichment
 
-### 10. DepMap -- Cancer CRISPR Dependencies
-**Why:** The world's largest CRISPR screen dataset (1,865+ cancer cell lines). When the Catalogue shows a CRISPR hit for gene X, DepMap answers "Is X essential across all cancers or just this lineage?"
-
-**API:** [Sanger DepMap REST API](https://api.cellmodelpassports.sanger.ac.uk/swagger) (JSONAPI v1.0, free). Broad's API is more download-oriented. A partial MCP tool exists via [BioAgent](https://zitniklab.hms.harvard.edu/bioagent/tools/remote/depmap_24q2.html).
-
-**Integration:** Add as Gemini function declarations wrapping the Sanger REST API.
-
-**Status: DONE**
-
-### 11. MaveDB -- External MAVE Score Sets
-**Why:** The Catalogue already has MAVE data, but MaveDB is the canonical source with 7M+ variant measurements. Cross-referencing lets the AI pull the latest scores and additional datasets.
-
-**API:** Excellent FastAPI at `https://api.mavedb.org/docs`. No auth. Add as direct REST function declarations.
-
-**Status: DONE**
-
-### 12. Reactome -- Pathway Enrichment
-**Why:** "What pathways are affected by this perturbation?" is a core analysis question. Submit a gene list from Perturb-seq results and get enriched pathways back.
-
-**API:** REST at `https://reactome.org/AnalysisService/identifiers/` (POST gene list, get enrichment). No MCP server yet, but the REST API is straightforward.
-
-**Status: DONE**
-
-### 13. STRING -- Protein Interaction Networks
+### 10. STRING -- Protein Interaction Networks
 **Why:** Known physical and functional protein associations provide mechanistic context for perturbation effects.
 
 **API:** REST at `https://string-db.org/api/json/` (interaction_partners, enrichment endpoints). No auth, free. Requires `caller_identity` param per usage policy. Returns `Content-Type: text/json` (needs `content_type=None` for aiohttp).
@@ -153,15 +130,15 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 **Status: DONE** (Both tools implemented with interactive network visualization and functional enrichment)
 
-### 14. Ensembl VEP -- Advanced Variant Consequence Prediction
+### 11. Ensembl VEP -- Advanced Variant Consequence Prediction
 
 **Why:** While Open Targets already ingests basic VEP consequence terms, direct VEP access unlocks the full plugin ecosystem: **SpliceAI** (splicing impact), **LOFTEE** (loss-of-function), **regulatory feature consequences** (enhancer/promoter/CTCF disruption), **motif feature consequences** (TF binding disruption), and **real-time annotation of novel variants** not yet in OT's release cycle. Handles all variant types (SNPs, indels, CNVs, structural) unlike ProtVar's missense-only scope.
 
 **API:** REST at `https://rest.ensembl.org/vep/:species/hgvs/:hgvs_notation` (GET) or batch POST for up to 200 variants. No auth, free. [Full docs](https://rest.ensembl.org/documentation/info/vep_hgvs_get).
 
-**Key tools to add:**
-- `predict_variant_consequence(variant)` -- consequence terms, affected transcripts, amino acid changes, regulatory impact
-- `batch_variant_consequences(variants)` -- batch annotation for variant lists from MAVE/CRISPR results
+**Key tools added:**
+- `predict_variant_consequence(variant)` -- consequence terms, affected transcripts, amino acid changes, regulatory impact, in-silico predictions (SIFT, PolyPhen, CADD, SpliceAI, AlphaMissense, LOFTEE, conservation), regulatory/motif consequences, colocated variants with gnomAD frequencies
+- `batch_variant_consequences(variants)` -- batch annotation (up to 200) for variant lists from MAVE/CRISPR results, groups by format and sends to appropriate POST endpoints
 
 **MCP server:** An [unofficial Ensembl MCP server](https://github.com/Augmented-Nature/Ensembl-MCP-Server) exists with 25 tools including `get_variant_consequences`. No official Ensembl MCP yet.
 
@@ -169,7 +146,7 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 **Priority:** Lower than ProtVar -- add after ProtVar is integrated, since OT covers basic VEP needs.
 
-**Status: TODO**
+**Status: DONE** (Both tools implemented: `predict_variant_consequence`, `batch_variant_consequences` with full plugin suite: CADD, SpliceAI, AlphaMissense, LOFTEE, Conservation, domains, HGVS, canonical, UniProt)
 
 ---
 
@@ -199,7 +176,7 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 | **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
 | **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, MAVE heatmap **DONE**, Cytoscape network **DONE** | `volcano_plot`, `mave_heatmap`, `gene_interaction_network` | **DONE** |
 | **Phase 3** | DepMap (REST), MaveDB (REST), Reactome (REST), STRING (REST) | `string_interaction_network` | **STRING DONE**, DepMap/MaveDB/Reactome TODO |
-| **Phase 4** | Ensembl VEP | `clustergram`, pathway diagrams | TODO |
+| **Phase 4** | Ensembl VEP **DONE** | `clustergram`, pathway diagrams | **VEP DONE**, clustergram/pathway TODO |
 
 ---
 
