@@ -427,14 +427,16 @@
     card: "bi bi-card-text"
   };
 
-  // Viz types that support image download (and their renderer type)
+  // Viz types that support download (and their renderer type)
   var DOWNLOADABLE_TYPES = {
     pie_chart: "plotly",
     bar_chart: "plotly",
     volcano_plot: "plotly",
     mave_heatmap: "plotly",
     gene_interaction_network: "cytoscape",
-    string_interaction_network: "cytoscape"
+    string_interaction_network: "cytoscape",
+    table: "csv",
+    protein_structure: "protein"
   };
 
   function updatePortalVisibility() {
@@ -526,12 +528,16 @@
     });
     actions.appendChild(fullscreenBtn);
 
-    // Download button (only for Plotly/Cytoscape viz types)
+    // Download button
     if (DOWNLOADABLE_TYPES[vizType]) {
       var dlBtn = document.createElement("button");
       dlBtn.className = "viz-action-btn";
-      dlBtn.title = "Download image";
-      dlBtn.innerHTML = '<i class="bi bi-download"></i>';
+      var dlType = DOWNLOADABLE_TYPES[vizType];
+      dlBtn.title = dlType === "csv" ? "Download CSV" :
+                    dlType === "protein" ? "Open in AlphaFold" : "Download image";
+      dlBtn.innerHTML = dlType === "protein"
+        ? '<i class="bi bi-box-arrow-up-right"></i>'
+        : '<i class="bi bi-download"></i>';
       dlBtn.addEventListener("click", function () {
         downloadViz(wrapper, vizType, data.title || "visualization");
       });
@@ -1482,6 +1488,35 @@
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    } else if (downloadType === "csv") {
+      var table = container.querySelector("table");
+      if (!table) return;
+      var csv = [];
+      var rows = table.querySelectorAll("tr");
+      for (var i = 0; i < rows.length; i++) {
+        var cells = rows[i].querySelectorAll("th, td");
+        var row = [];
+        for (var j = 0; j < cells.length; j++) {
+          var text = cells[j].textContent.replace(/"/g, '""');
+          row.push('"' + text + '"');
+        }
+        csv.push(row.join(","));
+      }
+      var blob = new Blob([csv.join("\n")], { type: "text/csv;charset=utf-8;" });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = filename + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else if (downloadType === "protein") {
+      // Open AlphaFold entry page where the user can download the CIF file
+      var afLink = container.querySelector('a[href*="alphafold.ebi.ac.uk/entry"]');
+      if (afLink) {
+        window.open(afLink.href, "_blank", "noopener");
+      }
     }
   }
 
@@ -1514,10 +1549,14 @@
     // Download button (if viz type supports it)
     var vizType = container.getAttribute("data-viz-type");
     if (DOWNLOADABLE_TYPES[vizType]) {
+      var dlType = DOWNLOADABLE_TYPES[vizType];
       var dlBtn = document.createElement("button");
       dlBtn.className = "viz-action-btn";
-      dlBtn.title = "Download image";
-      dlBtn.innerHTML = '<i class="bi bi-download"></i>';
+      dlBtn.title = dlType === "csv" ? "Download CSV" :
+                    dlType === "protein" ? "Open in AlphaFold" : "Download image";
+      dlBtn.innerHTML = dlType === "protein"
+        ? '<i class="bi bi-box-arrow-up-right"></i>'
+        : '<i class="bi bi-download"></i>';
       dlBtn.addEventListener("click", function () {
         downloadViz(container, vizType, title);
       });

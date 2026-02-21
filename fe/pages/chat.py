@@ -246,29 +246,7 @@ layout = html.Div(
                                 html.Div(
                                     [
                                         html.Div(
-                                            [
-                                                html.I(className="bi bi-bar-chart-line"),
-                                                html.I(
-                                                    className="bi bi-table",
-                                                    style={
-                                                        "position": "absolute",
-                                                        "bottom": "12px",
-                                                        "right": "14px",
-                                                        "fontSize": "1rem",
-                                                        "opacity": "0.5",
-                                                    },
-                                                ),
-                                                html.I(
-                                                    className="bi bi-diagram-3",
-                                                    style={
-                                                        "position": "absolute",
-                                                        "top": "12px",
-                                                        "left": "14px",
-                                                        "fontSize": "1rem",
-                                                        "opacity": "0.5",
-                                                    },
-                                                ),
-                                            ],
+                                            html.I(className="bi bi-clipboard2-data"),
                                             className="empty-state-illustration",
                                         ),
                                         html.P(
