@@ -101,12 +101,12 @@ The gold-standard differential expression visualization. The `perturb_seq_dea` t
 ### 7. MAVE Heatmap (Variant Effect Map)
 Interactive position × amino acid heatmap showing functional scores from deep mutational scanning. The `mave_data` table has `position`, `aa_wt`, `aa_change`, and `score`. Render with Plotly heatmap (`Plotly.newPlot` with `type: 'heatmap'`). Consistent with the existing Dash frontend heatmap (`fe/components/target_data_table.py`) and the MaveDB standard visualization. Color scale: diverging (e.g. RdBu or RdYlGn) with WT residues annotated. **Zero new dependencies.**
 
-**Status: TODO**
+**Status: DONE**
 
 ### 8. Gene Interaction Network (Cytoscape.js)
 Interactive network: perturbed gene in center, differentially expressed genes radiating out with edge width = |log2FC|. Load `cytoscape.js` from CDN (~250KB). Transforms Perturb-seq results from a table into a visual network. **One CDN dependency.**
 
-**Status: TODO**
+**Status: DONE** (Implemented: `renderGeneInteractionNetwork` in chat.js with Cytoscape.js concentric layout, node coloring by direction, edge width by |log2FC|, hover tooltips, legend; `create_gene_interaction_network` tool declaration + handler in ai_chat.py with dataset selection flow; system prompt guidance for Gemini)
 
 ### 9. Gene Summary Cards
 Structured HTML cards with gene name, function (from UniProt), druggability (from Pharos), key stats from the Catalogue, and quick links to AlphaFold/UniProt/Open Targets. **Zero dependencies, just HTML/CSS.**
@@ -191,8 +191,8 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 | Phase | Integrations | New Viz Types | Effort |
 |-------|-------------|---------------|--------|
 | **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
-| **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, MAVE heatmap | `volcano_plot`, `mave_heatmap` | 1-2 weeks |
-| **Phase 3** | DepMap (REST), MaveDB (REST), Cytoscape networks | `network` | 2-3 weeks |
+| **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, MAVE heatmap **DONE**, Cytoscape network **DONE** | `volcano_plot`, `mave_heatmap`, `gene_interaction_network` | **DONE** |
+| **Phase 3** | DepMap (REST), MaveDB (REST) | | 2-3 weeks |
 | **Phase 4** | Reactome, STRING, Ensembl VEP | `clustergram`, pathway diagrams | 2-3 weeks |
 
 ---

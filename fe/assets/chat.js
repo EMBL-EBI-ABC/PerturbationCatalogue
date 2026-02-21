@@ -360,6 +360,9 @@
       case "gene_card":
         renderGeneCard(content, data.data);
         break;
+      case "gene_interaction_network":
+        renderGeneInteractionNetwork(content, data.data);
+        break;
       default:
         content.textContent = "Unknown visualization type: " + data.type;
     }
@@ -851,6 +854,196 @@
     }
 
     container.appendChild(card);
+  }
+
+  function renderGeneInteractionNetwork(container, data) {
+    var nodes = data.nodes || [];
+    var edges = data.edges || [];
+    var perturbedGene = data.perturbed_gene || "";
+
+    var cyDiv = document.createElement("div");
+    cyDiv.style.width = "100%";
+    cyDiv.style.height = "500px";
+    cyDiv.style.border = "1px solid #e9ecef";
+    cyDiv.style.borderRadius = "6px";
+    cyDiv.style.background = "#ffffff";
+    container.appendChild(cyDiv);
+
+    if (typeof cytoscape === "undefined") {
+      cyDiv.textContent = "Cytoscape.js library not loaded";
+      return;
+    }
+
+    if (nodes.length === 0) {
+      cyDiv.textContent = "No data for gene interaction network";
+      return;
+    }
+
+    // Build Cytoscape elements
+    var cyNodes = nodes.map(function (n) {
+      return {
+        data: {
+          id: n.id,
+          label: n.label,
+          type: n.type,
+          log2fc: n.log2fc,
+          padj: n.padj
+        }
+      };
+    });
+
+    var cyEdges = edges.map(function (e, idx) {
+      return {
+        data: {
+          id: "e" + idx,
+          source: e.source,
+          target: e.target,
+          weight: e.weight
+        }
+      };
+    });
+
+    // Compute max weight for edge width scaling
+    var maxWeight = 0;
+    for (var i = 0; i < edges.length; i++) {
+      if (edges[i].weight > maxWeight) maxWeight = edges[i].weight;
+    }
+    if (maxWeight === 0) maxWeight = 1;
+
+    var cy = cytoscape({
+      container: cyDiv,
+      elements: cyNodes.concat(cyEdges),
+      style: [
+        {
+          selector: "node[type='perturbed']",
+          style: {
+            "background-color": "#193F90",
+            "label": "data(label)",
+            "text-valign": "center",
+            "text-halign": "center",
+            "color": "#fff",
+            "font-size": "12px",
+            "font-weight": "bold",
+            "width": 50,
+            "height": 50,
+            "border-width": 3,
+            "border-color": "#0d2456",
+            "text-outline-width": 0
+          }
+        },
+        {
+          selector: "node[type='up']",
+          style: {
+            "background-color": "#A6093D",
+            "label": "data(label)",
+            "text-valign": "bottom",
+            "text-margin-y": 4,
+            "color": "#333",
+            "font-size": "10px",
+            "width": "mapData(log2fc, 0, " + maxWeight + ", 20, 40)",
+            "height": "mapData(log2fc, 0, " + maxWeight + ", 20, 40)"
+          }
+        },
+        {
+          selector: "node[type='down']",
+          style: {
+            "background-color": "#193F90",
+            "label": "data(label)",
+            "text-valign": "bottom",
+            "text-margin-y": 4,
+            "color": "#333",
+            "font-size": "10px",
+            "width": function (ele) {
+              return Math.max(20, Math.min(40, 20 + (Math.abs(ele.data("log2fc")) / maxWeight) * 20));
+            },
+            "height": function (ele) {
+              return Math.max(20, Math.min(40, 20 + (Math.abs(ele.data("log2fc")) / maxWeight) * 20));
+            }
+          }
+        },
+        {
+          selector: "edge",
+          style: {
+            "width": function (ele) {
+              return Math.max(1, (ele.data("weight") / maxWeight) * 6);
+            },
+            "line-color": "#ccc",
+            "target-arrow-color": "#ccc",
+            "curve-style": "bezier",
+            "opacity": 0.6
+          }
+        },
+        {
+          selector: "node:active",
+          style: {
+            "overlay-opacity": 0
+          }
+        }
+      ],
+      layout: {
+        name: "concentric",
+        concentric: function (node) {
+          return node.data("type") === "perturbed" ? 10 : 1;
+        },
+        levelWidth: function () { return 1; },
+        minNodeSpacing: 30,
+        padding: 20,
+        animate: false
+      },
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false
+    });
+
+    // Tooltip on tap
+    var tooltip = document.createElement("div");
+    tooltip.style.cssText =
+      "position: absolute; background: rgba(0,0,0,0.85); color: #fff; padding: 8px 12px; " +
+      "border-radius: 6px; font-size: 12px; pointer-events: none; display: none; z-index: 10; " +
+      "max-width: 220px; line-height: 1.4;";
+    cyDiv.style.position = "relative";
+    cyDiv.appendChild(tooltip);
+
+    cy.on("mouseover", "node", function (evt) {
+      var node = evt.target;
+      var d = node.data();
+      var lines = ["<strong>" + escapeHtml(d.label) + "</strong>"];
+      if (d.type === "perturbed") {
+        lines.push("Perturbed gene (center)");
+      } else {
+        lines.push("log2FC: " + d.log2fc.toFixed(3));
+        lines.push("padj: " + (d.padj < 0.001 ? d.padj.toExponential(2) : d.padj.toFixed(4)));
+        lines.push(d.type === "up" ? "Upregulated" : "Downregulated");
+      }
+      tooltip.innerHTML = lines.join("<br>");
+      tooltip.style.display = "block";
+      var pos = node.renderedPosition();
+      tooltip.style.left = (pos.x + 15) + "px";
+      tooltip.style.top = (pos.y - 10) + "px";
+    });
+
+    cy.on("mouseout", "node", function () {
+      tooltip.style.display = "none";
+    });
+
+    cy.on("pan zoom", function () {
+      tooltip.style.display = "none";
+    });
+
+    // Legend
+    var legend = document.createElement("div");
+    legend.style.cssText = "padding: 8px 4px; font-size: 0.8rem; color: #54585A; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;";
+    legend.innerHTML =
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:#193F90; border: 2px solid #0d2456;"></span> ' +
+        escapeHtml(perturbedGene) + ' (perturbed)</span>' +
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#A6093D;"></span> Upregulated</span>' +
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#193F90;"></span> Downregulated</span>' +
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:20px; height:3px; background:#999;"></span> Edge width = |log2FC|</span>';
+    container.appendChild(legend);
   }
 
   function escapeHtml(str) {

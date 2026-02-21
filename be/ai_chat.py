@@ -526,6 +526,44 @@ GET_VARIANT_STRUCTURAL_CONTEXT_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+CREATE_GENE_NETWORK_DECLARATION = types.FunctionDeclaration(
+    name="create_gene_interaction_network",
+    description=(
+        "Create an interactive gene interaction network from Perturb-seq differential expression data. "
+        "Shows the perturbed gene in the center with differentially expressed genes radiating outward. "
+        "Edge width reflects the magnitude of the effect (|log2FC|) and nodes are colored by direction "
+        "(up/down-regulated). The backend queries the database and renders the network directly. "
+        "Use this when a user asks for a network view of perturbation effects, gene interactions, "
+        "or wants to visualize which genes are affected by a perturbation."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Perturbed gene name to show interaction network for (e.g. 'BRCA2', 'TP53')",
+            ),
+            "dataset_id": types.Schema(
+                type="STRING",
+                description="Optional dataset ID to filter by. If omitted and multiple datasets exist, returns a list for user selection.",
+            ),
+            "padj_threshold": types.Schema(
+                type="NUMBER",
+                description="Adjusted p-value threshold for including genes in the network (default 0.05). Only genes with padj below this are shown.",
+            ),
+            "fc_threshold": types.Schema(
+                type="NUMBER",
+                description="Minimum absolute log2 fold-change threshold for including genes (default 0.5). Filters out small effects.",
+            ),
+            "max_genes": types.Schema(
+                type="INTEGER",
+                description="Maximum number of differentially expressed genes to show (default 30, max 50). Top genes selected by significance.",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
@@ -534,6 +572,7 @@ INTERNAL_TOOL_DECLARATIONS = [
     CREATE_VISUALIZATION_DECLARATION,
     CREATE_VOLCANO_PLOT_DECLARATION,
     CREATE_MAVE_HEATMAP_DECLARATION,
+    CREATE_GENE_NETWORK_DECLARATION,
     LOOKUP_PROTEIN_DECLARATION,
     GET_PROTEIN_STRUCTURE_DECLARATION,
     MAP_IDENTIFIERS_DECLARATION,
@@ -1101,6 +1140,177 @@ async def _tool_create_mave_heatmap(args: dict) -> dict:
             f"across {n_positions} positions ({position_start}-{position_end}) "
             f"and {n_aas} amino acid substitutions."
         ),
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
+
+
+async def _tool_create_gene_interaction_network(args: dict) -> dict:
+    """Query perturb_seq_dea and return a gene interaction network payload.
+
+    Same two-step dataset selection flow as volcano plot and MAVE heatmap.
+    """
+    gene_name = args.get("gene_name", "")
+    dataset_id = args.get("dataset_id")
+    padj_threshold = args.get("padj_threshold", 0.05)
+    fc_threshold = args.get("fc_threshold", 0.5)
+    max_genes = args.get("max_genes", 30)
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    # Clamp max_genes
+    if max_genes is None or max_genes < 1:
+        max_genes = 30
+    elif max_genes > 50:
+        max_genes = 50
+
+    pg_pool = db_pools["pg"]
+
+    # Step 1: Determine dataset_id (same pattern as volcano plot)
+    if not dataset_id:
+        ds_query = """
+            SELECT dataset_id,
+                   COUNT(*) AS total_genes,
+                   COUNT(*) FILTER (WHERE padj < 0.05) AS significant_genes
+            FROM perturb_seq_dea
+            WHERE perturbed_target_symbol = $1
+            GROUP BY dataset_id
+            ORDER BY significant_genes DESC
+        """
+        ds_rows = await pg_pool.fetch(ds_query, gene_name.upper())
+
+        if not ds_rows:
+            return {
+                "error": f"No Perturb-seq DEA data found for {gene_name.upper()}"
+            }
+
+        if len(ds_rows) == 1:
+            dataset_id = ds_rows[0]["dataset_id"]
+        else:
+            datasets = [
+                {
+                    "dataset_id": row["dataset_id"],
+                    "total_genes": row["total_genes"],
+                    "significant_genes": row["significant_genes"],
+                }
+                for row in ds_rows
+            ]
+            return {
+                "action": "choose_dataset",
+                "perturbed_gene": gene_name.upper(),
+                "available_datasets": datasets,
+                "message": (
+                    f"{gene_name.upper()} has Perturb-seq DEA data in {len(datasets)} datasets. "
+                    "Ask the user which dataset they want to see the interaction network for."
+                ),
+            }
+
+    # Step 2: Query significant DEGs sorted by significance
+    query = """
+        SELECT gene, log2foldchange, padj
+        FROM perturb_seq_dea
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2
+              AND gene IS NOT NULL AND padj IS NOT NULL AND log2foldchange IS NOT NULL
+              AND padj < $3 AND ABS(log2foldchange) >= $4
+        ORDER BY padj ASC
+        LIMIT $5
+    """
+    rows = await pg_pool.fetch(
+        query,
+        gene_name.upper(),
+        dataset_id,
+        padj_threshold,
+        fc_threshold,
+        max_genes,
+    )
+
+    if not rows:
+        return {
+            "error": (
+                f"No significant genes found for {gene_name.upper()} in dataset {dataset_id} "
+                f"with padj < {padj_threshold} and |log2FC| >= {fc_threshold}. "
+                "Try relaxing the thresholds."
+            )
+        }
+
+    # Build network data: center node + DEG nodes + edges
+    nodes = []
+    edges = []
+    n_up = 0
+    n_down = 0
+
+    # Center node: the perturbed gene
+    nodes.append(
+        {
+            "id": gene_name.upper(),
+            "label": gene_name.upper(),
+            "type": "perturbed",
+            "log2fc": 0,
+            "padj": 0,
+        }
+    )
+
+    for row in rows:
+        g = str(row["gene"])
+        fc = float(row["log2foldchange"])
+        pv = float(row["padj"])
+
+        direction = "up" if fc > 0 else "down"
+        if direction == "up":
+            n_up += 1
+        else:
+            n_down += 1
+
+        nodes.append(
+            {
+                "id": g,
+                "label": g,
+                "type": direction,
+                "log2fc": round(fc, 4),
+                "padj": pv,
+            }
+        )
+
+        edges.append(
+            {
+                "source": gene_name.upper(),
+                "target": g,
+                "weight": round(abs(fc), 4),
+            }
+        )
+
+    viz_data = {
+        "type": "gene_interaction_network",
+        "title": f"Gene Interaction Network: {gene_name.upper()} Perturbation",
+        "data": {
+            "nodes": nodes,
+            "edges": edges,
+            "perturbed_gene": gene_name.upper(),
+            "fc_threshold": fc_threshold,
+            "padj_threshold": padj_threshold,
+        },
+    }
+
+    summary = {
+        "status": "success",
+        "perturbed_gene": gene_name.upper(),
+        "dataset_id": dataset_id,
+        "total_deg_shown": len(rows),
+        "upregulated": n_up,
+        "downregulated": n_down,
+        "fc_threshold": fc_threshold,
+        "padj_threshold": padj_threshold,
+        "top_upregulated": [
+            {"gene": str(r["gene"]), "log2fc": round(float(r["log2foldchange"]), 3)}
+            for r in rows
+            if float(r["log2foldchange"]) > 0
+        ][:5],
+        "top_downregulated": [
+            {"gene": str(r["gene"]), "log2fc": round(float(r["log2foldchange"]), 3)}
+            for r in rows
+            if float(r["log2foldchange"]) < 0
+        ][:5],
     }
 
     return {"viz_data": viz_data, "summary": summary}
@@ -2113,6 +2323,7 @@ _OT_TOOL_DESCRIPTIONS = {
     "annotate_variant": "Annotating variant with ProtVar...",
     "get_variant_structural_context": "Fetching structural context from ProtVar...",
     "create_volcano_plot": "Building volcano plot...",
+    "create_gene_interaction_network": "Building gene interaction network...",
 }
 
 
@@ -2176,6 +2387,7 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "What does variant rs123 do?" / "Is this variant pathogenic?" / "Effect of mutation X" → call annotate_variant (ProtVar)
 - "Structural impact at position X" / "What's at residue 493?" → call get_variant_structural_context (ProtVar)
 - "Show MAVE data for X" / "Variant effects for X" / "Heatmap for X" / "Deep mutational scanning" → call create_mave_heatmap
+- "Network for X" / "Gene interactions for X" / "What genes are affected by X?" / "Show interaction network" → call create_gene_interaction_network
 
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
@@ -2183,6 +2395,7 @@ Visualization guidelines:
 - Use tables for detailed data rows (limit to 20 rows for readability)
 - For volcano plots of Perturb-seq DEA data, use the dedicated create_volcano_plot tool (NOT create_visualization)
 - For MAVE variant effect heatmaps, use the dedicated create_mave_heatmap tool (NOT create_visualization)
+- For gene interaction networks, use the dedicated create_gene_interaction_network tool (NOT create_visualization)
 - When showing datasets, include dataset_id, title, modality, and key metadata
 - When showing perturbation data, highlight significant results
 
@@ -2201,6 +2414,15 @@ Two-step flow (same as volcano plot):
 2. If the gene has data in only ONE dataset, the heatmap is rendered immediately and you receive a summary — use this to write an informative interpretation about the variant effect landscape.
 
 The heatmap shows 30 positions by default. If the user wants to see a specific region, pass position_start and position_end parameters. Tell the user the displayed position range and total available positions so they can request other regions.
+
+GENE INTERACTION NETWORK:
+When a user asks for a network view, gene interactions, or wants to visualize which genes are affected by a perturbation (e.g., "Show me a network for TP53", "What genes interact with BRCA2 perturbation?", "Network of TP53 effects"), call create_gene_interaction_network with the gene name. The backend queries Perturb-seq DEA data and renders an interactive Cytoscape.js network — do NOT query with query_perturbation_data separately.
+
+Two-step flow (same as volcano plot and MAVE heatmap):
+1. If the gene has data in MULTIPLE datasets, the tool returns a list of available datasets. Present them to the user and ask which one to visualize. Then call create_gene_interaction_network again with the chosen dataset_id.
+2. If the gene has data in only ONE dataset, the network is rendered immediately. You receive a summary with counts of up/down-regulated genes and top affected genes — use this to write an informative interpretation.
+
+The network shows the perturbed gene at the center with significant DEGs radiating outward. Edge width reflects effect magnitude (|log2FC|). Nodes are colored red (upregulated) or blue (downregulated). Default filters: padj < 0.05, |log2FC| >= 0.5, max 30 genes.
 
 Available data modalities:
 - Perturb-seq: Single-cell transcriptomic readout of gene perturbations. Key fields: perturbation gene, effect gene, log2FC, padj
@@ -2464,6 +2686,45 @@ async def chat_stream(request: ChatRequest):
                             )
                         else:
                             # Heatmap built — emit visualization and return summary
+                            yield _sse_event("visualization", result["viz_data"])
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result["summary"],
+                                )
+                            )
+                    elif tool_name == "create_gene_interaction_network":
+                        # create_gene_interaction_network: backend queries DB, emits viz, returns summary to LLM
+                        yield _sse_event(
+                            "tool_call",
+                            {"tool": tool_name, "description": "Building gene interaction network..."},
+                        )
+                        yield _sse_event(
+                            "thinking", {"status": "Building gene interaction network..."}
+                        )
+                        try:
+                            result = await _tool_create_gene_interaction_network(tool_args)
+                        except Exception as exc:
+                            logger.exception("Tool %s failed", tool_name)
+                            result = {"error": str(exc)}
+
+                        if "error" in result:
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        elif result.get("action") == "choose_dataset":
+                            # Multiple datasets — pass list to Gemini to ask the user
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        else:
+                            # Network built — emit visualization and return summary
                             yield _sse_event("visualization", result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
