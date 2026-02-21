@@ -322,6 +322,38 @@
     string_interaction_network: "large"
   };
 
+  // Viz type → category for icon coloring
+  var VIZ_CATEGORY_MAP = {
+    pie_chart: "chart",
+    bar_chart: "chart",
+    volcano_plot: "chart",
+    mave_heatmap: "chart",
+    table: "table",
+    gene_interaction_network: "network",
+    string_interaction_network: "network",
+    protein_structure: "protein",
+    gene_card: "card"
+  };
+
+  // Category → Bootstrap icon class
+  var VIZ_ICON_MAP = {
+    chart: "bi bi-bar-chart-line",
+    table: "bi bi-table",
+    network: "bi bi-diagram-3",
+    protein: "bi bi-box",
+    card: "bi bi-card-text"
+  };
+
+  // Viz types that support image download (and their renderer type)
+  var DOWNLOADABLE_TYPES = {
+    pie_chart: "plotly",
+    bar_chart: "plotly",
+    volcano_plot: "plotly",
+    mave_heatmap: "plotly",
+    gene_interaction_network: "cytoscape",
+    string_interaction_network: "cytoscape"
+  };
+
   function updatePortalVisibility() {
     var portal = document.getElementById("chat-data-portal");
     var clearBtn = document.getElementById("chat-clear-portal-btn");
@@ -371,30 +403,70 @@
     var clearBtn = document.getElementById("chat-clear-portal-btn");
     if (clearBtn) clearBtn.style.display = "";
 
+    var vizType = data.type || "";
+    var category = VIZ_CATEGORY_MAP[vizType] || "chart";
+
     var wrapper = document.createElement("div");
     wrapper.className = "viz-container";
-    wrapper.setAttribute("data-viz-type", data.type || "");
-    wrapper.setAttribute("data-size", VIZ_SIZE_MAP[data.type] || "large");
+    wrapper.setAttribute("data-viz-type", vizType);
+    wrapper.setAttribute("data-size", VIZ_SIZE_MAP[vizType] || "large");
 
+    // ── Card header with type icon, title, and action buttons ──
     var header = document.createElement("div");
     header.className = "viz-header";
 
-    var title = document.createElement("h6");
+    // Type icon (color-coded by category)
+    var typeIcon = document.createElement("div");
+    typeIcon.className = "viz-type-icon viz-type-icon--" + category;
+    var iconEl = document.createElement("i");
+    iconEl.className = VIZ_ICON_MAP[category] || "bi bi-bar-chart-line";
+    typeIcon.appendChild(iconEl);
+    header.appendChild(typeIcon);
+
+    // Title
+    var title = document.createElement("span");
     title.className = "viz-title";
     title.textContent = data.title || "Visualization";
     header.appendChild(title);
 
+    // Action buttons group
+    var actions = document.createElement("div");
+    actions.className = "viz-actions";
+
+    // Expand button
+    var fullscreenBtn = document.createElement("button");
+    fullscreenBtn.className = "viz-action-btn";
+    fullscreenBtn.title = "Expand";
+    fullscreenBtn.innerHTML = '<i class="bi bi-arrows-fullscreen"></i>';
+    fullscreenBtn.addEventListener("click", function () {
+      openFullscreen(wrapper, data.title || "Visualization");
+    });
+    actions.appendChild(fullscreenBtn);
+
+    // Download button (only for Plotly/Cytoscape viz types)
+    if (DOWNLOADABLE_TYPES[vizType]) {
+      var dlBtn = document.createElement("button");
+      dlBtn.className = "viz-action-btn";
+      dlBtn.title = "Download image";
+      dlBtn.innerHTML = '<i class="bi bi-download"></i>';
+      dlBtn.addEventListener("click", function () {
+        downloadViz(wrapper, vizType, data.title || "visualization");
+      });
+      actions.appendChild(dlBtn);
+    }
+
+    // Remove button
     var removeBtn = document.createElement("button");
-    removeBtn.className = "viz-remove-btn";
-    var removeIcon = document.createElement("i");
-    removeIcon.className = "bi bi-x-circle-fill";
-    removeBtn.appendChild(removeIcon);
+    removeBtn.className = "viz-action-btn viz-action-btn--remove";
+    removeBtn.title = "Remove";
+    removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
     removeBtn.addEventListener("click", function () {
       wrapper.remove();
       updatePortalVisibility();
     });
-    header.appendChild(removeBtn);
+    actions.appendChild(removeBtn);
 
+    header.appendChild(actions);
     wrapper.appendChild(header);
 
     var content = document.createElement("div");
@@ -1301,6 +1373,39 @@
         '<a href="https://string-db.org" target="_blank" rel="noopener" ' +
         'style="color:#007B53; text-decoration:none;">Data: STRING-DB</a></span>';
     container.appendChild(legend);
+  }
+
+  // --- Download and Fullscreen helpers ---
+
+  function downloadViz(container, vizType, title) {
+    var downloadType = DOWNLOADABLE_TYPES[vizType];
+    var filename = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+
+    if (downloadType === "plotly" && typeof Plotly !== "undefined") {
+      var plotDiv = container.querySelector(".js-plotly-plot");
+      if (plotDiv) {
+        Plotly.downloadImage(plotDiv, {
+          format: "png",
+          width: 1200,
+          height: 800,
+          filename: filename
+        });
+      }
+    } else if (downloadType === "cytoscape" && container._cyInstance) {
+      var pngData = container._cyInstance.png({ full: true, scale: 2 });
+      var link = document.createElement("a");
+      link.href = pngData;
+      link.download = filename + ".png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }
+
+  function openFullscreen(container, title) {
+    // Phase 4 will implement a full modal overlay.
+    // For now, scroll the card into center view.
+    container.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function escapeHtml(str) {
