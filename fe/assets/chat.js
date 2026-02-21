@@ -363,6 +363,9 @@
       case "gene_interaction_network":
         renderGeneInteractionNetwork(content, data.data);
         break;
+      case "string_interaction_network":
+        renderStringInteractionNetwork(content, data.data);
+        break;
       default:
         content.textContent = "Unknown visualization type: " + data.type;
     }
@@ -1043,6 +1046,190 @@
         '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#193F90;"></span> Downregulated</span>' +
       '<span style="display:inline-flex; align-items:center; gap:4px;">' +
         '<span style="display:inline-block; width:20px; height:3px; background:#999;"></span> Edge width = |log2FC|</span>';
+    container.appendChild(legend);
+  }
+
+  function renderStringInteractionNetwork(container, data) {
+    var nodes = data.nodes || [];
+    var edges = data.edges || [];
+    var queryGene = data.query_gene || "";
+    var requiredScore = data.required_score || 400;
+
+    var cyDiv = document.createElement("div");
+    cyDiv.style.width = "100%";
+    cyDiv.style.height = "520px";
+    cyDiv.style.border = "1px solid #e9ecef";
+    cyDiv.style.borderRadius = "6px";
+    cyDiv.style.background = "#fafafa";
+    container.appendChild(cyDiv);
+
+    if (typeof cytoscape === "undefined") {
+      cyDiv.textContent = "Cytoscape.js library not loaded";
+      return;
+    }
+
+    if (nodes.length === 0) {
+      cyDiv.textContent = "No data for STRING interaction network";
+      return;
+    }
+
+    var COLOR_QUERY = "#007B53";
+    var COLOR_PARTNER = "#563D82";
+    var COLOR_BORDER = "#004d34";
+
+    var cyNodes = nodes.map(function (n) {
+      return {
+        data: {
+          id: n.id,
+          label: n.label,
+          type: n.type,
+          score: n.score || 0,
+          degree: n.degree || 0,
+          evidence: n.evidence || {}
+        }
+      };
+    });
+
+    var cyEdges = edges.map(function (e, idx) {
+      return {
+        data: {
+          id: "se" + idx,
+          source: e.source,
+          target: e.target,
+          weight: e.weight || 0
+        }
+      };
+    });
+
+    var cy = cytoscape({
+      container: cyDiv,
+      elements: cyNodes.concat(cyEdges),
+      style: [
+        {
+          selector: "node[type='query']",
+          style: {
+            "background-color": COLOR_QUERY,
+            "label": "data(label)",
+            "text-valign": "center",
+            "text-halign": "center",
+            "color": "#fff",
+            "font-size": "12px",
+            "font-weight": "bold",
+            "width": 54,
+            "height": 54,
+            "border-width": 3,
+            "border-color": COLOR_BORDER,
+            "text-outline-width": 0
+          }
+        },
+        {
+          selector: "node[type='partner']",
+          style: {
+            "background-color": COLOR_PARTNER,
+            "label": "data(label)",
+            "text-valign": "bottom",
+            "text-margin-y": 4,
+            "color": "#333",
+            "font-size": "10px",
+            "width": function (ele) {
+              return 22 + ele.data("score") * 18;
+            },
+            "height": function (ele) {
+              return 22 + ele.data("score") * 18;
+            },
+            "border-width": 1,
+            "border-color": "#3d2a60"
+          }
+        },
+        {
+          selector: "edge",
+          style: {
+            "width": function (ele) {
+              return Math.max(1, ele.data("weight") * 6);
+            },
+            "line-color": "#9b89c0",
+            "curve-style": "bezier",
+            "opacity": 0.65
+          }
+        },
+        {
+          selector: "node:active",
+          style: { "overlay-opacity": 0 }
+        }
+      ],
+      layout: {
+        name: "concentric",
+        concentric: function (node) {
+          return node.data("type") === "query" ? 10 : 1;
+        },
+        levelWidth: function () { return 1; },
+        minNodeSpacing: 28,
+        padding: 20,
+        animate: false
+      },
+      userZoomingEnabled: true,
+      userPanningEnabled: true,
+      boxSelectionEnabled: false
+    });
+
+    // Tooltip
+    var tooltip = document.createElement("div");
+    tooltip.style.cssText =
+      "position: absolute; background: rgba(0,0,0,0.85); color: #fff; padding: 8px 12px; " +
+      "border-radius: 6px; font-size: 12px; pointer-events: none; display: none; z-index: 10; " +
+      "max-width: 250px; line-height: 1.5;";
+    cyDiv.style.position = "relative";
+    cyDiv.appendChild(tooltip);
+
+    cy.on("mouseover", "node", function (evt) {
+      var node = evt.target;
+      var d = node.data();
+      var lines = ["<strong>" + escapeHtml(d.label) + "</strong>"];
+
+      if (d.type === "query") {
+        lines.push("Query gene (center)");
+        lines.push("Partners shown: " + d.degree);
+      } else {
+        lines.push("Confidence: " + (d.score * 1000).toFixed(0) + " / 1000");
+        var ev = d.evidence || {};
+        if (ev.experimental > 0) lines.push("Experimental: " + (ev.experimental * 1000).toFixed(0));
+        if (ev.database > 0) lines.push("Database: " + (ev.database * 1000).toFixed(0));
+        if (ev.coexpression > 0) lines.push("Coexpression: " + (ev.coexpression * 1000).toFixed(0));
+        if (ev.textmining > 0) lines.push("Textmining: " + (ev.textmining * 1000).toFixed(0));
+      }
+
+      tooltip.innerHTML = lines.join("<br>");
+      tooltip.style.display = "block";
+      var pos = node.renderedPosition();
+      tooltip.style.left = (pos.x + 15) + "px";
+      tooltip.style.top = (pos.y - 10) + "px";
+    });
+
+    cy.on("mouseout", "node", function () {
+      tooltip.style.display = "none";
+    });
+
+    cy.on("pan zoom", function () {
+      tooltip.style.display = "none";
+    });
+
+    // Legend
+    var legend = document.createElement("div");
+    legend.style.cssText =
+      "padding: 8px 4px; font-size: 0.8rem; color: #54585A; " +
+      "display: flex; gap: 14px; align-items: center; flex-wrap: wrap;";
+    legend.innerHTML =
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:' + COLOR_QUERY + '; border:2px solid ' + COLOR_BORDER + ';"></span> ' +
+        escapeHtml(queryGene) + " (query)</span>" +
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:' + COLOR_PARTNER + ';"></span> Interaction partner</span>' +
+      '<span style="display:inline-flex; align-items:center; gap:4px;">' +
+        '<span style="display:inline-block; width:20px; height:3px; background:#9b89c0;"></span> Edge width = confidence</span>' +
+      '<span style="color:#888;">Min score: ' + requiredScore + '/1000</span>' +
+      '<span style="margin-left:auto; color:#007B53;">' +
+        '<a href="https://string-db.org" target="_blank" rel="noopener" ' +
+        'style="color:#007B53; text-decoration:none;">Data: STRING-DB</a></span>';
     container.appendChild(legend);
   }
 

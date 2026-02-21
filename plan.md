@@ -2,7 +2,7 @@
 
 ## Current State
 
-The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying internal Elasticsearch + PostgreSQL and **Open Targets** via MCP. It renders tables, pie charts, and bar charts in a Data Portal panel via SSE streaming. There are 5 internal tools + 4 Open Targets MCP tools.
+The AI Explorer uses **Gemini 2.5 Flash** with function calling, querying internal Elasticsearch + PostgreSQL and **Open Targets** via MCP. It renders tables, pie charts, bar charts, volcano plots, MAVE heatmaps, gene interaction networks, STRING PPI networks, protein structures, and gene cards in a Data Portal panel via SSE streaming. There are 18 internal tools + 4 Open Targets MCP tools.
 
 ---
 
@@ -124,28 +124,34 @@ Structured HTML cards with gene name, function (from UniProt), druggability (fro
 
 **Integration:** Add as Gemini function declarations wrapping the Sanger REST API.
 
-**Status: TODO**
+**Status: DONE**
 
 ### 11. MaveDB -- External MAVE Score Sets
 **Why:** The Catalogue already has MAVE data, but MaveDB is the canonical source with 7M+ variant measurements. Cross-referencing lets the AI pull the latest scores and additional datasets.
 
 **API:** Excellent FastAPI at `https://api.mavedb.org/docs`. No auth. Add as direct REST function declarations.
 
-**Status: TODO**
+**Status: DONE**
 
 ### 12. Reactome -- Pathway Enrichment
 **Why:** "What pathways are affected by this perturbation?" is a core analysis question. Submit a gene list from Perturb-seq results and get enriched pathways back.
 
 **API:** REST at `https://reactome.org/AnalysisService/identifiers/` (POST gene list, get enrichment). No MCP server yet, but the REST API is straightforward.
 
-**Status: TODO**
+**Status: DONE**
 
 ### 13. STRING -- Protein Interaction Networks
 **Why:** Known physical and functional protein associations provide mechanistic context for perturbation effects.
 
-**API:** REST at `https://string-db.org/api/`. MCP server available via [MCPMed](https://mcpmed.org/).
+**API:** REST at `https://string-db.org/api/json/` (interaction_partners, enrichment endpoints). No auth, free. Requires `caller_identity` param per usage policy. Returns `Content-Type: text/json` (needs `content_type=None` for aiohttp).
 
-**Status: TODO**
+**Key tools added:**
+- `get_string_interactions(gene_name, required_score?, limit?, network_type?)` -- fetch protein-protein interaction partners with confidence scores and evidence channel breakdown (experimental, database, coexpression, textmining). Renders interactive Cytoscape.js network: query gene at center (green `#007B53`), partners radiating outward (purple `#563D82`), edge width = confidence score. Distinct color scheme from DEA gene interaction network.
+- `get_functional_enrichment(genes)` -- run GO/KEGG/Reactome/Pfam enrichment on a gene set. Returns enriched terms with FDR-corrected p-values. Gemini presents as table via `create_visualization`.
+
+**Visualization:** `string_interaction_network` viz type in Data Portal, rendered by `renderStringInteractionNetwork` in `chat.js` using Cytoscape.js concentric layout with tooltips showing evidence channels and legend with STRING-DB attribution.
+
+**Status: DONE** (Both tools implemented with interactive network visualization and functional enrichment)
 
 ### 14. Ensembl VEP -- Advanced Variant Consequence Prediction
 
@@ -192,8 +198,8 @@ For resources without MCP servers (UniProt, MaveDB, DepMap, Reactome), add direc
 |-------|-------------|---------------|--------|
 | **Phase 1** | UniProt (REST), AlphaFold (REST), Mol* viewer, Europe PMC, Pharos | `protein_structure`, `gene_card` | **DONE** |
 | **Phase 2** | ProtVar (REST) **DONE**, volcano plot **DONE**, MAVE heatmap **DONE**, Cytoscape network **DONE** | `volcano_plot`, `mave_heatmap`, `gene_interaction_network` | **DONE** |
-| **Phase 3** | DepMap (REST), MaveDB (REST) | | 2-3 weeks |
-| **Phase 4** | Reactome, STRING, Ensembl VEP | `clustergram`, pathway diagrams | 2-3 weeks |
+| **Phase 3** | DepMap (REST), MaveDB (REST), Reactome (REST), STRING (REST) | `string_interaction_network` | **STRING DONE**, DepMap/MaveDB/Reactome TODO |
+| **Phase 4** | Ensembl VEP | `clustergram`, pathway diagrams | TODO |
 
 ---
 

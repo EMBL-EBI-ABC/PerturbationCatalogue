@@ -564,6 +564,73 @@ CREATE_GENE_NETWORK_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+GET_STRING_INTERACTIONS_DECLARATION = types.FunctionDeclaration(
+    name="get_string_interactions",
+    description=(
+        "Fetch protein-protein interaction partners for a gene from the STRING database. "
+        "Returns interaction partners with combined confidence scores and evidence channel "
+        "breakdown (coexpression, experimental, database, textmining). "
+        "Renders an interactive network in the data portal: query gene at center, "
+        "partners radiating outward, edge width encoding confidence. "
+        "Use when users ask 'What proteins interact with X?', 'Show STRING network for X', "
+        "'What are the known interaction partners of X?', or to provide protein interaction "
+        "context alongside perturbation data."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Human gene symbol (e.g. 'TP53', 'BRCA2', 'KRAS')",
+            ),
+            "required_score": types.Schema(
+                type="INTEGER",
+                description=(
+                    "Minimum combined confidence score (0-1000). "
+                    "400=medium confidence (default), 700=high, 900=highest confidence"
+                ),
+            ),
+            "limit": types.Schema(
+                type="INTEGER",
+                description="Maximum number of interaction partners to return (default 20, max 50)",
+            ),
+            "network_type": types.Schema(
+                type="STRING",
+                description=(
+                    "Network type: 'functional' (default, all evidence channels) "
+                    "or 'physical' (physical binding evidence only)"
+                ),
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
+GET_FUNCTIONAL_ENRICHMENT_DECLARATION = types.FunctionDeclaration(
+    name="get_functional_enrichment",
+    description=(
+        "Run functional enrichment analysis on a set of genes using STRING. "
+        "Returns significantly enriched GO terms (Biological Process, Molecular Function, "
+        "Cellular Component), KEGG pathways, Reactome pathways, and Pfam domains. "
+        "Returns p-values, false discovery rates, and matching gene counts. "
+        "Use when users ask 'What pathways are enriched in these genes?', "
+        "'What biological processes are shared by X, Y, Z?', or after identifying a set of "
+        "interacting/co-regulated genes from perturbation data. "
+        "Present results as a table using create_visualization."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "genes": types.Schema(
+                type="ARRAY",
+                items=types.Schema(type="STRING"),
+                description="List of human gene symbols to analyze (e.g. ['TP53', 'BRCA2', 'MDM2'])",
+            ),
+        },
+        required=["genes"],
+    ),
+)
+
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
@@ -573,6 +640,8 @@ INTERNAL_TOOL_DECLARATIONS = [
     CREATE_VOLCANO_PLOT_DECLARATION,
     CREATE_MAVE_HEATMAP_DECLARATION,
     CREATE_GENE_NETWORK_DECLARATION,
+    GET_STRING_INTERACTIONS_DECLARATION,
+    GET_FUNCTIONAL_ENRICHMENT_DECLARATION,
     LOOKUP_PROTEIN_DECLARATION,
     GET_PROTEIN_STRUCTURE_DECLARATION,
     MAP_IDENTIFIERS_DECLARATION,
@@ -1314,6 +1383,226 @@ async def _tool_create_gene_interaction_network(args: dict) -> dict:
     }
 
     return {"viz_data": viz_data, "summary": summary}
+
+
+STRING_BASE = "https://string-db.org/api/json"
+STRING_CALLER = "perturbation-catalogue"
+
+
+async def _tool_get_string_interactions(args: dict) -> dict:
+    """Fetch STRING protein interaction partners and build a network visualization."""
+    gene_name = args.get("gene_name", "").strip()
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    required_score = max(0, min(1000, int(args.get("required_score", 400))))
+    limit = min(int(args.get("limit", 20)), 50)
+    network_type = args.get("network_type", "functional")
+
+    url = f"{STRING_BASE}/interaction_partners"
+    params = {
+        "identifiers": gene_name,
+        "species": 9606,
+        "limit": limit,
+        "required_score": required_score,
+        "network_type": network_type,
+        "caller_identity": STRING_CALLER,
+    }
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=20)
+            ) as resp:
+                if resp.status == 400:
+                    body = await resp.text()
+                    return {"error": f"STRING API error: {body[:300]}"}
+                if resp.status != 200:
+                    return {"error": f"STRING API returned status {resp.status}"}
+                # STRING returns Content-Type: text/json, not application/json
+                data = await resp.json(content_type=None)
+    except Exception as exc:
+        return {"error": f"STRING API error: {str(exc)}"}
+
+    if not data:
+        return {
+            "error": (
+                f"No STRING interactions found for '{gene_name}' "
+                f"with required_score >= {required_score}. "
+                "Try lowering required_score to 400 (medium confidence)."
+            )
+        }
+
+    # Build network: query gene at center, partners radiating outward
+    query_gene = data[0].get("preferredName_A", gene_name)
+
+    nodes = [
+        {
+            "id": query_gene,
+            "label": query_gene,
+            "type": "query",
+            "score": 1.0,
+            "degree": len(data),
+        }
+    ]
+    edges = []
+    seen = set()
+
+    for row in data:
+        partner = row.get("preferredName_B", "")
+        if not partner or partner in seen:
+            continue
+        seen.add(partner)
+
+        score = float(row.get("score", 0))
+
+        evidence = {}
+        for key, label in [
+            ("escore", "experimental"),
+            ("dscore", "database"),
+            ("ascore", "coexpression"),
+            ("tscore", "textmining"),
+            ("nscore", "neighborhood"),
+            ("fscore", "fusion"),
+            ("pscore", "phylogenetic"),
+        ]:
+            val = float(row.get(key, 0))
+            if val > 0:
+                evidence[label] = round(val, 3)
+
+        nodes.append(
+            {
+                "id": partner,
+                "label": partner,
+                "type": "partner",
+                "score": round(score, 4),
+                "evidence": evidence,
+            }
+        )
+        edges.append(
+            {
+                "source": query_gene,
+                "target": partner,
+                "weight": round(score, 4),
+            }
+        )
+
+    if not edges:
+        return {
+            "error": (
+                f"No interaction partners returned for '{gene_name}'. "
+                "The gene symbol may not be recognized by STRING."
+            )
+        }
+
+    viz_data = {
+        "type": "string_interaction_network",
+        "title": f"STRING Interaction Network: {query_gene}",
+        "data": {
+            "nodes": nodes,
+            "edges": edges,
+            "query_gene": query_gene,
+            "required_score": required_score,
+            "network_type": network_type,
+        },
+    }
+
+    top_partners = sorted(edges, key=lambda e: e["weight"], reverse=True)[:5]
+    summary = {
+        "status": "success",
+        "query_gene": query_gene,
+        "total_interactions": len(edges),
+        "required_score": required_score,
+        "network_type": network_type,
+        "top_partners": [
+            {"gene": e["target"], "confidence": e["weight"]} for e in top_partners
+        ],
+        "string_url": f"https://string-db.org/network/{query_gene}",
+        "message": (
+            f"STRING network rendered for {query_gene} showing {len(edges)} interaction "
+            f"partners with confidence >= {required_score / 1000:.1f}."
+        ),
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
+
+
+async def _tool_get_functional_enrichment(args: dict) -> dict:
+    """Run STRING functional enrichment on a gene set."""
+    genes = args.get("genes", [])
+    if not genes:
+        return {"error": "genes list is required"}
+
+    genes = [str(g).strip() for g in genes if g][:50]
+    if not genes:
+        return {"error": "genes list is empty after filtering"}
+
+    url = f"{STRING_BASE}/enrichment"
+    params = {
+        "identifiers": "\r".join(genes),
+        "species": 9606,
+        "caller_identity": STRING_CALLER,
+    }
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {
+                        "error": f"STRING enrichment API returned status {resp.status}: {body[:300]}"
+                    }
+                # STRING returns Content-Type: text/json, not application/json
+                data = await resp.json(content_type=None)
+    except Exception as exc:
+        return {"error": f"STRING enrichment API error: {str(exc)}"}
+
+    if not data:
+        gene_preview = ", ".join(genes[:5]) + ("..." if len(genes) > 5 else "")
+        return {"error": f"No significant enrichment found for genes ({gene_preview})."}
+
+    # Group by category, sort by FDR, keep top 10 per category
+    categories = {}
+    for item in data:
+        cat = item.get("category", "Other")
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(item)
+
+    top_terms = []
+    for cat, terms in categories.items():
+        terms_sorted = sorted(
+            terms, key=lambda t: t.get("fdr") if t.get("fdr") is not None else 1.0
+        )[:10]
+        for t in terms_sorted:
+            fdr = t.get("fdr")
+            pval = t.get("p_value")
+            matching = t.get("preferredNames", [])
+            if isinstance(matching, str):
+                matching = [m.strip() for m in matching.split(",") if m.strip()]
+            top_terms.append(
+                {
+                    "category": cat,
+                    "term_id": t.get("term", ""),
+                    "description": t.get("description", ""),
+                    "gene_count": t.get("number_of_genes", 0),
+                    "fdr": round(fdr, 6) if fdr is not None else None,
+                    "p_value": round(pval, 6) if pval is not None else None,
+                    "matching_genes": ", ".join(matching[:8]),
+                }
+            )
+
+    top_terms.sort(key=lambda t: t["fdr"] if t["fdr"] is not None else 1.0)
+
+    return {
+        "gene_set": genes,
+        "total_enriched_terms": len(data),
+        "categories_found": list(categories.keys()),
+        "top_terms": top_terms[:40],
+        "string_url": "https://string-db.org/cgi/network?identifiers=" + "%0d".join(genes),
+    }
 
 
 async def _tool_get_catalogue_summary() -> dict:
@@ -2211,6 +2500,7 @@ TOOL_HANDLERS = {
     "get_druggability": _tool_get_druggability,
     "annotate_variant": _tool_annotate_variant,
     "get_variant_structural_context": _tool_get_variant_structural_context,
+    "get_functional_enrichment": _tool_get_functional_enrichment,
 }
 
 
@@ -2324,6 +2614,8 @@ _OT_TOOL_DESCRIPTIONS = {
     "get_variant_structural_context": "Fetching structural context from ProtVar...",
     "create_volcano_plot": "Building volcano plot...",
     "create_gene_interaction_network": "Building gene interaction network...",
+    "get_string_interactions": "Fetching STRING interaction network...",
+    "get_functional_enrichment": "Running STRING functional enrichment...",
 }
 
 
@@ -2388,6 +2680,8 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "Structural impact at position X" / "What's at residue 493?" → call get_variant_structural_context (ProtVar)
 - "Show MAVE data for X" / "Variant effects for X" / "Heatmap for X" / "Deep mutational scanning" → call create_mave_heatmap
 - "Network for X" / "Gene interactions for X" / "What genes are affected by X?" / "Show interaction network" → call create_gene_interaction_network
+- "What proteins interact with X?" / "STRING network for X" / "Interaction partners of X" / "PPI network" → call get_string_interactions (STRING)
+- "What pathways are enriched?" / "Enrichment analysis for these genes" / "GO terms for X, Y, Z" → call get_functional_enrichment (STRING), then display as table
 
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
@@ -2502,7 +2796,20 @@ Workflow for gene queries:
 3. Optionally use get_protein_structure for 3D visualization
 4. Use get_druggability (Pharos) for druggability classification — ALWAYS before Open Targets for drug questions
 5. Use Open Targets for disease associations and additional drug detail
-6. Use search_literature for relevant publications"""
+6. Use search_literature for relevant publications
+7. Use get_string_interactions for protein-protein interaction context
+
+STRING PROTEIN INTERACTIONS:
+You have access to STRING database tools for protein-protein interaction networks and functional enrichment.
+
+- get_string_interactions: Fetch protein-protein interactions for a gene from STRING. Renders an interactive network in the data portal with the query gene at center and partners radiating outward, edge width encoding confidence. Use when users ask "What proteins interact with X?", "Show STRING network for X", "interactors of X". Default required_score=400 (medium confidence); suggest 700 for high confidence or 900 for highest.
+
+- get_functional_enrichment: Run GO/KEGG/Reactome/Pfam enrichment on a gene set using STRING. Returns enriched terms with FDR-corrected p-values. Use when users ask "What pathways are enriched in these genes?", "What biological processes do X, Y, Z share?", or to interpret a set of perturbation hits. After receiving results, display them as a table using create_visualization with columns: Category, Description, Gene Count, FDR, Matching Genes.
+
+STRING workflow:
+- For a single gene: call get_string_interactions to show the PPI network
+- For a gene set (e.g., top DEGs from a Perturb-seq experiment): call get_functional_enrichment
+- Distinguish STRING interaction data (known PPI from databases/literature) from Perturb-seq DEA data (experimental perturbation effects) in your response"""
 
 # --- SSE streaming endpoint ---
 
@@ -2725,6 +3032,35 @@ async def chat_stream(request: ChatRequest):
                             )
                         else:
                             # Network built — emit visualization and return summary
+                            yield _sse_event("visualization", result["viz_data"])
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result["summary"],
+                                )
+                            )
+                    elif tool_name == "get_string_interactions":
+                        yield _sse_event(
+                            "tool_call",
+                            {"tool": tool_name, "description": "Fetching STRING interaction network..."},
+                        )
+                        yield _sse_event(
+                            "thinking", {"status": "Fetching STRING interaction network..."}
+                        )
+                        try:
+                            result = await _tool_get_string_interactions(tool_args)
+                        except Exception as exc:
+                            logger.exception("Tool %s failed", tool_name)
+                            result = {"error": str(exc)}
+
+                        if "error" in result:
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        else:
                             yield _sse_event("visualization", result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
