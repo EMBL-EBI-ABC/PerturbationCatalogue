@@ -245,30 +245,70 @@ layout = html.Div(
                             [
                                 html.Div(
                                     [
-                                        html.I(
-                                            className="bi bi-bar-chart-line",
-                                            style={
-                                                "fontSize": "2.5rem",
-                                                "color": "#c4cad3",
-                                            },
+                                        html.Div(
+                                            [
+                                                html.I(className="bi bi-bar-chart-line"),
+                                                html.I(
+                                                    className="bi bi-table",
+                                                    style={
+                                                        "position": "absolute",
+                                                        "bottom": "12px",
+                                                        "right": "14px",
+                                                        "fontSize": "1rem",
+                                                        "opacity": "0.5",
+                                                    },
+                                                ),
+                                                html.I(
+                                                    className="bi bi-diagram-3",
+                                                    style={
+                                                        "position": "absolute",
+                                                        "top": "12px",
+                                                        "left": "14px",
+                                                        "fontSize": "1rem",
+                                                        "opacity": "0.5",
+                                                    },
+                                                ),
+                                            ],
+                                            className="empty-state-illustration",
                                         ),
                                         html.P(
                                             "Your dashboard will build here",
-                                            style={
-                                                "fontWeight": "600",
-                                                "color": "#6b7280",
-                                                "marginBottom": "0.25rem",
-                                                "marginTop": "0.75rem",
-                                            },
+                                            className="empty-state-title",
                                         ),
                                         html.P(
                                             "Ask a question in the chat to start exploring. "
                                             "Charts, tables, networks, and protein structures will appear as tiles.",
-                                            style={
-                                                "color": "#9ca3af",
-                                                "fontSize": "0.85rem",
-                                                "maxWidth": "380px",
-                                            },
+                                            className="empty-state-description",
+                                        ),
+                                        html.Div(
+                                            [
+                                                html.Span(
+                                                    "Try:",
+                                                    className="empty-state-try-label",
+                                                ),
+                                                html.Button(
+                                                    "Show TP53 data",
+                                                    className="empty-state-try-btn",
+                                                    **{
+                                                        "data-query": "What perturbation data is available for TP53 across all modalities?"
+                                                    },
+                                                ),
+                                                html.Button(
+                                                    "BRCA2 protein",
+                                                    className="empty-state-try-btn",
+                                                    **{
+                                                        "data-query": "Look up the BRCA2 protein and show me a gene card"
+                                                    },
+                                                ),
+                                                html.Button(
+                                                    "KRAS structure",
+                                                    className="empty-state-try-btn",
+                                                    **{
+                                                        "data-query": "Show me the predicted 3D protein structure for KRAS"
+                                                    },
+                                                ),
+                                            ],
+                                            className="empty-state-try-buttons",
                                         ),
                                     ],
                                     className="text-center",

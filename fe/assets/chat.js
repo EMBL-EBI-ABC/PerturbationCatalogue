@@ -38,16 +38,44 @@
     });
 
     if (clearBtn) {
+      var clearConfirmTimer = null;
       clearBtn.addEventListener("click", function () {
-        var portal = document.getElementById("chat-data-portal");
-        if (portal) portal.innerHTML = "";
-        updatePortalVisibility();
+        if (clearBtn.dataset.confirming === "1") {
+          // Second click — actually clear
+          clearBtn.dataset.confirming = "";
+          clearBtn.innerHTML = '<i class="bi bi-trash3 me-1"></i>Clear all';
+          clearBtn.classList.remove("dashboard-clear-btn--confirm");
+          if (clearConfirmTimer) { clearTimeout(clearConfirmTimer); clearConfirmTimer = null; }
+          var portal = document.getElementById("chat-data-portal");
+          if (portal) portal.innerHTML = "";
+          updatePortalVisibility();
+        } else {
+          // First click — ask for confirmation
+          clearBtn.dataset.confirming = "1";
+          clearBtn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Confirm?';
+          clearBtn.classList.add("dashboard-clear-btn--confirm");
+          clearConfirmTimer = setTimeout(function () {
+            clearBtn.dataset.confirming = "";
+            clearBtn.innerHTML = '<i class="bi bi-trash3 me-1"></i>Clear all';
+            clearBtn.classList.remove("dashboard-clear-btn--confirm");
+          }, 3000);
+        }
       });
     }
 
     // Suggestion card buttons (welcome section)
     var suggestionCards = document.querySelectorAll(".chat-suggestion-card");
     suggestionCards.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var query = btn.getAttribute("data-query") || btn.textContent;
+        input.value = query;
+        sendCurrentMessage();
+      });
+    });
+
+    // Empty-state "Try:" buttons (dashboard canvas)
+    var emptyTryBtns = document.querySelectorAll(".empty-state-try-btn");
+    emptyTryBtns.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var query = btn.getAttribute("data-query") || btn.textContent;
         input.value = query;
