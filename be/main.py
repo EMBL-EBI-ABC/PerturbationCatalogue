@@ -34,6 +34,10 @@ from data_query import router as data_query_router, db_pools
 import ai_chat
 from ai_chat import router as ai_chat_router
 
+# Import auth router.
+import auth
+from auth import router as auth_router
+
 load_dotenv()
 
 
@@ -57,6 +61,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_api_key: str = ""
     ot_mcp_url: str = ""
+    jwt_secret: str = ""
+    jwt_expiry_hours: int = 168
 
 
 settings = Settings()
@@ -82,6 +88,10 @@ async def lifespan(app: FastAPI):
         ot_mcp_url=settings.ot_mcp_url,
     )
     await ai_chat.init_open_targets_mcp()
+    auth.configure(
+        jwt_secret=settings.jwt_secret,
+        jwt_expiry_hours=settings.jwt_expiry_hours,
+    )
     yield
     # Shutdown: Close connections
     await db_pools["pg"].close()
@@ -93,7 +103,11 @@ app = FastAPI(title="Search API", version="1.0.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "https://www.ebi.ac.uk",
+        "http://localhost:8050",
+        "http://127.0.0.1:8050",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,6 +115,7 @@ app.add_middleware(
 
 app.include_router(data_query_router)
 app.include_router(ai_chat_router)
+app.include_router(auth_router)
 
 
 # Facet fields for target-summary index

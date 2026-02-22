@@ -11,9 +11,19 @@
     var input = document.getElementById("chat-input");
     if (!input) return;
 
+    // Auth check: redirect to login if no token
+    if (!sessionStorage.getItem("auth_token")) {
+      window.location.href = "/perturbation-catalogue/login";
+      return;
+    }
+
     // Prevent double init
     if (input.dataset.chatInit) return;
     input.dataset.chatInit = "1";
+
+    // Show logout link in header when authenticated
+    var logoutLink = document.getElementById("logout-link");
+    if (logoutLink) logoutLink.style.display = "";
 
     var sendBtn = document.getElementById("chat-send-btn");
     var clearBtn = document.getElementById("chat-clear-portal-btn");
@@ -157,13 +167,25 @@
     var body = JSON.stringify({ message: text, session_id: sessionId });
     var assistantStarted = false;
 
+    var authToken = sessionStorage.getItem("auth_token");
+    var headers = { "Content-Type": "application/json" };
+    if (authToken) {
+      headers["Authorization"] = "Bearer " + authToken;
+    }
+
     fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: body,
       signal: currentController.signal
     })
       .then(function (response) {
+        if (response.status === 401) {
+          sessionStorage.removeItem("auth_token");
+          sessionStorage.removeItem("auth_user");
+          window.location.href = "/perturbation-catalogue/login";
+          return;
+        }
         if (!response.ok) {
           throw new Error("HTTP " + response.status);
         }

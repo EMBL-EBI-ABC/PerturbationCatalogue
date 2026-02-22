@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import aiohttp
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -22,6 +22,7 @@ try:
 except ImportError:
     MCP_AVAILABLE = False
 
+from auth import get_current_user
 from data_query import db_pools
 
 logger = logging.getLogger(__name__)
@@ -3241,7 +3242,7 @@ def _sse_event(event: str, data: dict) -> str:
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_user)):
     session_id = request.session_id or str(uuid.uuid4())
     message = request.message
 
