@@ -206,23 +206,10 @@ layout = html.Div(
                 # Dashboard header bar
                 html.Div(
                     [
-                        html.Div(
-                            [
-                                html.Button(
-                                    html.I(className="bi bi-chat-dots-fill"),
-                                    id="chat-expand-btn",
-                                    className="chat-expand-btn",
-                                    title="Open chat",
-                                    style={"display": "none"},
-                                ),
-                                html.H5(
-                                    "Dashboard",
-                                    className="mb-0",
-                                    style={"fontWeight": "600"},
-                                ),
-                            ],
-                            className="d-flex align-items-center",
-                            style={"gap": "0.625rem"},
+                        html.H5(
+                            "Dashboard",
+                            className="mb-0",
+                            style={"fontWeight": "600"},
                         ),
                         html.Div(
                             [

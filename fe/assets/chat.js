@@ -104,22 +104,10 @@
     // Sidebar collapse / expand
     var layout = document.getElementById("ai-explorer-layout");
     var collapseBtn = document.getElementById("chat-collapse-btn");
-    var expandBtn = document.getElementById("chat-expand-btn");
 
     if (collapseBtn) {
       collapseBtn.addEventListener("click", function () {
         if (layout) layout.classList.add("sidebar-collapsed");
-        if (expandBtn) expandBtn.style.display = "";
-        resizeAllViz();
-      });
-    }
-
-    if (expandBtn) {
-      expandBtn.addEventListener("click", function () {
-        if (layout) layout.classList.remove("sidebar-collapsed");
-        expandBtn.style.display = "none";
-        input.focus();
-        resetUnreadBadge();
         resizeAllViz();
       });
     }
@@ -129,7 +117,6 @@
     if (stripBtn) {
       stripBtn.addEventListener("click", function () {
         if (layout) layout.classList.remove("sidebar-collapsed");
-        if (expandBtn) expandBtn.style.display = "none";
         input.focus();
         resetUnreadBadge();
         resizeAllViz();
