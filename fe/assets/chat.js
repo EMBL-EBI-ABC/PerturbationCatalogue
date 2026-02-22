@@ -83,6 +83,14 @@
       });
     });
 
+    // Help guide button
+    var helpBtn = document.getElementById("chat-help-btn");
+    if (helpBtn) {
+      helpBtn.addEventListener("click", function () {
+        openHelpGuide();
+      });
+    }
+
     // Empty-state "Try:" buttons (dashboard canvas)
     var emptyTryBtns = document.querySelectorAll(".empty-state-try-btn");
     emptyTryBtns.forEach(function (btn) {
@@ -1540,6 +1548,266 @@
         window.open(afLink.href, "_blank", "noopener");
       }
     }
+  }
+
+  // ── Help Guide Modal ──
+  function openHelpGuide() {
+    // Prevent duplicate overlays
+    if (document.querySelector(".help-guide-overlay")) return;
+
+    var overlay = document.createElement("div");
+    overlay.className = "help-guide-overlay";
+
+    var panel = document.createElement("div");
+    panel.className = "help-guide-panel";
+
+    // Header
+    var header = document.createElement("div");
+    header.className = "help-guide-header";
+    header.innerHTML =
+      '<div class="help-guide-header-left">' +
+        '<i class="bi bi-book" style="font-size:1.1rem;color:#007B53"></i>' +
+        '<span class="help-guide-title">AI Explorer Guide</span>' +
+      '</div>' +
+      '<button class="viz-action-btn help-guide-close" title="Close"><i class="bi bi-x-lg"></i></button>';
+
+    panel.appendChild(header);
+
+    // Body
+    var body = document.createElement("div");
+    body.className = "help-guide-body";
+
+    body.innerHTML =
+      // ── Intro ──
+      '<section class="help-section">' +
+        '<p class="help-intro">' +
+          'AI Explorer is your conversational gateway to the Perturbation Catalogue and a suite of biomedical databases. ' +
+          'Ask questions in plain English — the AI will query the right services and render interactive visualizations on your dashboard.' +
+        '</p>' +
+      '</section>' +
+
+      // ── Data Sources ──
+      '<section class="help-section">' +
+        '<h3 class="help-section-title"><i class="bi bi-database"></i> Integrated Data Sources</h3>' +
+        '<div class="help-sources-grid">' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#e8f5e9;color:#007B53"><i class="bi bi-clipboard2-data"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>Perturbation Catalogue</strong>' +
+              '<span>Internal database of Perturb-seq, CRISPR screen, and MAVE experiments. Search datasets, query raw results, and get catalogue statistics.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#e3f2fd;color:#193F90"><i class="bi bi-body-text"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>UniProt</strong>' +
+              '<span>Protein function, domains, disease associations, subcellular location, GO terms, known variants, and identifier mapping.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#fff3e0;color:#D4A843"><i class="bi bi-box"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>AlphaFold</strong>' +
+              '<span>AI-predicted 3D protein structures from the EBI AlphaFold database, rendered as interactive molecular viewers.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#fce4ec;color:#A6093D"><i class="bi bi-capsule"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>Pharos</strong>' +
+              '<span>NIH druggability classification (Tclin/Tchem/Tbio/Tdark), existing drugs, ligands, and target development level.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#f3e5f5;color:#563D82"><i class="bi bi-diagram-3"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>Open Targets</strong>' +
+              '<span>Disease associations, drug mechanisms, GWAS evidence, and genetic evidence linking targets to diseases.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#e8f5e9;color:#0A5032"><i class="bi bi-share"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>STRING</strong>' +
+              '<span>Protein-protein interaction networks with confidence scores and evidence channels. Functional enrichment analysis (GO, KEGG, Reactome).</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#e3f2fd;color:#3B6FB6"><i class="bi bi-journal-text"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>Europe PMC</strong>' +
+              '<span>Biomedical literature search across PubMed and open-access full text with text-mined entity annotations.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#fff3e0;color:#D4A843"><i class="bi bi-gear"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>ProtVar</strong>' +
+              '<span>Variant molecular consequences: protein stability (FoldX), pathogenicity scores (EVE, ESM-1b, AlphaMissense, CADD), structural context.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="help-source-card">' +
+            '<div class="help-source-icon" style="background:#fce4ec;color:#A6093D"><i class="bi bi-lightning"></i></div>' +
+            '<div class="help-source-info">' +
+              '<strong>Ensembl VEP</strong>' +
+              '<span>Variant consequence prediction with SpliceAI, LOFTEE, regulatory impact, SIFT, PolyPhen, and batch annotation for up to 200 variants.</span>' +
+            '</div>' +
+          '</div>' +
+
+        '</div>' +
+      '</section>' +
+
+      // ── What You Can Ask ──
+      '<section class="help-section">' +
+        '<h3 class="help-section-title"><i class="bi bi-chat-left-text"></i> What You Can Ask</h3>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Search & explore the catalogue</h4>' +
+          '<p class="help-category-desc">Find datasets, query experimental results, and get catalogue statistics.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="What perturbation data is available for TP53 across all modalities?">What data is available for TP53?</button>' +
+            '<button class="help-example-btn" data-query="Find CRISPR screen datasets studying lung cancer">CRISPR screen datasets for lung cancer</button>' +
+            '<button class="help-example-btn" data-query="How many datasets are in the Perturbation Catalogue?">How many datasets are in the catalogue?</button>' +
+            '<button class="help-example-btn" data-query="Show me the top differentially expressed genes when TP53 is knocked out in Perturb-seq">Top DEGs when TP53 is knocked out</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Protein information & structure</h4>' +
+          '<p class="help-category-desc">Look up protein function, domains, and view predicted 3D structures.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Look up the BRCA2 protein and show me a gene card with its function, domains, and disease associations">Look up the BRCA2 protein</button>' +
+            '<button class="help-example-btn" data-query="Show me the predicted 3D protein structure for KRAS">Show KRAS 3D structure</button>' +
+            '<button class="help-example-btn" data-query="What known variants does TP53 have in UniProt?">Known variants for TP53</button>' +
+            '<button class="help-example-btn" data-query="Map BRCA1, BRCA2, TP53 to their UniProt accession IDs">Map gene names to UniProt IDs</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Variant analysis</h4>' +
+          '<p class="help-category-desc">Annotate variants with pathogenicity scores, stability predictions, and consequence types.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Annotate the variant rs28897696 using ProtVar. What is its pathogenicity and protein stability impact?">Annotate variant rs28897696</button>' +
+            '<button class="help-example-btn" data-query="What is the structural context of position 248 in TP53 (UniProt P04637)?">Structural context of TP53 position 248</button>' +
+            '<button class="help-example-btn" data-query="Use Ensembl VEP to predict the consequence of rs56116432">VEP consequence for rs56116432</button>' +
+            '<button class="help-example-btn" data-query="Batch annotate these variants: rs1042779, rs28897696, rs56116432">Batch annotate multiple variants</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Druggability & disease links</h4>' +
+          '<p class="help-category-desc">Check if a target is druggable and explore disease associations via Pharos and Open Targets.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Use Pharos to check if EGFR is druggable. What is its target development level?">Is EGFR druggable?</button>' +
+            '<button class="help-example-btn" data-query="What diseases are associated with BRCA2 according to Open Targets?">Diseases associated with BRCA2</button>' +
+            '<button class="help-example-btn" data-query="What drugs target KRAS and what is their mechanism of action?">Drugs targeting KRAS</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Protein interactions & pathways</h4>' +
+          '<p class="help-category-desc">Explore protein interaction networks and run functional enrichment analysis.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Show me the STRING protein-protein interaction network for TP53">STRING network for TP53</button>' +
+            '<button class="help-example-btn" data-query="Run functional enrichment analysis on TP53, MDM2, CDKN2A, RB1, ATM">Enrichment for a gene set</button>' +
+            '<button class="help-example-btn" data-query="Show me a gene interaction network for TP53 based on Perturb-seq differential expression">DEG interaction network for TP53</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Literature search</h4>' +
+          '<p class="help-category-desc">Search biomedical publications across PubMed and Europe PMC.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Find recent papers about CRISPR screens in acute myeloid leukemia">Papers on CRISPR screens in AML</button>' +
+            '<button class="help-example-btn" data-query="Search for publications about BRCA2 perturbation experiments">BRCA2 perturbation papers</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="help-category">' +
+          '<h4 class="help-category-title">Visualizations</h4>' +
+          '<p class="help-category-desc">Request specific chart types for your data.</p>' +
+          '<div class="help-examples">' +
+            '<button class="help-example-btn" data-query="Show a volcano plot for TP53 perturbation in Perturb-seq">Volcano plot for TP53</button>' +
+            '<button class="help-example-btn" data-query="Show a MAVE heatmap for BRCA1 variant effects">MAVE heatmap for BRCA1</button>' +
+          '</div>' +
+        '</div>' +
+
+      '</section>' +
+
+      // ── Dashboard Tiles ──
+      '<section class="help-section">' +
+        '<h3 class="help-section-title"><i class="bi bi-grid-1x2"></i> Dashboard Tile Types</h3>' +
+        '<div class="help-viz-list">' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#e8f5e9;color:#007B53"><i class="bi bi-pie-chart"></i></span> <strong>Pie &amp; Bar Charts</strong> — Distribution breakdowns of categorical data</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#e8f5e9;color:#007B53"><i class="bi bi-table"></i></span> <strong>Tables</strong> — Structured data rows with sorting</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#e8f5e9;color:#007B53"><i class="bi bi-activity"></i></span> <strong>Volcano Plots</strong> — Differential expression (log2FC vs. significance)</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#e8f5e9;color:#007B53"><i class="bi bi-grid-3x3"></i></span> <strong>MAVE Heatmaps</strong> — Variant effect maps (position &times; amino acid)</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#f3e5f5;color:#563D82"><i class="bi bi-diagram-3"></i></span> <strong>Interaction Networks</strong> — Gene/protein interaction graphs (Cytoscape.js)</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#fff3e0;color:#D4A843"><i class="bi bi-box"></i></span> <strong>3D Protein Structures</strong> — Interactive AlphaFold viewer (PDBe-Molstar)</div>' +
+          '<div class="help-viz-item"><span class="help-viz-badge" style="background:#fce4ec;color:#A6093D"><i class="bi bi-card-text"></i></span> <strong>Gene Cards</strong> — Summary cards with function, domains, disease links</div>' +
+        '</div>' +
+        '<p class="help-viz-note">Every tile can be expanded to full screen, and most can be downloaded as PNG or CSV using the buttons in the tile header.</p>' +
+      '</section>' +
+
+      // ── Tips ──
+      '<section class="help-section">' +
+        '<h3 class="help-section-title"><i class="bi bi-lightbulb"></i> Tips</h3>' +
+        '<ul class="help-tips">' +
+          '<li>Be specific with gene names — use official HGNC symbols (e.g. <em>TP53</em>, <em>BRCA2</em>, <em>KRAS</em>).</li>' +
+          '<li>For variants, you can use rsIDs (<em>rs28897696</em>), HGVS notation, or genomic coordinates.</li>' +
+          '<li>Ask follow-up questions — the AI remembers your conversation context within a session.</li>' +
+          '<li>Request specific visualizations by name: <em>"Show a volcano plot"</em>, <em>"Create a heatmap"</em>.</li>' +
+          '<li>Combine queries: <em>"Look up TP53, show its structure, and check if it\'s druggable."</em></li>' +
+          '<li>For batch operations, list multiple items: <em>"Annotate variants rs123, rs456, rs789."</em></li>' +
+        '</ul>' +
+      '</section>';
+
+    panel.appendChild(body);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Wire up example buttons to populate chat input
+    var exampleBtns = overlay.querySelectorAll(".help-example-btn");
+    exampleBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var input = document.getElementById("chat-input");
+        if (input) {
+          input.value = btn.getAttribute("data-query") || btn.textContent;
+          input.focus();
+        }
+        closeGuide();
+      });
+    });
+
+    // Close logic
+    function closeGuide() {
+      overlay.remove();
+    }
+
+    var closeBtn = overlay.querySelector(".help-guide-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", closeGuide);
+    }
+
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) closeGuide();
+    });
+
+    document.addEventListener("keydown", function onEsc(e) {
+      if (e.key === "Escape") {
+        closeGuide();
+        document.removeEventListener("keydown", onEsc);
+      }
+    });
   }
 
   function openFullscreen(container, title) {

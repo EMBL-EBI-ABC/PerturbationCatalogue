@@ -53,11 +53,23 @@ layout = html.Div(
                             ],
                             className="chat-sidebar-brand",
                         ),
-                        html.Button(
-                            html.I(className="bi bi-chevron-left"),
-                            id="chat-collapse-btn",
-                            className="chat-collapse-btn",
-                            title="Collapse chat",
+                        html.Div(
+                            [
+                                html.Button(
+                                    html.I(className="bi bi-question-circle"),
+                                    id="chat-help-btn",
+                                    className="chat-collapse-btn",
+                                    title="User guide",
+                                ),
+                                html.Button(
+                                    html.I(className="bi bi-chevron-left"),
+                                    id="chat-collapse-btn",
+                                    className="chat-collapse-btn",
+                                    title="Collapse chat",
+                                ),
+                            ],
+                            className="d-flex align-items-center",
+                            style={"gap": "0.25rem"},
                         ),
                     ],
                     className="chat-sidebar-header",
