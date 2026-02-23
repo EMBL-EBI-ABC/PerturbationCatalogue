@@ -74,6 +74,18 @@ layout = html.Div(
                     ],
                     className="chat-sidebar-header",
                 ),
+                # Session list panel
+                html.Div(
+                    [
+                        html.Button(
+                            [html.I(className="bi bi-plus-lg me-2"), "New chat"],
+                            id="chat-new-session-btn",
+                            className="chat-new-session-btn",
+                        ),
+                        html.Div(id="chat-session-list", className="chat-session-list"),
+                    ],
+                    className="chat-session-panel",
+                ),
                 # Messages area
                 html.Div(
                     [

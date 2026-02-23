@@ -7,8 +7,9 @@ from urllib.parse import quote
 
 import aiohttp
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from starlette.responses import Response
 from pydantic import BaseModel
 
 from google import genai
@@ -32,9 +33,6 @@ router = APIRouter(prefix="/v1/chat", tags=["AI Chat"])
 # --- Configuration ---
 
 _config: Dict[str, Any] = {}
-
-# In-memory session store: session_id -> list of content dicts
-_sessions: Dict[str, list] = {}
 
 # Open Targets MCP state (populated at startup)
 OT_MCP_DEFAULT_URL = "https://mcp.platform.opentargets.org/mcp"
@@ -60,6 +58,168 @@ def configure(
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str
+
+
+# --- Session CRUD endpoints ---
+
+
+async def _verify_session_ownership(session_id: str, user_id: int):
+    """Verify session exists and belongs to user. Returns row or raises 404."""
+    row = await db_pools["pg"].fetchrow(
+        "SELECT id, user_id, title, created_at, updated_at FROM chat_sessions WHERE id = $1",
+        uuid.UUID(session_id),
+    )
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return row
+
+
+@router.get("/sessions")
+async def list_sessions(user: dict = Depends(get_current_user)):
+    rows = await db_pools["pg"].fetch(
+        """SELECT s.id, s.title, s.created_at, s.updated_at,
+                  COUNT(DISTINCT m.id) AS message_count,
+                  COUNT(DISTINCT v.id) AS viz_count
+           FROM chat_sessions s
+           LEFT JOIN chat_messages m ON m.session_id = s.id
+           LEFT JOIN chat_visualizations v ON v.session_id = s.id
+           WHERE s.user_id = $1
+           GROUP BY s.id
+           ORDER BY s.updated_at DESC
+           LIMIT 50""",
+        user["id"],
+    )
+    return {
+        "sessions": [
+            {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "created_at": r["created_at"].isoformat(),
+                "updated_at": r["updated_at"].isoformat(),
+                "message_count": r["message_count"],
+                "viz_count": r["viz_count"],
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/sessions")
+async def create_session(user: dict = Depends(get_current_user)):
+    session_id = uuid.uuid4()
+    await db_pools["pg"].execute(
+        "INSERT INTO chat_sessions (id, user_id) VALUES ($1, $2)",
+        session_id,
+        user["id"],
+    )
+    row = await db_pools["pg"].fetchrow(
+        "SELECT id, title, created_at, updated_at FROM chat_sessions WHERE id = $1",
+        session_id,
+    )
+    return {
+        "id": str(row["id"]),
+        "title": row["title"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+    }
+
+
+@router.get("/sessions/{session_id}")
+async def get_session(session_id: str, user: dict = Depends(get_current_user)):
+    row = await _verify_session_ownership(session_id, user["id"])
+    messages = await db_pools["pg"].fetch(
+        "SELECT role, content, created_at FROM chat_messages WHERE session_id = $1 ORDER BY id",
+        uuid.UUID(session_id),
+    )
+    visualizations = await db_pools["pg"].fetch(
+        "SELECT id, viz_type, title, data, created_at FROM chat_visualizations WHERE session_id = $1 ORDER BY id",
+        uuid.UUID(session_id),
+    )
+    return {
+        "id": str(row["id"]),
+        "title": row["title"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+        "messages": [
+            {
+                "role": m["role"],
+                "content": m["content"],
+                "created_at": m["created_at"].isoformat(),
+            }
+            for m in messages
+        ],
+        "visualizations": [
+            {
+                "id": v["id"],
+                "viz_type": v["viz_type"],
+                "title": v["title"],
+                "data": json.loads(v["data"]) if isinstance(v["data"], str) else v["data"],
+            }
+            for v in visualizations
+        ],
+    }
+
+
+@router.patch("/sessions/{session_id}")
+async def update_session(
+    session_id: str,
+    body: SessionUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    await _verify_session_ownership(session_id, user["id"])
+    await db_pools["pg"].execute(
+        "UPDATE chat_sessions SET title = $1, updated_at = NOW() WHERE id = $2",
+        body.title[:200],
+        uuid.UUID(session_id),
+    )
+    row = await db_pools["pg"].fetchrow(
+        "SELECT id, title, created_at, updated_at FROM chat_sessions WHERE id = $1",
+        uuid.UUID(session_id),
+    )
+    return {
+        "id": str(row["id"]),
+        "title": row["title"],
+        "created_at": row["created_at"].isoformat(),
+        "updated_at": row["updated_at"].isoformat(),
+    }
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str, user: dict = Depends(get_current_user)):
+    await _verify_session_ownership(session_id, user["id"])
+    await db_pools["pg"].execute(
+        "DELETE FROM chat_sessions WHERE id = $1", uuid.UUID(session_id)
+    )
+    return Response(status_code=204)
+
+
+@router.delete("/sessions/{session_id}/visualizations/{viz_id}")
+async def delete_visualization(
+    session_id: str, viz_id: int, user: dict = Depends(get_current_user)
+):
+    await _verify_session_ownership(session_id, user["id"])
+    await db_pools["pg"].execute(
+        "DELETE FROM chat_visualizations WHERE id = $1 AND session_id = $2",
+        viz_id,
+        uuid.UUID(session_id),
+    )
+    return Response(status_code=204)
+
+
+@router.delete("/sessions/{session_id}/visualizations")
+async def delete_all_visualizations(
+    session_id: str, user: dict = Depends(get_current_user)
+):
+    await _verify_session_ownership(session_id, user["id"])
+    await db_pools["pg"].execute(
+        "DELETE FROM chat_visualizations WHERE session_id = $1",
+        uuid.UUID(session_id),
+    )
+    return Response(status_code=204)
 
 
 # --- Tool definitions for Gemini function calling ---
@@ -3241,15 +3401,81 @@ def _sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+async def _persist_and_emit_viz(session_id: str, viz_data: dict) -> str:
+    """Persist a visualization to DB and return SSE event string with viz_id included."""
+    viz_id = await db_pools["pg"].fetchval(
+        """INSERT INTO chat_visualizations (session_id, viz_type, title, data)
+           VALUES ($1, $2, $3, $4) RETURNING id""",
+        uuid.UUID(session_id),
+        viz_data.get("type", ""),
+        viz_data.get("title", ""),
+        json.dumps(viz_data.get("data", {})),
+    )
+    viz_data["viz_id"] = viz_id
+    return _sse_event("visualization", viz_data)
+
+
 @router.post("/stream")
 async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_user)):
-    session_id = request.session_id or str(uuid.uuid4())
     message = request.message
+    user_id = user["id"]
 
     async def generate():
+        nonlocal message
         yield _sse_event("thinking", {"status": "Understanding your question..."})
 
         try:
+            # --- Session creation / ownership verification ---
+            session_id = request.session_id
+            is_new_session = False
+
+            if not session_id:
+                session_id = str(uuid.uuid4())
+                await db_pools["pg"].execute(
+                    "INSERT INTO chat_sessions (id, user_id) VALUES ($1, $2)",
+                    uuid.UUID(session_id),
+                    user_id,
+                )
+                is_new_session = True
+            else:
+                row = await db_pools["pg"].fetchrow(
+                    "SELECT user_id FROM chat_sessions WHERE id = $1",
+                    uuid.UUID(session_id),
+                )
+                if not row or row["user_id"] != user_id:
+                    yield _sse_event("error", {"message": "Session not found"})
+                    yield _sse_event("done", {"session_id": session_id})
+                    return
+
+            # --- Load history from DB ---
+            msg_rows = await db_pools["pg"].fetch(
+                "SELECT role, content FROM chat_messages WHERE session_id = $1 ORDER BY id",
+                uuid.UUID(session_id),
+            )
+            history = [
+                {"role": r["role"], "parts": [{"text": r["content"]}]}
+                for r in msg_rows
+            ]
+
+            # --- Save user message to DB ---
+            await db_pools["pg"].execute(
+                "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
+                uuid.UUID(session_id),
+                "user",
+                message,
+            )
+
+            # --- Auto-title on first message ---
+            if is_new_session:
+                title = message[:100].strip()
+                if len(message) > 100:
+                    title = title.rsplit(" ", 1)[0] + "..."
+                await db_pools["pg"].execute(
+                    "UPDATE chat_sessions SET title = $1 WHERE id = $2",
+                    title,
+                    uuid.UUID(session_id),
+                )
+
             model_name = _config.get("gemini_model", "gemini-2.5-flash")
             project = _config.get("google_cloud_project", "")
             api_key = _config.get("gemini_api_key", "")
@@ -3269,9 +3495,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     "Set GOOGLE_CLOUD_PROJECT (for Vertex AI) or GEMINI_API_KEY (for API key auth)"
                 )
 
-            # Build conversation history
-            history = _sessions.get(session_id, [])
-
+            # Build conversation contents from history
             contents = []
             for entry in history:
                 contents.append(types.Content(**entry))
@@ -3335,7 +3559,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             "title": tool_args.get("title", ""),
                             "data": tool_args.get("data", {}),
                         }
-                        yield _sse_event("visualization", viz_data)
+                        yield await _persist_and_emit_viz(session_id, viz_data)
                         function_response_parts.append(
                             types.Part.from_function_response(
                                 name=tool_name,
@@ -3377,7 +3601,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             )
                         else:
                             # Plot built — emit visualization and return summary
-                            yield _sse_event("visualization", result["viz_data"])
+                            yield await _persist_and_emit_viz(session_id, result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
                                     name=tool_name,
@@ -3416,7 +3640,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             )
                         else:
                             # Heatmap built — emit visualization and return summary
-                            yield _sse_event("visualization", result["viz_data"])
+                            yield await _persist_and_emit_viz(session_id, result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
                                     name=tool_name,
@@ -3455,7 +3679,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             )
                         else:
                             # Network built — emit visualization and return summary
-                            yield _sse_event("visualization", result["viz_data"])
+                            yield await _persist_and_emit_viz(session_id, result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
                                     name=tool_name,
@@ -3484,7 +3708,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                                 )
                             )
                         else:
-                            yield _sse_event("visualization", result["viz_data"])
+                            yield await _persist_and_emit_viz(session_id, result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
                                     name=tool_name,
@@ -3512,7 +3736,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                                 "title": f"AlphaFold Structure: {result.get('gene', result.get('uniprot_id', ''))}",
                                 "data": result,
                             }
-                            yield _sse_event("visualization", viz_data)
+                            yield await _persist_and_emit_viz(session_id, viz_data)
 
                         function_response_parts.append(
                             types.Part.from_function_response(
@@ -3568,12 +3792,27 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     },
                 )
 
-            # Save session history (only user + model text turns)
-            _sessions[session_id] = [
-                {"role": c.role, "parts": [{"text": p.text} for p in c.parts if p.text]}
-                for c in contents
-                if any(p.text for p in c.parts)
-            ]
+            # Save assistant text response to DB (last model turn)
+            assistant_text = ""
+            for c in reversed(contents):
+                if c.role == "model":
+                    for p in c.parts:
+                        if p.text:
+                            assistant_text += p.text
+                    break
+            if assistant_text:
+                await db_pools["pg"].execute(
+                    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
+                    uuid.UUID(session_id),
+                    "model",
+                    assistant_text,
+                )
+
+            # Update session timestamp
+            await db_pools["pg"].execute(
+                "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
+                uuid.UUID(session_id),
+            )
 
         except Exception as exc:
             logger.exception("Chat stream error")

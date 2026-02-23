@@ -107,6 +107,7 @@ app.add_middleware(
         "https://www.ebi.ac.uk",
         "http://localhost:8050",
         "http://127.0.0.1:8050",
+        "https://ai-explorer-dash-alpha-959149465821.europe-west2.run.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

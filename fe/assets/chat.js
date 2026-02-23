@@ -4,7 +4,7 @@
   // Project color palette
   var COLORS = ["#007B53", "#193F90", "#A6093D", "#563D82", "#3B6FB6", "#54585A", "#0A5032", "#D4A843"];
 
-  var sessionId = null;
+  var sessionId = sessionStorage.getItem("chat_session_id") || null;
   var currentController = null;
 
   function init() {
@@ -59,6 +59,16 @@
           var portal = document.getElementById("chat-data-portal");
           if (portal) portal.innerHTML = "";
           updatePortalVisibility();
+          // Bulk-delete visualizations from DB
+          if (sessionId) {
+            var urlEl = document.getElementById("chat-backend-url");
+            var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+            var authToken = sessionStorage.getItem("auth_token");
+            fetch(baseUrl + "/v1/chat/sessions/" + sessionId + "/visualizations", {
+              method: "DELETE",
+              headers: { "Authorization": "Bearer " + authToken }
+            });
+          }
         } else {
           // First click — ask for confirmation
           clearBtn.dataset.confirming = "1";
@@ -122,6 +132,25 @@
         resizeAllViz();
       });
     }
+
+    // "New chat" button
+    var newSessionBtn = document.getElementById("chat-new-session-btn");
+    if (newSessionBtn) {
+      newSessionBtn.addEventListener("click", function () {
+        sessionId = null;
+        sessionStorage.removeItem("chat_session_id");
+        clearChat();
+        clearDashboard();
+        showWelcome();
+        loadSessionList();
+      });
+    }
+
+    // Restore session on page load
+    if (sessionId) {
+      loadSession(sessionId);
+    }
+    loadSessionList();
   }
 
   function sendCurrentMessage() {
@@ -257,7 +286,11 @@
         appendErrorMessage(data.message || "An error occurred");
         break;
       case "done":
-        if (data.session_id) sessionId = data.session_id;
+        if (data.session_id) {
+          sessionId = data.session_id;
+          sessionStorage.setItem("chat_session_id", data.session_id);
+          loadSessionList();
+        }
         hideSpinner();
         break;
     }
@@ -512,6 +545,7 @@
     wrapper.className = "viz-container";
     wrapper.setAttribute("data-viz-type", vizType);
     wrapper.setAttribute("data-size", VIZ_SIZE_MAP[vizType] || "large");
+    if (data.viz_id) wrapper.setAttribute("data-viz-id", data.viz_id);
 
     // ── Card header with type icon, title, and action buttons ──
     var header = document.createElement("div");
@@ -567,8 +601,18 @@
     removeBtn.title = "Remove";
     removeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
     removeBtn.addEventListener("click", function () {
+      var vizId = wrapper.getAttribute("data-viz-id");
       wrapper.remove();
       updatePortalVisibility();
+      if (vizId && sessionId) {
+        var urlEl = document.getElementById("chat-backend-url");
+        var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+        var authToken = sessionStorage.getItem("auth_token");
+        fetch(baseUrl + "/v1/chat/sessions/" + sessionId + "/visualizations/" + vizId, {
+          method: "DELETE",
+          headers: { "Authorization": "Bearer " + authToken }
+        });
+      }
     });
     actions.appendChild(removeBtn);
 
@@ -2010,6 +2054,232 @@
     });
     portalObserver.observe(portal, { childList: true });
     resizeObserverActive = true;
+  }
+
+  // --- Session management ---
+
+  function getBaseUrl() {
+    var urlEl = document.getElementById("chat-backend-url");
+    return urlEl ? urlEl.getAttribute("data-url") : "";
+  }
+
+  function getAuthHeaders() {
+    var authToken = sessionStorage.getItem("auth_token");
+    return authToken ? { "Authorization": "Bearer " + authToken } : {};
+  }
+
+  function clearChat() {
+    var container = document.getElementById("chat-messages");
+    if (!container) return;
+    // Remove all messages and separators, keep welcome section
+    var children = container.querySelectorAll(".chat-message, .chat-turn-separator");
+    children.forEach(function (el) { el.remove(); });
+    currentAssistantBubble = null;
+  }
+
+  function clearDashboard() {
+    var portal = document.getElementById("chat-data-portal");
+    if (portal) portal.innerHTML = "";
+    updatePortalVisibility();
+  }
+
+  function showWelcome() {
+    var welcome = document.getElementById("chat-welcome");
+    if (welcome) welcome.style.display = "";
+  }
+
+  function loadSession(id) {
+    var baseUrl = getBaseUrl();
+    fetch(baseUrl + "/v1/chat/sessions/" + id, {
+      headers: getAuthHeaders()
+    })
+    .then(function (r) {
+      if (!r.ok) {
+        sessionId = null;
+        sessionStorage.removeItem("chat_session_id");
+        return null;
+      }
+      return r.json();
+    })
+    .then(function (session) {
+      if (!session) return;
+
+      hideSuggestions();
+      session.messages.forEach(function (msg) {
+        if (msg.role === "user") {
+          appendUserMessage(msg.content);
+        } else {
+          appendAssistantText(msg.content);
+          finalizeAssistantMessage();
+        }
+      });
+
+      session.visualizations.forEach(function (viz) {
+        renderVisualization({
+          type: viz.viz_type,
+          title: viz.title,
+          data: viz.data,
+          viz_id: viz.id
+        });
+      });
+
+      var msgs = document.getElementById("chat-messages");
+      if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    });
+  }
+
+  function loadSessionList() {
+    var baseUrl = getBaseUrl();
+    var authToken = sessionStorage.getItem("auth_token");
+    if (!authToken) return;
+
+    fetch(baseUrl + "/v1/chat/sessions", {
+      headers: getAuthHeaders()
+    })
+    .then(function (r) { return r.ok ? r.json() : { sessions: [] }; })
+    .then(function (data) {
+      renderSessionList(data.sessions || []);
+    })
+    .catch(function () {});
+  }
+
+  function renderSessionList(sessions) {
+    var container = document.getElementById("chat-session-list");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (sessions.length === 0) {
+      var empty = document.createElement("div");
+      empty.className = "session-empty-state";
+      empty.textContent = "No previous conversations";
+      container.appendChild(empty);
+      return;
+    }
+
+    var now = new Date();
+    var todayStr = now.toDateString();
+    var yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    var yesterdayStr = yesterday.toDateString();
+
+    var lastGroup = "";
+    sessions.forEach(function (s) {
+      var d = new Date(s.updated_at);
+      var group;
+      if (d.toDateString() === todayStr) group = "Today";
+      else if (d.toDateString() === yesterdayStr) group = "Yesterday";
+      else group = "Older";
+
+      if (group !== lastGroup) {
+        var label = document.createElement("div");
+        label.className = "session-date-group";
+        label.textContent = group;
+        container.appendChild(label);
+        lastGroup = group;
+      }
+
+      var item = document.createElement("div");
+      item.className = "chat-session-item";
+      if (s.id === sessionId) item.classList.add("active");
+      item.setAttribute("data-session-id", s.id);
+
+      var icon = document.createElement("i");
+      icon.className = "bi bi-chat-left-text";
+      icon.style.fontSize = "0.75rem";
+      icon.style.flexShrink = "0";
+      item.appendChild(icon);
+
+      var titleSpan = document.createElement("span");
+      titleSpan.className = "session-title";
+      titleSpan.textContent = s.title || "New conversation";
+      titleSpan.title = s.title || "New conversation";
+      item.appendChild(titleSpan);
+
+      // Delete button
+      var delBtn = document.createElement("button");
+      delBtn.className = "session-delete-btn";
+      delBtn.title = "Delete";
+      delBtn.innerHTML = '<i class="bi bi-x"></i>';
+      delBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        deleteSession(s.id);
+      });
+      item.appendChild(delBtn);
+
+      // Click to switch session
+      item.addEventListener("click", function () {
+        switchToSession(s.id);
+      });
+
+      // Double-click to rename
+      titleSpan.addEventListener("dblclick", function (e) {
+        e.stopPropagation();
+        startRenameSession(s.id, titleSpan);
+      });
+
+      container.appendChild(item);
+    });
+  }
+
+  function switchToSession(id) {
+    if (id === sessionId) return;
+    sessionId = id;
+    sessionStorage.setItem("chat_session_id", id);
+    clearChat();
+    clearDashboard();
+    loadSession(id);
+    loadSessionList();
+  }
+
+  function deleteSession(id) {
+    if (!confirm("Delete this conversation?")) return;
+    var baseUrl = getBaseUrl();
+    fetch(baseUrl + "/v1/chat/sessions/" + id, {
+      method: "DELETE",
+      headers: getAuthHeaders()
+    }).then(function () {
+      loadSessionList();
+      if (id === sessionId) {
+        sessionId = null;
+        sessionStorage.removeItem("chat_session_id");
+        clearChat();
+        clearDashboard();
+        showWelcome();
+      }
+    });
+  }
+
+  function startRenameSession(id, titleSpan) {
+    var current = titleSpan.textContent;
+    var input = document.createElement("input");
+    input.type = "text";
+    input.value = current;
+    input.className = "session-rename-input";
+    titleSpan.textContent = "";
+    titleSpan.appendChild(input);
+    input.focus();
+    input.select();
+
+    function finish() {
+      var newTitle = (input.value || "").trim();
+      if (!newTitle || newTitle === current) {
+        titleSpan.textContent = current;
+        return;
+      }
+      titleSpan.textContent = newTitle;
+      var baseUrl = getBaseUrl();
+      fetch(baseUrl + "/v1/chat/sessions/" + id, {
+        method: "PATCH",
+        headers: Object.assign({ "Content-Type": "application/json" }, getAuthHeaders()),
+        body: JSON.stringify({ title: newTitle })
+      });
+    }
+
+    input.addEventListener("blur", finish);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      if (e.key === "Escape") { titleSpan.textContent = current; }
+    });
   }
 
   // --- Initialize when chat page is rendered ---
