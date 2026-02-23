@@ -286,6 +286,30 @@ SEARCH_TARGET_SUMMARY_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+FIND_DATASETS_FOR_TARGET_DECLARATION = types.FunctionDeclaration(
+    name="find_datasets_for_target",
+    description=(
+        "Find all datasets that contain perturbation data for a specific gene target. "
+        "Returns real dataset IDs with titles and metadata across all modalities "
+        "(Perturb-seq, CRISPR screen, MAVE). "
+        "ALWAYS use this tool when users ask what data is available for a gene."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Gene symbol to look up (e.g., 'TP53', 'BRCA2', 'KRAS')",
+            ),
+            "modality": types.Schema(
+                type="STRING",
+                description="Optional: filter to a specific modality ('perturb-seq', 'crispr-screen', or 'mave')",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
 QUERY_PERTURBATION_DATA_DECLARATION = types.FunctionDeclaration(
     name="query_perturbation_data",
     description=(
@@ -857,6 +881,7 @@ GET_FUNCTIONAL_ENRICHMENT_DECLARATION = types.FunctionDeclaration(
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
+    FIND_DATASETS_FOR_TARGET_DECLARATION,
     QUERY_PERTURBATION_DATA_DECLARATION,
     GET_CATALOGUE_SUMMARY_DECLARATION,
     CREATE_VISUALIZATION_DECLARATION,
@@ -1046,6 +1071,107 @@ async def _tool_search_target_summary(args: dict) -> dict:
     targets = [hit["_source"] for hit in hits.get("hits", [])]
 
     return {"total": total, "targets": targets}
+
+
+async def _tool_find_datasets_for_target(args: dict) -> dict:
+    """Find all datasets containing data for a gene across all modalities."""
+    gene_name = args.get("gene_name", "").upper()
+    modality_filter = args.get("modality")
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    pg_pool = db_pools["pg"]
+    es = db_pools["es"]
+
+    queries = {
+        "perturb-seq": (
+            "perturb_seq_dea",
+            """SELECT dataset_id,
+                      COUNT(*) AS total_genes,
+                      COUNT(*) FILTER (WHERE padj < 0.05) AS significant_genes
+               FROM perturb_seq_dea
+               WHERE perturbed_target_symbol = $1 AND gene IS NOT NULL
+               GROUP BY dataset_id
+               ORDER BY significant_genes DESC""",
+        ),
+        "crispr-screen": (
+            "crispr_data",
+            """SELECT dataset_id,
+                      COUNT(*) AS total_genes,
+                      COUNT(*) FILTER (WHERE significant = 'True') AS significant_genes
+               FROM crispr_data
+               WHERE perturbed_target_symbol = $1
+               GROUP BY dataset_id
+               ORDER BY significant_genes DESC""",
+        ),
+        "mave": (
+            "mave_data",
+            """SELECT dataset_id,
+                      COUNT(*) AS total_variants
+               FROM mave_data
+               WHERE perturbed_target_symbol = $1
+               GROUP BY dataset_id
+               ORDER BY total_variants DESC""",
+        ),
+    }
+
+    if modality_filter:
+        if modality_filter not in queries:
+            return {"error": f"Unknown modality: {modality_filter}"}
+        queries = {modality_filter: queries[modality_filter]}
+
+    all_datasets = []
+    all_dataset_ids = set()
+
+    for modality, (table, query) in queries.items():
+        rows = await pg_pool.fetch(query, gene_name)
+        for row in rows:
+            ds_id = row["dataset_id"]
+            all_dataset_ids.add(ds_id)
+            entry = {"dataset_id": ds_id, "modality": modality}
+            if modality == "mave":
+                entry["stats"] = {"total_variants": row["total_variants"]}
+            else:
+                entry["stats"] = {
+                    "total_genes": row["total_genes"],
+                    "significant_genes": row["significant_genes"],
+                }
+            all_datasets.append(entry)
+
+    if not all_datasets:
+        return {
+            "total": 0,
+            "datasets": [],
+            "message": f"No perturbation data found for {gene_name} in any modality.",
+        }
+
+    # Fetch metadata from Elasticsearch for all dataset IDs
+    if all_dataset_ids:
+        es_result = await es.search(
+            index=ES_DATASET_SUMMARY,
+            query={"terms": {"dataset_id": list(all_dataset_ids)}},
+            size=len(all_dataset_ids),
+        )
+        es_meta = {}
+        for hit in es_result.get("hits", {}).get("hits", []):
+            src = hit["_source"]
+            es_meta[src.get("dataset_id")] = {
+                "title": src.get("title", ""),
+                "tissue": src.get("tissue", ""),
+                "cell_line": src.get("cell_line", ""),
+                "disease": src.get("disease", ""),
+            }
+
+        for ds in all_datasets:
+            meta = es_meta.get(ds["dataset_id"], {})
+            ds.update(meta)
+
+    return {
+        "gene": gene_name,
+        "total": len(all_datasets),
+        "datasets": all_datasets,
+    }
 
 
 async def _tool_query_perturbation_data(args: dict) -> dict:
@@ -3057,6 +3183,7 @@ async def _tool_get_variant_structural_context(args: dict) -> dict:
 TOOL_HANDLERS = {
     "search_datasets": _tool_search_datasets,
     "search_target_summary": _tool_search_target_summary,
+    "find_datasets_for_target": _tool_find_datasets_for_target,
     "query_perturbation_data": _tool_query_perturbation_data,
     "get_catalogue_summary": lambda args: _tool_get_catalogue_summary(),
     "lookup_protein": _tool_lookup_protein,
@@ -3253,6 +3380,12 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "Network for X" / "Gene interactions for X" / "What genes are affected by X?" / "Show interaction network" → call create_gene_interaction_network
 - "What proteins interact with X?" / "STRING network for X" / "Interaction partners of X" / "PPI network" → call get_string_interactions (STRING)
 - "What pathways are enriched?" / "Enrichment analysis for these genes" / "GO terms for X, Y, Z" → call get_functional_enrichment (STRING), then display as table
+- "What data do you have for X?" / "Show me data for X" / "Datasets for X" / "What experiments studied X?" → call find_datasets_for_target
+
+IMPORTANT — NEVER FABRICATE DATA:
+- NEVER invent or guess dataset IDs, titles, or statistics. ALL dataset information MUST come from tool calls.
+- When users ask what data is available for a gene, ALWAYS call find_datasets_for_target first.
+- Present the returned datasets as a table using create_visualization, then summarize.
 
 Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
@@ -3294,7 +3427,7 @@ Available data modalities:
 - CRISPR screen: Fitness/viability screens. Key fields: perturbation gene, score name, score value, significant
 - MAVE: Multiplexed Assay of Variant Effect. Key fields: perturbation gene, variant, position, score
 
-When users ask about a gene, first search for target summary to understand what's available, then query specific data if needed.
+When users ask what data or datasets are available for a gene, call find_datasets_for_target to get real dataset IDs. Use search_target_summary for aggregated overview (modalities, tissues, diseases studied). Never guess dataset IDs.
 
 OPEN TARGETS INTEGRATION:
 You also have access to the Open Targets Platform via its MCP tools. Open Targets aggregates data from 22+ sources (GWAS, ClinVar, ChEMBL, UniProt, Reactome, etc.) for target-disease associations, drug data, and genetic evidence.
