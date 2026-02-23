@@ -216,6 +216,7 @@
         var reader = response.body.getReader();
         var decoder = new TextDecoder();
         var buffer = "";
+        var currentEvent = null;
 
         function read() {
           return reader.read().then(function (result) {
@@ -230,8 +231,6 @@
             buffer += decoder.decode(result.value, { stream: true });
             var lines = buffer.split("\n");
             buffer = lines.pop(); // keep incomplete line
-
-            var currentEvent = null;
             for (var i = 0; i < lines.length; i++) {
               var line = lines[i];
               if (line.startsWith("event: ")) {
