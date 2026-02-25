@@ -1157,10 +1157,16 @@ async def _tool_find_datasets_for_target(args: dict) -> dict:
         for hit in es_result.get("hits", {}).get("hits", []):
             src = hit["_source"]
             es_meta[src.get("dataset_id")] = {
-                "title": src.get("title", ""),
-                "tissue": src.get("tissue", ""),
-                "cell_line": src.get("cell_line", ""),
-                "disease": src.get("disease", ""),
+                "title": src.get("study_title", ""),
+                "year": src.get("study_year", ""),
+                "modality": src.get("data_modalities", ""),
+                "license": src.get("license_labels", ""),
+                "tissue": src.get("tissue_labels", ""),
+                "cell_types": src.get("cell_type_labels", ""),
+                "cell_lines": src.get("cell_line_labels", ""),
+                "sex": src.get("sex_labels_labels", ""),
+                "developmental_stage": src.get("developmental_stage_labels", ""),
+                "disease": src.get("disease_labels", ""),
             }
 
         for ds in all_datasets:
