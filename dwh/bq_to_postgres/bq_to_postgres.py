@@ -36,6 +36,100 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+SYNC_QUERIES = {
+    "crispr_data": {
+        "export_query": r"""
+            SELECT
+                dataset_id,
+                sample_id,
+                perturbed_target_symbol,
+                score_name,
+                score_value,
+                significant,
+                significance_criteria,
+                ingested_at as max_ingested_at
+            FROM `{project}.crispr.data`
+            WHERE dataset_id = '{dataset_id}'
+        """,
+        "ts_query": r"""
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.crispr.data`
+            GROUP BY dataset_id
+        """,
+    },
+    "mave_data": {
+        "export_query": r"""
+            SELECT
+                dataset_id,
+                sample_id,
+                perturbed_target_symbol,
+                score_name,
+                score_value,
+                perturbation_name,
+                cast(
+                    regexp_extract(perturbation_name, r'p\.[a-zA-Z]+(\d+)') as int64
+                ) as perturbation_position,
+                regexp_extract(perturbation_name, r'p\.([a-zA-Z]+)\d+') as perturbation_aa_wt,
+                regexp_extract(
+                    perturbation_name, r'p\.[a-zA-Z]+\d+([a-zA-Z=]+)'
+                ) as perturbation_aa_change,
+                ingested_at as max_ingested_at
+            FROM `{project}.mavedb.data`
+            WHERE dataset_id = '{dataset_id}'
+        """,
+        "ts_query": r"""
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.mavedb.data`
+            GROUP BY dataset_id
+        """,
+    },
+    "perturb_seq_dea": {
+        "export_query": r"""
+            SELECT
+                dataset_id,
+                perturbed_target_symbol,
+                gene,
+                padj,
+                log2FoldChange as log2foldchange,
+                score_name,
+                score_value,
+                cell_type,
+                ingested_at as max_ingested_at
+            FROM `{project}.perturb_seq.pertpy_dea`
+            WHERE dataset_id = '{dataset_id}'
+        """,
+        "ts_query": r"""
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.perturb_seq.pertpy_dea`
+            GROUP BY dataset_id
+        """,
+    },
+    "perturb_seq_gsea": {
+        "export_query": r"""
+            SELECT
+                dataset_id,
+                term,
+                perturbed_target_symbol,
+                es,
+                nes,
+                pval,
+                sidak,
+                fdr,
+                geneset_size,
+                leading_edge,
+                cell_type,
+                ingested_at as max_ingested_at
+            FROM `{project}.perturb_seq.pertpy_gsea`
+            WHERE dataset_id = '{dataset_id}'
+        """,
+        "ts_query": r"""
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.perturb_seq.pertpy_gsea`
+            GROUP BY dataset_id
+        """,
+    },
+}
+
 # Defines indexes for each table.
 # Format: { table_name: [ (index_name, create_sql_template), ... ] }
 INDEX_DEFINITIONS = {
@@ -144,21 +238,17 @@ def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
 
 
 def get_bq_latest_timestamps_and_counts(
-    bq_client, bq_dataset, bq_table, bq_location
+    bq_client, table_name, bq_location
 ) -> Dict[str, Tuple[Any, int]]:
     """Gets the latest max_ingested_at and row count for every dataset_id in a BQ table."""
-    query = f"""
-        SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
-        FROM `{bq_dataset}.{bq_table}`
-        GROUP BY dataset_id
-    """
+    query = SYNC_QUERIES[table_name]["ts_query"].format(project=bq_client.project)
     query_job = bq_client.query(query, location=bq_location)
     results = query_job.result()
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
 
 
 def export_dataset_to_gcs(
-    bq_client, bq_dataset, bq_table, bq_location, gcs_bucket, gcs_prefix, dataset_id
+    bq_client, bq_dataset, table_name, bq_location, gcs_bucket, gcs_prefix, dataset_id
 ) -> str:
     """Exports a specific dataset from BigQuery to GCS as Parquet via a temp table."""
     destination_uri = f"gs://{gcs_bucket}/{gcs_prefix}-*.parquet"
@@ -170,7 +260,9 @@ def export_dataset_to_gcs(
     temp_table_id = f"temp_sync_{uuid.uuid4().hex}"
     temp_table_ref = dataset_ref.table(temp_table_id)
 
-    query = f"SELECT * FROM `{bq_dataset}.{bq_table}` WHERE dataset_id = '{dataset_id}'"
+    query = SYNC_QUERIES[table_name]["export_query"].format(
+        project=bq_client.project, dataset_id=dataset_id
+    )
     job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
     query_job = None
@@ -438,7 +530,15 @@ class TableSynchronizer:
             raise e
 
     def _get_bq_schema(self, table_name):
-        return self.bq_client.get_table(f"{self.bq_dataset}.{table_name}").schema
+        query = (
+            SYNC_QUERIES[table_name]["export_query"].format(
+                project=self.bq_client.project, dataset_id="_dummy_limit_0_"
+            )
+            + " LIMIT 0"
+        )
+        job = self.bq_client.query(query, location=self.bq_location)
+        result = job.result()
+        return result.schema
 
     def _ingest_dataset_logic(self, cursor, pg_table, table_name, ds_id, bq_schema):
         """Standard ingestion: export, delete, copy."""
@@ -592,7 +692,7 @@ def main():
                 # 1. Get BQ state
                 try:
                     bq_info = get_bq_latest_timestamps_and_counts(
-                        bq_client, args.bq_dataset, table_name, args.bq_location
+                        bq_client, table_name, args.bq_location
                     )
                 except Exception as e:
                     logging.warning(
