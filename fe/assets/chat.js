@@ -447,11 +447,13 @@
     bar_chart: "small",
     gene_card: "small",
     protein_structure: "small",
-    table: "large",
-    volcano_plot: "large",
-    mave_heatmap: "large",
-    gene_interaction_network: "large",
-    string_interaction_network: "large"
+    table: "small",
+    volcano_plot: "small",
+    mave_heatmap: "small",
+    gene_interaction_network: "small",
+    string_interaction_network: "small",
+    perturb_seq_table: "small",
+    crispr_table: "small"
   };
 
   // Viz type → category for icon coloring
@@ -461,6 +463,8 @@
     volcano_plot: "chart",
     mave_heatmap: "chart",
     table: "table",
+    perturb_seq_table: "table",
+    crispr_table: "table",
     gene_interaction_network: "network",
     string_interaction_network: "network",
     protein_structure: "protein",
@@ -485,6 +489,8 @@
     gene_interaction_network: "cytoscape",
     string_interaction_network: "cytoscape",
     table: "csv",
+    perturb_seq_table: "csv",
+    crispr_table: "csv",
     protein_structure: "protein"
   };
 
@@ -652,6 +658,12 @@
       case "string_interaction_network":
         renderStringInteractionNetwork(content, data.data);
         break;
+      case "perturb_seq_table":
+        renderPerturbSeqTable(content, data.data);
+        break;
+      case "crispr_table":
+        renderCrisprTable(content, data.data);
+        break;
       default:
         content.textContent = "Unknown visualization type: " + data.type;
     }
@@ -695,6 +707,282 @@
     wrapper.className = "table-responsive";
     wrapper.appendChild(table);
     container.appendChild(wrapper);
+  }
+
+  // --- Shared helpers for typed tables and MAVE heatmap pagination ---
+
+  function createPaginationBar(paginationData, onPageChange) {
+    var bar = document.createElement("div");
+    bar.className = "viz-pagination-bar";
+
+    var prevBtn = document.createElement("button");
+    prevBtn.className = "btn btn-sm btn-outline-secondary";
+    prevBtn.textContent = "Previous";
+    prevBtn.disabled = paginationData.page <= 1;
+    prevBtn.addEventListener("click", function () {
+      if (paginationData.page > 1) onPageChange(paginationData.page - 1);
+    });
+
+    var info = document.createElement("span");
+    info.textContent = "Page " + paginationData.page + " of " + paginationData.total_pages;
+
+    var nextBtn = document.createElement("button");
+    nextBtn.className = "btn btn-sm btn-outline-secondary";
+    nextBtn.textContent = "Next";
+    nextBtn.disabled = paginationData.page >= paginationData.total_pages;
+    nextBtn.addEventListener("click", function () {
+      if (paginationData.page < paginationData.total_pages) onPageChange(paginationData.page + 1);
+    });
+
+    bar.appendChild(prevBtn);
+    bar.appendChild(info);
+    bar.appendChild(nextBtn);
+    return bar;
+  }
+
+  function createPositionPagination(posData, windowSize, onPositionChange) {
+    var bar = document.createElement("div");
+    bar.className = "viz-pagination-bar";
+
+    var prevBtn = document.createElement("button");
+    prevBtn.className = "btn btn-sm btn-outline-secondary";
+    prevBtn.textContent = "Previous";
+    prevBtn.disabled = posData.position_start <= posData.total_start;
+    prevBtn.addEventListener("click", function () {
+      var newStart = Math.max(posData.total_start, posData.position_start - windowSize);
+      var newEnd = newStart + windowSize - 1;
+      onPositionChange(newStart, newEnd);
+    });
+
+    var info = document.createElement("span");
+    info.textContent = "Positions " + posData.position_start + "\u2013" + posData.position_end +
+      " of " + posData.total_start + "\u2013" + posData.total_end;
+
+    var nextBtn = document.createElement("button");
+    nextBtn.className = "btn btn-sm btn-outline-secondary";
+    nextBtn.textContent = "Next";
+    nextBtn.disabled = posData.position_end >= posData.total_end;
+    nextBtn.addEventListener("click", function () {
+      var newStart = posData.position_end + 1;
+      var newEnd = Math.min(posData.total_end, newStart + windowSize - 1);
+      onPositionChange(newStart, newEnd);
+    });
+
+    bar.appendChild(prevBtn);
+    bar.appendChild(info);
+    bar.appendChild(nextBtn);
+    return bar;
+  }
+
+  function createSearchInputs(fields, onSearch) {
+    var bar = document.createElement("div");
+    bar.className = "viz-search-bar";
+    var currentFilters = {};
+
+    fields.forEach(function (field) {
+      var input = document.createElement("input");
+      input.type = "text";
+      input.className = "form-control form-control-sm";
+      input.placeholder = field.placeholder || "Search by " + field.key + "\u2026";
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          currentFilters[field.key] = input.value.trim();
+          onSearch(Object.assign({}, currentFilters));
+        }
+      });
+      bar.appendChild(input);
+    });
+
+    return bar;
+  }
+
+  // --- Typed table renderers ---
+
+  var COLOR_GREEN = "#2acc06";
+  var COLOR_RED = "#ff4824";
+
+  function _buildTypedTable(headers, columns, rows) {
+    var table = document.createElement("table");
+    table.className = "table table-sm table-hover viz-table";
+
+    var thead = document.createElement("thead");
+    var headerRow = document.createElement("tr");
+    headers.forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      row.forEach(function (cell, idx) {
+        var td = document.createElement("td");
+        var col = columns[idx] || {};
+
+        if (col.role === "fold_change" && cell != null) {
+          var val = parseFloat(cell);
+          if (val > 0) {
+            td.style.color = COLOR_GREEN;
+            td.textContent = "\u25B2 " + val.toFixed(2);
+          } else if (val < 0) {
+            td.style.color = COLOR_RED;
+            td.textContent = "\u25BC " + val.toFixed(2);
+          } else {
+            td.textContent = val.toFixed(2);
+          }
+        } else if (col.role === "significance" && cell != null) {
+          var pval = parseFloat(cell);
+          td.textContent = pval < 0.001 ? pval.toExponential(2) : pval.toFixed(4);
+          if (pval <= 0.05) {
+            td.style.color = COLOR_GREEN;
+            td.style.fontWeight = "bold";
+          }
+        } else if (col.role === "significance_bool") {
+          var sig = cell === true || cell === "true" || cell === "True";
+          td.textContent = sig ? "Yes" : "No";
+          td.style.color = sig ? COLOR_GREEN : COLOR_RED;
+          td.style.fontWeight = "bold";
+        } else {
+          td.textContent = cell != null ? String(cell) : "";
+        }
+
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+
+    return { table: table, tbody: tbody };
+  }
+
+  function _fetchTablePage(endpoint, params, extraParams, callback) {
+    var urlEl = document.getElementById("chat-backend-url");
+    var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+    var authToken = sessionStorage.getItem("auth_token");
+
+    var qp = new URLSearchParams(params);
+    Object.keys(extraParams).forEach(function (k) {
+      if (extraParams[k] !== undefined && extraParams[k] !== null && extraParams[k] !== "") {
+        qp.set(k, extraParams[k]);
+      }
+    });
+
+    fetch(baseUrl + endpoint + "?" + qp.toString(), {
+      headers: { "Authorization": "Bearer " + authToken }
+    })
+      .then(function (resp) { return resp.json(); })
+      .then(callback)
+      .catch(function (err) { console.error("Viz fetch error:", err); });
+  }
+
+  function renderPerturbSeqTable(container, data) {
+    var columns = data.columns || [];
+    var endpoint = data.endpoint || "/v1/chat/viz/perturb-seq-table";
+    var params = data.params || {};
+    var currentPage = (data.pagination && data.pagination.page) || 1;
+    var currentFilters = {};
+
+    // Search inputs
+    var searchBar = createSearchInputs(
+      [
+        { key: "perturbation_gene", placeholder: "Search by perturbed gene\u2026" },
+        { key: "effect_gene", placeholder: "Search by effect gene\u2026" }
+      ],
+      function (filters) {
+        currentFilters = filters;
+        currentPage = 1;
+        fetchAndRender();
+      }
+    );
+    container.appendChild(searchBar);
+
+    // Table wrapper
+    var tableWrapper = document.createElement("div");
+    tableWrapper.className = "table-responsive";
+    container.appendChild(tableWrapper);
+
+    // Pagination placeholder
+    var pagWrapper = document.createElement("div");
+    container.appendChild(pagWrapper);
+
+    function renderContent(respData) {
+      var built = _buildTypedTable(respData.headers || data.headers, columns, respData.rows || []);
+      tableWrapper.innerHTML = "";
+      tableWrapper.appendChild(built.table);
+
+      pagWrapper.innerHTML = "";
+      if (respData.pagination) {
+        currentPage = respData.pagination.page;
+        pagWrapper.appendChild(createPaginationBar(respData.pagination, function (newPage) {
+          currentPage = newPage;
+          fetchAndRender();
+        }));
+      }
+    }
+
+    function fetchAndRender() {
+      var extra = { page: currentPage };
+      Object.keys(currentFilters).forEach(function (k) { extra[k] = currentFilters[k]; });
+      _fetchTablePage(endpoint, params, extra, renderContent);
+    }
+
+    // Render initial data
+    renderContent(data);
+  }
+
+  function renderCrisprTable(container, data) {
+    var columns = data.columns || [];
+    var endpoint = data.endpoint || "/v1/chat/viz/crispr-table";
+    var params = data.params || {};
+    var currentPage = (data.pagination && data.pagination.page) || 1;
+    var currentFilters = {};
+
+    // Search input
+    var searchBar = createSearchInputs(
+      [{ key: "gene", placeholder: "Search by gene\u2026" }],
+      function (filters) {
+        currentFilters = filters;
+        currentPage = 1;
+        fetchAndRender();
+      }
+    );
+    container.appendChild(searchBar);
+
+    // Table wrapper
+    var tableWrapper = document.createElement("div");
+    tableWrapper.className = "table-responsive";
+    container.appendChild(tableWrapper);
+
+    // Pagination placeholder
+    var pagWrapper = document.createElement("div");
+    container.appendChild(pagWrapper);
+
+    function renderContent(respData) {
+      var built = _buildTypedTable(respData.headers || data.headers, columns, respData.rows || []);
+      tableWrapper.innerHTML = "";
+      tableWrapper.appendChild(built.table);
+
+      pagWrapper.innerHTML = "";
+      if (respData.pagination) {
+        currentPage = respData.pagination.page;
+        pagWrapper.appendChild(createPaginationBar(respData.pagination, function (newPage) {
+          currentPage = newPage;
+          fetchAndRender();
+        }));
+      }
+    }
+
+    function fetchAndRender() {
+      var extra = { page: currentPage };
+      Object.keys(currentFilters).forEach(function (k) { extra[k] = currentFilters[k]; });
+      _fetchTablePage(endpoint, params, extra, renderContent);
+    }
+
+    // Render initial data
+    renderContent(data);
   }
 
   function renderPieChart(container, data) {
@@ -911,13 +1199,9 @@
   }
 
   function renderMaveHeatmap(container, data) {
-    var z = data.z || [];
-    var aminoAcids = data.amino_acids || [];
-    var positions = data.positions || [];
-    var wtAnnotations = data.wt_annotations || [];
-    var geneName = data.gene_name || "";
-    var posStart = data.position_start;
-    var posEnd = data.position_end;
+    var initialWindowSize = (data.position_end && data.position_start)
+      ? data.position_end - data.position_start + 1
+      : 30;
 
     var chartDiv = document.createElement("div");
     chartDiv.style.width = "100%";
@@ -928,76 +1212,121 @@
       return;
     }
 
-    if (z.length === 0 || positions.length === 0 || aminoAcids.length === 0) {
-      chartDiv.textContent = "No valid data for MAVE heatmap";
-      return;
-    }
+    var pagWrapper = document.createElement("div");
+    container.appendChild(pagWrapper);
 
-    // Build annotation list for WT residues
-    var annotations = [];
-    for (var i = 0; i < wtAnnotations.length; i++) {
-      var wt = wtAnnotations[i];
-      annotations.push({
-        x: positions[wt.col],
-        y: aminoAcids[wt.row],
-        text: "WT",
-        showarrow: false,
-        font: { color: "#000", size: 9 }
-      });
-    }
+    function plotHeatmap(hData) {
+      var z = hData.z || [];
+      var aminoAcids = hData.amino_acids || [];
+      var positions = hData.positions || [];
+      var wtAnnotations = hData.wt_annotations || [];
+      var posStart = hData.position_start;
+      var posEnd = hData.position_end;
 
-    var subtitle = "";
-    if (posStart != null && posEnd != null) {
-      subtitle = "Positions " + posStart + "–" + posEnd;
-    }
-
-    var trace = {
-      type: "heatmap",
-      z: z,
-      x: positions,
-      y: aminoAcids,
-      colorscale: "RdYlGn",
-      hoverongaps: false,
-      hovertemplate: "Position: %{x}<br>AA: %{y}<br>Score: %{z:.3f}<extra></extra>",
-      colorbar: {
-        title: { text: "Score", side: "right" },
-        thickness: 15,
-        len: 0.9
+      if (z.length === 0 || positions.length === 0 || aminoAcids.length === 0) {
+        chartDiv.textContent = "No valid data for MAVE heatmap";
+        return;
       }
-    };
 
-    Plotly.newPlot(
-      chartDiv,
-      [trace],
-      {
-        margin: { t: subtitle ? 30 : 10, b: 60, l: 50, r: 80 },
-        xaxis: {
-          title: "Position",
-          tickmode: "linear",
-          dtick: positions.length > 40 ? 5 : 1,
-          tickangle: positions.length > 20 ? -45 : 0
+      var annotations = [];
+      for (var i = 0; i < wtAnnotations.length; i++) {
+        var wt = wtAnnotations[i];
+        annotations.push({
+          x: positions[wt.col],
+          y: aminoAcids[wt.row],
+          text: "WT",
+          showarrow: false,
+          font: { color: "#000", size: 9 }
+        });
+      }
+
+      var subtitle = "";
+      if (posStart != null && posEnd != null) {
+        subtitle = "Positions " + posStart + "\u2013" + posEnd;
+      }
+
+      var trace = {
+        type: "heatmap",
+        z: z,
+        x: positions,
+        y: aminoAcids,
+        colorscale: "RdYlGn",
+        hoverongaps: false,
+        hovertemplate: "Position: %{x}<br>AA: %{y}<br>Score: %{z:.3f}<extra></extra>",
+        colorbar: {
+          title: { text: "Score", side: "right" },
+          thickness: 15,
+          len: 0.9
+        }
+      };
+
+      Plotly.react(
+        chartDiv,
+        [trace],
+        {
+          margin: { t: subtitle ? 30 : 10, b: 60, l: 50, r: 80 },
+          xaxis: {
+            title: "Position",
+            tickmode: "linear",
+            dtick: positions.length > 40 ? 5 : 1,
+            tickangle: positions.length > 20 ? -45 : 0
+          },
+          yaxis: {
+            title: "Amino Acid",
+            tickmode: "linear",
+            autorange: "reversed"
+          },
+          font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+          annotations: subtitle
+            ? annotations.concat([{
+                text: subtitle,
+                xref: "paper", yref: "paper",
+                x: 0.5, y: 1.02,
+                xanchor: "center", yanchor: "bottom",
+                showarrow: false,
+                font: { size: 12, color: "#54585A" }
+              }])
+            : annotations,
+          height: 450,
+          hovermode: "closest"
         },
-        yaxis: {
-          title: "Amino Acid",
-          tickmode: "linear",
-          autorange: "reversed"
-        },
-        font: { family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-        annotations: subtitle
-          ? annotations.concat([{
-              text: subtitle,
-              xref: "paper", yref: "paper",
-              x: 0.5, y: 1.02,
-              xanchor: "center", yanchor: "bottom",
-              showarrow: false,
-              font: { size: 12, color: "#54585A" }
-            }])
-          : annotations,
-        height: 450,
-        hovermode: "closest"
-      },
-      { responsive: true, displayModeBar: false }
-    );
+        { responsive: true, displayModeBar: false }
+      );
+
+      // Position pagination
+      pagWrapper.innerHTML = "";
+      if (hData.total_start != null && hData.total_end != null && hData.endpoint) {
+        pagWrapper.appendChild(createPositionPagination(
+          {
+            position_start: posStart,
+            position_end: posEnd,
+            total_start: hData.total_start,
+            total_end: hData.total_end
+          },
+          initialWindowSize,
+          function (newStart, newEnd) {
+            var urlEl = document.getElementById("chat-backend-url");
+            var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+            var authToken = sessionStorage.getItem("auth_token");
+            var qp = new URLSearchParams(hData.params || {});
+            qp.set("position_start", newStart);
+            qp.set("position_end", newEnd);
+            fetch(baseUrl + hData.endpoint + "?" + qp.toString(), {
+              headers: { "Authorization": "Bearer " + authToken }
+            })
+              .then(function (resp) { return resp.json(); })
+              .then(function (newData) {
+                newData.endpoint = hData.endpoint;
+                newData.params = hData.params;
+                plotHeatmap(newData);
+              })
+              .catch(function (err) { console.error("MAVE pagination error:", err); });
+          }
+        ));
+      }
+    }
+
+    plotHeatmap(data);
   }
 
   function renderProteinStructure(container, data) {

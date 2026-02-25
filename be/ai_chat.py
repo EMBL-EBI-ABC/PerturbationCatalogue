@@ -222,6 +222,241 @@ async def delete_all_visualizations(
     return Response(status_code=204)
 
 
+# --- Direct viz endpoints (pagination / search bypass LLM) ---
+
+
+@router.get("/viz/perturb-seq-table")
+async def viz_perturb_seq_table(
+    dataset_id: str,
+    perturbed_gene: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    effect_gene: Optional[str] = None,
+    perturbation_gene: Optional[str] = None,
+    sort_by: str = "padj",
+    sort_order: str = "asc",
+    user: dict = Depends(get_current_user),
+):
+    pg_pool = db_pools["pg"]
+    allowed_sort = {
+        "padj": "padj",
+        "log2fc": "log2foldchange",
+        "effect_gene": "gene",
+        "perturbation_gene": "perturbed_target_symbol",
+        "cell_type": "cell_type",
+    }
+    sort_col = allowed_sort.get(sort_by, "padj")
+    direction = "DESC" if sort_order.lower() == "desc" else "ASC"
+
+    filters = ["dataset_id = $1"]
+    params: list = [dataset_id]
+    idx = 2
+
+    if perturbed_gene:
+        filters.append(f"perturbed_target_symbol = ${idx}")
+        params.append(perturbed_gene.upper())
+        idx += 1
+    if effect_gene:
+        filters.append(f"UPPER(gene) = ${idx}")
+        params.append(effect_gene.upper())
+        idx += 1
+    if perturbation_gene:
+        filters.append(f"UPPER(perturbed_target_symbol) = ${idx}")
+        params.append(perturbation_gene.upper())
+        idx += 1
+
+    where = " AND ".join(filters)
+    count_q = f"SELECT COUNT(*) FROM perturb_seq_dea WHERE {where}"
+    total = await pg_pool.fetchval(count_q, *params)
+
+    offset = (page - 1) * page_size
+    params.append(offset)
+    params.append(page_size)
+    data_q = f"""
+        SELECT perturbed_target_symbol, gene, log2foldchange, padj,
+               score_name, score_value, cell_type
+        FROM perturb_seq_dea
+        WHERE {where}
+        ORDER BY {sort_col} {direction} NULLS LAST
+        OFFSET ${idx} LIMIT ${idx + 1}
+    """
+    rows = await pg_pool.fetch(data_q, *params)
+
+    result_rows = []
+    for r in rows:
+        sn = r["score_name"] or ""
+        sv = r["score_value"]
+        stat_str = f"{sn}: {sv}" if sn and sv is not None else (str(sv) if sv is not None else "")
+        result_rows.append([
+            r["perturbed_target_symbol"] or "",
+            r["gene"] or "",
+            float(r["log2foldchange"]) if r["log2foldchange"] is not None else None,
+            float(r["padj"]) if r["padj"] is not None else None,
+            stat_str,
+            r["cell_type"] or "",
+        ])
+
+    return {
+        "headers": ["Perturbation", "Effect Gene", "Log2FC", "Padj", "Statistical Score", "Cell Type"],
+        "columns": [
+            {"key": "perturbation_gene", "type": "text"},
+            {"key": "effect_gene", "type": "text"},
+            {"key": "log2fc", "type": "numeric", "role": "fold_change"},
+            {"key": "padj", "type": "numeric", "role": "significance"},
+            {"key": "statistical_score", "type": "text"},
+            {"key": "cell_type", "type": "text"},
+        ],
+        "rows": result_rows,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": max(1, -(-total // page_size)),
+        },
+    }
+
+
+@router.get("/viz/crispr-table")
+async def viz_crispr_table(
+    dataset_id: str,
+    perturbed_gene: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    gene: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    pg_pool = db_pools["pg"]
+
+    filters = ["dataset_id = $1"]
+    params: list = [dataset_id]
+    idx = 2
+
+    if perturbed_gene:
+        filters.append(f"perturbed_target_symbol = ${idx}")
+        params.append(perturbed_gene.upper())
+        idx += 1
+    if gene:
+        filters.append(f"UPPER(perturbed_target_symbol) = ${idx}")
+        params.append(gene.upper())
+        idx += 1
+
+    where = " AND ".join(filters)
+    total = await pg_pool.fetchval(f"SELECT COUNT(*) FROM crispr_data WHERE {where}", *params)
+
+    offset = (page - 1) * page_size
+    params.append(offset)
+    params.append(page_size)
+    data_q = f"""
+        SELECT perturbed_target_symbol, score_name, score_value, significant, significance_criteria
+        FROM crispr_data
+        WHERE {where}
+        ORDER BY score_name ASC, perturbed_target_symbol ASC
+        OFFSET ${idx} LIMIT ${idx + 1}
+    """
+    rows = await pg_pool.fetch(data_q, *params)
+
+    result_rows = []
+    for r in rows:
+        sig_val = str(r["significant"]).strip().lower() == "true" if r["significant"] is not None else False
+        result_rows.append([
+            r["perturbed_target_symbol"] or "",
+            r["score_name"] or "",
+            float(r["score_value"]) if r["score_value"] is not None else None,
+            sig_val,
+            r["significance_criteria"] or "",
+        ])
+
+    return {
+        "headers": ["Perturbation", "Score Name", "Score Value", "Significant", "Significance Criteria"],
+        "columns": [
+            {"key": "perturbation_gene", "type": "text"},
+            {"key": "score_name", "type": "text"},
+            {"key": "score_value", "type": "numeric"},
+            {"key": "significant", "type": "boolean", "role": "significance_bool"},
+            {"key": "significance_criteria", "type": "text"},
+        ],
+        "rows": result_rows,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": max(1, -(-total // page_size)),
+        },
+    }
+
+
+@router.get("/viz/mave-heatmap")
+async def viz_mave_heatmap(
+    dataset_id: str,
+    gene_name: str,
+    score_name: str,
+    position_start: int,
+    position_end: int,
+    user: dict = Depends(get_current_user),
+):
+    pg_pool = db_pools["pg"]
+    window = min(position_end - position_start + 1, 30)
+    clamped_end = position_start + window - 1
+
+    query = """
+        SELECT perturbation_position, perturbation_aa_wt, perturbation_aa_change, score_value
+        FROM mave_data
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND score_name = $3
+              AND perturbation_position >= $4 AND perturbation_position <= $5
+              AND perturbation_position IS NOT NULL
+        ORDER BY perturbation_position, perturbation_aa_change
+    """
+    rows = await pg_pool.fetch(
+        query, gene_name.upper(), dataset_id, score_name, position_start, clamped_end
+    )
+
+    # Build position range for total
+    range_q = """
+        SELECT MIN(perturbation_position), MAX(perturbation_position)
+        FROM mave_data
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND score_name = $3
+              AND perturbation_position IS NOT NULL
+    """
+    range_row = await pg_pool.fetchrow(range_q, gene_name.upper(), dataset_id, score_name)
+    total_start = range_row[0] if range_row and range_row[0] is not None else position_start
+    total_end = range_row[1] if range_row and range_row[1] is not None else clamped_end
+
+    # Build 2D matrix
+    positions_set = sorted({r["perturbation_position"] for r in rows})
+    aa_set = sorted({r["perturbation_aa_change"] for r in rows if r["perturbation_aa_change"]})
+    if not aa_set:
+        aa_set = list("ACDEFGHIKLMNPQRSTVWY")
+    pos_idx = {p: i for i, p in enumerate(positions_set)}
+    aa_idx = {a: i for i, a in enumerate(aa_set)}
+
+    z = [[None] * len(positions_set) for _ in range(len(aa_set))]
+    wt_annotations = []
+
+    for r in rows:
+        pos = r["perturbation_position"]
+        aa = r["perturbation_aa_change"]
+        wt = r["perturbation_aa_wt"]
+        val = r["score_value"]
+        if aa and aa in aa_idx and pos in pos_idx:
+            z[aa_idx[aa]][pos_idx[pos]] = float(val) if val is not None else None
+        if wt and wt in aa_idx and pos in pos_idx:
+            entry = {"row": aa_idx[wt], "col": pos_idx[pos]}
+            if entry not in wt_annotations:
+                wt_annotations.append(entry)
+
+    return {
+        "z": z,
+        "amino_acids": aa_set,
+        "positions": [str(p) for p in positions_set],
+        "wt_annotations": wt_annotations,
+        "gene_name": gene_name.upper(),
+        "position_start": position_start,
+        "position_end": clamped_end,
+        "total_start": total_start,
+        "total_end": total_end,
+    }
+
+
 # --- Tool definitions for Gemini function calling ---
 
 SEARCH_DATASETS_DECLARATION = types.FunctionDeclaration(
@@ -878,6 +1113,54 @@ GET_FUNCTIONAL_ENRICHMENT_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+CREATE_PERTURB_SEQ_TABLE_DECLARATION = types.FunctionDeclaration(
+    name="create_perturb_seq_table",
+    description=(
+        "Create an interactive paginated table of Perturb-seq differential expression data. "
+        "Shows effect genes, log2FC, padj, and cell type for a given perturbation. "
+        "The table supports server-side pagination and gene search — no need to limit rows. "
+        "Use this instead of create_visualization(type='table') for Perturb-seq DEA results."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Perturbed gene name (e.g. 'TP53', 'BRCA2')",
+            ),
+            "dataset_id": types.Schema(
+                type="STRING",
+                description="Optional dataset ID. If omitted and multiple datasets exist, returns a list for user to choose.",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
+CREATE_CRISPR_TABLE_DECLARATION = types.FunctionDeclaration(
+    name="create_crispr_table",
+    description=(
+        "Create an interactive paginated table of CRISPR screen data. "
+        "Shows perturbation gene, score name, score value, and significance. "
+        "The table supports server-side pagination and gene search — no need to limit rows. "
+        "Use this instead of create_visualization(type='table') for CRISPR screen results."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={
+            "gene_name": types.Schema(
+                type="STRING",
+                description="Perturbed gene name (e.g. 'BRCA1', 'TP53')",
+            ),
+            "dataset_id": types.Schema(
+                type="STRING",
+                description="Optional dataset ID. If omitted and multiple datasets exist, returns a list for user to choose.",
+            ),
+        },
+        required=["gene_name"],
+    ),
+)
+
 INTERNAL_TOOL_DECLARATIONS = [
     SEARCH_DATASETS_DECLARATION,
     SEARCH_TARGET_SUMMARY_DECLARATION,
@@ -887,6 +1170,8 @@ INTERNAL_TOOL_DECLARATIONS = [
     CREATE_VISUALIZATION_DECLARATION,
     CREATE_VOLCANO_PLOT_DECLARATION,
     CREATE_MAVE_HEATMAP_DECLARATION,
+    CREATE_PERTURB_SEQ_TABLE_DECLARATION,
+    CREATE_CRISPR_TABLE_DECLARATION,
     CREATE_GENE_NETWORK_DECLARATION,
     GET_STRING_INTERACTIONS_DECLARATION,
     GET_FUNCTIONAL_ENRICHMENT_DECLARATION,
@@ -1531,6 +1816,19 @@ async def _tool_create_mave_heatmap(args: dict) -> dict:
 
     position_labels = [str(p) for p in sorted_positions]
 
+    # Get total position range for pagination
+    total_range_q = """
+        SELECT MIN(perturbation_position), MAX(perturbation_position)
+        FROM mave_data
+        WHERE perturbed_target_symbol = $1 AND dataset_id = $2 AND score_name = $3
+              AND perturbation_position IS NOT NULL
+    """
+    total_range_row = await pg_pool.fetchrow(
+        total_range_q, gene_name.upper(), dataset_id, score_name
+    )
+    total_start = total_range_row[0] if total_range_row and total_range_row[0] is not None else position_start
+    total_end = total_range_row[1] if total_range_row and total_range_row[1] is not None else position_end
+
     viz_data = {
         "type": "mave_heatmap",
         "title": f"MAVE Heatmap: {gene_name.upper()} (positions {position_start}-{position_end})",
@@ -1542,6 +1840,14 @@ async def _tool_create_mave_heatmap(args: dict) -> dict:
             "gene_name": gene_name.upper(),
             "position_start": position_start,
             "position_end": position_end,
+            "total_start": total_start,
+            "total_end": total_end,
+            "endpoint": "/v1/chat/viz/mave-heatmap",
+            "params": {
+                "dataset_id": dataset_id,
+                "gene_name": gene_name.upper(),
+                "score_name": score_name,
+            },
         },
     }
 
@@ -1565,6 +1871,241 @@ async def _tool_create_mave_heatmap(args: dict) -> dict:
             f"Heatmap displayed for {gene_name.upper()} showing {total_variants} variant scores "
             f"across {n_positions} positions ({position_start}-{position_end}) "
             f"and {n_aas} amino acid substitutions."
+        ),
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
+
+
+async def _tool_create_perturb_seq_table(args: dict) -> dict:
+    """Query perturb_seq_dea and return page 1 of a paginated table + summary.
+
+    Same two-step dataset selection flow as volcano plot.
+    """
+    gene_name = args.get("gene_name", "")
+    dataset_id = args.get("dataset_id")
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    pg_pool = db_pools["pg"]
+
+    # Step 1: resolve dataset
+    if not dataset_id:
+        ds_query = """
+            SELECT dataset_id,
+                   COUNT(*) AS total_genes,
+                   COUNT(*) FILTER (WHERE padj < 0.05) AS significant_genes
+            FROM perturb_seq_dea
+            WHERE perturbed_target_symbol = $1 AND gene IS NOT NULL
+            GROUP BY dataset_id
+            ORDER BY significant_genes DESC
+        """
+        ds_rows = await pg_pool.fetch(ds_query, gene_name.upper())
+        if not ds_rows:
+            return {"error": f"No Perturb-seq DEA data found for gene '{gene_name}'"}
+        if len(ds_rows) > 1:
+            return {
+                "action": "choose_dataset",
+                "gene_name": gene_name.upper(),
+                "available_datasets": [
+                    {
+                        "dataset_id": r["dataset_id"],
+                        "total_genes": r["total_genes"],
+                        "significant_genes": r["significant_genes"],
+                    }
+                    for r in ds_rows
+                ],
+            }
+        dataset_id = ds_rows[0]["dataset_id"]
+
+    # Step 2: query page 1
+    page_size = 20
+    count_q = """
+        SELECT COUNT(*) FROM perturb_seq_dea
+        WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+    """
+    total = await pg_pool.fetchval(count_q, dataset_id, gene_name.upper())
+
+    data_q = """
+        SELECT perturbed_target_symbol, gene, log2foldchange, padj,
+               score_name, score_value, cell_type
+        FROM perturb_seq_dea
+        WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+        ORDER BY padj ASC NULLS LAST
+        LIMIT $3
+    """
+    rows = await pg_pool.fetch(data_q, dataset_id, gene_name.upper(), page_size)
+
+    result_rows = []
+    for r in rows:
+        sn = r["score_name"] or ""
+        sv = r["score_value"]
+        stat_str = f"{sn}: {sv}" if sn and sv is not None else (str(sv) if sv is not None else "")
+        result_rows.append([
+            r["perturbed_target_symbol"] or "",
+            r["gene"] or "",
+            float(r["log2foldchange"]) if r["log2foldchange"] is not None else None,
+            float(r["padj"]) if r["padj"] is not None else None,
+            stat_str,
+            r["cell_type"] or "",
+        ])
+
+    sig_count = await pg_pool.fetchval(
+        "SELECT COUNT(*) FROM perturb_seq_dea WHERE dataset_id = $1 AND perturbed_target_symbol = $2 AND padj < 0.05",
+        dataset_id, gene_name.upper(),
+    )
+
+    viz_data = {
+        "type": "perturb_seq_table",
+        "title": f"Perturb-seq DEA: {gene_name.upper()} Perturbation",
+        "data": {
+            "headers": ["Perturbation", "Effect Gene", "Log2FC", "Padj", "Statistical Score", "Cell Type"],
+            "columns": [
+                {"key": "perturbation_gene", "type": "text"},
+                {"key": "effect_gene", "type": "text"},
+                {"key": "log2fc", "type": "numeric", "role": "fold_change"},
+                {"key": "padj", "type": "numeric", "role": "significance"},
+                {"key": "statistical_score", "type": "text"},
+                {"key": "cell_type", "type": "text"},
+            ],
+            "rows": result_rows,
+            "pagination": {
+                "page": 1,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": max(1, -(-total // page_size)),
+            },
+            "endpoint": "/v1/chat/viz/perturb-seq-table",
+            "params": {"dataset_id": dataset_id, "perturbed_gene": gene_name.upper()},
+        },
+    }
+
+    summary = {
+        "status": "success",
+        "gene_name": gene_name.upper(),
+        "dataset_id": dataset_id,
+        "total_effect_genes": total,
+        "significant_genes": sig_count,
+        "message": (
+            f"Table displayed for {gene_name.upper()} perturbation showing {total} effect genes "
+            f"({sig_count} significant at padj < 0.05). "
+            f"Users can page through results and search by gene name."
+        ),
+    }
+
+    return {"viz_data": viz_data, "summary": summary}
+
+
+async def _tool_create_crispr_table(args: dict) -> dict:
+    """Query crispr_data and return page 1 of a paginated table + summary.
+
+    Same two-step dataset selection flow as volcano plot.
+    """
+    gene_name = args.get("gene_name", "")
+    dataset_id = args.get("dataset_id")
+
+    if not gene_name:
+        return {"error": "gene_name is required"}
+
+    pg_pool = db_pools["pg"]
+
+    # Step 1: resolve dataset
+    if not dataset_id:
+        ds_query = """
+            SELECT dataset_id,
+                   COUNT(*) AS total_genes,
+                   COUNT(*) FILTER (WHERE significant = 'True') AS significant_genes
+            FROM crispr_data
+            WHERE perturbed_target_symbol = $1
+            GROUP BY dataset_id
+            ORDER BY significant_genes DESC
+        """
+        ds_rows = await pg_pool.fetch(ds_query, gene_name.upper())
+        if not ds_rows:
+            return {"error": f"No CRISPR screen data found for gene '{gene_name}'"}
+        if len(ds_rows) > 1:
+            return {
+                "action": "choose_dataset",
+                "gene_name": gene_name.upper(),
+                "available_datasets": [
+                    {
+                        "dataset_id": r["dataset_id"],
+                        "total_genes": r["total_genes"],
+                        "significant_genes": r["significant_genes"],
+                    }
+                    for r in ds_rows
+                ],
+            }
+        dataset_id = ds_rows[0]["dataset_id"]
+
+    # Step 2: query page 1
+    page_size = 20
+    count_q = """
+        SELECT COUNT(*) FROM crispr_data
+        WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+    """
+    total = await pg_pool.fetchval(count_q, dataset_id, gene_name.upper())
+
+    data_q = """
+        SELECT perturbed_target_symbol, score_name, score_value, significant, significance_criteria
+        FROM crispr_data
+        WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+        ORDER BY score_name ASC, perturbed_target_symbol ASC
+        LIMIT $3
+    """
+    rows = await pg_pool.fetch(data_q, dataset_id, gene_name.upper(), page_size)
+
+    result_rows = []
+    for r in rows:
+        sig_val = str(r["significant"]).strip().lower() == "true" if r["significant"] is not None else False
+        result_rows.append([
+            r["perturbed_target_symbol"] or "",
+            r["score_name"] or "",
+            float(r["score_value"]) if r["score_value"] is not None else None,
+            sig_val,
+            r["significance_criteria"] or "",
+        ])
+
+    sig_count = await pg_pool.fetchval(
+        "SELECT COUNT(*) FROM crispr_data WHERE dataset_id = $1 AND perturbed_target_symbol = $2 AND significant = 'True'",
+        dataset_id, gene_name.upper(),
+    )
+
+    viz_data = {
+        "type": "crispr_table",
+        "title": f"CRISPR Screen: {gene_name.upper()}",
+        "data": {
+            "headers": ["Perturbation", "Score Name", "Score Value", "Significant", "Significance Criteria"],
+            "columns": [
+                {"key": "perturbation_gene", "type": "text"},
+                {"key": "score_name", "type": "text"},
+                {"key": "score_value", "type": "numeric"},
+                {"key": "significant", "type": "boolean", "role": "significance_bool"},
+                {"key": "significance_criteria", "type": "text"},
+            ],
+            "rows": result_rows,
+            "pagination": {
+                "page": 1,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": max(1, -(-total // page_size)),
+            },
+            "endpoint": "/v1/chat/viz/crispr-table",
+            "params": {"dataset_id": dataset_id, "perturbed_gene": gene_name.upper()},
+        },
+    }
+
+    summary = {
+        "status": "success",
+        "gene_name": gene_name.upper(),
+        "dataset_id": dataset_id,
+        "total_results": total,
+        "significant_results": sig_count,
+        "message": (
+            f"Table displayed for {gene_name.upper()} CRISPR screen showing {total} results "
+            f"({sig_count} significant). "
+            f"Users can page through results and search by gene name."
         ),
     }
 
@@ -3203,6 +3744,8 @@ TOOL_HANDLERS = {
     "get_functional_enrichment": _tool_get_functional_enrichment,
     "predict_variant_consequence": _tool_predict_variant_consequence,
     "batch_variant_consequences": _tool_batch_variant_consequences,
+    "create_perturb_seq_table": _tool_create_perturb_seq_table,
+    "create_crispr_table": _tool_create_crispr_table,
 }
 
 
@@ -3318,6 +3861,8 @@ _OT_TOOL_DESCRIPTIONS = {
     "create_gene_interaction_network": "Building gene interaction network...",
     "get_string_interactions": "Fetching STRING interaction network...",
     "get_functional_enrichment": "Running STRING functional enrichment...",
+    "create_perturb_seq_table": "Building Perturb-seq table...",
+    "create_crispr_table": "Building CRISPR table...",
 }
 
 
@@ -3383,6 +3928,8 @@ CRITICAL TOOL ROUTING — follow these rules for tool selection:
 - "What is the consequence of variant X?" / "VEP for X" / "Predict effect of rs123" / "Is this a splice variant?" / "Regulatory impact of variant" → call predict_variant_consequence (Ensembl VEP)
 - "Annotate these variants" / "VEP for this list" / "Consequences of these SNPs" → call batch_variant_consequences (Ensembl VEP)
 - "Show MAVE data for X" / "Variant effects for X" / "Heatmap for X" / "Deep mutational scanning" → call create_mave_heatmap
+- "Show Perturb-seq results for X" / "DEA table for X" / "Differential expression table" → call create_perturb_seq_table (NOT create_visualization)
+- "Show CRISPR screen results for X" / "CRISPR data for X" / "Screen scores for X" → call create_crispr_table (NOT create_visualization)
 - "Network for X" / "Gene interactions for X" / "What genes are affected by X?" / "Show interaction network" → call create_gene_interaction_network
 - "What proteins interact with X?" / "STRING network for X" / "Interaction partners of X" / "PPI network" → call get_string_interactions (STRING)
 - "What pathways are enriched?" / "Enrichment analysis for these genes" / "GO terms for X, Y, Z" → call get_functional_enrichment (STRING), then display as table
@@ -3397,8 +3944,10 @@ Visualization guidelines:
 - Use pie charts for distributions with 2-6 categories
 - Use bar charts for comparisons or >6 categories
 - Use tables for detailed data rows (limit to 20 rows for readability)
+- For Perturb-seq DEA results as a table, use create_perturb_seq_table (NOT create_visualization) — produces interactive tables with pagination and gene search
+- For CRISPR screen results as a table, use create_crispr_table (NOT create_visualization) — produces interactive tables with pagination and gene search
 - For volcano plots of Perturb-seq DEA data, use the dedicated create_volcano_plot tool (NOT create_visualization)
-- For MAVE variant effect heatmaps, use the dedicated create_mave_heatmap tool (NOT create_visualization)
+- For MAVE variant effect heatmaps, use the dedicated create_mave_heatmap tool (NOT create_visualization) — users can page through positions client-side
 - For gene interaction networks, use the dedicated create_gene_interaction_network tool (NOT create_visualization)
 - When showing datasets, include dataset_id, title, modality, and key metadata
 - When showing perturbation data, highlight significant results
@@ -3417,7 +3966,17 @@ Two-step flow (same as volcano plot):
 1. If the gene has MAVE data in MULTIPLE datasets, the tool returns a list of available datasets with their variant counts. You MUST present these datasets to the user and ask which one they want to visualize. Then call create_mave_heatmap again with the chosen dataset_id.
 2. If the gene has data in only ONE dataset, the heatmap is rendered immediately and you receive a summary — use this to write an informative interpretation about the variant effect landscape.
 
-The heatmap shows 30 positions by default. If the user wants to see a specific region, pass position_start and position_end parameters. Tell the user the displayed position range and total available positions so they can request other regions.
+The heatmap shows 30 positions by default. If the user wants to see a specific region, pass position_start and position_end parameters. The heatmap now has client-side pagination — users can page through positions directly without further LLM calls.
+
+PERTURB-SEQ TABLE:
+When a user asks to see Perturb-seq DEA results as a table (e.g., "Show me the DEA table for TP53", "List differential expression for BRCA2"), call create_perturb_seq_table with the gene name. This produces an interactive paginated table with color-coded log2FC and padj values, and search inputs for filtering by gene. No need to limit rows — the table supports server-side pagination.
+
+Two-step flow (same as volcano plot):
+1. If the gene has data in MULTIPLE datasets, the tool returns a list of available datasets. Present them to the user and ask which one to view. Then call create_perturb_seq_table again with the chosen dataset_id.
+2. If the gene has data in only ONE dataset, the table is rendered immediately.
+
+CRISPR TABLE:
+When a user asks to see CRISPR screen results as a table (e.g., "Show CRISPR data for TP53", "CRISPR screen scores for BRCA1"), call create_crispr_table with the gene name. This produces an interactive paginated table with color-coded significance. Same two-step dataset selection flow.
 
 GENE INTERACTION NETWORK:
 When a user asks for a network view, gene interactions, or wants to visualize which genes are affected by a perturbation (e.g., "Show me a network for TP53", "What genes interact with BRCA2 perturbation?", "Network of TP53 effects"), call create_gene_interaction_network with the gene name. The backend queries Perturb-seq DEA data and renders an interactive Cytoscape.js network — do NOT query with query_perturbation_data separately.
@@ -3779,6 +4338,42 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             )
                         else:
                             # Heatmap built — emit visualization and return summary
+                            yield await _persist_and_emit_viz(session_id, result["viz_data"])
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result["summary"],
+                                )
+                            )
+                    elif tool_name in ("create_perturb_seq_table", "create_crispr_table"):
+                        desc = "Building Perturb-seq table..." if tool_name == "create_perturb_seq_table" else "Building CRISPR table..."
+                        handler = _tool_create_perturb_seq_table if tool_name == "create_perturb_seq_table" else _tool_create_crispr_table
+                        yield _sse_event(
+                            "tool_call",
+                            {"tool": tool_name, "description": desc},
+                        )
+                        yield _sse_event("thinking", {"status": desc})
+                        try:
+                            result = await handler(tool_args)
+                        except Exception as exc:
+                            logger.exception("Tool %s failed", tool_name)
+                            result = {"error": str(exc)}
+
+                        if "error" in result:
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        elif result.get("action") == "choose_dataset":
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=result,
+                                )
+                            )
+                        else:
                             yield await _persist_and_emit_viz(session_id, result["viz_data"])
                             function_response_parts.append(
                                 types.Part.from_function_response(
