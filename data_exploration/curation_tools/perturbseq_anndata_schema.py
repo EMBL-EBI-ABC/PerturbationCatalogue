@@ -170,7 +170,7 @@ class ObsSchema(DataFrameModel):
     )
     developmental_stage_label: Series[String] = Field(
         nullable=True,
-        description="Developmental stage ontology term label of the investigated sample.",
+        description="Developmental stage ontology term label of the investigated sample. The age groups are defined as follows: embryonic (conception to 8 weeks), fetal (9 weeks to birth), child (0-12 years), adolescent (13-18 years), adult (19-59 years), senior adult (60 years and above).",
         isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
