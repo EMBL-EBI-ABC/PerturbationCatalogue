@@ -230,7 +230,7 @@ async def viz_perturb_seq_table(
     dataset_id: str,
     perturbed_gene: Optional[str] = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 10,
     effect_gene: Optional[str] = None,
     perturbation_gene: Optional[str] = None,
     sort_by: str = "padj",
@@ -321,7 +321,7 @@ async def viz_crispr_table(
     dataset_id: str,
     perturbed_gene: Optional[str] = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 10,
     gene: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
@@ -1920,7 +1920,7 @@ async def _tool_create_perturb_seq_table(args: dict) -> dict:
         dataset_id = ds_rows[0]["dataset_id"]
 
     # Step 2: query page 1
-    page_size = 20
+    page_size = 10
     count_q = """
         SELECT COUNT(*) FROM perturb_seq_dea
         WHERE dataset_id = $1 AND perturbed_target_symbol = $2
@@ -2040,7 +2040,7 @@ async def _tool_create_crispr_table(args: dict) -> dict:
         dataset_id = ds_rows[0]["dataset_id"]
 
     # Step 2: query page 1
-    page_size = 20
+    page_size = 10
     count_q = """
         SELECT COUNT(*) FROM crispr_data
         WHERE dataset_id = $1 AND perturbed_target_symbol = $2
