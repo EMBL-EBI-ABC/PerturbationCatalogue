@@ -1,8 +1,10 @@
+import asyncio
 import json
 import logging
 import os
+import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import aiohttp
@@ -58,10 +60,44 @@ def configure(
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    model: Optional[str] = None  # User-selected model override
 
 
 class SessionUpdateRequest(BaseModel):
     title: str
+
+
+# --- Available models ---
+
+AVAILABLE_MODELS = [
+    {
+        "id": "gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash",
+        "description": "Fast responses for simple questions",
+        "supports_planning": False,
+    },
+    {
+        "id": "gemini-3-flash-preview",
+        "name": "Gemini 3 Flash",
+        "description": "Balanced speed and reasoning",
+        "supports_planning": False,
+    },
+    {
+        "id": "gemini-3.1-pro-preview",
+        "name": "Gemini 3.1 Pro",
+        "description": "Deep analysis with multi-step planning",
+        "supports_planning": True,
+    },
+]
+
+_PLANNING_MODEL_IDS = {m["id"] for m in AVAILABLE_MODELS if m["supports_planning"]}
+_VALID_MODEL_IDS = {m["id"] for m in AVAILABLE_MODELS}
+
+
+@router.get("/models")
+async def list_models():
+    """Return available models for the frontend dropdown."""
+    return {"models": AVAILABLE_MODELS}
 
 
 # --- Session CRUD endpoints ---
@@ -2649,6 +2685,37 @@ async def _tool_get_protein_structure(args: dict) -> dict:
     if not uniprot_id:
         return {"error": "uniprot_id is required"}
 
+    # Auto-resolve gene names to UniProt IDs.
+    # UniProt accessions match patterns like P04637, Q9Y6K9, A0A0A0MRZ7.
+    # If it doesn't look like one, try resolving via UniProt search.
+    if not re.match(r"^[A-Z][0-9][A-Z0-9]{3}[0-9]", uniprot_id):
+        logger.info(
+            "get_protein_structure: '%s' doesn't look like a UniProt accession, "
+            "attempting gene name resolution",
+            uniprot_id,
+        )
+        try:
+            lookup_result = await _tool_lookup_protein({"gene_name": uniprot_id})
+            resolved_id = lookup_result.get("uniprot_id", "")
+            if resolved_id:
+                logger.info(
+                    "get_protein_structure: resolved '%s' → '%s'",
+                    uniprot_id,
+                    resolved_id,
+                )
+                uniprot_id = resolved_id
+            else:
+                return {
+                    "error": f"Could not resolve '{uniprot_id}' to a UniProt accession: "
+                    f"{lookup_result.get('error', 'unknown error')}"
+                }
+        except Exception as exc:
+            logger.warning(
+                "get_protein_structure: gene name resolution failed for '%s': %s",
+                uniprot_id,
+                exc,
+            )
+
     url = f"https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}"
     try:
         async with aiohttp.ClientSession() as session:
@@ -4092,6 +4159,601 @@ VEP vs ProtVar guidance:
 - Use ProtVar (annotate_variant) for: protein stability (FoldX ddG), structural context (binding pockets, PPI interfaces), EVE/ESM-1b scores, PTM disruption
 - For missense variants, both tools are complementary — VEP gives consequence + CADD + SpliceAI + regulatory context, ProtVar gives stability + structural context"""
 
+# --- Agentic planning prompts ---
+
+PLANNING_SYSTEM_INSTRUCTION = """You are a planning agent for the Perturbation Catalogue AI Explorer.
+Given a user question and the conversation history, create a structured execution plan that determines which tools to call and in what order.
+
+You MUST output valid JSON with this exact structure:
+{
+  "plan_summary": "1-sentence description of the approach",
+  "steps": [
+    {
+      "id": 1,
+      "tool": "tool_name",
+      "args": {"arg1": "value1"},
+      "purpose": "Why this step is needed",
+      "depends_on": []
+    }
+  ],
+  "synthesis_instructions": "How to combine results into a final answer"
+}
+
+RULES:
+1. Mark steps as independent (depends_on: []) when they don't need results from prior steps. This enables parallel execution.
+2. Use $STEP_N_RESULT placeholders in args when a step depends on a prior step's output (e.g. a dataset_id from find_datasets_for_target).
+3. Minimize total steps — don't add unnecessary tool calls. Maximum 10 steps.
+4. ALWAYS call find_datasets_for_target before dataset-specific visualization tools (create_volcano_plot, create_mave_heatmap, create_perturb_seq_table, create_crispr_table, create_gene_interaction_network).
+5. For druggability questions, always use get_druggability (Pharos) — not Open Targets.
+6. For protein info, use lookup_protein. For 3D structure, use get_protein_structure.
+7. For variant annotation, use annotate_variant (ProtVar) or predict_variant_consequence (VEP) as appropriate.
+8. For literature, use search_literature.
+9. For disease associations, use Open Targets (search_entities to get ID, then query_open_targets_graphql).
+
+CRITICAL — DASHBOARD VISUALIZATIONS:
+The user sees results on a dashboard. Tools fall into two categories:
+
+VISUALIZATION TOOLS (produce dashboard tiles automatically):
+- create_volcano_plot → volcano plot tile
+- create_mave_heatmap → heatmap tile
+- create_perturb_seq_table → interactive table tile
+- create_crispr_table → interactive table tile
+- create_gene_interaction_network → network tile
+- get_string_interactions → network tile
+- get_protein_structure → 3D structure viewer tile
+
+DATA-ONLY TOOLS (return data but do NOT produce dashboard tiles):
+- get_druggability, lookup_protein, find_datasets_for_target, search_datasets, search_target_summary, query_perturbation_data, get_catalogue_summary, map_identifiers, get_protein_variants, search_literature, annotate_variant, get_variant_structural_context, predict_variant_consequence, batch_variant_consequences, get_functional_enrichment, search_entities, query_open_targets_graphql
+
+You MUST include visualization tool steps so the user sees results on the dashboard. Examples:
+- When comparing genes: include create_volcano_plot or create_perturb_seq_table for each gene (after find_datasets_for_target)
+- When analyzing a protein: include get_protein_structure (after lookup_protein to get uniprot_id)
+- When exploring networks: include get_string_interactions or create_gene_interaction_network
+- For any gene analysis: consider including at least one visualization step
+
+AVAILABLE TOOLS (use exact names):
+
+Data tools:
+- search_datasets: Search catalogue datasets by keyword, modality, tissue, disease
+- search_target_summary: Get aggregated target overview (modalities, tissues, diseases)
+- find_datasets_for_target: Find all datasets for a gene across modalities. ALWAYS call before dataset-specific visualizations.
+- query_perturbation_data: Query raw perturbation data rows (Perturb-seq, CRISPR, MAVE)
+- get_catalogue_summary: Get high-level counts for the catalogue
+- lookup_protein: Look up protein function, domains, diseases from UniProt (requires gene_name)
+- map_identifiers: Map between gene symbols, UniProt, Ensembl IDs (requires identifier)
+- get_protein_variants: Get known variants from UniProt (requires accession)
+- search_literature: Search Europe PMC for papers (requires query)
+- get_druggability: Check druggability via Pharos (requires gene_name)
+- annotate_variant: Deep variant annotation via ProtVar (requires variant)
+- get_variant_structural_context: Structural context at a residue via ProtVar (requires uniprot_id, position)
+- predict_variant_consequence: VEP consequence prediction (requires variant_id)
+- batch_variant_consequences: Batch VEP for up to 200 variants (requires variants list)
+- get_functional_enrichment: Run GO/KEGG/Reactome enrichment on a gene set (requires identifiers list)
+- search_entities: (Open Targets) Resolve names to standardized IDs
+- query_open_targets_graphql: (Open Targets) Run GraphQL queries
+
+Visualization tools:
+- create_volcano_plot: Volcano plot for Perturb-seq DEA data (requires gene_name, optionally dataset_id). Auto-picks first dataset if multiple exist.
+- create_mave_heatmap: MAVE variant effect heatmap (requires gene_name, optionally dataset_id)
+- create_perturb_seq_table: Interactive Perturb-seq DEA table (requires gene_name, optionally dataset_id)
+- create_crispr_table: Interactive CRISPR screen table (requires gene_name, optionally dataset_id)
+- create_gene_interaction_network: Gene interaction network from Perturb-seq data (requires gene_name, optionally dataset_id)
+- get_string_interactions: STRING protein-protein interaction network (requires gene_name)
+- get_protein_structure: AlphaFold 3D structure (requires uniprot_id — use lookup_protein first to get uniprot_id, then pass it here)
+
+For Open Targets GraphQL, use these query templates:
+- Disease associations: query { target(ensemblId: "ENSG...") { approvedSymbol associatedDiseases(page: {index: 0, size: 25}) { count rows { disease { id name } score } } } }
+- Drugs: query { target(ensemblId: "ENSG...") { approvedSymbol knownDrugs(size: 25) { count rows { drug { id name } mechanismOfAction phase status } } } }
+
+Output ONLY the JSON plan. No other text."""
+
+
+SYNTHESIS_SYSTEM_INSTRUCTION = """You are synthesizing results from multiple tool calls to answer the user's question about perturbation data and gene biology.
+
+You have the original question, the execution plan, and summaries from all completed tool calls.
+
+RULES:
+- Write a clear, comprehensive answer that ties together findings from all tools.
+- ONLY reference visualizations that are listed in the "Visualizations on dashboard" section below. Do NOT reference visualizations that were not created.
+- If no visualizations were created, present the key data findings directly in your text.
+- Do NOT include raw data tables in your text unless no table visualization exists on the dashboard.
+- Focus on insights, comparisons, and actionable conclusions.
+- Be concise and scientific. Lead with key findings.
+- If some steps failed, acknowledge what couldn't be retrieved and work with what succeeded.
+- Clearly distinguish between data sources (Perturbation Catalogue vs Open Targets vs UniProt vs Pharos etc.)."""
+
+
+# --- Agentic plan execution helpers ---
+
+_PLAN_CONCURRENCY_LIMIT = 3  # Max parallel tool calls during plan execution
+
+
+async def _generate_plan(
+    client, model_name: str, message: str, history: list
+) -> Optional[dict]:
+    """Call the planning model to produce a structured execution plan."""
+    # Build contents from history + current message
+    contents = []
+    for entry in history:
+        contents.append(types.Content(**entry))
+    contents.append(
+        types.Content(role="user", parts=[types.Part.from_text(text=message)])
+    )
+
+    config = types.GenerateContentConfig(
+        system_instruction=PLANNING_SYSTEM_INSTRUCTION,
+        temperature=0.3,
+        response_mime_type="application/json",
+    )
+
+    response = await client.aio.models.generate_content(
+        model=model_name,
+        contents=contents,
+        config=config,
+    )
+
+    candidate = response.candidates[0] if response.candidates else None
+    if not candidate or not candidate.content or not candidate.content.parts:
+        return None
+
+    text = ""
+    for part in candidate.content.parts:
+        if part.text:
+            text += part.text
+
+    try:
+        plan = json.loads(text)
+    except json.JSONDecodeError:
+        # Try to extract JSON from markdown code block
+        match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+        if match:
+            try:
+                plan = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    # Validate plan structure
+    if not isinstance(plan, dict) or "steps" not in plan:
+        return None
+    if not isinstance(plan["steps"], list) or len(plan["steps"]) == 0:
+        return None
+    if len(plan["steps"]) > 10:
+        plan["steps"] = plan["steps"][:10]
+
+    # Ensure each step has required fields and valid tool names
+    valid_tool_names = {d.name for d in INTERNAL_TOOL_DECLARATIONS} | _ot_tool_names
+    validated_steps = []
+    for step in plan["steps"]:
+        if "id" not in step or "tool" not in step:
+            return None
+        step.setdefault("args", {})
+        step.setdefault("purpose", "")
+        step.setdefault("depends_on", [])
+        # Skip steps with hallucinated tool names
+        if step["tool"] not in valid_tool_names:
+            logger.warning("Plan step %s uses unknown tool '%s', skipping", step["id"], step["tool"])
+            continue
+        validated_steps.append(step)
+    plan["steps"] = validated_steps
+
+    if not plan["steps"]:
+        return None
+
+    return plan
+
+
+def _resolve_step_args(args: dict, completed_results: dict) -> dict:
+    """Resolve $STEP_N_RESULT placeholders in tool args using prior step results."""
+    resolved = {}
+    for key, value in args.items():
+        if isinstance(value, str) and value.startswith("$STEP_") and "_RESULT" in value:
+            # Extract step ID: $STEP_3_RESULT → 3
+            # Also handle $STEP_3_RESULT.field_name patterns
+            ref_part = value.split(".")[0]  # Strip any .field_name suffix
+            try:
+                step_id = int(ref_part.replace("$STEP_", "").replace("_RESULT", ""))
+            except ValueError:
+                logger.warning("_resolve_step_args: could not parse step ID from '%s'", value)
+                resolved[key] = value
+                continue
+            prior = completed_results.get(step_id)
+            if prior and "result" in prior:
+                result_data = prior["result"]
+                if isinstance(result_data, dict):
+                    # Check for explicit dot-notation field (e.g. $STEP_1_RESULT.uniprot_id)
+                    dot_parts = value.split(".", 1)
+                    if len(dot_parts) > 1:
+                        dot_field = dot_parts[1]
+                        if dot_field in result_data:
+                            logger.info(
+                                "_resolve_step_args: resolved %s via dot-notation '%s' from step %d → '%s'",
+                                key, dot_field, step_id, result_data[dot_field],
+                            )
+                            resolved[key] = result_data[dot_field]
+                            continue
+                    # Smart field extraction: if the arg key exists directly
+                    # in the result, use that value (e.g. uniprot_id, gene, accession)
+                    if key in result_data:
+                        logger.info(
+                            "_resolve_step_args: resolved %s from step %d → '%s'",
+                            key, step_id, result_data[key],
+                        )
+                        resolved[key] = result_data[key]
+                        continue
+                    # dataset_id special case: look inside nested datasets list
+                    if key == "dataset_id":
+                        if "available_datasets" in result_data:
+                            datasets = result_data["available_datasets"]
+                            if isinstance(datasets, list) and len(datasets) > 0:
+                                first = datasets[0]
+                                if isinstance(first, dict) and "dataset_id" in first:
+                                    resolved[key] = first["dataset_id"]
+                                    continue
+                        if "dataset_id" in result_data:
+                            resolved[key] = result_data["dataset_id"]
+                            continue
+                # Fallback: pass the whole result as string
+                logger.warning(
+                    "_resolve_step_args: key '%s' not found in step %d result (keys: %s), "
+                    "falling back to full result serialization",
+                    key, step_id,
+                    list(result_data.keys()) if isinstance(result_data, dict) else type(result_data).__name__,
+                )
+                resolved[key] = json.dumps(result_data, default=str) if not isinstance(result_data, str) else result_data
+            else:
+                resolved[key] = value
+        else:
+            resolved[key] = value
+    return resolved
+
+
+# Description map for plan step status messages
+_TOOL_STEP_DESCRIPTIONS = {
+    "search_datasets": "Searching datasets...",
+    "search_target_summary": "Searching target summary...",
+    "find_datasets_for_target": "Finding datasets for target...",
+    "query_perturbation_data": "Querying perturbation data...",
+    "get_catalogue_summary": "Getting catalogue summary...",
+    "create_visualization": "Creating visualization...",
+    "create_volcano_plot": "Building volcano plot...",
+    "create_mave_heatmap": "Building MAVE heatmap...",
+    "create_perturb_seq_table": "Building Perturb-seq table...",
+    "create_crispr_table": "Building CRISPR table...",
+    "create_gene_interaction_network": "Building gene interaction network...",
+    "get_string_interactions": "Fetching STRING interactions...",
+    "get_functional_enrichment": "Running enrichment analysis...",
+    "lookup_protein": "Looking up protein info...",
+    "get_protein_structure": "Loading protein structure...",
+    "map_identifiers": "Mapping identifiers...",
+    "get_protein_variants": "Fetching protein variants...",
+    "search_literature": "Searching literature...",
+    "get_druggability": "Checking druggability...",
+    "annotate_variant": "Annotating variant...",
+    "get_variant_structural_context": "Getting structural context...",
+    "predict_variant_consequence": "Predicting variant consequence...",
+    "batch_variant_consequences": "Batch annotating variants...",
+}
+
+
+async def _execute_tool_for_plan(
+    session_id: str, tool_name: str, tool_args: dict
+) -> Tuple[List[str], dict]:
+    """Execute a single tool and return (sse_events, result).
+
+    Returns a tuple of:
+    - sse_events: list of SSE event strings to yield (tool_call, thinking, visualization)
+    - result: the tool result dict (for synthesis)
+    """
+    sse_events = []
+    desc = _TOOL_STEP_DESCRIPTIONS.get(tool_name, f"Calling {tool_name}...")
+    sse_events.append(_sse_event("tool_call", {"tool": tool_name, "description": desc}))
+
+    result = {}
+
+    try:
+        if tool_name == "create_visualization":
+            # LLM-generated viz: data comes from args
+            viz_data = {
+                "type": tool_args.get("viz_type", "table"),
+                "title": tool_args.get("title", ""),
+                "data": tool_args.get("data", {}),
+            }
+            viz_event = await _persist_and_emit_viz(session_id, viz_data)
+            sse_events.append(viz_event)
+            result = {"status": "success", "message": "Visualization displayed"}
+
+        elif tool_name == "create_volcano_plot":
+            raw = await _tool_create_volcano_plot(tool_args)
+            if "error" in raw:
+                result = raw
+            elif raw.get("action") == "choose_dataset":
+                # In plan mode, auto-pick first dataset if available
+                datasets = raw.get("available_datasets", [])
+                if datasets:
+                    tool_args["dataset_id"] = datasets[0].get("dataset_id", "")
+                    raw2 = await _tool_create_volcano_plot(tool_args)
+                    if "error" not in raw2 and raw2.get("action") != "choose_dataset":
+                        viz_event = await _persist_and_emit_viz(session_id, raw2["viz_data"])
+                        sse_events.append(viz_event)
+                        result = raw2.get("summary", raw2)
+                    else:
+                        result = raw2
+                else:
+                    result = raw
+            else:
+                viz_event = await _persist_and_emit_viz(session_id, raw["viz_data"])
+                sse_events.append(viz_event)
+                result = raw.get("summary", raw)
+
+        elif tool_name == "create_mave_heatmap":
+            raw = await _tool_create_mave_heatmap(tool_args)
+            if "error" in raw:
+                result = raw
+            elif raw.get("action") == "choose_dataset":
+                datasets = raw.get("available_datasets", [])
+                if datasets:
+                    tool_args["dataset_id"] = datasets[0].get("dataset_id", "")
+                    raw2 = await _tool_create_mave_heatmap(tool_args)
+                    if "error" not in raw2 and raw2.get("action") != "choose_dataset":
+                        viz_event = await _persist_and_emit_viz(session_id, raw2["viz_data"])
+                        sse_events.append(viz_event)
+                        result = raw2.get("summary", raw2)
+                    else:
+                        result = raw2
+                else:
+                    result = raw
+            else:
+                viz_event = await _persist_and_emit_viz(session_id, raw["viz_data"])
+                sse_events.append(viz_event)
+                result = raw.get("summary", raw)
+
+        elif tool_name in ("create_perturb_seq_table", "create_crispr_table"):
+            handler = _tool_create_perturb_seq_table if tool_name == "create_perturb_seq_table" else _tool_create_crispr_table
+            raw = await handler(tool_args)
+            if "error" in raw:
+                result = raw
+            elif raw.get("action") == "choose_dataset":
+                datasets = raw.get("available_datasets", [])
+                if datasets:
+                    tool_args["dataset_id"] = datasets[0].get("dataset_id", "")
+                    raw2 = await handler(tool_args)
+                    if "error" not in raw2 and raw2.get("action") != "choose_dataset":
+                        viz_event = await _persist_and_emit_viz(session_id, raw2["viz_data"])
+                        sse_events.append(viz_event)
+                        result = raw2.get("summary", raw2)
+                    else:
+                        result = raw2
+                else:
+                    result = raw
+            else:
+                viz_event = await _persist_and_emit_viz(session_id, raw["viz_data"])
+                sse_events.append(viz_event)
+                result = raw.get("summary", raw)
+
+        elif tool_name == "create_gene_interaction_network":
+            raw = await _tool_create_gene_interaction_network(tool_args)
+            if "error" in raw:
+                result = raw
+            elif raw.get("action") == "choose_dataset":
+                datasets = raw.get("available_datasets", [])
+                if datasets:
+                    tool_args["dataset_id"] = datasets[0].get("dataset_id", "")
+                    raw2 = await _tool_create_gene_interaction_network(tool_args)
+                    if "error" not in raw2 and raw2.get("action") != "choose_dataset":
+                        viz_event = await _persist_and_emit_viz(session_id, raw2["viz_data"])
+                        sse_events.append(viz_event)
+                        result = raw2.get("summary", raw2)
+                    else:
+                        result = raw2
+                else:
+                    result = raw
+            else:
+                viz_event = await _persist_and_emit_viz(session_id, raw["viz_data"])
+                sse_events.append(viz_event)
+                result = raw.get("summary", raw)
+
+        elif tool_name == "get_string_interactions":
+            raw = await _tool_get_string_interactions(tool_args)
+            if "error" in raw:
+                result = raw
+            else:
+                viz_event = await _persist_and_emit_viz(session_id, raw["viz_data"])
+                sse_events.append(viz_event)
+                result = raw.get("summary", raw)
+
+        elif tool_name == "get_protein_structure":
+            raw = await _tool_get_protein_structure(tool_args)
+            if "error" not in raw:
+                viz_data = {
+                    "type": "protein_structure",
+                    "title": f"AlphaFold Structure: {raw.get('gene', raw.get('uniprot_id', ''))}",
+                    "data": raw,
+                }
+                viz_event = await _persist_and_emit_viz(session_id, viz_data)
+                sse_events.append(viz_event)
+            result = raw
+
+        elif tool_name in _ot_tool_names:
+            result = await _call_open_targets_tool(tool_name, tool_args)
+
+        elif tool_name in TOOL_HANDLERS:
+            result = await TOOL_HANDLERS[tool_name](tool_args)
+
+        else:
+            result = {"error": f"Unknown tool: {tool_name}"}
+
+    except Exception as exc:
+        logger.exception("Plan step tool %s failed", tool_name)
+        result = {"error": str(exc)}
+
+    return sse_events, result
+
+
+def _summarize_result(result: dict, max_len: int = 3000) -> str:
+    """Truncate a tool result to a reasonable size for the synthesis context."""
+    text = json.dumps(result, default=str)
+    if len(text) > max_len:
+        return text[:max_len] + "... [truncated]"
+    return text
+
+
+async def _execute_plan(session_id: str, plan: dict) -> Tuple[List[str], dict]:
+    """Execute all plan steps respecting dependencies, with parallel execution.
+
+    Returns (all_sse_events, completed_results_dict).
+    """
+    steps = plan.get("steps", [])
+    completed: Dict[int, dict] = {}
+    all_sse_events: List[str] = []
+    pending = list(steps)
+    sem = asyncio.Semaphore(_PLAN_CONCURRENCY_LIMIT)
+
+    async def _run_step(step):
+        """Run a single step; always returns a well-formed tuple even on exception."""
+        async with sem:
+            try:
+                resolved_args = _resolve_step_args(step["args"], completed)
+                sse_events, result = await _execute_tool_for_plan(
+                    session_id, step["tool"], resolved_args
+                )
+                return step, sse_events, result
+            except Exception as exc:
+                logger.exception("Plan step %s (%s) raised exception", step["id"], step["tool"])
+                return step, [], {"error": str(exc)}
+
+    while pending:
+        # Find steps whose dependencies are all satisfied
+        ready = [
+            s for s in pending
+            if all(d in completed for d in s.get("depends_on", []))
+        ]
+        if not ready:
+            # Deadlock or broken dependencies — mark remaining as errors
+            logger.warning("Plan execution deadlock: %d steps have unresolvable dependencies", len(pending))
+            for s in pending:
+                completed[s["id"]] = {
+                    "step_id": s["id"],
+                    "tool": s["tool"],
+                    "purpose": s["purpose"],
+                    "result": {"error": "Unresolvable dependency"},
+                    "result_summary": '{"error": "Unresolvable dependency"}',
+                }
+                all_sse_events.append(
+                    _sse_event("plan_step", {"step_id": s["id"], "status": "error"})
+                )
+            break
+
+        # Mark steps as running
+        for step in ready:
+            all_sse_events.append(
+                _sse_event("plan_step", {"step_id": step["id"], "status": "running"})
+            )
+
+        # Execute ready steps in parallel
+        tasks = [_run_step(s) for s in ready]
+        results = await asyncio.gather(*tasks)
+
+        for step, sse_events, result in results:
+            all_sse_events.extend(sse_events)
+            completed[step["id"]] = {
+                "step_id": step["id"],
+                "tool": step["tool"],
+                "purpose": step["purpose"],
+                "result": result,
+                "result_summary": _summarize_result(result),
+            }
+            status = "error" if isinstance(result, dict) and "error" in result else "done"
+            all_sse_events.append(
+                _sse_event("plan_step", {"step_id": step["id"], "status": status})
+            )
+
+        for s in ready:
+            if s in pending:
+                pending.remove(s)
+
+    return all_sse_events, completed
+
+
+_VIZ_PRODUCING_TOOLS = {
+    "create_volcano_plot", "create_mave_heatmap", "create_perturb_seq_table",
+    "create_crispr_table", "create_gene_interaction_network",
+    "get_string_interactions", "get_protein_structure",
+}
+
+
+async def _synthesize(
+    client, model_name: str, message: str, plan: dict, completed_results: dict,
+    emitted_sse_events: List[str],
+) -> str:
+    """Generate a synthesis response from all collected tool results."""
+    # Build context for the synthesis model
+    results_text = ""
+    for step in plan.get("steps", []):
+        step_id = step["id"]
+        if step_id in completed_results:
+            cr = completed_results[step_id]
+            results_text += f"\n\nStep {step_id} — {step['tool']} ({step.get('purpose', '')}):\n"
+            results_text += cr["result_summary"]
+
+    # Identify which visualizations were actually created
+    viz_list = []
+    for evt_str in emitted_sse_events:
+        if "event: visualization" in evt_str:
+            try:
+                data_line = evt_str.split("data: ", 1)[1].strip()
+                viz_data = json.loads(data_line)
+                viz_type = viz_data.get("type", "unknown")
+                viz_title = viz_data.get("title", "untitled")
+                viz_list.append(f"- {viz_type}: {viz_title}")
+            except Exception:
+                pass
+
+    if viz_list:
+        viz_section = "Visualizations on dashboard:\n" + "\n".join(viz_list)
+    else:
+        viz_section = "Visualizations on dashboard: NONE — no visualizations were created. Present key findings in your text response."
+
+    synthesis_prompt = f"""Original user question: {message}
+
+Plan summary: {plan.get('plan_summary', '')}
+Synthesis instructions: {plan.get('synthesis_instructions', '')}
+
+{viz_section}
+
+Tool results:{results_text}
+
+Based on the above results, write a comprehensive answer to the user's question."""
+
+    contents = [
+        types.Content(
+            role="user", parts=[types.Part.from_text(text=synthesis_prompt)]
+        )
+    ]
+
+    config = types.GenerateContentConfig(
+        system_instruction=SYNTHESIS_SYSTEM_INSTRUCTION,
+        temperature=0.3,
+    )
+
+    response = await client.aio.models.generate_content(
+        model=model_name,
+        contents=contents,
+        config=config,
+    )
+
+    candidate = response.candidates[0] if response.candidates else None
+    if not candidate or not candidate.content or not candidate.content.parts:
+        return "I completed the analysis but wasn't able to generate a synthesis. Please review the visualizations in the dashboard."
+
+    text = ""
+    for part in candidate.content.parts:
+        if part.text:
+            text += part.text
+    return text
+
+
 # --- SSE streaming endpoint ---
 
 
@@ -4174,16 +4836,28 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     uuid.UUID(session_id),
                 )
 
-            model_name = _config.get("gemini_model", "gemini-2.5-flash")
+            # Resolve model: user-selected → server default → fallback
+            default_model = _config.get("gemini_model", "gemini-2.5-flash")
+            requested_model = request.model
+            if requested_model and requested_model in _VALID_MODEL_IDS:
+                model_name = requested_model
+            else:
+                model_name = default_model
+            use_planning = model_name in _PLANNING_MODEL_IDS
+
             project = _config.get("google_cloud_project", "")
             api_key = _config.get("gemini_api_key", "")
 
             if project:
                 # Vertex AI path (Cloud Run / GCP)
+                # Preview models (e.g. gemini-3.1-pro-preview) may need
+                # the "global" endpoint instead of a regional one.
+                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+                location = "global" if "preview" in model_name else default_location
                 client = genai.Client(
                     vertexai=True,
                     project=project,
-                    location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                    location=location,
                 )
             elif api_key:
                 # API key path (local dev)
@@ -4201,6 +4875,64 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                 types.Content(role="user", parts=[types.Part.from_text(text=message)])
             )
 
+            if use_planning:
+                # ===== AGENTIC PLANNING FLOW =====
+                yield _sse_event("thinking", {"status": "Planning analysis approach..."})
+
+                # Phase 1: Generate plan
+                plan = await _generate_plan(client, model_name, message, history)
+
+                if plan is None:
+                    # Planning failed — fall back to single-pass
+                    yield _sse_event("thinking", {"status": "Thinking..."})
+                    use_planning = False
+                else:
+                    # Emit plan to frontend
+                    plan_payload = {
+                        "plan_summary": plan.get("plan_summary", ""),
+                        "steps": [
+                            {
+                                "id": s["id"],
+                                "tool": s["tool"],
+                                "purpose": s.get("purpose", ""),
+                                "depends_on": s.get("depends_on", []),
+                            }
+                            for s in plan["steps"]
+                        ],
+                    }
+                    yield _sse_event("plan", plan_payload)
+
+                    # Phase 2: Execute plan steps
+                    yield _sse_event("thinking", {"status": "Executing analysis plan..."})
+                    all_sse_events, completed_results = await _execute_plan(
+                        session_id, plan
+                    )
+                    for evt in all_sse_events:
+                        yield evt
+
+                    # Phase 3: Synthesize results
+                    yield _sse_event("thinking", {"status": "Synthesizing results..."})
+                    synthesis_text = await _synthesize(
+                        client, model_name, message, plan, completed_results,
+                        all_sse_events,
+                    )
+                    yield _sse_event("text", {"content": synthesis_text})
+
+                    # Save assistant text to DB
+                    if synthesis_text:
+                        await db_pools["pg"].execute(
+                            "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
+                            uuid.UUID(session_id),
+                            "model",
+                            synthesis_text,
+                        )
+
+                    # Update session timestamp
+                    await db_pools["pg"].execute(
+                        "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
+                        uuid.UUID(session_id),
+                    )
+
             tools = [types.Tool(function_declarations=_get_all_tool_declarations())]
             config = types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
@@ -4208,8 +4940,8 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                 temperature=0.3,
             )
 
-            # Iterative tool-calling loop
-            max_iterations = 12
+            # Iterative tool-calling loop (skipped when planning flow handled the request)
+            max_iterations = 0 if use_planning else 12
             for _ in range(max_iterations):
                 response = await client.aio.models.generate_content(
                     model=model_name,
@@ -4519,34 +5251,37 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     types.Content(role="user", parts=function_response_parts)
                 )
             else:
-                yield _sse_event(
-                    "text",
-                    {
-                        "content": "I reached the maximum number of tool calls. Here's what I found so far."
-                    },
-                )
+                if not use_planning:
+                    yield _sse_event(
+                        "text",
+                        {
+                            "content": "I reached the maximum number of tool calls. Here's what I found so far."
+                        },
+                    )
 
             # Save assistant text response to DB (last model turn)
-            assistant_text = ""
-            for c in reversed(contents):
-                if c.role == "model":
-                    for p in c.parts:
-                        if p.text:
-                            assistant_text += p.text
-                    break
-            if assistant_text:
-                await db_pools["pg"].execute(
-                    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
-                    uuid.UUID(session_id),
-                    "model",
-                    assistant_text,
-                )
+            # Skip if planning flow already saved the response
+            if not use_planning:
+                assistant_text = ""
+                for c in reversed(contents):
+                    if c.role == "model":
+                        for p in c.parts:
+                            if p.text:
+                                assistant_text += p.text
+                        break
+                if assistant_text:
+                    await db_pools["pg"].execute(
+                        "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
+                        uuid.UUID(session_id),
+                        "model",
+                        assistant_text,
+                    )
 
-            # Update session timestamp
-            await db_pools["pg"].execute(
-                "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
-                uuid.UUID(session_id),
-            )
+                # Update session timestamp
+                await db_pools["pg"].execute(
+                    "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
+                    uuid.UUID(session_id),
+                )
 
         except Exception as exc:
             logger.exception("Chat stream error")

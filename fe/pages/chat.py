@@ -190,6 +190,16 @@ layout = html.Div(
                 # Input area (pinned to bottom)
                 html.Div(
                     [
+                        # Model selector row
+                        html.Div(
+                            [
+                                html.Select(
+                                    id="chat-model-selector",
+                                    className="chat-model-selector",
+                                ),
+                            ],
+                            className="chat-model-row",
+                        ),
                         html.Div(
                             [
                                 dcc.Textarea(

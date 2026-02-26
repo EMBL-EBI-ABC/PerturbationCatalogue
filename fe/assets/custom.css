@@ -641,6 +641,42 @@ a.header-link.active {
     background: #ffffff;
 }
 
+/* Model selector row */
+.chat-model-row {
+    margin-bottom: 0.5rem;
+}
+
+.chat-model-selector {
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-family: inherit;
+    background: #f8f9fa;
+    color: #495057;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 12px;
+    padding-right: 1.75rem;
+}
+
+.chat-model-selector:focus {
+    border-color: #007B53;
+    box-shadow: 0 0 0 0.1rem rgba(0, 123, 83, 0.15);
+}
+
+.chat-model-selector:empty {
+    display: none;
+}
+
 .chat-input-area {
     position: relative;
 }
@@ -1082,6 +1118,135 @@ a.header-link.active {
 .viz-type-icon--network { background: #f3e5f5; color: #563D82; }
 .viz-type-icon--protein { background: #fff3e0; color: #D4A843; }
 .viz-type-icon--card    { background: #fce4ec; color: #A6093D; }
+.viz-type-icon--plan    { background: #e8eaf6; color: #3B6FB6; }
+
+/* --- Plan card styles --- */
+
+.plan-card {
+    grid-column: 1 / -1 !important;
+    border-left: 3px solid #3B6FB6;
+}
+
+.plan-card-content {
+    padding: 0.75rem 1rem;
+}
+
+.plan-summary {
+    font-size: 0.825rem;
+    color: #495057;
+    font-style: italic;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eef0f3;
+}
+
+.plan-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.plan-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    transition: background-color 0.2s, opacity 0.2s;
+}
+
+.plan-step--pending {
+    color: #6c757d;
+    opacity: 0.7;
+}
+
+.plan-step--running {
+    background: #e8f5e9;
+    color: #1a1d21;
+    opacity: 1;
+}
+
+.plan-step--done {
+    color: #007B53;
+    opacity: 1;
+}
+
+.plan-step--error {
+    color: #A6093D;
+    opacity: 1;
+}
+
+.plan-step-icon {
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+    font-size: 0.85rem;
+}
+
+.plan-step--done .plan-step-icon { color: #007B53; }
+.plan-step--error .plan-step-icon { color: #A6093D; }
+.plan-step--running .plan-step-icon { color: #3B6FB6; }
+
+.plan-step-spinning {
+    animation: plan-spin 1s linear infinite;
+}
+
+@keyframes plan-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.plan-step-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plan-step-tool {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    background: #eef0f3;
+    border-radius: 4px;
+    color: #6c757d;
+    font-family: monospace;
+}
+
+.plan-step--running .plan-step-tool {
+    background: #c8e6c9;
+    color: #007B53;
+}
+
+.plan-progress {
+    margin-top: 0.75rem;
+    position: relative;
+    height: 20px;
+    background: #eef0f3;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.plan-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007B53, #3B6FB6);
+    border-radius: 10px;
+    transition: width 0.4s ease;
+}
+
+.plan-progress-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.7rem;
+    line-height: 20px;
+    color: #495057;
+    font-weight: 500;
+}
 
 .viz-title {
     font-weight: 500;

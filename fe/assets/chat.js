@@ -6,6 +6,7 @@
 
   var sessionId = sessionStorage.getItem("chat_session_id") || null;
   var currentController = null;
+  var selectedModel = sessionStorage.getItem("chat_selected_model") || null;
 
   function init() {
     var input = document.getElementById("chat-input");
@@ -24,6 +25,9 @@
     // Show logout link in header when authenticated
     var logoutLink = document.getElementById("logout-link");
     if (logoutLink) logoutLink.style.display = "";
+
+    // Load available models for the model selector dropdown
+    loadAvailableModels();
 
     var sendBtn = document.getElementById("chat-send-btn");
     var clearBtn = document.getElementById("chat-clear-portal-btn");
@@ -188,7 +192,7 @@
     var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
     var url = baseUrl + "/v1/chat/stream";
 
-    var body = JSON.stringify({ message: text, session_id: sessionId });
+    var body = JSON.stringify({ message: text, session_id: sessionId, model: selectedModel });
     var assistantStarted = false;
 
     var authToken = sessionStorage.getItem("auth_token");
@@ -279,6 +283,12 @@
         break;
       case "visualization":
         renderVisualization(data);
+        break;
+      case "plan":
+        renderPlanCard(data);
+        break;
+      case "plan_step":
+        updatePlanStep(data.step_id, data.status);
         break;
       case "error":
         hideSpinner();
@@ -425,6 +435,10 @@
   // --- Simple markdown formatting ---
 
   function formatMarkdown(text) {
+    // Headings (before bullet lists so ### lines aren't treated as list items)
+    text = text.replace(/(^|\n)#### (.*?)(?=\n|$)/g, '$1<strong style="font-size:0.85rem;display:block;margin:0.5em 0 0.2em">$2</strong>');
+    text = text.replace(/(^|\n)### (.*?)(?=\n|$)/g, '$1<strong style="font-size:0.9rem;display:block;margin:0.6em 0 0.2em">$2</strong>');
+    text = text.replace(/(^|\n)## (.*?)(?=\n|$)/g, '$1<strong style="font-size:0.95rem;display:block;margin:0.7em 0 0.2em">$2</strong>');
     // Bullet lists (before bold/italic so "* " at line start isn't treated as emphasis)
     text = text.replace(/(^|\n)\* /g, "$1\u2022 ");
     text = text.replace(/(^|\n)- /g, "$1\u2022 ");
@@ -437,6 +451,198 @@
     // Line breaks
     text = text.replace(/\n/g, "<br>");
     return text;
+  }
+
+  // --- Model selector ---
+
+  function loadAvailableModels() {
+    var urlEl = document.getElementById("chat-backend-url");
+    var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+    var authToken = sessionStorage.getItem("auth_token");
+
+    fetch(baseUrl + "/v1/chat/models", {
+      headers: { "Authorization": "Bearer " + authToken }
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var select = document.getElementById("chat-model-selector");
+        if (!select || !data.models) return;
+
+        select.innerHTML = "";
+        data.models.forEach(function (m) {
+          var opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.name;
+          if (m.supports_planning) {
+            opt.textContent += " (Deep Analysis)";
+          }
+          opt.title = m.description;
+          select.appendChild(opt);
+        });
+
+        // Restore previous selection or use first model
+        if (selectedModel && select.querySelector('option[value="' + selectedModel + '"]')) {
+          select.value = selectedModel;
+        } else {
+          selectedModel = select.value;
+        }
+
+        select.addEventListener("change", function () {
+          selectedModel = select.value;
+          sessionStorage.setItem("chat_selected_model", selectedModel);
+        });
+      })
+      .catch(function () {
+        // Silently fail — model selector will be hidden if empty
+      });
+  }
+
+  // --- Plan card ---
+
+  var currentPlanCard = null;
+
+  function renderPlanCard(data) {
+    var portal = document.getElementById("chat-data-portal");
+    if (!portal) return;
+
+    // Hide placeholder
+    var ph = document.getElementById("chat-portal-placeholder");
+    if (ph) ph.style.display = "none";
+
+    // Remove previous plan card if any
+    if (currentPlanCard && currentPlanCard.parentNode) {
+      currentPlanCard.parentNode.removeChild(currentPlanCard);
+    }
+
+    var card = document.createElement("div");
+    card.className = "viz-container plan-card";
+    card.setAttribute("data-viz-type", "plan");
+    card.setAttribute("data-size", "large");
+
+    // Header
+    var header = document.createElement("div");
+    header.className = "viz-header";
+
+    var typeIcon = document.createElement("div");
+    typeIcon.className = "viz-type-icon viz-type-icon--plan";
+    var iconEl = document.createElement("i");
+    iconEl.className = "bi bi-list-check";
+    typeIcon.appendChild(iconEl);
+    header.appendChild(typeIcon);
+
+    var title = document.createElement("span");
+    title.className = "viz-title";
+    title.textContent = "Execution Plan";
+    header.appendChild(title);
+
+    card.appendChild(header);
+
+    // Plan summary
+    var content = document.createElement("div");
+    content.className = "viz-content plan-card-content";
+
+    if (data.plan_summary) {
+      var summary = document.createElement("div");
+      summary.className = "plan-summary";
+      summary.textContent = data.plan_summary;
+      content.appendChild(summary);
+    }
+
+    // Steps list
+    var stepsList = document.createElement("div");
+    stepsList.className = "plan-steps-list";
+    stepsList.id = "plan-steps-list";
+
+    var steps = data.steps || [];
+    for (var i = 0; i < steps.length; i++) {
+      var step = steps[i];
+      var stepEl = document.createElement("div");
+      stepEl.className = "plan-step plan-step--pending";
+      stepEl.setAttribute("data-step-id", step.id);
+
+      var statusIcon = document.createElement("span");
+      statusIcon.className = "plan-step-icon";
+      statusIcon.innerHTML = '<i class="bi bi-circle"></i>';
+      stepEl.appendChild(statusIcon);
+
+      var stepText = document.createElement("span");
+      stepText.className = "plan-step-text";
+      stepText.textContent = step.purpose || step.tool;
+      stepEl.appendChild(stepText);
+
+      var toolBadge = document.createElement("span");
+      toolBadge.className = "plan-step-tool";
+      toolBadge.textContent = step.tool;
+      stepEl.appendChild(toolBadge);
+
+      stepsList.appendChild(stepEl);
+    }
+    content.appendChild(stepsList);
+
+    // Progress bar
+    var progressBar = document.createElement("div");
+    progressBar.className = "plan-progress";
+    progressBar.id = "plan-progress";
+
+    var progressFill = document.createElement("div");
+    progressFill.className = "plan-progress-fill";
+    progressFill.style.width = "0%";
+    progressBar.appendChild(progressFill);
+
+    var progressText = document.createElement("span");
+    progressText.className = "plan-progress-text";
+    progressText.textContent = "0 / " + steps.length + " steps";
+    progressBar.appendChild(progressText);
+
+    content.appendChild(progressBar);
+
+    card.appendChild(content);
+
+    // Insert at the TOP of the portal
+    if (portal.firstChild) {
+      portal.insertBefore(card, portal.firstChild);
+    } else {
+      portal.appendChild(card);
+    }
+
+    currentPlanCard = card;
+    updatePortalVisibility();
+  }
+
+  function updatePlanStep(stepId, status) {
+    var stepEl = document.querySelector('.plan-step[data-step-id="' + stepId + '"]');
+    if (!stepEl) return;
+
+    // Remove old status classes
+    stepEl.className = "plan-step plan-step--" + status;
+
+    // Update icon
+    var iconEl = stepEl.querySelector(".plan-step-icon");
+    if (iconEl) {
+      if (status === "running") {
+        iconEl.innerHTML = '<i class="bi bi-arrow-repeat plan-step-spinning"></i>';
+      } else if (status === "done") {
+        iconEl.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+      } else if (status === "error") {
+        iconEl.innerHTML = '<i class="bi bi-exclamation-circle-fill"></i>';
+      }
+    }
+
+    // Update progress
+    var stepsList = document.getElementById("plan-steps-list");
+    var progressBar = document.getElementById("plan-progress");
+    if (stepsList && progressBar) {
+      var allSteps = stepsList.querySelectorAll(".plan-step");
+      var doneCount = stepsList.querySelectorAll(".plan-step--done, .plan-step--error").length;
+      var total = allSteps.length;
+      var pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
+      var fill = progressBar.querySelector(".plan-progress-fill");
+      if (fill) fill.style.width = pct + "%";
+
+      var text = progressBar.querySelector(".plan-progress-text");
+      if (text) text.textContent = doneCount + " / " + total + " steps";
+    }
   }
 
   // --- Visualizations ---
@@ -2408,6 +2614,7 @@
   function clearDashboard() {
     var portal = document.getElementById("chat-data-portal");
     if (portal) portal.innerHTML = "";
+    currentPlanCard = null;
     updatePortalVisibility();
   }
 
