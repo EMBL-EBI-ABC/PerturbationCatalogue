@@ -3193,7 +3193,7 @@ def _extract_canonical_consequence(data: list) -> dict:
 
 async def _tool_predict_variant_consequence(args: dict) -> dict:
     """Predict variant consequence using Ensembl VEP REST API."""
-    variant = args.get("variant", "").strip()
+    variant = args.get("variant", "").strip() or args.get("variant_id", "").strip()
     if not variant:
         return {"error": "variant is required"}
 
@@ -3562,6 +3562,16 @@ async def _tool_annotate_variant(args: dict) -> dict:
         "annotations": results,
         "protvar_url": f"https://www.ebi.ac.uk/ProtVar/query?search={variant}",
     }
+    # Promote key fields from first annotation to top level for plan arg resolution
+    if results:
+        first = results[0]
+        if first.get("gene"):
+            output["gene"] = first["gene"]
+            output["gene_name"] = first["gene"]
+        if first.get("uniprot_accession"):
+            output["uniprot_id"] = first["uniprot_accession"]
+        if first.get("ensembl_gene"):
+            output["ensembl_gene"] = first["ensembl_gene"]
     if msg_texts:
         output["messages"] = msg_texts
 
@@ -4226,7 +4236,7 @@ Data tools:
 - get_druggability: Check druggability via Pharos (requires gene_name)
 - annotate_variant: Deep variant annotation via ProtVar (requires variant)
 - get_variant_structural_context: Structural context at a residue via ProtVar (requires uniprot_id, position)
-- predict_variant_consequence: VEP consequence prediction (requires variant_id)
+- predict_variant_consequence: VEP consequence prediction (requires variant)
 - batch_variant_consequences: Batch VEP for up to 200 variants (requires variants list)
 - get_functional_enrichment: Run GO/KEGG/Reactome enrichment on a gene set (requires identifiers list)
 - search_entities: (Open Targets) Resolve names to standardized IDs
@@ -4344,6 +4354,15 @@ async def _generate_plan(
     return plan
 
 
+_FIELD_ALIASES = {
+    "gene_name": ["gene", "gene_symbol", "approved_symbol"],
+    "gene": ["gene_name", "gene_symbol"],
+    "uniprot_id": ["uniprot_accession", "accession", "primaryAccession"],
+    "variant": ["variant_id", "input_variant"],
+    "variant_id": ["variant", "input_variant"],
+}
+
+
 def _resolve_step_args(args: dict, completed_results: dict) -> dict:
     """Resolve $STEP_N_RESULT placeholders in tool args using prior step results."""
     resolved = {}
@@ -4381,6 +4400,21 @@ def _resolve_step_args(args: dict, completed_results: dict) -> dict:
                             key, step_id, result_data[key],
                         )
                         resolved[key] = result_data[key]
+                        continue
+                    # Try field aliases (e.g. gene_name → gene, uniprot_id → uniprot_accession)
+                    aliases = _FIELD_ALIASES.get(key, [])
+                    for alias in aliases:
+                        if alias in result_data:
+                            logger.info(
+                                "_resolve_step_args: resolved %s via alias '%s' from step %d → '%s'",
+                                key, alias, step_id, result_data[alias],
+                            )
+                            resolved[key] = result_data[alias]
+                            break
+                    else:
+                        # No alias matched; continue to dataset_id special case
+                        pass
+                    if key in resolved:
                         continue
                     # dataset_id special case: look inside nested datasets list
                     if key == "dataset_id":
