@@ -397,7 +397,8 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit"
+            "GEM-X Flex Gene Expression Human n-plex kit",
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
         ],
     )
     sequencing_platform_id: Series[String] = Field(
