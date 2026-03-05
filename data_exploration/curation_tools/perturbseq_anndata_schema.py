@@ -1,5 +1,5 @@
 import pandas as pd
-from pandera import Field, DataFrameModel
+from pandera.pandas import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
@@ -170,7 +170,7 @@ class ObsSchema(DataFrameModel):
     )
     developmental_stage_label: Series[String] = Field(
         nullable=True,
-        description="Developmental stage ontology term label of the investigated sample.",
+        description="Developmental stage ontology term label of the investigated sample. The age groups are defined as follows: embryonic (conception to 8 weeks), fetal (9 weeks to birth), child (0-12 years), adolescent (13-18 years), adult (19-59 years), senior adult (60 years and above).",
         isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
@@ -397,7 +397,8 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit"
+            "GEM-X Flex Gene Expression Human n-plex kit",
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
         ],
     )
     sequencing_platform_id: Series[String] = Field(
