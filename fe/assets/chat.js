@@ -983,6 +983,69 @@
     setInputEnabled(true);
   }
 
+  function toggleStepArgs(stepEl, step) {
+    var argsPanel = stepEl.querySelector(".plan-step-args");
+    if (!argsPanel) return;
+    var isVisible = argsPanel.style.display !== "none";
+    argsPanel.style.display = isVisible ? "none" : "block";
+  }
+
+  function onRemoveStep(stepEl, stepId) {
+    if (stepEl.parentNode) stepEl.parentNode.removeChild(stepEl);
+
+    if (pendingPlan && pendingPlan.steps) {
+      pendingPlan.steps = pendingPlan.steps.filter(function (s) { return s.id !== stepId; });
+
+      for (var i = 0; i < pendingPlan.steps.length; i++) {
+        var deps = pendingPlan.steps[i].depends_on;
+        if (deps) {
+          pendingPlan.steps[i].depends_on = deps.filter(function (d) { return d !== stepId; });
+        }
+      }
+    }
+
+    var acceptBtn = currentPlanCard ? currentPlanCard.querySelector(".plan-action-btn--accept") : null;
+    var remainingSteps = document.querySelectorAll("#plan-steps-list .plan-step");
+    if (acceptBtn) {
+      acceptBtn.disabled = remainingSteps.length === 0;
+    }
+  }
+
+  var draggedStep = null;
+
+  function onStepDragStart(e) {
+    draggedStep = e.currentTarget;
+    draggedStep.classList.add("plan-step--dragging");
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function onStepDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    var target = e.currentTarget;
+    if (target !== draggedStep && target.classList.contains("plan-step")) {
+      var rect = target.getBoundingClientRect();
+      var midY = rect.top + rect.height / 2;
+      var parent = target.parentNode;
+      if (e.clientY < midY) {
+        parent.insertBefore(draggedStep, target);
+      } else {
+        parent.insertBefore(draggedStep, target.nextSibling);
+      }
+    }
+  }
+
+  function onStepDrop(e) {
+    e.preventDefault();
+  }
+
+  function onStepDragEnd(e) {
+    if (draggedStep) {
+      draggedStep.classList.remove("plan-step--dragging");
+      draggedStep = null;
+    }
+  }
+
   function updatePlanStep(stepId, status) {
     var stepEl = document.querySelector('.plan-step[data-step-id="' + stepId + '"]');
     if (!stepEl) return;
