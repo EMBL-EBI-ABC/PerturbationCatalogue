@@ -1507,7 +1507,17 @@ async def _tool_find_datasets_for_target(args: dict) -> dict:
 
         for ds in all_datasets:
             meta = es_meta.get(ds["dataset_id"], {})
+            # Preserve the original modality from our query keys (perturb-seq, crispr-screen, mave)
+            # instead of letting ES data_modalities overwrite it
+            original_modality = ds["modality"]
             ds.update(meta)
+            # Use display-friendly modality names
+            _modality_display = {
+                "perturb-seq": "Perturb-seq",
+                "crispr-screen": "CRISPR screen",
+                "mave": "MAVE",
+            }
+            ds["modality"] = _modality_display.get(original_modality, original_modality)
 
     return {
         "gene": gene_name,
@@ -4244,28 +4254,38 @@ VISUALIZATION TOOLS (produce dashboard tiles automatically):
 - get_string_interactions → network tile
 - get_protein_structure → 3D structure viewer tile
 
-DATA-ONLY TOOLS (return data but do NOT produce dashboard tiles):
-- get_druggability, lookup_protein, find_datasets_for_target, search_datasets, search_target_summary, query_perturbation_data, get_catalogue_summary, map_identifiers, get_protein_variants, search_literature, annotate_variant, get_variant_structural_context, predict_variant_consequence, batch_variant_consequences, get_functional_enrichment, search_entities, query_open_targets_graphql
+AUTO-VISUALIZED DATA TOOLS (produce dashboard tiles automatically during plan execution):
+- lookup_protein → gene card tile (shows protein function, domains, diseases, GO terms)
+- get_druggability → druggability card tile (shows TDL level with color badge, protein family, novelty score)
+- find_datasets_for_target → paginated dataset table tile with modality filter (shows all datasets found for the gene)
 
-You MUST include visualization tool steps so the user sees results on the dashboard. Examples:
-- When comparing genes: include create_volcano_plot or create_perturb_seq_table for each gene (after find_datasets_for_target)
-- When analyzing a protein: include get_protein_structure (after lookup_protein to get uniprot_id)
+DATA-ONLY TOOLS (return data but do NOT produce dashboard tiles):
+- search_datasets, search_target_summary, query_perturbation_data, get_catalogue_summary, map_identifiers, get_protein_variants, search_literature, annotate_variant, get_variant_structural_context, predict_variant_consequence, batch_variant_consequences, get_functional_enrichment, search_entities, query_open_targets_graphql
+
+ALWAYS include lookup_protein and/or get_druggability steps when users ask about genes — these generate rich gene cards on the dashboard.
+ALWAYS include find_datasets_for_target when users ask what data is available — this generates a dataset table tile.
+
+Additional visualization examples:
+- When comparing genes: include lookup_protein for EACH gene (separate steps) + get_druggability for EACH gene + find_datasets_for_target for EACH gene. This creates side-by-side gene cards and dataset tables.
+- When analyzing a protein: include lookup_protein + get_protein_structure (after lookup_protein to get uniprot_id)
 - When exploring networks: include get_string_interactions or create_gene_interaction_network
-- For any gene analysis: consider including at least one visualization step
+- For DEA data: include create_volcano_plot or create_perturb_seq_table (after find_datasets_for_target)
 
 AVAILABLE TOOLS (use exact names):
 
-Data tools:
+Data tools (with auto-visualization):
+- lookup_protein: Look up protein function, domains, diseases from UniProt (requires gene_name). AUTO-CREATES a gene card tile on dashboard.
+- get_druggability: Check druggability via Pharos (requires gene_name). AUTO-CREATES a gene card tile on dashboard.
+- find_datasets_for_target: Find all datasets for a gene across modalities (requires gene_name). AUTO-CREATES a dataset table tile on dashboard. ALWAYS call before dataset-specific visualizations.
+
+Data tools (no visualization):
 - search_datasets: Search catalogue datasets by keyword, modality, tissue, disease
 - search_target_summary: Get aggregated target overview (modalities, tissues, diseases)
-- find_datasets_for_target: Find all datasets for a gene across modalities. ALWAYS call before dataset-specific visualizations.
 - query_perturbation_data: Query raw perturbation data rows (Perturb-seq, CRISPR, MAVE)
 - get_catalogue_summary: Get high-level counts for the catalogue
-- lookup_protein: Look up protein function, domains, diseases from UniProt (requires gene_name)
 - map_identifiers: Map between gene symbols, UniProt, Ensembl IDs (requires identifier)
 - get_protein_variants: Get known variants from UniProt (requires accession)
 - search_literature: Search Europe PMC for papers (requires query)
-- get_druggability: Check druggability via Pharos (requires gene_name)
 - annotate_variant: Deep variant annotation via ProtVar (requires variant)
 - get_variant_structural_context: Structural context at a residue via ProtVar (requires uniprot_id, position)
 - predict_variant_consequence: VEP consequence prediction (requires variant)
@@ -4297,8 +4317,10 @@ You have the original question, the execution plan, and summaries from all compl
 RULES:
 - Write a clear, comprehensive answer that ties together findings from all tools.
 - ONLY reference visualizations that are listed in the "Visualizations on dashboard" section below. Do NOT reference visualizations that were not created.
+- When gene cards are on the dashboard, refer the user to them ("See the gene card for TP53 on the dashboard") rather than repeating protein details in text.
+- When dataset tables are on the dashboard, summarize key findings (e.g. "TP53 has data across 5 Perturb-seq datasets") rather than listing all datasets in text.
 - If no visualizations were created, present the key data findings directly in your text.
-- Do NOT include raw data tables in your text unless no table visualization exists on the dashboard.
+- Do NOT include raw data tables or markdown tables in your text when the same information is on the dashboard.
 - Focus on insights, comparisons, and actionable conclusions.
 - Be concise and scientific. Lead with key findings.
 - If some steps failed, acknowledge what couldn't be retrieved and work with what succeeded.
@@ -4641,6 +4663,52 @@ async def _execute_tool_for_plan(
                 sse_events.append(viz_event)
             result = raw
 
+        elif tool_name == "lookup_protein":
+            result = await TOOL_HANDLERS["lookup_protein"](tool_args)
+            if isinstance(result, dict) and "error" not in result:
+                viz_data = {
+                    "type": "gene_card",
+                    "title": f"{result.get('gene_name', '')} — Protein Info",
+                    "data": result,
+                }
+                viz_event = await _persist_and_emit_viz(session_id, viz_data)
+                sse_events.append(viz_event)
+
+        elif tool_name == "get_druggability":
+            result = await TOOL_HANDLERS["get_druggability"](tool_args)
+            if isinstance(result, dict) and "error" not in result:
+                viz_data = {
+                    "type": "druggability_card",
+                    "title": f"{result.get('gene_name', '')} — Druggability",
+                    "data": result,
+                }
+                viz_event = await _persist_and_emit_viz(session_id, viz_data)
+                sse_events.append(viz_event)
+
+        elif tool_name == "find_datasets_for_target":
+            result = await TOOL_HANDLERS["find_datasets_for_target"](tool_args)
+            if isinstance(result, dict) and "error" not in result and result.get("datasets"):
+                headers = ["Dataset ID", "Modality", "Title", "Tissue", "Disease", "Stats"]
+                rows = []
+                for ds in result["datasets"]:
+                    stats = ds.get("stats", {})
+                    stat_str = ", ".join(f"{k}: {v}" for k, v in stats.items())
+                    rows.append([
+                        ds.get("dataset_id", ""),
+                        ds.get("modality", ""),
+                        ds.get("title", ""),
+                        ds.get("tissue", ""),
+                        ds.get("disease", ""),
+                        stat_str,
+                    ])
+                viz_data = {
+                    "type": "dataset_table",
+                    "title": f"Datasets for {result.get('gene', '')} ({result.get('total', 0)} found)",
+                    "data": {"headers": headers, "rows": rows},
+                }
+                viz_event = await _persist_and_emit_viz(session_id, viz_data)
+                sse_events.append(viz_event)
+
         elif tool_name in _ot_tool_names:
             result = await _call_open_targets_tool(tool_name, tool_args)
 
@@ -4746,6 +4814,8 @@ _VIZ_PRODUCING_TOOLS = {
     "create_volcano_plot", "create_mave_heatmap", "create_perturb_seq_table",
     "create_crispr_table", "create_gene_interaction_network",
     "get_string_interactions", "get_protein_structure",
+    "create_visualization", "lookup_protein", "get_druggability",
+    "find_datasets_for_target",
 }
 
 

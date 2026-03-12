@@ -1096,7 +1096,9 @@
     gene_interaction_network: "small",
     string_interaction_network: "small",
     perturb_seq_table: "small",
-    crispr_table: "small"
+    crispr_table: "small",
+    druggability_card: "small",
+    dataset_table: "small"
   };
 
   // Viz type → category for icon coloring
@@ -1108,10 +1110,12 @@
     table: "table",
     perturb_seq_table: "table",
     crispr_table: "table",
+    dataset_table: "table",
     gene_interaction_network: "network",
     string_interaction_network: "network",
     protein_structure: "protein",
-    gene_card: "card"
+    gene_card: "card",
+    druggability_card: "card"
   };
 
   // Category → Bootstrap icon class
@@ -1294,6 +1298,12 @@
         break;
       case "gene_card":
         renderGeneCard(content, data.data);
+        break;
+      case "druggability_card":
+        renderDruggabilityCard(content, data.data);
+        break;
+      case "dataset_table":
+        renderDatasetTable(content, data.data);
         break;
       case "gene_interaction_network":
         renderGeneInteractionNetwork(content, data.data);
@@ -1626,6 +1636,126 @@
 
     // Render initial data
     renderContent(data);
+  }
+
+  function renderDatasetTable(container, data) {
+    var headers = data.headers || [];
+    var allRows = data.rows || [];
+    var PAGE_SIZE = 10;
+    var currentPage = 1;
+    var currentModality = "";
+
+    // Extract unique modalities from column index 1 (Modality)
+    var modalitySet = {};
+    allRows.forEach(function (row) {
+      var mod = row[1];
+      if (mod) modalitySet[mod] = true;
+    });
+    var modalities = Object.keys(modalitySet).sort();
+
+    // --- Filter bar ---
+    var filterBar = document.createElement("div");
+    filterBar.style.cssText = "display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;";
+
+    // Modality dropdown
+    var select = document.createElement("select");
+    select.className = "form-select form-select-sm";
+    select.style.cssText = "width: auto; min-width: 140px;";
+    var allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = "All modalities";
+    select.appendChild(allOpt);
+    modalities.forEach(function (mod) {
+      var opt = document.createElement("option");
+      opt.value = mod;
+      opt.textContent = mod;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", function () {
+      currentModality = select.value;
+      currentPage = 1;
+      renderPage();
+    });
+    filterBar.appendChild(select);
+
+    // Row count info
+    var countInfo = document.createElement("span");
+    countInfo.style.cssText = "font-size: 0.85rem; color: #54585A;";
+    filterBar.appendChild(countInfo);
+
+    container.appendChild(filterBar);
+
+    // --- Table wrapper ---
+    var tableWrapper = document.createElement("div");
+    tableWrapper.className = "table-responsive";
+    container.appendChild(tableWrapper);
+
+    // --- Pagination wrapper ---
+    var pagWrapper = document.createElement("div");
+    container.appendChild(pagWrapper);
+
+    function getFilteredRows() {
+      if (!currentModality) return allRows;
+      return allRows.filter(function (row) { return row[1] === currentModality; });
+    }
+
+    function renderPage() {
+      var filtered = getFilteredRows();
+      var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      var start = (currentPage - 1) * PAGE_SIZE;
+      var pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+      // Update count info
+      countInfo.textContent = filtered.length + " dataset" + (filtered.length !== 1 ? "s" : "");
+
+      // Build table
+      var table = document.createElement("table");
+      table.className = "table table-sm table-striped table-hover viz-table";
+
+      var thead = document.createElement("thead");
+      var headerRow = document.createElement("tr");
+      headers.forEach(function (h) {
+        var th = document.createElement("th");
+        th.textContent = h;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      var tbody = document.createElement("tbody");
+      pageRows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        row.forEach(function (cell) {
+          var td = document.createElement("td");
+          td.textContent = cell != null ? String(cell) : "";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      tableWrapper.innerHTML = "";
+      var responsive = document.createElement("div");
+      responsive.className = "table-responsive";
+      responsive.appendChild(table);
+      tableWrapper.appendChild(responsive);
+
+      // Pagination
+      pagWrapper.innerHTML = "";
+      if (totalPages > 1) {
+        pagWrapper.appendChild(createPaginationBar(
+          { page: currentPage, total_pages: totalPages },
+          function (newPage) {
+            currentPage = newPage;
+            renderPage();
+          }
+        ));
+      }
+    }
+
+    renderPage();
   }
 
   function renderPieChart(container, data) {
@@ -2098,6 +2228,83 @@
       links.push('<a href="https://alphafold.ebi.ac.uk/entry/' + encodeURIComponent(afId) +
         '" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none; margin-right: 12px;">' +
         '<i class="bi bi-box-arrow-up-right"></i> AlphaFold</a>');
+    }
+    if (data.gene_name) {
+      links.push('<a href="https://platform.opentargets.org/search?q=' + encodeURIComponent(data.gene_name) +
+        '&page=1&entities=target" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none;">' +
+        '<i class="bi bi-box-arrow-up-right"></i> Open Targets</a>');
+    }
+
+    if (links.length) {
+      var linksDiv = document.createElement("div");
+      linksDiv.style.cssText = "padding-top: 8px; border-top: 1px solid #e9ecef;";
+      linksDiv.innerHTML = links.join("");
+      card.appendChild(linksDiv);
+    }
+
+    container.appendChild(card);
+  }
+
+  function renderDruggabilityCard(container, data) {
+    var card = document.createElement("div");
+    card.className = "gene-card";
+    card.style.cssText = "font-size: 0.9rem;";
+
+    // TDL color coding
+    var tdlColors = {
+      Tclin: "#007B53",
+      Tchem: "#2563EB",
+      Tbio: "#D97706",
+      Tdark: "#6B7280"
+    };
+    var tdlColor = tdlColors[data.tdl] || "#54585A";
+
+    // Header with gene name and TDL badge
+    var header = document.createElement("div");
+    header.style.cssText = "margin-bottom: 10px; display: flex; align-items: center; gap: 10px;";
+    header.innerHTML = '<div style="font-size: 1.1rem; font-weight: 600; color: #193F90;">' +
+      escapeHtml(data.gene_name || "") + '</div>' +
+      '<span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; color: white; background-color: ' + tdlColor + ';">' +
+      escapeHtml(data.tdl || "Unknown") + '</span>';
+    card.appendChild(header);
+
+    // TDL description
+    if (data.tdl_description) {
+      var tdlDiv = document.createElement("div");
+      tdlDiv.style.cssText = "margin-bottom: 10px;";
+      tdlDiv.innerHTML = '<div style="font-weight: 600; margin-bottom: 2px;">Target Development Level</div>' +
+        '<div>' + escapeHtml(data.tdl_description) + '</div>';
+      card.appendChild(tdlDiv);
+    }
+
+    // Key facts
+    var facts = [];
+    if (data.protein_family) {
+      facts.push({label: "Protein family", value: data.protein_family});
+    }
+    if (data.novelty_score != null) {
+      facts.push({label: "Novelty score", value: String(data.novelty_score)});
+    }
+
+    if (facts.length) {
+      var factsDiv = document.createElement("div");
+      factsDiv.style.cssText = "margin-bottom: 10px;";
+      facts.forEach(function (fact) {
+        var row = document.createElement("div");
+        row.style.cssText = "margin-bottom: 4px;";
+        row.innerHTML = '<span style="font-weight: 600;">' + escapeHtml(fact.label) + ':</span> ' +
+          escapeHtml(fact.value);
+        factsDiv.appendChild(row);
+      });
+      card.appendChild(factsDiv);
+    }
+
+    // External links
+    var links = [];
+    if (data.pharos_url) {
+      links.push('<a href="' + escapeHtml(data.pharos_url) +
+        '" target="_blank" rel="noopener" style="color: #007B53; text-decoration: none; margin-right: 12px;">' +
+        '<i class="bi bi-box-arrow-up-right"></i> Pharos</a>');
     }
     if (data.gene_name) {
       links.push('<a href="https://platform.opentargets.org/search?q=' + encodeURIComponent(data.gene_name) +
