@@ -63,6 +63,11 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None  # User-selected model override
 
 
+class ExecutePlanRequest(BaseModel):
+    session_id: str
+    plan: Optional[dict] = None
+
+
 class SessionUpdateRequest(BaseModel):
     title: str
 
@@ -5304,6 +5309,112 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
 
         except Exception as exc:
             logger.exception("Chat stream error")
+            yield _sse_event("error", {"message": str(exc)})
+
+        yield _sse_event("done", {"session_id": session_id})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/execute-plan")
+async def execute_plan(
+    request: ExecutePlanRequest, user: dict = Depends(get_current_user)
+):
+    """Execute a previously generated (and possibly user-edited) plan."""
+    session_id = request.session_id
+
+    async def generate():
+        try:
+            # Verify session ownership
+            row = await db_pools["pg"].fetchrow(
+                "SELECT user_id FROM chat_sessions WHERE id = $1",
+                uuid.UUID(session_id),
+            )
+            if not row or row["user_id"] != user["id"]:
+                yield _sse_event("error", {"message": "Session not found"})
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            # Get pending plan context
+            ctx = _pending_plans.pop(session_id, None)
+            if not ctx:
+                yield _sse_event("error", {"message": "No pending plan found"})
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            # Use user-edited plan if provided, otherwise use original
+            plan = request.plan if request.plan else ctx["plan"]
+
+            # If user edited the plan, ensure each step has all required fields
+            if request.plan:
+                for step in plan.get("steps", []):
+                    step.setdefault("args", {})
+                    step.setdefault("purpose", "")
+                    step.setdefault("depends_on", [])
+
+            model_name = ctx["model_name"]
+            message = ctx["message"]
+
+            # Create Gemini client (same logic as chat_stream)
+            project = _config.get("google_cloud_project", "")
+            api_key = _config.get("gemini_api_key", "")
+
+            if project:
+                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+                location = (
+                    "global" if "preview" in model_name else default_location
+                )
+                client = genai.Client(
+                    vertexai=True,
+                    project=project,
+                    location=location,
+                )
+            elif api_key:
+                client = genai.Client(api_key=api_key)
+            else:
+                yield _sse_event(
+                    "error", {"message": "No AI credentials configured"}
+                )
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            # Phase 2: Execute plan steps
+            yield _sse_event("thinking", {"status": "Executing analysis plan..."})
+            all_sse_events, completed_results = await _execute_plan(
+                session_id, plan
+            )
+            for evt in all_sse_events:
+                yield evt
+
+            # Phase 3: Synthesize results
+            yield _sse_event("thinking", {"status": "Synthesizing results..."})
+            synthesis_text = await _synthesize(
+                client,
+                model_name,
+                message,
+                plan,
+                completed_results,
+                all_sse_events,
+            )
+            yield _sse_event("text", {"content": synthesis_text})
+
+            # Save assistant text to DB
+            if synthesis_text:
+                await db_pools["pg"].execute(
+                    "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
+                    uuid.UUID(session_id),
+                    "model",
+                    synthesis_text,
+                )
+
+            # Update session timestamp
+            await db_pools["pg"].execute(
+                "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
+                uuid.UUID(session_id),
+            )
+
+        except Exception as exc:
+            logger.exception("Execute plan error")
             yield _sse_event("error", {"message": str(exc)})
 
         yield _sse_event("done", {"session_id": session_id})
