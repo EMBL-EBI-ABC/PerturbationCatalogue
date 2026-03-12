@@ -4183,6 +4183,23 @@ VEP vs ProtVar guidance:
 - Use ProtVar (annotate_variant) for: protein stability (FoldX ddG), structural context (binding pockets, PPI interfaces), EVE/ESM-1b scores, PTM disruption
 - For missense variants, both tools are complementary — VEP gives consequence + CADD + SpliceAI + regulatory context, ProtVar gives stability + structural context"""
 
+def _create_gemini_client(model_name: str):
+    """Create a Gemini client using available credentials."""
+    project = _config.get("google_cloud_project", "")
+    api_key = _config.get("gemini_api_key", "")
+
+    if project:
+        default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+        location = "global" if "preview" in model_name else default_location
+        return genai.Client(vertexai=True, project=project, location=location)
+    elif api_key:
+        return genai.Client(api_key=api_key)
+    else:
+        raise ValueError(
+            "Set GOOGLE_CLOUD_PROJECT (for Vertex AI) or GEMINI_API_KEY (for API key auth)"
+        )
+
+
 # --- Agentic planning prompts ---
 
 PLANNING_SYSTEM_INSTRUCTION = """You are a planning agent for the Perturbation Catalogue AI Explorer.
@@ -4896,27 +4913,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                 model_name = default_model
             use_planning = model_name in _PLANNING_MODEL_IDS
 
-            project = _config.get("google_cloud_project", "")
-            api_key = _config.get("gemini_api_key", "")
-
-            if project:
-                # Vertex AI path (Cloud Run / GCP)
-                # Preview models (e.g. gemini-3.1-pro-preview) may need
-                # the "global" endpoint instead of a regional one.
-                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-                location = "global" if "preview" in model_name else default_location
-                client = genai.Client(
-                    vertexai=True,
-                    project=project,
-                    location=location,
-                )
-            elif api_key:
-                # API key path (local dev)
-                client = genai.Client(api_key=api_key)
-            else:
-                raise ValueError(
-                    "Set GOOGLE_CLOUD_PROJECT (for Vertex AI) or GEMINI_API_KEY (for API key auth)"
-                )
+            client = _create_gemini_client(model_name)
 
             # Build conversation contents from history
             contents = []
@@ -5364,23 +5361,9 @@ async def execute_plan(
             model_name = ctx["model_name"]
             message = ctx["message"]
 
-            # Create Gemini client (same logic as chat_stream)
-            project = _config.get("google_cloud_project", "")
-            api_key = _config.get("gemini_api_key", "")
-
-            if project:
-                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-                location = (
-                    "global" if "preview" in model_name else default_location
-                )
-                client = genai.Client(
-                    vertexai=True,
-                    project=project,
-                    location=location,
-                )
-            elif api_key:
-                client = genai.Client(api_key=api_key)
-            else:
+            try:
+                client = _create_gemini_client(model_name)
+            except ValueError:
                 yield _sse_event(
                     "error", {"message": "No AI credentials configured"}
                 )
@@ -5468,23 +5451,9 @@ async def regenerate_plan(
                     + request.feedback
                 )
 
-            # Create Gemini client
-            project = _config.get("google_cloud_project", "")
-            api_key = _config.get("gemini_api_key", "")
-
-            if project:
-                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-                location = (
-                    "global" if "preview" in model_name else default_location
-                )
-                client = genai.Client(
-                    vertexai=True,
-                    project=project,
-                    location=location,
-                )
-            elif api_key:
-                client = genai.Client(api_key=api_key)
-            else:
+            try:
+                client = _create_gemini_client(model_name)
+            except ValueError:
                 yield _sse_event(
                     "error", {"message": "No AI credentials configured"}
                 )
