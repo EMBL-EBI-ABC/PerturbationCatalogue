@@ -706,6 +706,283 @@
     return stepEl;
   }
 
+  function collectEditedPlan() {
+    var stepsList = document.getElementById("plan-steps-list");
+    if (!stepsList || !pendingPlan) return null;
+
+    var stepEls = stepsList.querySelectorAll(".plan-step");
+    var editedSteps = [];
+
+    // Build old-id → new-id map based on current DOM order
+    var idMap = {};
+    for (var i = 0; i < stepEls.length; i++) {
+        var oldId = parseInt(stepEls[i].getAttribute("data-step-id"), 10);
+        idMap[oldId] = i + 1;
+    }
+
+    for (var i = 0; i < stepEls.length; i++) {
+        var el = stepEls[i];
+        var stepId = parseInt(el.getAttribute("data-step-id"), 10);
+
+        // Find original step data
+        var origStep = null;
+        for (var j = 0; j < pendingPlan.steps.length; j++) {
+            if (pendingPlan.steps[j].id === stepId) {
+                origStep = pendingPlan.steps[j];
+                break;
+            }
+        }
+        if (!origStep) continue;
+
+        // Collect edited args from input fields
+        var editedArgs = {};
+        var origArgs = origStep.args || {};
+        for (var key in origArgs) {
+            editedArgs[key] = origArgs[key];
+        }
+        var argInputs = el.querySelectorAll(".plan-step-arg-input");
+        for (var k = 0; k < argInputs.length; k++) {
+            var key = argInputs[k].getAttribute("data-arg-key");
+            var val = argInputs[k].value;
+            try {
+                editedArgs[key] = JSON.parse(val);
+            } catch (e) {
+                editedArgs[key] = val;
+            }
+        }
+
+        // Remap depends_on
+        var newDeps = [];
+        var origDeps = origStep.depends_on || [];
+        for (var d = 0; d < origDeps.length; d++) {
+            if (idMap[origDeps[d]] !== undefined) {
+                newDeps.push(idMap[origDeps[d]]);
+            }
+        }
+
+        editedSteps.push({
+            id: i + 1,
+            tool: origStep.tool,
+            args: editedArgs,
+            purpose: origStep.purpose,
+            depends_on: newDeps
+        });
+    }
+
+    return {
+        plan_summary: pendingPlan.plan_summary,
+        steps: editedSteps,
+        synthesis_instructions: pendingPlan.synthesis_instructions || ""
+    };
+  }
+
+  function validatePlan(plan) {
+    if (!plan || !plan.steps || plan.steps.length === 0) return false;
+    for (var i = 0; i < plan.steps.length; i++) {
+        var args = plan.steps[i].args || {};
+        for (var key in args) {
+            if (args[key] === "" || args[key] === null || args[key] === undefined) {
+                return false;
+            }
+        }
+    }
+    return true;
+  }
+
+  function streamSSE(url, body, onEvent, onDone) {
+    var controller = new AbortController();
+    var authToken = sessionStorage.getItem("auth_token");
+    var headers = { "Content-Type": "application/json" };
+    if (authToken) {
+        headers["Authorization"] = "Bearer " + authToken;
+    }
+
+    fetch(url, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+    })
+    .then(function (response) {
+        if (response.status === 401) {
+            sessionStorage.removeItem("auth_token");
+            sessionStorage.removeItem("auth_user");
+            window.location.href = "/perturbation-catalogue/login";
+            return;
+        }
+        if (!response.ok) throw new Error("HTTP " + response.status);
+
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        var currentEvent = null;
+
+        function read() {
+            return reader.read().then(function (result) {
+                if (result.done) {
+                    if (onDone) onDone();
+                    return;
+                }
+                buffer += decoder.decode(result.value, { stream: true });
+                var lines = buffer.split("\n");
+                buffer = lines.pop();
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+                    if (line.startsWith("event: ")) {
+                        currentEvent = line.substring(7).trim();
+                    } else if (line.startsWith("data: ") && currentEvent) {
+                        try {
+                            var data = JSON.parse(line.substring(6));
+                            onEvent(currentEvent, data);
+                        } catch (e) {}
+                        currentEvent = null;
+                    }
+                }
+                return read();
+            });
+        }
+        return read();
+    })
+    .catch(function (err) {
+        if (err.name === "AbortError") return;
+        hideSpinner();
+        appendErrorMessage("Connection error: " + err.message);
+        setInputEnabled(true);
+    });
+
+    return controller;
+  }
+
+  function onPlanAccept() {
+    var plan = collectEditedPlan();
+    if (!validatePlan(plan)) {
+        var emptyInputs = document.querySelectorAll(".plan-step-arg-input");
+        for (var i = 0; i < emptyInputs.length; i++) {
+            if (!emptyInputs[i].value) {
+                emptyInputs[i].classList.add("plan-arg-invalid");
+                (function (el) {
+                    setTimeout(function () { el.classList.remove("plan-arg-invalid"); }, 2000);
+                })(emptyInputs[i]);
+            }
+        }
+        return;
+    }
+
+    // Transition to execution mode
+    planReviewMode = false;
+    pendingPlan = null;
+    renderPlanCard(plan, false);
+
+    var urlEl = document.getElementById("chat-backend-url");
+    var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+    var assistantStarted = false;
+
+    showSpinner("Executing analysis plan...");
+
+    streamSSE(
+        baseUrl + "/v1/chat/execute-plan",
+        { session_id: sessionId, plan: plan },
+        function (event, data) {
+            handleSSEEvent(event, data);
+            if (event === "text" && !assistantStarted) {
+                assistantStarted = true;
+            }
+        },
+        function () {
+            hideSpinner();
+            if (assistantStarted) finalizeAssistantMessage();
+            setInputEnabled(true);
+        }
+    );
+  }
+
+  function onPlanRegenerate() {
+    var actions = currentPlanCard ? currentPlanCard.querySelector(".plan-actions") : null;
+    if (!actions) return;
+
+    var existing = actions.querySelector(".plan-feedback-row");
+    if (existing) {
+        var feedbackInput = existing.querySelector(".plan-feedback-input");
+        doRegenerate(feedbackInput ? feedbackInput.value.trim() : "");
+        return;
+    }
+
+    var feedbackRow = document.createElement("div");
+    feedbackRow.className = "plan-feedback-row";
+
+    var feedbackInput = document.createElement("input");
+    feedbackInput.className = "plan-feedback-input";
+    feedbackInput.type = "text";
+    feedbackInput.placeholder = "Any feedback? (optional, press Enter or click Regenerate again)";
+    feedbackInput.onkeydown = function (e) {
+        if (e.key === "Enter") {
+            doRegenerate(feedbackInput.value.trim());
+        }
+    };
+    feedbackRow.appendChild(feedbackInput);
+
+    actions.insertBefore(feedbackRow, actions.firstChild);
+    feedbackInput.focus();
+  }
+
+  function doRegenerate(feedback) {
+    var urlEl = document.getElementById("chat-backend-url");
+    var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+
+    if (currentPlanCard) {
+        currentPlanCard.classList.add("plan-card--loading");
+    }
+    showSpinner("Regenerating plan...");
+
+    streamSSE(
+        baseUrl + "/v1/chat/regenerate-plan",
+        { session_id: sessionId, feedback: feedback || null },
+        function (event, data) {
+            if (event === "plan") {
+                pendingPlan = data;
+                planReviewMode = true;
+                renderPlanCard(data, true);
+            } else {
+                handleSSEEvent(event, data);
+            }
+        },
+        function () {
+            hideSpinner();
+        }
+    );
+  }
+
+  function onPlanDecline() {
+    planReviewMode = false;
+    pendingPlan = null;
+
+    if (currentPlanCard) {
+        currentPlanCard.style.transition = "opacity 0.3s";
+        currentPlanCard.style.opacity = "0";
+        setTimeout(function () {
+            if (currentPlanCard && currentPlanCard.parentNode) {
+                currentPlanCard.parentNode.removeChild(currentPlanCard);
+                currentPlanCard = null;
+                updatePortalVisibility();
+            }
+        }, 300);
+    }
+
+    var urlEl = document.getElementById("chat-backend-url");
+    var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+    var authToken = sessionStorage.getItem("auth_token");
+    var headers = { "Content-Type": "application/json" };
+    if (authToken) headers["Authorization"] = "Bearer " + authToken;
+
+    fetch(baseUrl + "/v1/chat/decline-plan", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({ session_id: sessionId })
+    }).catch(function () {});
+
+    setInputEnabled(true);
+  }
+
   function updatePlanStep(stepId, status) {
     var stepEl = document.querySelector('.plan-step[data-step-id="' + stepId + '"]');
     if (!stepEl) return;
