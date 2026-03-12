@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -4820,7 +4821,21 @@ Based on the above results, write a comprehensive answer to the user's question.
 
 
 # Pending plans awaiting user acceptance (session_id → plan context)
+# Each entry includes a "created_at" timestamp for TTL-based eviction.
 _pending_plans: Dict[str, dict] = {}
+_PENDING_PLAN_TTL_SECONDS = 3600  # 1 hour
+
+
+def _evict_stale_plans():
+    """Remove pending plans older than TTL to prevent memory leaks."""
+    now = time.time()
+    stale = [
+        sid
+        for sid, ctx in _pending_plans.items()
+        if now - ctx.get("created_at", 0) > _PENDING_PLAN_TTL_SECONDS
+    ]
+    for sid in stale:
+        _pending_plans.pop(sid, None)
 
 # --- SSE streaming endpoint ---
 
@@ -4952,11 +4967,13 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     yield _sse_event("plan", plan_payload)
 
                     # Store plan context for later execution
+                    _evict_stale_plans()
                     _pending_plans[session_id] = {
                         "plan": plan,
                         "message": message,
                         "history": history,
                         "model_name": model_name,
+                        "created_at": time.time(),
                     }
 
                     # Stop here — frontend will call /execute-plan after user review
@@ -5492,6 +5509,7 @@ async def regenerate_plan(
                 "message": ctx["message"],
                 "history": history,
                 "model_name": model_name,
+                "created_at": time.time(),
             }
 
         except Exception as exc:
@@ -5508,5 +5526,11 @@ async def decline_plan(
     request: DeclinePlanRequest, user: dict = Depends(get_current_user)
 ):
     """Clear a pending plan without executing it."""
+    row = await db_pools["pg"].fetchrow(
+        "SELECT user_id FROM chat_sessions WHERE id = $1",
+        uuid.UUID(request.session_id),
+    )
+    if not row or row["user_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="Session not found")
     _pending_plans.pop(request.session_id, None)
     return {"status": "ok"}
