@@ -227,7 +227,7 @@
             if (result.done) {
               hideSpinner();
               if (assistantStarted) finalizeAssistantMessage();
-              setInputEnabled(true);
+              if (!planReviewMode) setInputEnabled(true);
               currentController = null;
               return;
             }
@@ -285,7 +285,9 @@
         renderVisualization(data);
         break;
       case "plan":
-        renderPlanCard(data);
+        pendingPlan = data;
+        planReviewMode = true;
+        renderPlanCard(data, true);  // true = interactive
         break;
       case "plan_step":
         updatePlanStep(data.step_id, data.status);
@@ -301,6 +303,10 @@
           loadSessionList();
         }
         hideSpinner();
+        // Don't re-enable input if we're waiting for plan review
+        if (!planReviewMode) {
+          setInputEnabled(true);
+        }
         break;
     }
   }
@@ -500,22 +506,22 @@
   // --- Plan card ---
 
   var currentPlanCard = null;
+  var pendingPlan = null;  // Stores the plan data during review
+  var planReviewMode = false;  // Whether we're in review mode
 
-  function renderPlanCard(data) {
+  function renderPlanCard(data, interactive) {
     var portal = document.getElementById("chat-data-portal");
     if (!portal) return;
 
-    // Hide placeholder
     var ph = document.getElementById("chat-portal-placeholder");
     if (ph) ph.style.display = "none";
 
-    // Remove previous plan card if any
     if (currentPlanCard && currentPlanCard.parentNode) {
-      currentPlanCard.parentNode.removeChild(currentPlanCard);
+        currentPlanCard.parentNode.removeChild(currentPlanCard);
     }
 
     var card = document.createElement("div");
-    card.className = "viz-container plan-card";
+    card.className = "viz-container plan-card" + (interactive ? " plan-card--review" : "");
     card.setAttribute("data-viz-type", "plan");
     card.setAttribute("data-size", "large");
 
@@ -532,20 +538,20 @@
 
     var title = document.createElement("span");
     title.className = "viz-title";
-    title.textContent = "Execution Plan";
+    title.textContent = interactive ? "Review Execution Plan" : "Execution Plan";
     header.appendChild(title);
 
     card.appendChild(header);
 
-    // Plan summary
+    // Content
     var content = document.createElement("div");
     content.className = "viz-content plan-card-content";
 
     if (data.plan_summary) {
-      var summary = document.createElement("div");
-      summary.className = "plan-summary";
-      summary.textContent = data.plan_summary;
-      content.appendChild(summary);
+        var summary = document.createElement("div");
+        summary.className = "plan-summary";
+        summary.textContent = data.plan_summary;
+        content.appendChild(summary);
     }
 
     // Steps list
@@ -555,58 +561,149 @@
 
     var steps = data.steps || [];
     for (var i = 0; i < steps.length; i++) {
-      var step = steps[i];
-      var stepEl = document.createElement("div");
-      stepEl.className = "plan-step plan-step--pending";
-      stepEl.setAttribute("data-step-id", step.id);
-
-      var statusIcon = document.createElement("span");
-      statusIcon.className = "plan-step-icon";
-      statusIcon.innerHTML = '<i class="bi bi-circle"></i>';
-      stepEl.appendChild(statusIcon);
-
-      var stepText = document.createElement("span");
-      stepText.className = "plan-step-text";
-      stepText.textContent = step.purpose || step.tool;
-      stepEl.appendChild(stepText);
-
-      var toolBadge = document.createElement("span");
-      toolBadge.className = "plan-step-tool";
-      toolBadge.textContent = step.tool;
-      stepEl.appendChild(toolBadge);
-
-      stepsList.appendChild(stepEl);
+        var step = steps[i];
+        var stepEl = createPlanStepElement(step, interactive);
+        stepsList.appendChild(stepEl);
     }
     content.appendChild(stepsList);
 
-    // Progress bar
-    var progressBar = document.createElement("div");
-    progressBar.className = "plan-progress";
-    progressBar.id = "plan-progress";
+    if (interactive) {
+        // Action buttons
+        var actions = document.createElement("div");
+        actions.className = "plan-actions";
 
-    var progressFill = document.createElement("div");
-    progressFill.className = "plan-progress-fill";
-    progressFill.style.width = "0%";
-    progressBar.appendChild(progressFill);
+        var acceptBtn = document.createElement("button");
+        acceptBtn.className = "plan-action-btn plan-action-btn--accept";
+        acceptBtn.innerHTML = '<i class="bi bi-check-lg"></i> Accept';
+        acceptBtn.onclick = onPlanAccept;
+        actions.appendChild(acceptBtn);
 
-    var progressText = document.createElement("span");
-    progressText.className = "plan-progress-text";
-    progressText.textContent = "0 / " + steps.length + " steps";
-    progressBar.appendChild(progressText);
+        var regenBtn = document.createElement("button");
+        regenBtn.className = "plan-action-btn plan-action-btn--regenerate";
+        regenBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Regenerate';
+        regenBtn.onclick = onPlanRegenerate;
+        actions.appendChild(regenBtn);
 
-    content.appendChild(progressBar);
+        var declineBtn = document.createElement("button");
+        declineBtn.className = "plan-action-btn plan-action-btn--decline";
+        declineBtn.innerHTML = '<i class="bi bi-x-lg"></i> Decline';
+        declineBtn.onclick = onPlanDecline;
+        actions.appendChild(declineBtn);
+
+        content.appendChild(actions);
+    } else {
+        // Progress bar (existing execution mode)
+        var progressBar = document.createElement("div");
+        progressBar.className = "plan-progress";
+        progressBar.id = "plan-progress";
+
+        var progressFill = document.createElement("div");
+        progressFill.className = "plan-progress-fill";
+        progressFill.style.width = "0%";
+        progressBar.appendChild(progressFill);
+
+        var progressText = document.createElement("span");
+        progressText.className = "plan-progress-text";
+        progressText.textContent = "0 / " + steps.length + " steps";
+        progressBar.appendChild(progressText);
+
+        content.appendChild(progressBar);
+    }
 
     card.appendChild(content);
 
-    // Insert at the TOP of the portal
     if (portal.firstChild) {
-      portal.insertBefore(card, portal.firstChild);
+        portal.insertBefore(card, portal.firstChild);
     } else {
-      portal.appendChild(card);
+        portal.appendChild(card);
     }
 
     currentPlanCard = card;
     updatePortalVisibility();
+  }
+
+  function createPlanStepElement(step, interactive) {
+    var stepEl = document.createElement("div");
+    stepEl.className = "plan-step plan-step--pending";
+    stepEl.setAttribute("data-step-id", step.id);
+    if (interactive) {
+        stepEl.setAttribute("draggable", "true");
+        stepEl.addEventListener("dragstart", onStepDragStart);
+        stepEl.addEventListener("dragover", onStepDragOver);
+        stepEl.addEventListener("drop", onStepDrop);
+        stepEl.addEventListener("dragend", onStepDragEnd);
+    }
+
+    // Drag handle (interactive only)
+    if (interactive) {
+        var dragHandle = document.createElement("span");
+        dragHandle.className = "plan-step-drag";
+        dragHandle.innerHTML = '<i class="bi bi-grip-vertical"></i>';
+        stepEl.appendChild(dragHandle);
+    }
+
+    var statusIcon = document.createElement("span");
+    statusIcon.className = "plan-step-icon";
+    statusIcon.innerHTML = '<i class="bi bi-circle"></i>';
+    stepEl.appendChild(statusIcon);
+
+    var stepText = document.createElement("span");
+    stepText.className = "plan-step-text";
+    stepText.textContent = step.purpose || step.tool;
+    if (interactive) {
+        stepText.style.cursor = "pointer";
+        stepText.onclick = function () { toggleStepArgs(stepEl, step); };
+    }
+    stepEl.appendChild(stepText);
+
+    var toolBadge = document.createElement("span");
+    toolBadge.className = "plan-step-tool";
+    toolBadge.textContent = step.tool;
+    stepEl.appendChild(toolBadge);
+
+    // Remove button (interactive only)
+    if (interactive) {
+        var removeBtn = document.createElement("span");
+        removeBtn.className = "plan-step-remove";
+        removeBtn.innerHTML = '<i class="bi bi-x"></i>';
+        removeBtn.title = "Remove step";
+        removeBtn.onclick = function (e) {
+            e.stopPropagation();
+            onRemoveStep(stepEl, step.id);
+        };
+        stepEl.appendChild(removeBtn);
+    }
+
+    // Args panel (hidden by default)
+    if (interactive && step.args && Object.keys(step.args).length > 0) {
+        var argsPanel = document.createElement("div");
+        argsPanel.className = "plan-step-args";
+        argsPanel.style.display = "none";
+        for (var key in step.args) {
+            var argRow = document.createElement("div");
+            argRow.className = "plan-step-arg-row";
+
+            var label = document.createElement("label");
+            label.className = "plan-step-arg-label";
+            label.textContent = key;
+            argRow.appendChild(label);
+
+            var input = document.createElement("input");
+            input.className = "plan-step-arg-input";
+            input.type = "text";
+            input.value = typeof step.args[key] === "string"
+                ? step.args[key]
+                : JSON.stringify(step.args[key]);
+            input.setAttribute("data-arg-key", key);
+            input.setAttribute("data-step-id", step.id);
+            argRow.appendChild(input);
+
+            argsPanel.appendChild(argRow);
+        }
+        stepEl.appendChild(argsPanel);
+    }
+
+    return stepEl;
   }
 
   function updatePlanStep(stepId, status) {
