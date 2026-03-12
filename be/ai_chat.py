@@ -4788,6 +4788,9 @@ Based on the above results, write a comprehensive answer to the user's question.
     return text
 
 
+# Pending plans awaiting user acceptance (session_id → plan context)
+_pending_plans: Dict[str, dict] = {}
+
 # --- SSE streaming endpoint ---
 
 
@@ -4928,6 +4931,7 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             {
                                 "id": s["id"],
                                 "tool": s["tool"],
+                                "args": s.get("args", {}),
                                 "purpose": s.get("purpose", ""),
                                 "depends_on": s.get("depends_on", []),
                             }
@@ -4936,36 +4940,17 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     }
                     yield _sse_event("plan", plan_payload)
 
-                    # Phase 2: Execute plan steps
-                    yield _sse_event("thinking", {"status": "Executing analysis plan..."})
-                    all_sse_events, completed_results = await _execute_plan(
-                        session_id, plan
-                    )
-                    for evt in all_sse_events:
-                        yield evt
+                    # Store plan context for later execution
+                    _pending_plans[session_id] = {
+                        "plan": plan,
+                        "message": message,
+                        "history": history,
+                        "model_name": model_name,
+                    }
 
-                    # Phase 3: Synthesize results
-                    yield _sse_event("thinking", {"status": "Synthesizing results..."})
-                    synthesis_text = await _synthesize(
-                        client, model_name, message, plan, completed_results,
-                        all_sse_events,
-                    )
-                    yield _sse_event("text", {"content": synthesis_text})
-
-                    # Save assistant text to DB
-                    if synthesis_text:
-                        await db_pools["pg"].execute(
-                            "INSERT INTO chat_messages (session_id, role, content) VALUES ($1, $2, $3)",
-                            uuid.UUID(session_id),
-                            "model",
-                            synthesis_text,
-                        )
-
-                    # Update session timestamp
-                    await db_pools["pg"].execute(
-                        "UPDATE chat_sessions SET updated_at = NOW() WHERE id = $1",
-                        uuid.UUID(session_id),
-                    )
+                    # Stop here — frontend will call /execute-plan after user review
+                    yield _sse_event("done", {"session_id": session_id})
+                    return
 
             tools = [types.Tool(function_declarations=_get_all_tool_declarations())]
             config = types.GenerateContentConfig(
