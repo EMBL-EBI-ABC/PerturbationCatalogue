@@ -68,6 +68,15 @@ class ExecutePlanRequest(BaseModel):
     plan: Optional[dict] = None
 
 
+class RegeneratePlanRequest(BaseModel):
+    session_id: str
+    feedback: Optional[str] = None
+
+
+class DeclinePlanRequest(BaseModel):
+    session_id: str
+
+
 class SessionUpdateRequest(BaseModel):
     title: str
 
@@ -5420,3 +5429,115 @@ async def execute_plan(
         yield _sse_event("done", {"session_id": session_id})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/regenerate-plan")
+async def regenerate_plan(
+    request: RegeneratePlanRequest, user: dict = Depends(get_current_user)
+):
+    """Regenerate a plan with optional user feedback."""
+    session_id = request.session_id
+
+    async def generate():
+        try:
+            row = await db_pools["pg"].fetchrow(
+                "SELECT user_id FROM chat_sessions WHERE id = $1",
+                uuid.UUID(session_id),
+            )
+            if not row or row["user_id"] != user["id"]:
+                yield _sse_event("error", {"message": "Session not found"})
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            ctx = _pending_plans.get(session_id)
+            if not ctx:
+                yield _sse_event("error", {"message": "No pending plan found"})
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            model_name = ctx["model_name"]
+            message = ctx["message"]
+            history = ctx["history"]
+
+            # Append user feedback to the message for re-planning
+            plan_message = message
+            if request.feedback:
+                plan_message = (
+                    message
+                    + "\n\nUser feedback on previous plan: "
+                    + request.feedback
+                )
+
+            # Create Gemini client
+            project = _config.get("google_cloud_project", "")
+            api_key = _config.get("gemini_api_key", "")
+
+            if project:
+                default_location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+                location = (
+                    "global" if "preview" in model_name else default_location
+                )
+                client = genai.Client(
+                    vertexai=True,
+                    project=project,
+                    location=location,
+                )
+            elif api_key:
+                client = genai.Client(api_key=api_key)
+            else:
+                yield _sse_event(
+                    "error", {"message": "No AI credentials configured"}
+                )
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            yield _sse_event("thinking", {"status": "Regenerating plan..."})
+
+            plan = await _generate_plan(client, model_name, plan_message, history)
+
+            if plan is None:
+                yield _sse_event(
+                    "error", {"message": "Failed to generate a new plan"}
+                )
+                yield _sse_event("done", {"session_id": session_id})
+                return
+
+            plan_payload = {
+                "plan_summary": plan.get("plan_summary", ""),
+                "steps": [
+                    {
+                        "id": s["id"],
+                        "tool": s["tool"],
+                        "args": s.get("args", {}),
+                        "purpose": s.get("purpose", ""),
+                        "depends_on": s.get("depends_on", []),
+                    }
+                    for s in plan["steps"]
+                ],
+            }
+            yield _sse_event("plan", plan_payload)
+
+            # Update stored context with new plan (keep original message, not feedback-appended)
+            _pending_plans[session_id] = {
+                "plan": plan,
+                "message": ctx["message"],
+                "history": history,
+                "model_name": model_name,
+            }
+
+        except Exception as exc:
+            logger.exception("Regenerate plan error")
+            yield _sse_event("error", {"message": str(exc)})
+
+        yield _sse_event("done", {"session_id": session_id})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/decline-plan")
+async def decline_plan(
+    request: DeclinePlanRequest, user: dict = Depends(get_current_user)
+):
+    """Clear a pending plan without executing it."""
+    _pending_plans.pop(request.session_id, None)
+    return {"status": "ok"}
