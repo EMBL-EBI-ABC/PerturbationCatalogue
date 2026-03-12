@@ -1248,6 +1248,162 @@ a.header-link.active {
     font-weight: 500;
 }
 
+/* Plan card — review mode */
+.plan-card--review {
+    border-left-color: #e67e22;
+}
+
+.plan-card--loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Action buttons row */
+.plan-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.plan-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.plan-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.plan-action-btn--accept {
+    background: #007B53;
+    color: #fff;
+    border-color: #007B53;
+}
+.plan-action-btn--accept:hover:not(:disabled) {
+    background: #006644;
+}
+
+.plan-action-btn--regenerate {
+    background: #3B6FB6;
+    color: #fff;
+    border-color: #3B6FB6;
+}
+.plan-action-btn--regenerate:hover {
+    background: #2f5a94;
+}
+
+.plan-action-btn--decline {
+    background: #f8f9fa;
+    color: #6c757d;
+}
+.plan-action-btn--decline:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* Step interactive elements */
+.plan-step-drag {
+    cursor: grab;
+    color: #adb5bd;
+    margin-right: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.plan-card--review .plan-step:hover .plan-step-drag {
+    opacity: 1;
+}
+
+.plan-step-remove {
+    cursor: pointer;
+    color: #adb5bd;
+    margin-left: auto;
+    padding: 0 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.plan-card--review .plan-step:hover .plan-step-remove {
+    opacity: 1;
+}
+
+.plan-step-remove:hover {
+    color: #dc3545;
+}
+
+.plan-step--dragging {
+    opacity: 0.4;
+}
+
+/* Args editing panel */
+.plan-step-args {
+    padding: 8px 0 4px 28px;
+}
+
+.plan-step-arg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.plan-step-arg-label {
+    font-size: 0.78rem;
+    color: #6c757d;
+    min-width: 100px;
+    font-family: monospace;
+}
+
+.plan-step-arg-input {
+    flex: 1;
+    padding: 3px 6px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-family: monospace;
+}
+
+.plan-step-arg-input:focus {
+    border-color: #3B6FB6;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 111, 182, 0.15);
+}
+
+.plan-arg-invalid {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.15) !important;
+}
+
+/* Feedback input for regeneration */
+.plan-feedback-row {
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.plan-feedback-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.plan-feedback-input:focus {
+    border-color: #3B6FB6;
+    outline: none;
+}
+
 .viz-title {
     font-weight: 500;
     font-size: 0.875rem;
