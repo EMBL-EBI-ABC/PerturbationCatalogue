@@ -19,12 +19,12 @@ def get_study_summary_with_samples(study_accession):
     Query ENA API and return:
     - total_bytes
     - total_files
-    - sample_stats: dict {sample_accession: (bytes, file_count)}
+    - sample_stats: dict {sample_accession: [bytes, file_count, cell_type]}
     """
     params = {
         "accession": study_accession,
         "result": "read_run",
-        "fields": "fastq_bytes,sample_accession",
+        "fields": "fastq_bytes,sample_accession,cell_type",
         "format": "tsv",
     }
 
@@ -39,10 +39,16 @@ def get_study_summary_with_samples(study_accession):
 
     total_bytes = 0
     total_files = 0
-    sample_stats = defaultdict(lambda: [0, 0])  # {sample: [bytes, file_count]}
+    sample_stats = defaultdict(
+        lambda: [0, 0, "UNKNOWN"]
+    )  # {sample: [bytes, file_count, cell_type]}
 
     for row in reader:
         sample = row.get("sample_accession") or "UNKNOWN"
+        cell_type = row.get("cell_type") or "UNKNOWN"
+
+        if sample_stats[sample][2] == "UNKNOWN" and cell_type != "UNKNOWN":
+            sample_stats[sample][2] = cell_type
 
         if row.get("fastq_bytes"):
             sizes = row["fastq_bytes"].split(";")
@@ -83,9 +89,11 @@ def main(datasets_tsv):
 
                 # Per-sample breakdown
                 for idx, (sample, stats) in enumerate(sorted(sample_stats.items()), 1):
-                    sample_bytes, sample_files = stats
+                    sample_bytes, sample_files, cell_type = stats
                     sample_tb = bytes_to_tb(sample_bytes)
-                    print(f"    #{idx} {sample} {sample_tb:.3f} {sample_files}")
+                    print(
+                        f"    #{idx} {sample} {sample_tb:.3f} {sample_files} {cell_type}"
+                    )
 
             except Exception as e:
                 print(f"{study_accession}\tERROR\tERROR ({e})", file=sys.stderr)
