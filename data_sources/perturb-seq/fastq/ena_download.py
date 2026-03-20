@@ -9,6 +9,7 @@ import sys
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
+import random
 
 
 def get_srr_accessions(sample_id):
@@ -28,67 +29,94 @@ def get_srr_accessions(sample_id):
         sys.exit(1)
 
 
-def process_srr(srr_id, out_dir, temp_base):
+def process_srr(srr_id, out_dir, temp_base, max_retries=5):
     """Download, extract, and compress FASTQ for a single SRR accession using SRA toolkit."""
     srr_temp = os.path.join(temp_base, srr_id)
-    os.makedirs(srr_temp, exist_ok=True)
 
-    try:
-        # 1. Prefetch the SRA file
-        prefetch_cmd = ["prefetch", srr_id, "-O", srr_temp, "--max-size", "100G"]
-        subprocess.run(
-            prefetch_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+    for attempt in range(max_retries):
+        os.makedirs(srr_temp, exist_ok=True)
 
-        sra_path = None
-        for root, _, files in os.walk(srr_temp):
-            for file in files:
-                if file.endswith(".sra"):
-                    sra_path = os.path.join(root, file)
+        try:
+            # 1. Prefetch the SRA file
+            prefetch_cmd = ["prefetch", srr_id, "-O", srr_temp, "--max-size", "100G"]
+            subprocess.run(
+                prefetch_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+
+            sra_path = None
+            for root, _, files in os.walk(srr_temp):
+                for file in files:
+                    if file.endswith(".sra"):
+                        sra_path = os.path.join(root, file)
+                        break
+                if sra_path:
                     break
-            if sra_path:
-                break
 
-        if not sra_path:
-            sra_path = srr_id
+            if not sra_path:
+                sra_path = srr_id
 
-        # 2. Extract FASTQ files
-        dump_cmd = [
-            "fasterq-dump",
-            sra_path,
-            "--split-files",
-            "--include-technical",
-            "-O",
-            out_dir,
-            "-t",
-            srr_temp,
-            "-e",
-            "1",
-        ]
-        subprocess.run(
-            dump_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+            # 2. Extract FASTQ files
+            dump_cmd = [
+                "fasterq-dump",
+                sra_path,
+                "--split-files",
+                "--include-technical",
+                "-O",
+                out_dir,
+                "-t",
+                srr_temp,
+                "-e",
+                "1",
+            ]
+            subprocess.run(
+                dump_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
 
-        # 3. Compress the extracted FASTQ files
-        fastq_files = [
-            f
-            for f in os.listdir(out_dir)
-            if f.startswith(srr_id) and f.endswith(".fastq")
-        ]
-        for fq in fastq_files:
-            fq_path = os.path.join(out_dir, fq)
-            subprocess.run(["gzip", fq_path], check=True)
+            # 3. Compress the extracted FASTQ files
+            fastq_files = [
+                f
+                for f in os.listdir(out_dir)
+                if f.startswith(srr_id) and f.endswith(".fastq")
+            ]
+            for fq in fastq_files:
+                fq_path = os.path.join(out_dir, fq)
+                subprocess.run(["gzip", fq_path], check=True)
 
-        return srr_id, True, None
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode("utf-8").strip() if e.stderr else str(e)
-        return srr_id, False, error_msg
-    except Exception as e:
-        return srr_id, False, str(e)
-    finally:
-        # Cleanup temporary files for this SRR
-        if os.path.exists(srr_temp):
-            shutil.rmtree(srr_temp)
+            return srr_id, True, None
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode("utf-8").strip() if e.stderr else str(e)
+            if attempt < max_retries - 1:
+                wait_time = (5 * (3**attempt)) + random.uniform(0, 2)
+                time.sleep(wait_time)
+                if os.path.exists(srr_temp):
+                    shutil.rmtree(srr_temp)
+                continue
+            return (
+                srr_id,
+                False,
+                f"Failed after {max_retries} attempts. Last error: {error_msg}",
+            )
+
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = (5 * (3**attempt)) + random.uniform(0, 2)
+                time.sleep(wait_time)
+                if os.path.exists(srr_temp):
+                    shutil.rmtree(srr_temp)
+                continue
+            return (
+                srr_id,
+                False,
+                f"Failed after {max_retries} attempts. Last error: {str(e)}",
+            )
+
+        finally:
+            if attempt == max_retries - 1 or (
+                "error_msg" not in locals() and "e" not in locals()
+            ):
+                if os.path.exists(srr_temp):
+                    shutil.rmtree(srr_temp)
 
 
 def format_time(seconds):
