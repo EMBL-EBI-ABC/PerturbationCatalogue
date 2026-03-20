@@ -21,8 +21,16 @@ def generate_features_tsv(xlsx_path, output_tsv):
         columns={"targeting sequence B": "seq", "sgID_B": "id"}
     )
 
-    # Combine, drop missing and duplicates
-    features_df = pd.concat([df_A, df_B]).dropna().drop_duplicates()
+    # Combine all guides
+    features_df = pd.concat([df_A, df_B]).dropna()
+
+    # Resolve duplicate guide sequences by grouping by 'seq' and joining the 'id's
+    features_df = features_df.groupby("seq", as_index=False).agg(
+        {"id": lambda x: ";".join(sorted(set(x)))}
+    )
+
+    # Ensure sequence is first column, id is second
+    features_df = features_df[["seq", "id"]]
 
     # Save as headerless TSV
     features_df.to_csv(output_tsv, sep="\t", index=False, header=False)

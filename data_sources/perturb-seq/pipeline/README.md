@@ -26,6 +26,19 @@ GCTAGCTAGCTAGCTA    sgRNA_B
 ```
 *Note: The file should NOT contain a header. Column 1 is the sequence, and Column 2 is the feature ID (e.g., guide name).*
 
+## Understanding the Guide Output Matrix (Multiplexed / Dual-Guide Libraries)
+
+Many modern Perturb-seq libraries (like Nadig 2025) use **dual-guide** expression vectors. A single plasmid expresses a single transcript that gets processed into two distinct guide RNAs.
+
+**How the pipeline handles this:**
+1. **Independent Quantification:** The 10x Feature Barcode technology captures and sequences these mature guide RNA molecules *independently*. Therefore, the pipeline quantifies each guide sequence as an independent feature. It does not output "paired" counts.
+2. **The Output Matrix:** In the final `experiment_final.h5ad` file, the `.obsm['guides']` layer will contain separate columns for Guide A and Guide B.
+3. **Downstream Perturbation Calling:** Because counts are independent, it is the responsibility of the downstream analysis script (e.g., using `Scanpy` or `MuData`) to determine the final perturbation state. A common logic is: *If a cell has > X counts of Guide A AND > X counts of Guide B, assign the "A+B" perturbation label.*
+
+**Handling Duplicate Sequences:**
+Occasionally, library designs reuse the exact same guide sequence for different logical targets (e.g., targeting a genomic region that produces a readthrough fusion transcript). 
+If the `features.tsv` generation script detects multiple IDs sharing the exact same nucleotide sequence, it will merge those IDs with a semicolon (e.g., `Sequence -> ID_1;ID_2`). The pipeline will assign all counts for that sequence to that single merged ID string.
+
 ## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset
 
 The Nadig 2025 Jurkat dataset (`SAMN40972597`) uses a multiplexed CRISPRi library with two guides per cell. To process this, we must download the reference human transcriptome, extract the guide sequences from the authors' supplementary data, and then run the unified pipeline.
