@@ -1,10 +1,13 @@
 # Perturb-seq Raw Data Processing Pipeline
 
-This Nextflow pipeline processes raw Perturb-seq FASTQ files (downloaded from ENA/SRA) into `h5ad` format count matrices using the robust and fast [kallisto-bustools (`kb-python`)](https://www.kallistobus.tools/) suite. The pipeline supports both standard Single-Cell RNA-seq (cDNA) analysis and Feature Barcode (CRISPR/guide RNA) quantification using the KITE workflow.
+This Nextflow pipeline processes raw Perturb-seq FASTQ files (downloaded from ENA/SRA) into `h5ad` format count matrices using the [kallisto-bustools (`kb-python`)](https://www.kallistobus.tools/) suite. The pipeline supports both standard Single-Cell RNA-seq (cDNA) analysis and Feature Barcode (CRISPR/guide RNA) quantification using the KITE workflow.
 
 ## Requirements
-- **Nextflow**
-- **Conda** or **Mamba** (the pipeline will create an environment with `kb-python` automatically, provided `conda` is accessible). Alternatively, ensure `kb-python` is installed and available in your `$PATH`.
+- **Nextflow**: Install via `wget -qO- https://get.nextflow.io | bash` or your cluster's module system.
+- **kb-python**: The core kallisto-bustools wrapper. 
+  - **Option 1 (Virtual Environment):** Create a Python virtual environment and run `pip install kb-python`. Ensure the `kb` command is in your `$PATH`.
+  - **Option 2 (Singularity/Apptainer):** The pipeline includes a Singularity profile. If your cluster has Singularity, you can run the pipeline with `-profile slurm,singularity` and it will automatically pull and use the `kallistobustools/kb_python:latest` image.
+- **Python Data Stack (for extraction script only)**: `pip install pandas openpyxl`
 
 ## The "Whitelist of Probes" (Features List)
 When processing CRISPR guides or other feature barcodes, you must use the **KITE** workflow. This workflow requires a "whitelist of probes", which is a simple tab-separated values (TSV) file mapping the guide name to its sequence.
@@ -103,4 +106,3 @@ nextflow run main.nf \
     --transcriptome_fa /path/to/human_transcriptome.fa \
     --gtf /path/to/human_annotation.gtf
 ```
-
