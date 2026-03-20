@@ -6,6 +6,7 @@ nextflow.enable.dsl=2
 params.fastq_dir = null
 params.outdir = "results"
 params.chemistry = "10x_v3"  // e.g. 10x_v2, 10x_v3
+params.limit = 0 // Limit number of FASTQs processed (for debugging). 0 = no limit.
 
 // Reference parameters for standard workflow (Gene Expression)
 params.transcriptome_fa = null
@@ -226,6 +227,9 @@ workflow {
 
     // Match all relevant fastq files for the given SRR prefixes (_1, _2, _3, etc.)
     read_pairs_ch = Channel.fromFilePairs("${params.fastq_dir}/*_{1,2,3}.fastq.gz", size: -1)
+    if (params.limit > 0) {
+        read_pairs_ch = read_pairs_ch.take(params.limit)
+    }
 
     std_idx = BUILD_INDEX_STANDARD(fa, gtf)
     kite_idx = BUILD_INDEX_KITE(features)
