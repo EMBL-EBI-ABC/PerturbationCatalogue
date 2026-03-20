@@ -28,44 +28,50 @@ sgRNA_B    GCTAGCTAGCTAGCTA
 
 ## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset
 
-The Nadig 2025 Jurkat dataset (`SAMN40972597`) uses a multiplexed CRISPRi library with two guides per cell. To process this, we must extract the individual guide sequences from the authors' supplementary Excel file and create a `features.tsv` whitelist.
+The Nadig 2025 Jurkat dataset (`SAMN40972597`) uses a multiplexed CRISPRi library with two guides per cell. To process this, we must download the reference human transcriptome, extract the guide sequences from the authors' supplementary data, and then run the unified pipeline.
 
-### 1. Generate the Guide Whitelist (`features.tsv`)
+The following steps provide exact, copy-pasteable commands with no placeholders.
 
-The script `generate_features_nadig.py` is included in this folder to extract the sequences.
+### 1. Download the Reference Transcriptome and GTF
+We will use the standard Ensembl GRCh38 (Release 111) for mapping cDNA reads. These files will be stored in `$HPS_PATH/cache/reference`.
 
 ```bash
-# Ensure you have pandas and openpyxl installed
-pip install pandas openpyxl
+mkdir -p $HPS_PATH/cache/reference
+cd $HPS_PATH/cache/reference
 
-# Generate the whitelist using the curated supplementary table (assuming you run this from the pipeline dir)
-python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx features.tsv
+# Download the FASTA and GTF files
+wget -q http://ftp.ensembl.org/pub/release-111/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+wget -q http://ftp.ensembl.org/pub/release-111/gtf/homo_sapiens/Homo_sapiens.GRCh38.111.gtf.gz
 ```
 
-*Note: The generated `features.tsv` will be a headerless file with two columns: `<sgID>` and `<sequence>`.*
+### 2. Generate the Guide Whitelist (`features.tsv`)
+The script `generate_features_nadig.py` extracts the individual guide sequences from the authors' supplementary Excel file.
 
-### 2. Run the Unified Pipeline on the SLURM Cluster
+```bash
+cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
 
-Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN40972597`, run the unified dual-modality pipeline:
+# Install required python packages
+pip install pandas openpyxl
+
+# Generate the whitelist
+python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx $HPS_PATH/cache/reference/features.tsv
+```
+
+### 3. Run the Unified Pipeline on the SLURM Cluster
+Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN40972597`, you can now run the pipeline. 
+
+*(Note: The pipeline automatically inspects the 10x FASTQ triplet files per SRR and dynamically detects which is the barcode read and which is the biological read based on their internal sequence lengths. You no longer need to specify read patterns.)*
 
 ```bash
 nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
-    --outdir $HPS_PATH/results/SAMN40972597 \
+    --outdir $HPS_PATH/perturb_seq_fastq/results \
     --chemistry 10x_v3 \
-    --reads_pattern "*_{1,2}.fastq.gz" \
-    --transcriptome_fa /path/to/human_transcriptome.fa \
-    --gtf /path/to/human_annotation.gtf \
-    --features_tsv features.tsv
+    --transcriptome_fa $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
+    --gtf $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.111.gtf.gz \
+    --features_tsv $HPS_PATH/cache/reference/features.tsv
 ```
-
-### Important Parameters:
-- `--fastq_dir`: Path to the directory containing downloaded `fastq.gz` files.
-- `--reads_pattern`: Glob pattern to pair reads. SRA often splits reads into three files (`_1`, `_2`, `_3`). If your SRA download has three files but your chemistry expects only two (e.g. `10x_v3`), you MUST use `reads_pattern` to select only the two relevant read files containing the barcode and the biological sequence (e.g., `*_{2,3}.fastq.gz`). 
-- `--chemistry`: Single-cell chemistry version. E.g., `10x_v2`, `10x_v3`, `10x_v3_multi`.
-- `--transcriptome_fa` / `--gtf`: Reference genome files for the standard expression matrix.
-- `--features_tsv`: Whitelist mapping guides for the KITE matrix.
 
 ## Outputs
 - `results/reference/standard/`: cDNA Kallisto index.

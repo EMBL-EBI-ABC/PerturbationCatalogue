@@ -14,9 +14,6 @@ params.gtf = null
 // Reference parameters for KITE workflow (Guides/CRISPR)
 params.features_tsv = null
 
-// FASTQ read selection.
-params.reads_pattern = "*_{1,2}.fastq.gz" 
-
 process BUILD_INDEX_STANDARD {
     tag "cDNA_index"
     publishDir "${params.outdir}/reference/standard", mode: 'copy'
@@ -70,13 +67,35 @@ process KB_COUNT_STANDARD {
     script:
     """
     mkdir -p out
+
+    # Auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
+    R1=""
+    R2=""
+    for fq in ${reads.join(' ')}; do
+        # Extract the length of the first sequence read
+        seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
+        if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
+            R1=\$fq
+        elif [ "\$seq_len" -gt 40 ]; then
+            R2=\$fq
+        fi
+    done
+
+    if [ -z "\$R1" ] || [ -z "\$R2" ]; then
+        echo "Error: Could not auto-detect R1 and R2 from fastq lengths for ${sample_id}."
+        exit 1
+    fi
+
+    echo "Auto-detected R1: \$R1"
+    echo "Auto-detected R2: \$R2"
+
     kb count -i ${index} \\
              -g ${t2g} \\
              -x ${chemistry} \\
              -o out \\
              --h5ad \\
              -t ${task.cpus} \\
-             ${reads.join(' ')}
+             \$R1 \$R2
     """
 }
 
@@ -97,6 +116,28 @@ process KB_COUNT_KITE {
     script:
     """
     mkdir -p out
+
+    # Auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
+    R1=""
+    R2=""
+    for fq in ${reads.join(' ')}; do
+        # Extract the length of the first sequence read
+        seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
+        if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
+            R1=\$fq
+        elif [ "\$seq_len" -gt 40 ]; then
+            R2=\$fq
+        fi
+    done
+
+    if [ -z "\$R1" ] || [ -z "\$R2" ]; then
+        echo "Error: Could not auto-detect R1 and R2 from fastq lengths for ${sample_id}."
+        exit 1
+    fi
+
+    echo "Auto-detected R1: \$R1"
+    echo "Auto-detected R2: \$R2"
+
     kb count -i ${index} \\
              -g ${t2g} \\
              -x ${chemistry} \\
@@ -104,7 +145,7 @@ process KB_COUNT_KITE {
              --workflow kite \\
              --h5ad \\
              -t ${task.cpus} \\
-             ${reads.join(' ')}
+             \$R1 \$R2
     """
 }
 
@@ -183,7 +224,8 @@ workflow {
     gtf = file(params.gtf, checkIfExists: true)
     features = file(params.features_tsv, checkIfExists: true)
 
-    read_pairs_ch = Channel.fromFilePairs("${params.fastq_dir}/${params.reads_pattern}", size: -1)
+    // Match all relevant fastq files for the given SRR prefixes (_1, _2, _3, etc.)
+    read_pairs_ch = Channel.fromFilePairs("${params.fastq_dir}/*_{1,2,3}.fastq.gz", size: -1)
 
     std_idx = BUILD_INDEX_STANDARD(fa, gtf)
     kite_idx = BUILD_INDEX_KITE(features)
