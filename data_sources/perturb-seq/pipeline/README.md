@@ -13,7 +13,7 @@ The final output is a single `experiment_final.h5ad` where:
 - **Nextflow**: On the cluster, load the module via `module load nextflow/25.04.6`.
 - **kb-python**: The core kallisto-bustools wrapper. 
   - **Option 1 (Virtual Environment):** Create a Python virtual environment and run `pip install kb-python`. Ensure the `kb` command is in your `$PATH`.
-  - **Option 2 (Singularity/Apptainer):** The pipeline includes a Singularity profile. If your cluster has Singularity, you can run the pipeline with `-profile slurm,singularity` and it will automatically pull and use the `kallistobustools/kb_python:latest` image.
+  - **Option 2 (Singularity/Apptainer):** The pipeline includes a Singularity profile. If your cluster has Singularity, you can run the pipeline with `-profile slurm,singularity` and it will automatically pull and use the `quay.io/biocontainers/kb-python` image.
 - **Python Data Stack (for extraction script only)**: `pip install pandas openpyxl`
 
 ## The "Whitelist of Probes" (Features List)
