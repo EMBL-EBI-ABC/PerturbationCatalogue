@@ -21,10 +21,10 @@ When processing CRISPR guides, the pipeline's internal KITE workflow requires a 
 
 **Format for `features.tsv`:**
 ```tsv
-sgRNA_A    ATCGATCGATCGATCG
-sgRNA_B    GCTAGCTAGCTAGCTA
+ATCGATCGATCGATCG    sgRNA_A
+GCTAGCTAGCTAGCTA    sgRNA_B
 ```
-*Note: The file should NOT contain a header. Column 1 is the feature ID (e.g., guide name), and Column 2 is the sequence.*
+*Note: The file should NOT contain a header. Column 1 is the sequence, and Column 2 is the feature ID (e.g., guide name).*
 
 ## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset
 
@@ -66,7 +66,9 @@ Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN
 # Load Nextflow module
 module load nextflow/25.04.6
 
-# Run the pipeline
+# Run the pipeline head process via srun
+# We allocate 16GB of RAM to the head process so it doesn't OOM while Singularity builds the image
+srun --mem=16G --time=28-00:00:00 --unbuffered \
 nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \

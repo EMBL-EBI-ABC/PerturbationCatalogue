@@ -12,13 +12,13 @@ def generate_features_tsv(xlsx_path, output_tsv):
     df = pd.read_excel(xlsx_path, sheet_name="ST20")
 
     # Extract Guide A
-    df_A = df[["sgID_A", "targeting sequence A"]].rename(
-        columns={"sgID_A": "id", "targeting sequence A": "seq"}
+    df_A = df[["targeting sequence A", "sgID_A"]].rename(
+        columns={"targeting sequence A": "seq", "sgID_A": "id"}
     )
 
     # Extract Guide B
-    df_B = df[["sgID_B", "targeting sequence B"]].rename(
-        columns={"sgID_B": "id", "targeting sequence B": "seq"}
+    df_B = df[["targeting sequence B", "sgID_B"]].rename(
+        columns={"targeting sequence B": "seq", "sgID_B": "id"}
     )
 
     # Combine, drop missing and duplicates
