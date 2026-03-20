@@ -107,3 +107,110 @@ nextflow run main.nf \
 The pipeline output directories are structured as follows:
 - `results/reference/`: Contains the generated Kallisto index and `t2g` (transcript-to-gene) mapping files.
 - `results/counts/<SRR_ID>/`: Contains the quantification outputs. The raw counts and the processed `adata.h5ad` format matrix can be found in the `counts_unfiltered/` subdirectory.
+
+# Perturb-seq Raw Data Processing Pipeline
+
+This Nextflow pipeline processes raw Perturb-seq FASTQ files (downloaded from ENA/SRA) into `h5ad` format count matrices using the robust and fast [kallisto-bustools (`kb-python`)](https://www.kallistobus.tools/) suite. The pipeline supports both standard Single-Cell RNA-seq (cDNA) analysis and Feature Barcode (CRISPR/guide RNA) quantification using the KITE workflow.
+
+## Requirements
+- **Nextflow**
+- **Conda** or **Mamba** (the pipeline will create an environment with `kb-python` automatically, provided `conda` is accessible). Alternatively, ensure `kb-python` is installed and available in your `$PATH`.
+
+## The "Whitelist of Probes" (Features List)
+When processing CRISPR guides or other feature barcodes, you must use the **KITE** workflow. This workflow requires a "whitelist of probes", which is a simple tab-separated values (TSV) file mapping the guide name to its sequence.
+
+**Format for `features.tsv`:**
+```tsv
+sgRNA_A    ATCGATCGATCGATCG
+sgRNA_B    GCTAGCTAGCTAGCTA
+```
+*Note: The file should NOT contain a header. Column 1 is the feature ID (e.g., guide name), and Column 2 is the sequence.*
+
+## Running the Pipeline on SLURM
+The pipeline is pre-configured to run on SLURM clusters. Ensure you specify the `-profile slurm` flag.
+
+### Example 1: Standard cDNA Processing
+```bash
+nextflow run main.nf \
+    -profile slurm \
+    --fastq_dir /path/to/perturb_seq_fastq/SAMN40972597 \
+    --outdir /path/to/results/SAMN40972597_cDNA \
+    --workflow standard \
+    --chemistry 10x_v3 \
+    --reads_pattern "*_{1,2,3}.fastq.gz" \
+    --transcriptome_fa /path/to/transcriptome.fa \
+    --gtf /path/to/annotation.gtf
+```
+
+### Example 2: KITE Workflow (CRISPR Guides)
+```bash
+nextflow run main.nf \
+    -profile slurm \
+    --fastq_dir /path/to/perturb_seq_fastq/SAMN40972597 \
+    --outdir /path/to/results/SAMN40972597_guides \
+    --workflow kite \
+    --chemistry 10x_v3 \
+    --reads_pattern "*_{1,2,3}.fastq.gz" \
+    --features_tsv /path/to/features.tsv
+```
+
+### Important Parameters:
+- `--fastq_dir`: Path to the directory containing downloaded `fastq.gz` files.
+- `--reads_pattern`: Glob pattern to pair reads. SRA often splits reads into three files (`_1`, `_2`, `_3`). If your SRA download has three files but your chemistry expects only two (e.g. `10x_v3`), you MUST use `reads_pattern` to select only the two relevant read files containing the barcode and the biological sequence (e.g., `*_{2,3}.fastq.gz`). Passing 3 files to a 2-file chemistry will cause an error. If your SRA download has two files, leave it as default or `*_{1,2}.fastq.gz`.
+- `--chemistry`: Single-cell chemistry version. E.g., `10x_v2`, `10x_v3`, `10x_v3_multi`.
+- `--workflow`: Choose `standard` for cDNA or `kite` for guides/features.
+
+## Outputs
+The pipeline output directories are structured as follows:
+- `results/reference/`: Contains the generated Kallisto index and `t2g` (transcript-to-gene) mapping files.
+- `results/counts/<SRR_ID>/`: Contains the quantification outputs. The raw counts and the processed `adata.h5ad` format matrix can be found in the `counts_unfiltered/` subdirectory.
+
+## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset
+
+The Nadig 2025 Jurkat dataset (`SAMN40972597`) uses a multiplexed CRISPRi library with two guides per cell. To process this using the KITE workflow, we must extract the individual guide sequences from the authors' supplementary Excel file and create a `features.tsv` whitelist.
+
+### 1. Generate the Guide Whitelist (`features.tsv`)
+
+The script `generate_features_nadig.py` is included in this folder to extract the sequences for you.
+
+```bash
+# Ensure you have pandas and openpyxl installed
+pip install pandas openpyxl
+
+# Generate the whitelist using the curated supplementary table (assuming you run this from the pipeline dir)
+python3 generate_features_nadig.py ../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx features.tsv
+```
+
+*Note: The generated `features.tsv` will be a headerless file with two columns: `<sgID>` and `<sequence>`.*
+
+### 2. Run the Pipeline on the SLURM Cluster
+
+Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN40972597`, run the guide quantification (KITE workflow):
+
+```bash
+# Process CRISPR Guide RNAs
+nextflow run main.nf \
+    -profile slurm \
+    --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
+    --outdir $HPS_PATH/results/SAMN40972597_guides \
+    --workflow kite \
+    --chemistry 10x_v3 \
+    --reads_pattern "*_{1,2}.fastq.gz" \
+    --features_tsv features.tsv
+```
+
+If you also need to re-quantify the Gene Expression (cDNA) from the same or corresponding reads:
+
+```bash
+# Process Gene Expression (cDNA)
+nextflow run main.nf \
+    -profile slurm \
+    --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
+    --outdir $HPS_PATH/results/SAMN40972597_cDNA \
+    --workflow standard \
+    --chemistry 10x_v3 \
+    --reads_pattern "*_{1,2}.fastq.gz" \
+    --transcriptome_fa /path/to/human_transcriptome.fa \
+    --gtf /path/to/human_annotation.gtf
+```
+
