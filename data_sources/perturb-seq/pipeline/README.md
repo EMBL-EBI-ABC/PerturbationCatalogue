@@ -86,7 +86,7 @@ nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
     --outdir $HPS_PATH/perturb_seq_fastq/results \
-    --chemistry 10x_v3 \
+    --chemistry 10xv3 \
     --transcriptome_fa $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
     --gtf $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.111.gtf.gz \
     --features_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
@@ -94,7 +94,7 @@ nextflow run main.nf \
 
 ### Important Parameters
 - `--fastq_dir`: Path to the directory containing downloaded `fastq.gz` files.
-- `--chemistry`: Single-cell chemistry version. E.g., `10x_v2`, `10x_v3`, `10x_v3_multi`.
+- `--chemistry`: Single-cell chemistry version. E.g., `10xv2`, `10xv3`. Note: Do not use underscores.
 - `--transcriptome_fa` / `--gtf`: Reference genome files for the standard expression matrix.
 - `--features_tsv`: Whitelist mapping guides for the KITE matrix.
 - `--limit`: (Optional) Integer. Limits the number of SRR FASTQ sets processed. Useful for debugging (e.g., `--limit 2` to only process the first 2 runs). Default is 0 (process all).

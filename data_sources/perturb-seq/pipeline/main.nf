@@ -5,7 +5,7 @@ nextflow.enable.dsl=2
 // Pipeline Parameters
 params.fastq_dir = null
 params.outdir = "results"
-params.chemistry = "10x_v3"  // e.g. 10x_v2, 10x_v3
+params.chemistry = "10xv3"  // e.g. 10xv2, 10xv3
 params.limit = 0 // Limit number of FASTQs processed (for debugging). 0 = no limit.
 
 // Reference parameters for standard workflow (Gene Expression)
