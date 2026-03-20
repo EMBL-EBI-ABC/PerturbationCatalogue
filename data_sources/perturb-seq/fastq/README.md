@@ -47,8 +47,9 @@ To download data for a dataset:
 3. `cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/fastq`
 4. Start data download, example:
 ```bash
-srun --mem 10G --time 7-00:00:00 --unbuffered \
+srun --cpus-per-task 8 --mem 10G --time 7-00:00:00 --unbuffered \
   python3 ena_download.py \
   --sample-id SAMN40972597 \
-  --out-dir $HPS_PATH/perturb_seq_fastq
+  --out-dir $HPS_PATH/perturb_seq_fastq \
+  --jobs 8
 ```

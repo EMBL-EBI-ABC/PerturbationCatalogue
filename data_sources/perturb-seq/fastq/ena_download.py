@@ -29,19 +29,17 @@ def get_srr_accessions(sample_id):
 
 
 def process_srr(srr_id, out_dir, temp_base):
-    """Download and dump FASTQ for a single SRR accession using SRA toolkit."""
+    """Download, extract, and compress FASTQ for a single SRR accession using SRA toolkit."""
     srr_temp = os.path.join(temp_base, srr_id)
     os.makedirs(srr_temp, exist_ok=True)
 
     try:
         # 1. Prefetch the SRA file
-        # Using prefetch is highly recommended for reliability over direct fasterq-dump streaming
         prefetch_cmd = ["prefetch", srr_id, "-O", srr_temp, "--max-size", "100G"]
         subprocess.run(
             prefetch_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
 
-        # Locate the downloaded .sra file (prefetch usually creates srr_temp/SRR_ID/SRR_ID.sra)
         sra_path = None
         for root, _, files in os.walk(srr_temp):
             for file in files:
@@ -51,13 +49,10 @@ def process_srr(srr_id, out_dir, temp_base):
             if sra_path:
                 break
 
-        # Fallback to direct download if prefetch caching behaves unexpectedly
         if not sra_path:
             sra_path = srr_id
 
         # 2. Extract FASTQ files
-        # --split-files: separates paired/multiplexed reads
-        # --include-technical: ensures technical reads (e.g. 10bp UMIs/Barcodes) are not discarded
         dump_cmd = [
             "fasterq-dump",
             sra_path,
@@ -68,11 +63,21 @@ def process_srr(srr_id, out_dir, temp_base):
             "-t",
             srr_temp,
             "-e",
-            "1",  # 1 thread per task; concurrency is handled by ThreadPoolExecutor
+            "1",
         ]
         subprocess.run(
             dump_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
+
+        # 3. Compress the extracted FASTQ files
+        fastq_files = [
+            f
+            for f in os.listdir(out_dir)
+            if f.startswith(srr_id) and f.endswith(".fastq")
+        ]
+        for fq in fastq_files:
+            fq_path = os.path.join(out_dir, fq)
+            subprocess.run(["gzip", fq_path], check=True)
 
         return srr_id, True, None
     except subprocess.CalledProcessError as e:
@@ -81,9 +86,16 @@ def process_srr(srr_id, out_dir, temp_base):
     except Exception as e:
         return srr_id, False, str(e)
     finally:
-        # Cleanup temporary files for this SRR to save disk space
+        # Cleanup temporary files for this SRR
         if os.path.exists(srr_temp):
             shutil.rmtree(srr_temp)
+
+
+def format_time(seconds):
+    """Helper to format seconds into HH:MM:SS."""
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
 
 def main():
@@ -102,11 +114,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # The script must create a directory under --out-dir matching the sample ID
     target_dir = os.path.join(args.out_dir, args.sample_id)
     os.makedirs(target_dir, exist_ok=True)
 
-    # 1. Fetch SRR IDs from ENA
     srr_ids = get_srr_accessions(args.sample_id)
     if not srr_ids:
         print(f"No run accessions found for sample {args.sample_id}.")
@@ -115,7 +125,6 @@ def main():
     print(f"Found {len(srr_ids)} runs for {args.sample_id}.")
     print(f"Output directory: {target_dir}")
 
-    # Setup temporary directory for SRA toolkit operations
     temp_base = os.path.join(target_dir, "_temp")
     os.makedirs(temp_base, exist_ok=True)
 
@@ -123,11 +132,10 @@ def main():
     fail_count = 0
     total = len(srr_ids)
 
-    print(f"Starting highly concurrent download with {args.jobs} workers...")
+    print(f"Starting download with {args.jobs} workers...")
     start_time = time.time()
 
     try:
-        # 2. Process downloads concurrently
         with ThreadPoolExecutor(max_workers=args.jobs) as executor:
             futures = {
                 executor.submit(process_srr, srr, target_dir, temp_base): srr
@@ -140,13 +148,17 @@ def main():
                     success_count += 1
                 else:
                     fail_count += 1
-                    # Clear current line cleanly to print error
                     sys.stdout.write("\r\033[K")
                     print(f"[ERROR] Failed {srr_id}: {error_msg}")
 
-                # Dynamic progress update
+                elapsed = time.time() - start_time
+                rate = i / elapsed
+                remaining = total - i
+                eta_seconds = remaining / rate if rate > 0 else 0
+
+                # Dynamic progress update with Elapsed and ETA
                 sys.stdout.write(
-                    f"\r\033[KProgress: [{i}/{total}] | Success: {success_count} | Failed: {fail_count} | Last finished: {srr_id}"
+                    f"\r\033[KProgress: [{i}/{total}] | Success: {success_count} | Failed: {fail_count} | Elapsed: {format_time(elapsed)} | ETA: {format_time(eta_seconds)} | Last: {srr_id}"
                 )
                 sys.stdout.flush()
 
@@ -158,7 +170,7 @@ def main():
             shutil.rmtree(temp_base)
 
         elapsed = time.time() - start_time
-        print(f"Finished in {elapsed:.2f} seconds.")
+        print(f"Finished in {format_time(elapsed)}.")
         print(f"Total successful: {success_count}/{total}")
         if fail_count > 0:
             print(f"Total failed: {fail_count}/{total}")
