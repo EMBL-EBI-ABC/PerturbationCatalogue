@@ -10,7 +10,7 @@ The final output is a single `experiment_final.h5ad` where:
 - The guide names/IDs are stored in `.uns['guide_names']`.
 
 ## Requirements
-- **Nextflow**: Install via `wget -qO- https://get.nextflow.io | bash` or your cluster's module system.
+- **Nextflow**: On the cluster, load the module via `module load nextflow/25.04.6`.
 - **kb-python**: The core kallisto-bustools wrapper. 
   - **Option 1 (Virtual Environment):** Create a Python virtual environment and run `pip install kb-python`. Ensure the `kb` command is in your `$PATH`.
   - **Option 2 (Singularity/Apptainer):** The pipeline includes a Singularity profile. If your cluster has Singularity, you can run the pipeline with `-profile slurm,singularity` and it will automatically pull and use the `kallistobustools/kb_python:latest` image.
@@ -53,8 +53,8 @@ cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
 # Install required python packages
 pip install pandas openpyxl
 
-# Generate the whitelist
-python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx $HPS_PATH/cache/reference/features.tsv
+# Generate the whitelist (saving to the dataset directory)
+python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
 ```
 
 ### 3. Run the Unified Pipeline on the SLURM Cluster
@@ -63,6 +63,10 @@ Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN
 *(Note: The pipeline automatically inspects the 10x FASTQ triplet files per SRR and dynamically detects which is the barcode read and which is the biological read based on their internal sequence lengths. You no longer need to specify read patterns.)*
 
 ```bash
+# Load Nextflow module
+module load nextflow/25.04.6
+
+# Run the pipeline
 nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
@@ -70,7 +74,7 @@ nextflow run main.nf \
     --chemistry 10x_v3 \
     --transcriptome_fa $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
     --gtf $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.111.gtf.gz \
-    --features_tsv $HPS_PATH/cache/reference/features.tsv
+    --features_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
 ```
 
 ## Outputs
