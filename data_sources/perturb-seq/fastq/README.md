@@ -25,7 +25,7 @@ Here, SAMN40972597 corresponds to Pertur`bation Catalogue dataset accession nadi
 3. `cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb_seq/fastq`
 4. Start data download, example:
 ```bash
-srun --mem 2G --time 7-00:00:00 \
+srun --mem 10G --time 7-00:00:00 \
   python3 ena_download.py \
   --sample-id SAMN40972597 \
   --out-dir $HPS_PATH/perturb_seq_fastq
