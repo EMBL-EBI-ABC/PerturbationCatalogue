@@ -154,7 +154,7 @@ process MERGE_SRR {
     tag "${sample_id}"
     
     input:
-    tuple val(sample_id), path(std_h5ad), path(kite_h5ad)
+    tuple val(sample_id), path(std_h5ad, stageAs: 'std_adata.h5ad'), path(kite_h5ad, stageAs: 'kite_adata.h5ad')
     
     output:
     path "${sample_id}_merged.h5ad"
