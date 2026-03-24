@@ -163,22 +163,67 @@ process MERGE_SRR {
     """
     #!/usr/bin/env python3
     import anndata as ad
+    import pandas as pd
+    import numpy as np
+    import scipy.sparse as sp
     import sys
     
     srr_id = "${sample_id}"
-    adata_std = ad.read_h5ad("${std_h5ad}")
-    adata_kite = ad.read_h5ad("${kite_h5ad}")
     
-    kite_df = adata_kite.to_df()
+    # Read in backed mode to avoid loading the full gene matrix into memory
+    adata_std = ad.read_h5ad("${std_h5ad}", backed='r')
+    adata_kite = ad.read_h5ad("${kite_h5ad}", backed='r')
+    
     # Align the kite (guide) matrix rows to the standard (cDNA) cell barcodes
-    kite_df_aligned = kite_df.reindex(adata_std.obs_names, fill_value=0)
+    # We use sparse indexing to avoid densifying the guide matrix
+    kite_obs_map = pd.Series(np.arange(adata_kite.n_obs), index=adata_kite.obs_names)
+    target_indices = kite_obs_map.reindex(adata_std.obs_names).values
     
-    # Store guide counts as a multi-dimensional array in .obsm
-    adata_std.obsm['guides'] = kite_df_aligned.values
-    # Save the guide names corresponding to the columns of the array
-    adata_std.uns['guide_names'] = kite_df_aligned.columns.tolist()
+    mask = ~pd.isna(target_indices)
+    valid_indices = target_indices[mask].astype(int)
     
-    adata_std.write_h5ad(f"{srr_id}_merged.h5ad")
+    # Construct the aligned sparse matrix for guides
+    # We use the same dtype as the source matrix
+    X_found = adata_kite.X[valid_indices, :]
+    row_indices = np.where(mask)[0]
+    
+    # Build a new CSR matrix of the correct shape (n_cells_std x n_guides)
+    # If the kite matrix is sparse, we build it from COO components for efficiency
+    if sp.issparse(X_found):
+        coo = X_found.tocoo()
+        new_row_indices = row_indices[coo.row]
+        guides_sparse = sp.csr_matrix(
+            (coo.data, (new_row_indices, coo.col)),
+            shape=(adata_std.n_obs, adata_kite.n_vars),
+            dtype=X_found.dtype
+        )
+    else:
+        # Fallback if kite.X is dense (unlikely but possible)
+        guides_sparse = np.zeros((adata_std.n_obs, adata_kite.n_vars), dtype=X_found.dtype)
+        guides_sparse[mask, :] = X_found
+    
+    # Create a new AnnData object for the merged SRR
+    # We copy the obs/var/X from the standard matrix
+    # Note: adata_std is backed, so we read it into memory for this step
+    # or better, we create a new one and let it stream during write.
+    
+    # For a single SRR, we can afford to load .obs and .var
+    adata_merged = ad.AnnData(
+        X=adata_std.X,
+        obs=adata_std.obs.copy(),
+        var=adata_std.var.copy(),
+        uns=adata_std.uns.copy()
+    )
+    
+    # Store guide counts and metadata
+    adata_merged.obsm['guides'] = guides_sparse
+    adata_merged.uns['guide_names'] = adata_kite.var_names.tolist()
+    
+    # Add SRR label and ensure barcodes are globally unique across all SRRs
+    adata_merged.obs['SRR_run'] = srr_id
+    adata_merged.obs_names = [f"{barcode}-{srr_id}" for barcode in adata_merged.obs_names]
+    
+    adata_merged.write_h5ad(f"{srr_id}_merged.h5ad")
     """
 }
 
@@ -197,22 +242,52 @@ process CONCAT_ALL {
     import anndata as ad
     import glob
     import sys
+    import h5py
+    import scipy.sparse as sp
+    
+    # Try to import experimental features
+    try:
+        from anndata.experimental import concat_on_disk, write_elem
+    except ImportError:
+        sys.exit("Error: Your anndata version is too old. Please use anndata >= 0.10.0 for concat_on_disk support.")
 
-    files = glob.glob("*_merged.h5ad")
+    files = sorted(glob.glob("*_merged.h5ad"))
     if not files:
         sys.exit("No merged h5ad files found.")
+
+    # Use concat_on_disk to combine all SRRs into one massive dataset without loading matrices into memory.
+    # This handles .X, .obs, and .var. 
+    # join="inner" ensures we only keep genes present in all files, which is memory-efficient.
+    print(f"Concatenating {len(files)} files on disk...")
+    concat_on_disk(files, "experiment_final.h5ad", join="inner")
+
+    # Manually append .obsm['guides'] and .uns['guide_names'] to the final h5ad file.
+    # We load guide counts as sparse matrices. Since the guide matrix (n_cells x n_guides) 
+    # is significantly smaller than the gene matrix, vstacking it in memory is generally safe.
+    print("Concatenating guide counts (obsm['guides'])...")
+    guide_mats = []
+    for f in files:
+        # Load in backed mode to only read obsm
+        a = ad.read_h5ad(f, backed='r')
+        # Ensure we have a sparse matrix
+        if 'guides' in a.obsm:
+            guide_mats.append(sp.csr_matrix(a.obsm['guides']))
+        else:
+            sys.exit(f"Error: .obsm['guides'] missing in {f}")
+
+    if guide_mats:
+        full_guides = sp.vstack(guide_mats)
         
-    keys = [f.replace("_merged.h5ad", "") for f in files]
-
-    # Use ad.concat to combine all SRRs into one massive dataset
-    # index_unique="-" will append the SRR id to the cell barcodes (e.g. AAACCC...-SRR123)
-    adata = ad.concat(
-        {k: ad.read_h5ad(f) for k, f in zip(keys, files)},
-        label="SRR_run",
-        index_unique="-"
-    )
-
-    adata.write_h5ad("experiment_final.h5ad")
+        # Take guide names from the first file (assuming they are identical across all SRRs)
+        a0 = ad.read_h5ad(files[0], backed='r')
+        guide_names = a0.uns['guide_names']
+        
+        # Write to the existing HDF5 file
+        with h5py.File("experiment_final.h5ad", "a") as f_out:
+            write_elem(f_out, "obsm/guides", full_guides)
+            write_elem(f_out, "uns/guide_names", guide_names)
+            
+    print("Final experiment_final.h5ad created successfully.")
     """
 }
 
