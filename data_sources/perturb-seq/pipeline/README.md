@@ -73,12 +73,10 @@ python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/suppleme
 ```
 
 ### 3. Build the Custom Singularity Image
-Before running the pipeline, build the Singularity image from the provided definition file.
+Before running the pipeline, build the Singularity image from the provided definition file locally, then upload it to the cluster to `$HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline/kb_python.sif`.
 
 ```bash
-cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
-srun --mem=16G --time=1-00:00:00 --unbuffered \
-  singularity build kb_python.sif Singularity.def
+sudo singularity build kb_python.sif Singularity.def
 ```
 
 ### 4. Run the Unified Pipeline on the SLURM Cluster
