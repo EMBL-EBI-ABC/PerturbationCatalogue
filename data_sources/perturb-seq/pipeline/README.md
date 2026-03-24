@@ -13,7 +13,9 @@ The final output is a single `experiment_final.h5ad` where:
 - **Nextflow**: On the cluster, load the module via `module load nextflow/25.04.6`.
 - **kb-python**: The core kallisto-bustools wrapper. 
   - **Option 1 (Virtual Environment):** Create a Python virtual environment and run `pip install kb-python`. Ensure the `kb` command is in your `$PATH`.
-  - **Option 2 (Singularity/Apptainer):** The pipeline includes a Singularity profile. If your cluster has Singularity, you can run the pipeline with `-profile slurm,singularity` and it will automatically pull and use the `quay.io/biocontainers/kb-python` image.
+  - **Option 2 (Singularity/Apptainer):** The pipeline includes a `Singularity.def` file to build a custom image containing `kb-python` and the necessary Python stack.
+  1. Build the image: `singularity build kb_python.sif Singularity.def`
+  2. Run the pipeline with `-profile slurm,singularity`. It will automatically use the `kb_python.sif` file in the pipeline directory.
 - **Python Data Stack (for extraction script only)**: `pip install pandas openpyxl`
 
 ## The "Whitelist of Probes" (Features List)
@@ -70,7 +72,16 @@ pip install pandas openpyxl
 python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
 ```
 
-### 3. Run the Unified Pipeline on the SLURM Cluster
+### 3. Build the Custom Singularity Image
+Before running the pipeline, build the Singularity image from the provided definition file.
+
+```bash
+cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
+srun --mem=16G --time=1-00:00:00 --unbuffered \
+  singularity build kb_python.sif Singularity.def
+```
+
+### 4. Run the Unified Pipeline on the SLURM Cluster
 Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN40972597`, you can now run the pipeline. 
 
 *(Note: The pipeline automatically inspects the 10x FASTQ triplet files per SRR and dynamically detects which is the barcode read and which is the biological read based on their internal sequence lengths. You no longer need to specify read patterns.)*
@@ -80,9 +91,8 @@ Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN
 module load nextflow/25.04.6
 
 # Run the pipeline head process via srun
-# We allocate 16GB of RAM to the head process so it doesn't OOM while Singularity builds the image
 srun --mem=16G --time=28-00:00:00 --unbuffered \
-nextflow run main.nf \
+  nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
     --outdir $HPS_PATH/perturb_seq_fastq/results \
