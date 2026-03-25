@@ -111,3 +111,8 @@ srun --mem=16G --time=28-00:00:00 --unbuffered \
 - `results/reference/standard/`: cDNA Kallisto index.
 - `results/reference/kite/`: CRISPR Guide Kallisto index.
 - `results/experiment_final.h5ad`: The fully combined, merged matrix containing all cells across all FASTQs, with both gene expression and guide assignments.
+
+# Upload
+Currently, the output is an uncompressed H5AD. It needs to be first compressed:
+* `time srun --mem=64G --time=1-00:00:00 --unbuffered h5repack -f GZIP=4 experiment_final.h5ad experiment_compressed.h5ad`
+* And then uploaded with `gcloud`
