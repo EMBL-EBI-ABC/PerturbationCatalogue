@@ -88,16 +88,6 @@ class ObsSchema(DataFrameModel):
         str_contains=":",
         description="Perturbation type ontology term ID of the investigated sample.",
     )
-    perturbation_type_label: Series[String] = Field(
-        nullable=False,
-        description="Perturbation type ontology term label of the investigated sample.",
-        isin=["CRISPRn", "CRISPRi", "CRISPRa", "DMS"],
-    )
-    perturbation_type_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Perturbation type ontology term ID of the investigated sample.",
-    )
     timepoint: Series[String] = Field(
         nullable=True,
         regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
