@@ -165,7 +165,56 @@ print(f"Curated is raw: {raw_cur}")
 print(f"Reprocessed is raw: {raw_rep}")
 
 # ==============================================================================
-# 3. GENE AND CELL ALIGNMENT
+# 3. BASIC SUMMARY STATISTICS
+# ==============================================================================
+summary_df = pd.DataFrame(
+    {
+        "Metric": [
+            "Total Cells (n_obs)",
+            "Total Genes (n_vars)",
+            "Obs Columns",
+            "Var Columns",
+            "Layers",
+            "Unstructured (uns) Keys",
+        ],
+        "Curated": [
+            adata_cur.n_obs,
+            adata_cur.n_vars,
+            ", ".join(adata_cur.obs.columns),
+            ", ".join(adata_cur.var.columns),
+            ", ".join(adata_cur.layers.keys()),
+            ", ".join(adata_cur.uns.keys()),
+        ],
+        "Reprocessed": [
+            adata_rep.n_obs,
+            adata_rep.n_vars,
+            ", ".join(adata_rep.obs.columns),
+            ", ".join(adata_rep.var.columns),
+            ", ".join(adata_rep.layers.keys()),
+            ", ".join(adata_rep.uns.keys()),
+        ],
+    }
+)
+print("\n### Basic Dataset Comparison ###")
+print(summary_df.to_string(index=False))
+
+# ==============================================================================
+# 4. DATAFRAME EXPLORATION
+# ==============================================================================
+print("\n### Curated - Obs (first 5 rows) ###")
+print(adata_cur.obs.head())
+print("\n### Curated - Var (first 5 rows) ###")
+print(adata_cur.var.head())
+
+print("\n" + "=" * 40)
+
+print("\n### Reprocessed - Obs (first 5 rows) ###")
+print(adata_rep.obs.head())
+print("\n### Reprocessed - Var (first 5 rows) ###")
+print(adata_rep.var.head())
+
+# ==============================================================================
+# 5. GENE AND CELL ALIGNMENT
 # ==============================================================================
 # Gene Alignment
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
@@ -195,7 +244,7 @@ else:
     rep_sub = adata_rep[common_cells, common_genes].copy()
 
 # ==============================================================================
-# 4. PREPROCESSING
+# 6. PREPROCESSING
 # ==============================================================================
 print("Preprocessing subsets in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -207,7 +256,7 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     rep_sub = f_rep.result()
 
 # ==============================================================================
-# 5. QC AND GENE EXPRESSION COMPARISON
+# 7. QC AND GENE EXPRESSION COMPARISON
 # ==============================================================================
 metrics_df = pd.DataFrame(
     {
@@ -254,12 +303,12 @@ plot_scatter_comparison(
 )
 
 # ==============================================================================
-# 6. PERTURBATION COMPARISON
+# 8. PERTURBATION COMPARISON
 # ==============================================================================
 pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
 
 # ==============================================================================
-# 7. STRUCTURAL COMPARISON (PCA)
+# 9. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
 # Use the same highly variable genes for both to ensure comparability
@@ -294,7 +343,7 @@ plt.show()
 plt.close()
 
 # ==============================================================================
-# 8. SUMMARY REPORT
+# 10. SUMMARY REPORT
 # ==============================================================================
 with open("comparison_results/summary_report.txt", "w") as f:
     f.write("Nadig 2025 Jurkat Comparison Report\n")
