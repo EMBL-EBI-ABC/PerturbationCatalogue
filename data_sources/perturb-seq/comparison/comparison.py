@@ -218,7 +218,80 @@ print(
 )
 
 # ==============================================================================
-# 6. BASIC SUMMARY STATISTICS
+# 6. RAW DISTRIBUTION HISTOGRAMS (CELLS AND GENES)
+# ==============================================================================
+print("Computing raw distribution statistics in parallel...")
+
+
+def get_sums(adata):
+    """Computes total counts per cell and per gene."""
+    cell_sums = np.array(adata.X.sum(axis=1)).flatten()
+    gene_sums = np.array(adata.X.sum(axis=0)).flatten()
+    return cell_sums, gene_sums
+
+
+with ThreadPoolExecutor(max_workers=2) as executor:
+    f_cur_sums = executor.submit(get_sums, adata_cur)
+    f_rep_sums = executor.submit(get_sums, adata_rep_sum)
+
+    cur_cell_sums, cur_gene_sums = f_cur_sums.result()
+    rep_cell_sums, rep_gene_sums = f_rep_sums.result()
+
+# Plotting histograms
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+# Cell counts distribution
+sns.histplot(
+    cur_cell_sums,
+    bins=100,
+    label="Curated",
+    ax=ax1,
+    alpha=0.5,
+    log_scale=True,
+    color="blue",
+)
+sns.histplot(
+    rep_cell_sums,
+    bins=100,
+    label="Reprocessed (Summed)",
+    ax=ax1,
+    alpha=0.5,
+    log_scale=True,
+    color="orange",
+)
+ax1.set_title("Total Counts per Cell (Log Scale)")
+ax1.set_xlabel("Total UMI Counts")
+ax1.legend()
+
+# Gene counts distribution
+sns.histplot(
+    cur_gene_sums,
+    bins=100,
+    label="Curated",
+    ax=ax2,
+    alpha=0.5,
+    log_scale=True,
+    color="blue",
+)
+sns.histplot(
+    rep_gene_sums,
+    bins=100,
+    label="Reprocessed (Summed)",
+    ax=ax2,
+    alpha=0.5,
+    log_scale=True,
+    color="orange",
+)
+ax2.set_title("Total Counts per Gene (Log Scale)")
+ax2.set_xlabel("Total UMI Counts")
+ax2.legend()
+
+plt.tight_layout()
+plt.savefig("comparison_results/raw_distributions_histogram.png", dpi=300)
+plt.show()
+
+# ==============================================================================
+# 7. BASIC SUMMARY STATISTICS
 # ==============================================================================
 summary_df = pd.DataFrame(
     {
@@ -253,7 +326,7 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
     display(summary_df)
 
 # ==============================================================================
-# 7. DATAFRAME EXPLORATION
+# 8. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
@@ -274,7 +347,7 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
     display(adata_rep_sum.var.head())
 
 # ==============================================================================
-# 8. GENE AND CELL ALIGNMENT
+# 9. GENE AND CELL ALIGNMENT
 # ==============================================================================
 # Gene Alignment
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep_sum.var_names)
@@ -304,7 +377,7 @@ else:
     rep_sub = adata_rep_sum[common_cells, common_genes].copy()
 
 # ==============================================================================
-# 9. PREPROCESSING
+# 10. PREPROCESSING
 # ==============================================================================
 print("Preprocessing subsets in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -316,7 +389,7 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     rep_sub = f_rep.result()
 
 # ==============================================================================
-# 10. QC AND GENE EXPRESSION COMPARISON
+# 11. QC AND GENE EXPRESSION COMPARISON
 # ==============================================================================
 metrics_df = pd.DataFrame(
     {
@@ -363,12 +436,12 @@ plot_scatter_comparison(
 )
 
 # ==============================================================================
-# 11. PERTURBATION COMPARISON
+# 12. PERTURBATION COMPARISON
 # ==============================================================================
 pert_acc = compare_perturbations(adata_cur, adata_rep_sum, common_cells)
 
 # ==============================================================================
-# 12. STRUCTURAL COMPARISON (PCA)
+# 13. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
 # Use the same highly variable genes for both to ensure comparability
@@ -403,7 +476,7 @@ plt.show()
 plt.close()
 
 # ==============================================================================
-# 13. SUMMARY REPORT
+# 14. SUMMARY REPORT
 # ==============================================================================
 with open("comparison_results/summary_report.txt", "w") as f:
     f.write("Nadig 2025 Jurkat Comparison Report\n")
