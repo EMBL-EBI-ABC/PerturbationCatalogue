@@ -173,7 +173,16 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     adata_rep = f_rep.result()
 
 # ==============================================================================
-# 4. SUMMARIZE REPROCESSED DATA BY BARCODE (AGGREGATE RUNS)
+# 4. HEURISTIC CHECK FOR NORMALIZATION
+# ==============================================================================
+raw_cur = is_raw_counts(adata_cur)
+raw_rep = is_raw_counts(adata_rep)
+
+print(f"Curated is raw: {raw_cur}")
+print(f"Reprocessed is raw: {raw_rep}")
+
+# ==============================================================================
+# 5. SUMMARIZE REPROCESSED DATA BY BARCODE (AGGREGATE RUNS)
 # ==============================================================================
 print("Summarizing reprocessed data by barcode (aggregating SRR runs)...")
 
@@ -207,15 +216,6 @@ adata_rep_sum.obs_names = unique_barcodes
 print(
     f"Aggregated {adata_rep.n_obs} run-specific entries into {adata_rep_sum.n_obs} unique cells."
 )
-
-# ==============================================================================
-# 5. HEURISTIC CHECK FOR NORMALIZATION
-# ==============================================================================
-raw_cur = is_raw_counts(adata_cur)
-raw_rep = is_raw_counts(adata_rep_sum)
-
-print(f"Curated is raw: {raw_cur}")
-print(f"Reprocessed (summed) is raw: {raw_rep}")
 
 # ==============================================================================
 # 6. BASIC SUMMARY STATISTICS
