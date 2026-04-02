@@ -1,0 +1,15 @@
+README.md
+setup.cfg
+setup.py
+curation_tools/__init__.py
+curation_tools/biogrid_curation_tools.py
+curation_tools/create_bq_table.py
+curation_tools/curation_tools.py
+curation_tools/depmap_curation_tools.py
+curation_tools/mavedb_curation_tools.py
+curation_tools/perturbseq_anndata_schema.py
+curation_tools/upload_parquet_to_bq.py
+local_curation_tools.egg-info/PKG-INFO
+local_curation_tools.egg-info/SOURCES.txt
+local_curation_tools.egg-info/dependency_links.txt
+local_curation_tools.egg-info/top_level.txt

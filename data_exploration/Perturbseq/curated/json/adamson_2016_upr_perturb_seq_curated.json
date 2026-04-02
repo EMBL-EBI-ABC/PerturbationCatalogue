@@ -1,0 +1,270 @@
+{
+    "study": {
+        "title": "A Multiplexed Single-Cell CRISPR Screening Platform Enables Systematic Dissection of the Unfolded Protein Response",
+        "study_uri": "https://doi.org/10.1016/j.cell.2016.11.048",
+        "year": 2016,
+        "first_author": {
+            "first_name": "Britt",
+            "last_name": "Adamson"
+        },
+        "last_author": {
+            "first_name": "Jonathan",
+            "last_name": "Weissman"
+        }
+    },
+    "experiment": {
+        "title": "63000 chronic myeloid leukemia (K562) cells transfected with a UPR sensor gene-targeting gRNAs.",
+        "summary": "Perturb-seq was applied to a small CRISPRi library of 91 sgRNAs targeting UPR genes in K562 cells.",
+        "treatments": null,
+        "timepoints": [
+            "P0DT0H0M0S"
+        ],
+        "replicates": "none",
+        "number_of_samples": 1,
+        "number_of_perturbed_cells": 62623,
+        "perturbation_type": null,
+        "perturbed_target_category": [
+            "control",
+            "protein_coding"
+        ],
+        "number_of_perturbed_targets": 91,
+        "perturbed_targets": [
+            "control",
+            "ENSG00000228474",
+            "ENSG00000058262",
+            "ENSG00000115211",
+            "ENSG00000182934",
+            "ENSG00000134049",
+            "ENSG00000145817",
+            "ENSG00000170445",
+            "ENSG00000101166",
+            "ENSG00000129562",
+            "ENSG00000265354",
+            "ENSG00000115866",
+            "ENSG00000176020",
+            "ENSG00000112249",
+            "ENSG00000166411",
+            "ENSG00000205981",
+            "ENSG00000120686",
+            "ENSG00000067704",
+            "ENSG00000136628",
+            "ENSG00000185338",
+            "ENSG00000014123",
+            "ENSG00000198171",
+            "ENSG00000134910",
+            "ENSG00000100347",
+            "ENSG00000106803",
+            "ENSG00000128805",
+            "ENSG00000118363",
+            "ENSG00000101189",
+            "ENSG00000071537",
+            "ENSG00000173540",
+            "ENSG00000185624",
+            "ENSG00000143870",
+            "ENSG00000183775",
+            "ENSG00000110955",
+            "ENSG00000112576",
+            "ENSG00000172071",
+            "ENSG00000278191",
+            "ENSG00000159352",
+            "ENSG00000113013",
+            "ENSG00000280682",
+            "ENSG00000100714",
+            "ENSG00000084774",
+            "ENSG00000174695",
+            "ENSG00000100522",
+            "ENSG00000129696",
+            "ENSG00000229802",
+            "ENSG00000072849",
+            "ENSG00000285246",
+            "ENSG00000113407",
+            "ENSG00000100726",
+            "ENSG00000025796",
+            "ENSG00000107862",
+            "ENSG00000154719",
+            "ENSG00000116120",
+            "ENSG00000145050",
+            "ENSG00000166986",
+            "ENSG00000149084",
+            "ENSG00000162298",
+            "ENSG00000066926",
+            "ENSG00000119718",
+            "ENSG00000031698",
+            "ENSG00000101407",
+            "ENSG00000114127",
+            "ENSG00000044574",
+            "ENSG00000167881",
+            "ENSG00000174780",
+            "ENSG00000142186",
+            "ENSG00000134001",
+            "ENSG00000104980",
+            "ENSG00000156471",
+            "ENSG00000244038",
+            "ENSG00000121073",
+            "ENSG00000132432",
+            "ENSG00000144867",
+            "ENSG00000170348",
+            "ENSG00000128272",
+            "ENSG00000070785",
+            "ENSG00000129083",
+            "ENSG00000085872",
+            "ENSG00000090861",
+            "ENSG00000113593",
+            "ENSG00000117682",
+            "ENSG00000111481",
+            "ENSG00000178607",
+            "ENSG00000086598",
+            "ENSG00000129128",
+            "ENSG00000197170",
+            "ENSG00000146576",
+            "ENSG00000129084",
+            "ENSG00000118217",
+            "ENSG00000100219"
+        ]
+    },
+    "perturbation": {
+        "library_generation_type": {
+            "term_id": "EFO:0022868",
+            "term_label": "endogenous"
+        },
+        "library_generation_method": {
+            "term_id": "EFO:0022895",
+            "term_label": "dCas9-KRAB"
+        },
+        "enzyme_delivery_method": {
+            "term_id": null,
+            "term_label": "retroviral transduction"
+        },
+        "library_delivery_method": {
+            "term_id": null,
+            "term_label": "lentiviral transduction"
+        },
+        "enzyme_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "library_integration_state": {
+            "term_id": null,
+            "term_label": "random locus integration"
+        },
+        "enzyme_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library_expression_control": {
+            "term_id": null,
+            "term_label": "constitutive expression"
+        },
+        "library": {
+            "library_name": "custom",
+            "accession": null,
+            "library_format": {
+                "term_id": null,
+                "term_label": "pooled"
+            },
+            "library_scope": {
+                "term_id": null,
+                "term_label": "focused"
+            },
+            "library_perturbation_type": [
+                {
+                    "term_id": null,
+                    "term_label": "inhibition"
+                }
+            ],
+            "manufacturer": "Weissman",
+            "lentiviral_generation": "3",
+            "grnas_per_gene": "1",
+            "total_grnas": "91",
+            "total_genes": 91,
+            "total_variants": null
+        }
+    },
+    "assay": {
+        "readout_dimensionality": {
+            "term_id": null,
+            "term_label": "high-dimensional assay"
+        },
+        "readout_type": {
+            "term_id": null,
+            "term_label": "transcriptomic"
+        },
+        "readout_technology": {
+            "term_id": null,
+            "term_label": "single-cell rna-seq"
+        },
+        "method_name": {
+            "term_id": null,
+            "term_label": "Perturb-seq"
+        },
+        "method_uri": null,
+        "sequencing_library_kit": {
+            "term_id": null,
+            "term_label": "10x Genomics Single Cell 3-prime"
+        },
+        "sequencing_platform": {
+            "term_id": null,
+            "term_label": "Illumina HiSeq 4000"
+        },
+        "sequencing_strategy": {
+            "term_id": null,
+            "term_label": "barcode sequencing"
+        },
+        "software_counts": {
+            "term_id": null,
+            "term_label": "CellRanger"
+        },
+        "software_analysis": {
+            "term_id": null,
+            "term_label": "MAGeCK"
+        },
+        "reference_genome": {
+            "term_id": null,
+            "term_label": "GRCh37"
+        }
+    },
+    "model_system": {
+        "model_system": null,
+        "species": "Homo sapiens",
+        "tissue": null,
+        "cell_type": [
+            {
+                "term_id": "CL:0017005",
+                "term_label": "lymphoblast"
+            }
+        ],
+        "cell_line": [
+            {
+                "term_id": "CLO:0007050",
+                "term_label": "K 562 cell"
+            }
+        ],
+        "sex": null,
+        "developmental_stage": null,
+        "passage_number": null,
+        "sample_quantity": {
+            "sample_quantity_value": 62623.0,
+            "sample_quantity_unit": "cells"
+        }
+    },
+    "associated_diseases": [
+        {
+            "term_id": "MONDO:0011996",
+            "term_label": "chronic myelogenous leukemia, BCR-ABL1 positive"
+        }
+    ],
+    "associated_datasets": [
+        {
+            "dataset_accession": "GSM2406677",
+            "dataset_uri": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM2406681",
+            "dataset_description": "Barcode, cell identities, raw gene expression matrix",
+            "dataset_file_name": "GSM2406677_10X010"
+        },
+        {
+            "dataset_accession": "GSM2406677_10X005",
+            "dataset_uri": "https://zenodo.org/records/7041849/files/AdamsonWeissman2016_GSM2406681_10X010.h5ad",
+            "dataset_description": "Processed .h5ad file",
+            "dataset_file_name": "AdamsonWeissman2016_GSM2406681_10X010.h5ad"
+        }
+    ]
+}
