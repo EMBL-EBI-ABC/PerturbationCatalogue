@@ -213,22 +213,29 @@ summary_df = pd.DataFrame(
     }
 )
 print("\n### Basic Dataset Comparison ###")
-print(summary_df.to_string(index=False))
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    display(summary_df)
 
 # ==============================================================================
 # 6. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
-print(adata_cur.obs.head())
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    display(adata_cur.obs.head())
+
 print("\n### Curated - Var (first 5 rows) ###")
-print(adata_cur.var.head())
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    display(adata_cur.var.head())
 
 print("\n" + "=" * 40)
 
 print("\n### Reprocessed - Obs (first 5 rows) ###")
-print(adata_rep.obs.head())
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    display(adata_rep.obs.head())
+
 print("\n### Reprocessed - Var (first 5 rows) ###")
-print(adata_rep.var.head())
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    display(adata_rep.var.head())
 
 # ==============================================================================
 # 7. GENE AND CELL ALIGNMENT
