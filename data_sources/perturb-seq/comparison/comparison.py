@@ -1,0 +1,318 @@
+import scanpy as sc
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+import os
+from concurrent.futures import ThreadPoolExecutor
+
+
+def load_adata(gs_path, local_path):
+    """Downloads and loads an H5AD file from Google Cloud Storage."""
+    if os.path.exists(local_path):
+        print(f"File {local_path} already exists. Skipping download.")
+    else:
+        print(f"Downloading {gs_path} to {local_path}...")
+        # Using -m for faster multi-threaded/multi-processing copy
+        os.system(f"gsutil -m cp {gs_path} {local_path}")
+
+    print(f"Loading {local_path} fully into memory...")
+    return sc.read_h5ad(local_path)
+
+
+def preprocess_adata(adata, is_raw, name, run_hvg=False):
+    """Normalization, QC metrics, and PCA in one go for parallel execution."""
+    print(f"Starting preprocessing for {name}...")
+    if is_raw:
+        print(f"  [{name}] Normalizing and log-transforming...")
+        sc.pp.normalize_total(adata, target_sum=1e4)
+        sc.pp.log1p(adata)
+
+    print(f"  [{name}] Calculating QC metrics...")
+    sc.pp.calculate_qc_metrics(adata, inplace=True)
+
+    if run_hvg:
+        print(f"  [{name}] Identifying highly variable genes...")
+        sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="seurat")
+
+    return adata
+
+
+def is_raw_counts(adata):
+    """Heuristic to check if data contains raw counts (integers)."""
+    X = adata.X
+    if hasattr(X, "data"):
+        # Sparse matrix
+        sample = X.data[:1000]
+    else:
+        # Dense matrix
+        sample = X.flatten()[:1000]
+    return np.all(np.equal(np.mod(sample, 1), 0))
+
+
+def plot_scatter_comparison(df, x_col, y_col, title, xlabel, ylabel, filename):
+    """Creates a scatter plot with correlation info."""
+    plt.figure(figsize=(8, 8))
+
+    # Use hexbin or scatter with low alpha if many points
+    if len(df) > 10000:
+        plt.hexbin(df[x_col], df[y_col], gridsize=50, cmap="Blues", bins="log")
+        plt.colorbar(label="log10(count)")
+    else:
+        sns.scatterplot(data=df, x=x_col, y=y_col, alpha=0.5, s=10)
+
+    # Add identity line
+    min_val = min(df[x_col].min(), df[y_col].min())
+    max_val = max(df[x_col].max(), df[y_col].max())
+    plt.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.8, label="Identity")
+
+    # Calculate correlation
+    mask = ~(df[x_col].isna() | df[y_col].isna())
+    corr, p_val = stats.pearsonr(df.loc[mask, x_col], df.loc[mask, y_col])
+    spearman, _ = stats.spearmanr(df.loc[mask, x_col], df.loc[mask, y_col])
+
+    plt.title(f"{title}\nPearson r = {corr:.4f}, Spearman rho = {spearman:.4f}")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.show()
+    plt.close()
+
+
+def compare_perturbations(adata_cur, adata_rep, common_cells):
+    """Compares perturbation assignments between curated and reprocessed datasets."""
+    print("Comparing perturbation assignments...")
+
+    # Try to find perturbation columns
+    cur_pert_col = None
+    for col in ["perturbation", "condition", "gene_target", "guide"]:
+        if col in adata_cur.obs.columns:
+            cur_pert_col = col
+            break
+
+    rep_pert_col = None
+    for col in ["perturbation", "guide", "target", "gene"]:
+        if col in adata_rep.obs.columns:
+            rep_pert_col = col
+            break
+
+    if cur_pert_col and rep_pert_col:
+        p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
+        p_rep = adata_rep.obs.loc[common_cells, rep_pert_col].astype(str)
+
+        # Create a confusion matrix
+        overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
+
+        # Top 20 perturbations by frequency in curated
+        top_perts = p_cur.value_counts().head(20).index
+        mask = overlap_df["Curated"].isin(top_perts) & overlap_df["Reprocessed"].isin(
+            top_perts
+        )
+
+        if mask.any():
+            ct = pd.crosstab(
+                overlap_df.loc[mask, "Curated"], overlap_df.loc[mask, "Reprocessed"]
+            )
+            plt.figure(figsize=(12, 10))
+            sns.heatmap(ct, annot=False, cmap="YlGnBu")
+            plt.title("Perturbation Assignment Overlap (Top 20)")
+            plt.tight_layout()
+            plt.savefig("comparison_results/perturbation_confusion_matrix.png")
+            plt.close()
+
+            # Accuracy (simple matching)
+            accuracy = (p_cur == p_rep).mean()
+            print(f"Perturbation assignment match: {accuracy:.2%}")
+            return accuracy
+    else:
+        print("Could not find matching perturbation columns in both datasets.")
+        return None
+
+
+def main():
+    # File paths
+    curated_gs = "gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
+    reprocessed_gs = (
+        "gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
+    )
+
+    curated_local = "nadig_2025_jurkat_curated.h5ad"
+    reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
+
+    os.makedirs("comparison_results", exist_ok=True)
+
+    # 1. Load data in parallel
+    print("Loading datasets in parallel...")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_cur = executor.submit(load_adata, curated_gs, curated_local)
+        f_rep = executor.submit(load_adata, reprocessed_gs, reprocessed_local)
+        adata_cur = f_cur.result()
+        adata_rep = f_rep.result()
+
+    # 2. Heuristic check for normalization
+    raw_cur = is_raw_counts(adata_cur)
+    raw_rep = is_raw_counts(adata_rep)
+
+    print(f"Curated is raw: {raw_cur}")
+    print(f"Repprocessed is raw: {raw_rep}")
+
+    # 3. Gene Alignment
+    common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
+    if len(common_genes) == 0:
+        print("No direct gene overlap. Attempting to align via var columns...")
+        for col in ["gene_symbols", "symbols", "gene_name"]:
+            if col in adata_cur.var.columns:
+                adata_cur.var_names = adata_cur.var[col].astype(str)
+                break
+        for col in ["gene_symbols", "symbols", "gene_name"]:
+            if col in adata_rep.var.columns:
+                adata_rep.var_names = adata_rep.var[col].astype(str)
+                break
+        common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
+
+    # 4. Cell Alignment
+    common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
+
+    print(f"Common cells: {len(common_cells)}")
+    print(f"Common genes: {len(common_genes)}")
+
+    if len(common_cells) == 0 or len(common_genes) == 0:
+        print("ERROR: No overlap found.")
+        return
+
+    # Subset to common elements
+    cur_sub = adata_cur[common_cells, common_genes].copy()
+    rep_sub = adata_rep[common_cells, common_genes].copy()
+
+    # 5. Preprocess in parallel
+    print("Preprocessing subsets in parallel...")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_cur = executor.submit(
+            preprocess_adata, cur_sub, raw_cur, "Curated", run_hvg=True
+        )
+        f_rep = executor.submit(
+            preprocess_adata, rep_sub, raw_rep, "Reprocessed", run_hvg=False
+        )
+        cur_sub = f_cur.result()
+        rep_sub = f_rep.result()
+
+    metrics_df = pd.DataFrame(
+        {
+            "total_counts_cur": cur_sub.obs["total_counts"],
+            "total_counts_rep": rep_sub.obs["total_counts"],
+            "n_genes_cur": cur_sub.obs["n_genes_by_counts"],
+            "n_genes_rep": rep_sub.obs["n_genes_by_counts"],
+        }
+    )
+
+    plot_scatter_comparison(
+        metrics_df,
+        "total_counts_cur",
+        "total_counts_rep",
+        "Total Counts (Normalized/Log) Correlation",
+        "Curated",
+        "Reprocessed",
+        "comparison_results/counts_comparison.png",
+    )
+
+    plot_scatter_comparison(
+        metrics_df,
+        "n_genes_cur",
+        "n_genes_rep",
+        "Detected Genes Correlation",
+        "Curated",
+        "Reprocessed",
+        "comparison_results/genes_comparison.png",
+    )
+
+    # 6. Gene expression correlation
+    gene_metrics = pd.DataFrame(
+        {"mean_cur": cur_sub.var["mean_counts"], "mean_rep": rep_sub.var["mean_counts"]}
+    )
+
+    plot_scatter_comparison(
+        gene_metrics,
+        "mean_cur",
+        "mean_rep",
+        "Mean Gene Expression Correlation",
+        "Curated",
+        "Reprocessed",
+        "comparison_results/gene_expression_mean.png",
+    )
+
+    # 7. Perturbation Comparison
+    pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
+
+    # 8. Structural comparison (PCA)
+    print("Performing structural comparison (PCA)...")
+    # Use the same highly variable genes for both to ensure comparability
+    rep_sub.var["highly_variable"] = cur_sub.var["highly_variable"]
+
+    print("  Calculating PCA in parallel...")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_cur = executor.submit(
+            sc.tl.pca,
+            cur_sub,
+            n_comps=30,
+            use_highly_variable=True,
+            svd_solver="arpack",
+        )
+        f_rep = executor.submit(
+            sc.tl.pca,
+            rep_sub,
+            n_comps=30,
+            use_highly_variable=True,
+            svd_solver="arpack",
+        )
+        f_cur.result()
+        f_rep.result()
+
+    # Simple check: plot them
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    sc.pl.pca(cur_sub, ax=ax1, show=False, title="PCA Curated (on Curated HVGs)")
+    sc.pl.pca(rep_sub, ax=ax2, show=False, title="PCA Reprocessed (on Curated HVGs)")
+    plt.tight_layout()
+    plt.savefig("comparison_results/pca_comparison.png")
+    plt.close()
+
+    # 9. Summary Report
+    with open("comparison_results/summary_report.txt", "w") as f:
+        f.write("Nadig 2025 Jurkat Comparison Report\n")
+        f.write("===================================\n\n")
+        f.write(f"Curated dataset: {adata_cur.n_obs} cells, {adata_cur.n_vars} genes\n")
+        f.write(
+            f"Reprocessed dataset: {adata_rep.n_obs} cells, {adata_rep.n_vars} genes\n"
+        )
+        f.write(
+            f"Cell overlap: {len(common_cells)} ({len(common_cells)/adata_cur.n_obs:.1%} of curated)\n"
+        )
+        f.write(
+            f"Gene overlap: {len(common_genes)} ({len(common_genes)/adata_cur.n_vars:.1%} of curated)\n"
+        )
+
+        counts_corr, _ = stats.pearsonr(
+            metrics_df["total_counts_cur"], metrics_df["total_counts_rep"]
+        )
+        genes_corr, _ = stats.pearsonr(
+            metrics_df["n_genes_cur"], metrics_df["n_genes_rep"]
+        )
+        expr_corr, _ = stats.pearsonr(
+            gene_metrics["mean_cur"], gene_metrics["mean_rep"]
+        )
+
+        f.write(f"\nPearson Correlations for common elements:\n")
+        f.write(f"- Total counts per cell: {counts_corr:.4f}\n")
+        f.write(f"- Number of genes per cell: {genes_corr:.4f}\n")
+        f.write(f"- Average gene expression: {expr_corr:.4f}\n")
+
+        if pert_acc is not None:
+            f.write(f"- Perturbation assignment match: {pert_acc:.2%}\n")
+
+    print("\nComparison finished. Check the 'comparison_results' folder.")
+
+
+if __name__ == "__main__":
+    main()
