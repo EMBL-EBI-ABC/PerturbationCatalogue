@@ -6,6 +6,8 @@ import seaborn as sns
 from scipy import stats
 import os
 from concurrent.futures import ThreadPoolExecutor
+import scipy.sparse as sp
+import gc
 
 # ==============================================================================
 # 1. FUNCTIONS AND UTILITIES
@@ -155,6 +157,7 @@ reprocessed_gs = "gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurk
 
 curated_local = "nadig_2025_jurkat_curated.h5ad"
 reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
+reprocessed_summed_local = "nadig_2025_jurkat_reprocessed_summed.h5ad"
 
 os.makedirs("comparison_results", exist_ok=True)
 
@@ -189,8 +192,6 @@ print("Summarizing reprocessed data by barcode (aggregating SRR runs)...")
 # Extract barcode (part before '-') from index
 adata_rep.obs["barcode"] = adata_rep.obs.index.str.split("-").str[0]
 
-import scipy.sparse as sp
-
 # Grouping barcodes
 unique_barcodes, group_indices = np.unique(
     adata_rep.obs["barcode"], return_inverse=True
@@ -216,6 +217,14 @@ adata_rep_sum.obs_names = unique_barcodes
 print(
     f"Aggregated {adata_rep.n_obs} run-specific entries into {adata_rep_sum.n_obs} unique cells."
 )
+
+# Save summarized data to disk
+print(f"Saving summarized reprocessed data to {reprocessed_summed_local}...")
+adata_rep_sum.write(reprocessed_summed_local)
+
+# Delete original reprocessed data and collect garbage to free memory
+del adata_rep
+gc.collect()
 
 # ==============================================================================
 # 6. RAW DISTRIBUTION HISTOGRAMS (CELLS AND GENES)
