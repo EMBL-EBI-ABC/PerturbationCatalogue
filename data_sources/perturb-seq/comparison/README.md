@@ -19,7 +19,7 @@ This directory contains tools to compare two versions of the Nadig 2025 Jurkat P
     gcloud workbench instances create nadig-comparison-notebook \
         --project=$GCLOUD_PROJECT \
         --location=$GCLOUD_ZONE \
-        --machine-type=n1-highmem-16 \
+        --machine-type=n1-highmem-32 \
         --vm-image-project=cloud-notebooks-managed \
         --vm-image-family=workbench-instances
     ```

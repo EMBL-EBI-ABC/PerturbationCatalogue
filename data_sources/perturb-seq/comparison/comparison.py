@@ -7,6 +7,10 @@ from scipy import stats
 import os
 from concurrent.futures import ThreadPoolExecutor
 
+# ==============================================================================
+# 1. FUNCTIONS AND UTILITIES
+# ==============================================================================
+
 
 def load_adata(gs_path, local_path):
     """Downloads and loads an H5AD file from Google Cloud Storage."""
@@ -121,6 +125,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             plt.title("Perturbation Assignment Overlap (Top 20)")
             plt.tight_layout()
             plt.savefig("comparison_results/perturbation_confusion_matrix.png")
+            plt.show()
             plt.close()
 
             # Accuracy (simple matching)
@@ -132,187 +137,189 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         return None
 
 
-def main():
-    # File paths
-    curated_gs = "gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
-    reprocessed_gs = (
-        "gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
-    )
+# ==============================================================================
+# 2. CONFIGURATION AND DATA LOADING
+# ==============================================================================
+# File paths
+curated_gs = "gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
+reprocessed_gs = "gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
 
-    curated_local = "nadig_2025_jurkat_curated.h5ad"
-    reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
+curated_local = "nadig_2025_jurkat_curated.h5ad"
+reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
 
-    os.makedirs("comparison_results", exist_ok=True)
+os.makedirs("comparison_results", exist_ok=True)
 
-    # 1. Load data in parallel
-    print("Loading datasets in parallel...")
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_cur = executor.submit(load_adata, curated_gs, curated_local)
-        f_rep = executor.submit(load_adata, reprocessed_gs, reprocessed_local)
-        adata_cur = f_cur.result()
-        adata_rep = f_rep.result()
+# Load data in parallel
+print("Loading datasets in parallel...")
+with ThreadPoolExecutor(max_workers=2) as executor:
+    f_cur = executor.submit(load_adata, curated_gs, curated_local)
+    f_rep = executor.submit(load_adata, reprocessed_gs, reprocessed_local)
+    adata_cur = f_cur.result()
+    adata_rep = f_rep.result()
 
-    # 2. Heuristic check for normalization
-    raw_cur = is_raw_counts(adata_cur)
-    raw_rep = is_raw_counts(adata_rep)
+# Heuristic check for normalization
+raw_cur = is_raw_counts(adata_cur)
+raw_rep = is_raw_counts(adata_rep)
 
-    print(f"Curated is raw: {raw_cur}")
-    print(f"Repprocessed is raw: {raw_rep}")
+print(f"Curated is raw: {raw_cur}")
+print(f"Reprocessed is raw: {raw_rep}")
 
-    # 3. Gene Alignment
+# ==============================================================================
+# 3. GENE AND CELL ALIGNMENT
+# ==============================================================================
+# Gene Alignment
+common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
+if len(common_genes) == 0:
+    print("No direct gene overlap. Attempting to align via var columns...")
+    for col in ["gene_symbols", "symbols", "gene_name"]:
+        if col in adata_cur.var.columns:
+            adata_cur.var_names = adata_cur.var[col].astype(str)
+            break
+    for col in ["gene_symbols", "symbols", "gene_name"]:
+        if col in adata_rep.var.columns:
+            adata_rep.var_names = adata_rep.var[col].astype(str)
+            break
     common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
-    if len(common_genes) == 0:
-        print("No direct gene overlap. Attempting to align via var columns...")
-        for col in ["gene_symbols", "symbols", "gene_name"]:
-            if col in adata_cur.var.columns:
-                adata_cur.var_names = adata_cur.var[col].astype(str)
-                break
-        for col in ["gene_symbols", "symbols", "gene_name"]:
-            if col in adata_rep.var.columns:
-                adata_rep.var_names = adata_rep.var[col].astype(str)
-                break
-        common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
 
-    # 4. Cell Alignment
-    common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
+# Cell Alignment
+common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
 
-    print(f"Common cells: {len(common_cells)}")
-    print(f"Common genes: {len(common_genes)}")
+print(f"Common cells: {len(common_cells)}")
+print(f"Common genes: {len(common_genes)}")
 
-    if len(common_cells) == 0 or len(common_genes) == 0:
-        print("ERROR: No overlap found.")
-        return
-
+if len(common_cells) == 0 or len(common_genes) == 0:
+    print("ERROR: No overlap found.")
+else:
     # Subset to common elements
     cur_sub = adata_cur[common_cells, common_genes].copy()
     rep_sub = adata_rep[common_cells, common_genes].copy()
 
-    # 5. Preprocess in parallel
-    print("Preprocessing subsets in parallel...")
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_cur = executor.submit(
-            preprocess_adata, cur_sub, raw_cur, "Curated", run_hvg=True
-        )
-        f_rep = executor.submit(
-            preprocess_adata, rep_sub, raw_rep, "Reprocessed", run_hvg=False
-        )
-        cur_sub = f_cur.result()
-        rep_sub = f_rep.result()
+# ==============================================================================
+# 4. PREPROCESSING
+# ==============================================================================
+print("Preprocessing subsets in parallel...")
+with ThreadPoolExecutor(max_workers=2) as executor:
+    f_cur = executor.submit(preprocess_adata, cur_sub, raw_cur, "Curated", run_hvg=True)
+    f_rep = executor.submit(
+        preprocess_adata, rep_sub, raw_rep, "Reprocessed", run_hvg=False
+    )
+    cur_sub = f_cur.result()
+    rep_sub = f_rep.result()
 
-    metrics_df = pd.DataFrame(
-        {
-            "total_counts_cur": cur_sub.obs["total_counts"],
-            "total_counts_rep": rep_sub.obs["total_counts"],
-            "n_genes_cur": cur_sub.obs["n_genes_by_counts"],
-            "n_genes_rep": rep_sub.obs["n_genes_by_counts"],
-        }
+# ==============================================================================
+# 5. QC AND GENE EXPRESSION COMPARISON
+# ==============================================================================
+metrics_df = pd.DataFrame(
+    {
+        "total_counts_cur": cur_sub.obs["total_counts"],
+        "total_counts_rep": rep_sub.obs["total_counts"],
+        "n_genes_cur": cur_sub.obs["n_genes_by_counts"],
+        "n_genes_rep": rep_sub.obs["n_genes_by_counts"],
+    }
+)
+
+plot_scatter_comparison(
+    metrics_df,
+    "total_counts_cur",
+    "total_counts_rep",
+    "Total Counts (Normalized/Log) Correlation",
+    "Curated",
+    "Reprocessed",
+    "comparison_results/counts_comparison.png",
+)
+
+plot_scatter_comparison(
+    metrics_df,
+    "n_genes_cur",
+    "n_genes_rep",
+    "Detected Genes Correlation",
+    "Curated",
+    "Reprocessed",
+    "comparison_results/genes_comparison.png",
+)
+
+# Gene expression correlation
+gene_metrics = pd.DataFrame(
+    {"mean_cur": cur_sub.var["mean_counts"], "mean_rep": rep_sub.var["mean_counts"]}
+)
+
+plot_scatter_comparison(
+    gene_metrics,
+    "mean_cur",
+    "mean_rep",
+    "Mean Gene Expression Correlation",
+    "Curated",
+    "Reprocessed",
+    "comparison_results/gene_expression_mean.png",
+)
+
+# ==============================================================================
+# 6. PERTURBATION COMPARISON
+# ==============================================================================
+pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
+
+# ==============================================================================
+# 7. STRUCTURAL COMPARISON (PCA)
+# ==============================================================================
+print("Performing structural comparison (PCA)...")
+# Use the same highly variable genes for both to ensure comparability
+rep_sub.var["highly_variable"] = cur_sub.var["highly_variable"]
+
+print("  Calculating PCA in parallel...")
+with ThreadPoolExecutor(max_workers=2) as executor:
+    f_cur = executor.submit(
+        sc.tl.pca,
+        cur_sub,
+        n_comps=30,
+        use_highly_variable=True,
+        svd_solver="arpack",
+    )
+    f_rep = executor.submit(
+        sc.tl.pca,
+        rep_sub,
+        n_comps=30,
+        use_highly_variable=True,
+        svd_solver="arpack",
+    )
+    f_cur.result()
+    f_rep.result()
+
+# Plot side-by-side PCA
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+sc.pl.pca(cur_sub, ax=ax1, show=False, title="PCA Curated (on Curated HVGs)")
+sc.pl.pca(rep_sub, ax=ax2, show=False, title="PCA Reprocessed (on Curated HVGs)")
+plt.tight_layout()
+plt.savefig("comparison_results/pca_comparison.png")
+plt.show()
+plt.close()
+
+# ==============================================================================
+# 8. SUMMARY REPORT
+# ==============================================================================
+with open("comparison_results/summary_report.txt", "w") as f:
+    f.write("Nadig 2025 Jurkat Comparison Report\n")
+    f.write("===================================\n\n")
+    f.write(f"Curated dataset: {adata_cur.n_obs} cells, {adata_cur.n_vars} genes\n")
+    f.write(f"Reprocessed dataset: {adata_rep.n_obs} cells, {adata_rep.n_vars} genes\n")
+    f.write(
+        f"Cell overlap: {len(common_cells)} ({len(common_cells)/adata_cur.n_obs:.1%} of curated)\n"
+    )
+    f.write(
+        f"Gene overlap: {len(common_genes)} ({len(common_genes)/adata_cur.n_vars:.1%} of curated)\n"
     )
 
-    plot_scatter_comparison(
-        metrics_df,
-        "total_counts_cur",
-        "total_counts_rep",
-        "Total Counts (Normalized/Log) Correlation",
-        "Curated",
-        "Reprocessed",
-        "comparison_results/counts_comparison.png",
+    counts_corr, _ = stats.pearsonr(
+        metrics_df["total_counts_cur"], metrics_df["total_counts_rep"]
     )
+    genes_corr, _ = stats.pearsonr(metrics_df["n_genes_cur"], metrics_df["n_genes_rep"])
+    expr_corr, _ = stats.pearsonr(gene_metrics["mean_cur"], gene_metrics["mean_rep"])
 
-    plot_scatter_comparison(
-        metrics_df,
-        "n_genes_cur",
-        "n_genes_rep",
-        "Detected Genes Correlation",
-        "Curated",
-        "Reprocessed",
-        "comparison_results/genes_comparison.png",
-    )
+    f.write(f"\nPearson Correlations for common elements:\n")
+    f.write(f"- Total counts per cell: {counts_corr:.4f}\n")
+    f.write(f"- Number of genes per cell: {genes_corr:.4f}\n")
+    f.write(f"- Average gene expression: {expr_corr:.4f}\n")
 
-    # 6. Gene expression correlation
-    gene_metrics = pd.DataFrame(
-        {"mean_cur": cur_sub.var["mean_counts"], "mean_rep": rep_sub.var["mean_counts"]}
-    )
+    if pert_acc is not None:
+        f.write(f"- Perturbation assignment match: {pert_acc:.2%}\n")
 
-    plot_scatter_comparison(
-        gene_metrics,
-        "mean_cur",
-        "mean_rep",
-        "Mean Gene Expression Correlation",
-        "Curated",
-        "Reprocessed",
-        "comparison_results/gene_expression_mean.png",
-    )
-
-    # 7. Perturbation Comparison
-    pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
-
-    # 8. Structural comparison (PCA)
-    print("Performing structural comparison (PCA)...")
-    # Use the same highly variable genes for both to ensure comparability
-    rep_sub.var["highly_variable"] = cur_sub.var["highly_variable"]
-
-    print("  Calculating PCA in parallel...")
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_cur = executor.submit(
-            sc.tl.pca,
-            cur_sub,
-            n_comps=30,
-            use_highly_variable=True,
-            svd_solver="arpack",
-        )
-        f_rep = executor.submit(
-            sc.tl.pca,
-            rep_sub,
-            n_comps=30,
-            use_highly_variable=True,
-            svd_solver="arpack",
-        )
-        f_cur.result()
-        f_rep.result()
-
-    # Simple check: plot them
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-    sc.pl.pca(cur_sub, ax=ax1, show=False, title="PCA Curated (on Curated HVGs)")
-    sc.pl.pca(rep_sub, ax=ax2, show=False, title="PCA Reprocessed (on Curated HVGs)")
-    plt.tight_layout()
-    plt.savefig("comparison_results/pca_comparison.png")
-    plt.close()
-
-    # 9. Summary Report
-    with open("comparison_results/summary_report.txt", "w") as f:
-        f.write("Nadig 2025 Jurkat Comparison Report\n")
-        f.write("===================================\n\n")
-        f.write(f"Curated dataset: {adata_cur.n_obs} cells, {adata_cur.n_vars} genes\n")
-        f.write(
-            f"Reprocessed dataset: {adata_rep.n_obs} cells, {adata_rep.n_vars} genes\n"
-        )
-        f.write(
-            f"Cell overlap: {len(common_cells)} ({len(common_cells)/adata_cur.n_obs:.1%} of curated)\n"
-        )
-        f.write(
-            f"Gene overlap: {len(common_genes)} ({len(common_genes)/adata_cur.n_vars:.1%} of curated)\n"
-        )
-
-        counts_corr, _ = stats.pearsonr(
-            metrics_df["total_counts_cur"], metrics_df["total_counts_rep"]
-        )
-        genes_corr, _ = stats.pearsonr(
-            metrics_df["n_genes_cur"], metrics_df["n_genes_rep"]
-        )
-        expr_corr, _ = stats.pearsonr(
-            gene_metrics["mean_cur"], gene_metrics["mean_rep"]
-        )
-
-        f.write(f"\nPearson Correlations for common elements:\n")
-        f.write(f"- Total counts per cell: {counts_corr:.4f}\n")
-        f.write(f"- Number of genes per cell: {genes_corr:.4f}\n")
-        f.write(f"- Average gene expression: {expr_corr:.4f}\n")
-
-        if pert_acc is not None:
-            f.write(f"- Perturbation assignment match: {pert_acc:.2%}\n")
-
-    print("\nComparison finished. Check the 'comparison_results' folder.")
-
-
-if __name__ == "__main__":
-    main()
+print("\nComparison finished. Check the 'comparison_results' folder for details.")
