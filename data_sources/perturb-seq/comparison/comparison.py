@@ -173,16 +173,52 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     adata_rep = f_rep.result()
 
 # ==============================================================================
-# 4. HEURISTIC CHECK FOR NORMALIZATION
+# 4. SUMMARIZE REPROCESSED DATA BY BARCODE (AGGREGATE RUNS)
+# ==============================================================================
+print("Summarizing reprocessed data by barcode (aggregating SRR runs)...")
+
+# Extract barcode (part before '-') from index
+adata_rep.obs["barcode"] = adata_rep.obs.index.str.split("-").str[0]
+
+import scipy.sparse as sp
+
+# Grouping barcodes
+unique_barcodes, group_indices = np.unique(
+    adata_rep.obs["barcode"], return_inverse=True
+)
+n_groups = len(unique_barcodes)
+
+# Aggregation matrix: (n_groups x n_obs)
+aggregation_matrix = sp.csr_matrix(
+    (np.ones(adata_rep.n_obs), (group_indices, np.arange(adata_rep.n_obs))),
+    shape=(n_groups, adata_rep.n_obs),
+)
+
+# Sum counts across runs for each barcode
+summed_X = aggregation_matrix @ adata_rep.X
+
+# Create summarized AnnData
+# We use groupby().first() to preserve common metadata columns like perturbation assignments
+adata_rep_sum = sc.AnnData(
+    X=summed_X, obs=adata_rep.obs.groupby("barcode").first(), var=adata_rep.var.copy()
+)
+adata_rep_sum.obs_names = unique_barcodes
+
+print(
+    f"Aggregated {adata_rep.n_obs} run-specific entries into {adata_rep_sum.n_obs} unique cells."
+)
+
+# ==============================================================================
+# 5. HEURISTIC CHECK FOR NORMALIZATION
 # ==============================================================================
 raw_cur = is_raw_counts(adata_cur)
-raw_rep = is_raw_counts(adata_rep)
+raw_rep = is_raw_counts(adata_rep_sum)
 
 print(f"Curated is raw: {raw_cur}")
-print(f"Reprocessed is raw: {raw_rep}")
+print(f"Reprocessed (summed) is raw: {raw_rep}")
 
 # ==============================================================================
-# 5. BASIC SUMMARY STATISTICS
+# 6. BASIC SUMMARY STATISTICS
 # ==============================================================================
 summary_df = pd.DataFrame(
     {
@@ -202,13 +238,13 @@ summary_df = pd.DataFrame(
             ", ".join(adata_cur.layers.keys()),
             ", ".join(adata_cur.uns.keys()),
         ],
-        "Reprocessed": [
-            adata_rep.n_obs,
-            adata_rep.n_vars,
-            ", ".join(adata_rep.obs.columns),
-            ", ".join(adata_rep.var.columns),
-            ", ".join(adata_rep.layers.keys()),
-            ", ".join(adata_rep.uns.keys()),
+        "Reprocessed (summed)": [
+            adata_rep_sum.n_obs,
+            adata_rep_sum.n_vars,
+            ", ".join(adata_rep_sum.obs.columns),
+            ", ".join(adata_rep_sum.var.columns),
+            ", ".join(adata_rep_sum.layers.keys()),
+            ", ".join(adata_rep_sum.uns.keys()),
         ],
     }
 )
@@ -217,7 +253,7 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
     display(summary_df)
 
 # ==============================================================================
-# 6. DATAFRAME EXPLORATION
+# 7. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
@@ -229,19 +265,19 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
 
 print("\n" + "=" * 40)
 
-print("\n### Reprocessed - Obs (first 5 rows) ###")
+print("\n### Reprocessed (summed) - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    display(adata_rep.obs.head())
+    display(adata_rep_sum.obs.head())
 
-print("\n### Reprocessed - Var (first 5 rows) ###")
+print("\n### Reprocessed (summed) - Var (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    display(adata_rep.var.head())
+    display(adata_rep_sum.var.head())
 
 # ==============================================================================
-# 7. GENE AND CELL ALIGNMENT
+# 8. GENE AND CELL ALIGNMENT
 # ==============================================================================
 # Gene Alignment
-common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
+common_genes = np.intersect1d(adata_cur.var_names, adata_rep_sum.var_names)
 if len(common_genes) == 0:
     print("No direct gene overlap. Attempting to align via var columns...")
     for col in ["gene_symbols", "symbols", "gene_name"]:
@@ -249,13 +285,13 @@ if len(common_genes) == 0:
             adata_cur.var_names = adata_cur.var[col].astype(str)
             break
     for col in ["gene_symbols", "symbols", "gene_name"]:
-        if col in adata_rep.var.columns:
-            adata_rep.var_names = adata_rep.var[col].astype(str)
+        if col in adata_rep_sum.var.columns:
+            adata_rep_sum.var_names = adata_rep_sum.var[col].astype(str)
             break
-    common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
+    common_genes = np.intersect1d(adata_cur.var_names, adata_rep_sum.var_names)
 
 # Cell Alignment
-common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
+common_cells = np.intersect1d(adata_cur.obs_names, adata_rep_sum.obs_names)
 
 print(f"Common cells: {len(common_cells)}")
 print(f"Common genes: {len(common_genes)}")
@@ -265,10 +301,10 @@ if len(common_cells) == 0 or len(common_genes) == 0:
 else:
     # Subset to common elements
     cur_sub = adata_cur[common_cells, common_genes].copy()
-    rep_sub = adata_rep[common_cells, common_genes].copy()
+    rep_sub = adata_rep_sum[common_cells, common_genes].copy()
 
 # ==============================================================================
-# 8. PREPROCESSING
+# 9. PREPROCESSING
 # ==============================================================================
 print("Preprocessing subsets in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -280,7 +316,7 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     rep_sub = f_rep.result()
 
 # ==============================================================================
-# 9. QC AND GENE EXPRESSION COMPARISON
+# 10. QC AND GENE EXPRESSION COMPARISON
 # ==============================================================================
 metrics_df = pd.DataFrame(
     {
@@ -327,12 +363,12 @@ plot_scatter_comparison(
 )
 
 # ==============================================================================
-# 10. PERTURBATION COMPARISON
+# 11. PERTURBATION COMPARISON
 # ==============================================================================
-pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
+pert_acc = compare_perturbations(adata_cur, adata_rep_sum, common_cells)
 
 # ==============================================================================
-# 11. STRUCTURAL COMPARISON (PCA)
+# 12. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
 # Use the same highly variable genes for both to ensure comparability
@@ -367,13 +403,15 @@ plt.show()
 plt.close()
 
 # ==============================================================================
-# 12. SUMMARY REPORT
+# 13. SUMMARY REPORT
 # ==============================================================================
 with open("comparison_results/summary_report.txt", "w") as f:
     f.write("Nadig 2025 Jurkat Comparison Report\n")
     f.write("===================================\n\n")
     f.write(f"Curated dataset: {adata_cur.n_obs} cells, {adata_cur.n_vars} genes\n")
-    f.write(f"Reprocessed dataset: {adata_rep.n_obs} cells, {adata_rep.n_vars} genes\n")
+    f.write(
+        f"Reprocessed dataset: {adata_rep_sum.n_obs} cells, {adata_rep_sum.n_vars} genes\n"
+    )
     f.write(
         f"Cell overlap: {len(common_cells)} ({len(common_cells)/adata_cur.n_obs:.1%} of curated)\n"
     )
