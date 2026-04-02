@@ -25,6 +25,15 @@ def load_adata(gs_path, local_path):
     return sc.read_h5ad(local_path)
 
 
+def download_only(gs_path, local_path):
+    """Downloads an H5AD file from Google Cloud Storage if it doesn't exist."""
+    if os.path.exists(local_path):
+        print(f"File {local_path} already exists. Skipping download.")
+    else:
+        print(f"Downloading {gs_path} to {local_path}...")
+        os.system(f"gsutil -m cp {gs_path} {local_path}")
+
+
 def preprocess_adata(adata, is_raw, name, run_hvg=False):
     """Normalization, QC metrics, and PCA in one go for parallel execution."""
     print(f"Starting preprocessing for {name}...")
@@ -138,7 +147,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
 
 # ==============================================================================
-# 2. CONFIGURATION AND DATA LOADING
+# 2. CONFIGURATION AND DOWNLOAD
 # ==============================================================================
 # File paths
 curated_gs = "gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
@@ -149,15 +158,23 @@ reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
 
 os.makedirs("comparison_results", exist_ok=True)
 
-# Load data in parallel
-print("Loading datasets in parallel...")
+print("Starting file downloads...")
+download_only(curated_gs, curated_local)
+download_only(reprocessed_gs, reprocessed_local)
+
+# ==============================================================================
+# 3. PARALLEL DATA LOADING
+# ==============================================================================
+print("Loading datasets into memory in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
-    f_cur = executor.submit(load_adata, curated_gs, curated_local)
-    f_rep = executor.submit(load_adata, reprocessed_gs, reprocessed_local)
+    f_cur = executor.submit(sc.read_h5ad, curated_local)
+    f_rep = executor.submit(sc.read_h5ad, reprocessed_local)
     adata_cur = f_cur.result()
     adata_rep = f_rep.result()
 
-# Heuristic check for normalization
+# ==============================================================================
+# 4. HEURISTIC CHECK FOR NORMALIZATION
+# ==============================================================================
 raw_cur = is_raw_counts(adata_cur)
 raw_rep = is_raw_counts(adata_rep)
 
@@ -165,7 +182,7 @@ print(f"Curated is raw: {raw_cur}")
 print(f"Reprocessed is raw: {raw_rep}")
 
 # ==============================================================================
-# 3. BASIC SUMMARY STATISTICS
+# 5. BASIC SUMMARY STATISTICS
 # ==============================================================================
 summary_df = pd.DataFrame(
     {
@@ -199,7 +216,7 @@ print("\n### Basic Dataset Comparison ###")
 print(summary_df.to_string(index=False))
 
 # ==============================================================================
-# 4. DATAFRAME EXPLORATION
+# 6. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
 print(adata_cur.obs.head())
@@ -214,7 +231,7 @@ print("\n### Reprocessed - Var (first 5 rows) ###")
 print(adata_rep.var.head())
 
 # ==============================================================================
-# 5. GENE AND CELL ALIGNMENT
+# 7. GENE AND CELL ALIGNMENT
 # ==============================================================================
 # Gene Alignment
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
@@ -244,7 +261,7 @@ else:
     rep_sub = adata_rep[common_cells, common_genes].copy()
 
 # ==============================================================================
-# 6. PREPROCESSING
+# 8. PREPROCESSING
 # ==============================================================================
 print("Preprocessing subsets in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -256,7 +273,7 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     rep_sub = f_rep.result()
 
 # ==============================================================================
-# 7. QC AND GENE EXPRESSION COMPARISON
+# 9. QC AND GENE EXPRESSION COMPARISON
 # ==============================================================================
 metrics_df = pd.DataFrame(
     {
@@ -303,12 +320,12 @@ plot_scatter_comparison(
 )
 
 # ==============================================================================
-# 8. PERTURBATION COMPARISON
+# 10. PERTURBATION COMPARISON
 # ==============================================================================
 pert_acc = compare_perturbations(adata_cur, adata_rep, common_cells)
 
 # ==============================================================================
-# 9. STRUCTURAL COMPARISON (PCA)
+# 11. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
 # Use the same highly variable genes for both to ensure comparability
@@ -343,7 +360,7 @@ plt.show()
 plt.close()
 
 # ==============================================================================
-# 10. SUMMARY REPORT
+# 12. SUMMARY REPORT
 # ==============================================================================
 with open("comparison_results/summary_report.txt", "w") as f:
     f.write("Nadig 2025 Jurkat Comparison Report\n")
