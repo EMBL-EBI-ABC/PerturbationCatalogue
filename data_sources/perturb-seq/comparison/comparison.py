@@ -152,8 +152,8 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 # 2. CONFIGURATION AND DOWNLOAD
 # ==============================================================================
 # File paths
-curated_gs = "gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
-reprocessed_gs = "gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
+curated_gs = f"gs://{LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad"
+reprocessed_gs = f"gs://{LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
 
 curated_local = "nadig_2025_jurkat_curated.h5ad"
 reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
