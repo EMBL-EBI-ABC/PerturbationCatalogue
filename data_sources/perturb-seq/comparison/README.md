@@ -61,3 +61,8 @@ The script generates the following outputs in the `comparison_results/` folder:
 *   **Auto-Normalization**: The script detects if datasets are raw counts or log-normalized and applies necessary transformations to ensure they are on a comparable scale.
 *   **Aggressive Alignment**: Gene names are aligned even if they are stored in different `var` columns (e.g., `gene_symbols` vs index).
 *   **Structural Validation**: PCA is used to verify that the reprocessed data preserves the biological structure of the original curated dataset.
+
+# Raw data from source
+```
+wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE264nnn/GSE264667/suppl/GSE264667%5Fjurkat%5Fraw%5Fsinglecell%5F01.h5ad
+```
