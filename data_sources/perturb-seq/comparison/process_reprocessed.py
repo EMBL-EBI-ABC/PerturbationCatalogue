@@ -1,107 +1,153 @@
+import os
+import sys
+
+# Set thread limits BEFORE importing numpy/scipy to ensure they are respected
+n_cpus = os.cpu_count() or 1
+os.environ["OMP_NUM_THREADS"] = str(n_cpus)
+os.environ["MKL_NUM_THREADS"] = str(n_cpus)
+os.environ["OPENBLAS_NUM_THREADS"] = str(n_cpus)
+os.environ["VECLIB_MAXIMUM_THREADS"] = str(n_cpus)
+os.environ["NUMEXPR_NUM_THREADS"] = str(n_cpus)
+
 import scanpy as sc
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp
-import os
-import sys
 import gc
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 
 def download_file(gs_path, local_path):
     """Downloads a file from Google Cloud Storage using gsutil."""
     if os.path.exists(local_path):
         print(f"File {local_path} already exists. Skipping download.")
-    else:
-        print(f"Downloading {gs_path} to {local_path}...")
-        # -m for multi-threaded/multi-processing copy
-        ret = os.system(f"gsutil -m cp {gs_path} {local_path}")
-        if ret != 0:
-            print(f"Error: gsutil failed with exit code {ret}")
-            sys.exit(1)
+        return
+
+    print(f"Downloading {gs_path} to {local_path}...")
+    # -m for multi-threaded/multi-processing copy
+    ret = os.system(f"gsutil -m cp {gs_path} {local_path}")
+    if ret != 0:
+        print(f"Error: gsutil failed with exit code {ret}")
+        sys.exit(1)
 
 
 def aggregate_reprocessed(input_path, output_path):
     """
-    Loads the reprocessed H5AD, aggregates counts by cell barcode (summing SRR runs),
-    and saves the result. Optimized for memory efficiency.
+    Memory-efficient and multi-threaded aggregation of reprocessed counts.
+    Uses backed mode and chunked processing to handle large datasets on limited RAM.
     """
-    print(f"Loading {input_path}...")
-    # Load with backed mode initially to check size/metadata if needed,
-    # but for matrix multiplication we'll need it in memory or use a chunked approach.
-    # Given the original script loaded it fully, we'll do the same but with GC care.
-    adata = sc.read_h5ad(input_path)
+    print(f"Opening {input_path} in backed mode...")
+    # Backed mode 'r' avoids loading the matrix into RAM, only metadata is loaded.
+    adata = sc.read_h5ad(input_path, backed="r")
 
-    print("Aggregating counts by barcode (summing multiple runs per cell)...")
+    n_obs = adata.n_obs
+    n_vars = adata.n_vars
+    print(f"Dataset dimensions: {n_obs} cells x {n_vars} genes")
 
-    # Extract barcode (part before '-') from index
-    # This is a common pattern for datasets with multiple SRR runs per cell
-    adata.obs["barcode"] = adata.obs.index.str.split("-").str[0]
+    # 1. Prepare aggregation map
+    print("Reading metadata and preparing aggregation map...")
+    obs = adata.obs.copy()
+    # Extract barcode (part before '-')
+    obs["barcode"] = obs.index.str.split("-").str[0]
+    unique_barcodes, group_indices = np.unique(obs["barcode"], return_inverse=True)
+    n_unique = len(unique_barcodes)
+    print(f"Unique barcodes: {n_unique} (Reduction factor: {n_obs/n_unique:.2f}x)")
 
-    # Grouping barcodes
-    unique_barcodes, group_indices = np.unique(
-        adata.obs["barcode"], return_inverse=True
+    # 2. Initialize dense accumulator
+    # We use a dense float32 array for the fastest possible accumulation via BLAS.
+    # 1M cells x 30k genes @ float32 = ~111 GB. 340k cells = ~38 GB.
+    expected_gb = (n_unique * n_vars * 4) / (1024**3)
+    print(f"Allocating {expected_gb:.2f} GB for the dense accumulator...")
+
+    try:
+        summed_X = np.zeros((n_unique, n_vars), dtype=np.float32)
+    except MemoryError:
+        print(f"CRITICAL ERROR: Failed to allocate {expected_gb:.2f} GB RAM.")
+        sys.exit(1)
+
+    # 3. Chunked Processing
+    # Row-wise chunks are mandatory for efficient reading from CSR HDF5 files.
+    # 20,000 cells * 30,000 genes * 4 bytes = ~2.4 GB per chunk.
+    row_chunk_size = 20000
+    print(
+        f"Processing {n_obs} cells in chunks of {row_chunk_size} using {n_cpus} CPUs..."
     )
-    n_groups = len(unique_barcodes)
 
-    print(f"Found {n_groups} unique barcodes from {adata.n_obs} total observations.")
+    # Helper for parallel addition across columns to utilize all cores
+    def parallel_add(target_indices, data_chunk):
+        col_step = (n_vars + n_cpus - 1) // n_cpus
 
-    # Create an aggregation matrix: (n_groups x n_obs)
-    # This is a sparse mapping matrix that sums observations belonging to the same barcode.
-    aggregation_matrix = sp.csr_matrix(
-        (
-            np.ones(adata.n_obs, dtype=np.float32),
-            (group_indices, np.arange(adata.n_obs)),
-        ),
-        shape=(n_groups, adata.n_obs),
-    )
+        def worker(c_start):
+            c_end = min(c_start + col_step, n_vars)
+            # Advanced indexing with += is vectorized.
+            # Since target_indices are unique (pre-processed), this is thread-safe.
+            summed_X[target_indices, c_start:c_end] += data_chunk[:, c_start:c_end]
 
-    # Sum counts across runs for each barcode
-    # sparse @ sparse or sparse @ dense is generally efficient and multi-threaded in some environments
-    print("Performing matrix multiplication for aggregation...")
-    summed_X = aggregation_matrix @ adata.X
+        with ThreadPoolExecutor(max_workers=n_cpus) as executor:
+            list(executor.map(worker, range(0, n_vars, col_step)))
 
-    # To be memory efficient, we extract metadata before creating the new object
-    # groupby().first() is used to keep the first occurrence of metadata for each barcode
-    print("Aggregating observation metadata...")
-    obs_summed = adata.obs.groupby("barcode").first()
+    for start in tqdm(range(0, n_obs, row_chunk_size)):
+        end = min(start + row_chunk_size, n_obs)
 
-    # Preserve variable metadata
-    var_copy = adata.var.copy()
+        # Disk I/O: Sequential read of the row chunk
+        X_chunk = adata.X[start:end, :]
+        if sp.issparse(X_chunk):
+            X_chunk = X_chunk.toarray().astype(np.float32)
+        else:
+            X_chunk = np.array(X_chunk, dtype=np.float32)
 
-    # Create the new aggregated AnnData object
-    adata_sum = sc.AnnData(X=summed_X, obs=obs_summed, var=var_copy)
-    adata_sum.obs_names = unique_barcodes
+        chunk_targets = group_indices[start:end]
 
-    # Free original data as soon as possible
-    del adata
+        # Intra-chunk aggregation: Reduce updates to the large matrix by summing
+        # multiple runs for the same cell that happen to be in this chunk.
+        u_in_chunk, inv_in_chunk = np.unique(chunk_targets, return_inverse=True)
+
+        if len(u_in_chunk) < len(chunk_targets):
+            # Efficiently sum rows within the chunk using a small sparse mapping matrix
+            agg_small = sp.csr_matrix(
+                (
+                    np.ones(len(chunk_targets), dtype=np.float32),
+                    (inv_in_chunk, np.arange(len(chunk_targets))),
+                ),
+                shape=(len(u_in_chunk), len(chunk_targets)),
+            )
+            # Sparse-Dense multiplication is highly optimized in SciPy/BLAS
+            res_chunk = agg_small @ X_chunk
+            parallel_add(u_in_chunk, res_chunk)
+        else:
+            # All cells in chunk belong to unique barcodes
+            parallel_add(chunk_targets, X_chunk)
+
+    print("Aggregation complete.")
+
+    # 4. Conversion and Save
+    print("Converting dense accumulator to sparse CSR format...")
+    # This step is single-threaded in SciPy but memory efficient.
+    summed_X_sparse = sp.csr_matrix(summed_X)
+    del summed_X
     gc.collect()
+
+    print("Constructing final AnnData object...")
+    # Keep the first metadata entry for each barcode
+    obs_summed = obs.groupby("barcode").first()
+    adata_sum = sc.AnnData(X=summed_X_sparse, obs=obs_summed, var=adata.var.copy())
+    adata_sum.obs_names = unique_barcodes
 
     print(f"Saving aggregated data to {output_path}...")
     adata_sum.write(output_path)
-    print("Aggregation complete.")
+    print("Pipeline finished successfully!")
 
 
 if __name__ == "__main__":
-    # Ensure LAKE_BUCKET is available
     lake_bucket = os.environ.get("LAKE_BUCKET")
     if not lake_bucket:
         print("Error: LAKE_BUCKET environment variable is not set.")
-        print(
-            "Please run 'export LAKE_BUCKET=your-bucket-name' or source your secrets."
-        )
         sys.exit(1)
 
-    reprocessed_gs = (
-        f"gs://{lake_bucket}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
-    )
-    reprocessed_local = "nadig_2025_jurkat_reprocessed.h5ad"
-    output_local = "nadig_2025_jurkat_reprocessed_summed.h5ad"
+    gs_path = f"gs://{lake_bucket}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
+    local_in = "nadig_2025_jurkat_reprocessed.h5ad"
+    local_out = "nadig_2025_jurkat_reprocessed_summed.h5ad"
 
-    # 1. Download
-    download_file(reprocessed_gs, reprocessed_local)
-
-    # 2. Aggregate and Save
-    aggregate_reprocessed(reprocessed_local, output_local)
-
-    # 3. Optional: Cleanup the large original file to save disk space
-    # os.remove(reprocessed_local)
+    download_file(gs_path, local_in)
+    aggregate_reprocessed(local_in, local_out)
