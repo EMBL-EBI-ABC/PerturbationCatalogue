@@ -27,6 +27,11 @@ class ObsSchema(DataFrameModel):
         coerce=True,
         description="Unique identifier for the sample."
     )
+    cell_barcode: Series[String] = Field(
+        nullable=False,
+        coerce=True,
+        description="Unique cell barcode.",
+    )
     data_modality: Series[String] = Field(
         nullable=False,
         description="Data modality of the dataset.",
