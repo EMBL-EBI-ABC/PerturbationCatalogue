@@ -1,5 +1,13 @@
 import os
 import sys
+import tempfile
+import shutil
+import gc
+import numpy as np
+import scipy.sparse as sp
+import pandas as pd
+import scanpy as sc
+from tqdm import tqdm
 
 # Set thread limits BEFORE importing numpy/scipy to ensure they are respected
 n_cpus = os.cpu_count() or 1
@@ -8,14 +16,6 @@ os.environ["MKL_NUM_THREADS"] = str(n_cpus)
 os.environ["OPENBLAS_NUM_THREADS"] = str(n_cpus)
 os.environ["VECLIB_MAXIMUM_THREADS"] = str(n_cpus)
 os.environ["NUMEXPR_NUM_THREADS"] = str(n_cpus)
-
-import scanpy as sc
-import pandas as pd
-import numpy as np
-import scipy.sparse as sp
-import gc
-from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor
 
 
 def download_file(gs_path, local_path):
@@ -34,8 +34,8 @@ def download_file(gs_path, local_path):
 
 def aggregate_reprocessed(input_path, output_path):
     """
-    Memory-efficient and multi-threaded aggregation of reprocessed counts.
-    Uses backed mode and chunked processing to handle large datasets on limited RAM.
+    Memory-efficient aggregation of reprocessed counts.
+    Uses backed mode and out-of-core disk partitioning to handle large datasets on limited RAM.
     """
     print(f"Opening {input_path} in backed mode...")
     # Backed mode 'r' avoids loading the matrix into RAM, only metadata is loaded.
@@ -54,79 +54,142 @@ def aggregate_reprocessed(input_path, output_path):
     n_unique = len(unique_barcodes)
     print(f"Unique barcodes: {n_unique} (Reduction factor: {n_obs/n_unique:.2f}x)")
 
-    # 2. Initialize dense accumulator
-    # We use a dense float32 array for the fastest possible accumulation via BLAS.
-    # 1M cells x 30k genes @ float32 = ~111 GB. 340k cells = ~38 GB.
-    expected_gb = (n_unique * n_vars * 4) / (1024**3)
-    print(f"Allocating {expected_gb:.2f} GB for the dense accumulator...")
+    # 2. Partition target barcodes into bins
+    # Target ~50,000 barcodes per bin to keep memory usage very low during aggregation
+    n_bins = max(1, n_unique // 50000)
+    barcodes_per_bin = int(np.ceil(n_unique / n_bins))
+
+    # Use current directory to avoid /tmp tmpfs RAM limits
+    temp_dir = tempfile.mkdtemp(prefix="agg_temp_dir_", dir=os.getcwd())
+    print(f"Using {n_bins} temporary bins in {temp_dir} for out-of-core aggregation...")
 
     try:
-        summed_X = np.zeros((n_unique, n_vars), dtype=np.float32)
-    except MemoryError:
-        print(f"CRITICAL ERROR: Failed to allocate {expected_gb:.2f} GB RAM.")
-        sys.exit(1)
+        bin_files_t = [
+            open(os.path.join(temp_dir, f"bin_{i}_t.dat"), "wb") for i in range(n_bins)
+        ]
+        bin_files_c = [
+            open(os.path.join(temp_dir, f"bin_{i}_c.dat"), "wb") for i in range(n_bins)
+        ]
+        bin_files_v = [
+            open(os.path.join(temp_dir, f"bin_{i}_v.dat"), "wb") for i in range(n_bins)
+        ]
 
-    # 3. Chunked Processing
-    # Row-wise chunks are mandatory for efficient reading from CSR HDF5 files.
-    # 20,000 cells * 30,000 genes * 4 bytes = ~2.4 GB per chunk.
-    row_chunk_size = 20000
-    print(
-        f"Processing {n_obs} cells in chunks of {row_chunk_size} using {n_cpus} CPUs..."
-    )
+        # 3. Chunked Processing & Partitioning
+        row_chunk_size = 20000
+        print(f"Processing {n_obs} cells in chunks of {row_chunk_size}...")
 
-    # Helper for parallel addition across columns to utilize all cores
-    def parallel_add(target_indices, data_chunk):
-        col_step = (n_vars + n_cpus - 1) // n_cpus
+        group_indices = group_indices.astype(np.int32)
 
-        def worker(c_start):
-            c_end = min(c_start + col_step, n_vars)
-            # Advanced indexing with += is vectorized.
-            # Since target_indices are unique (pre-processed), this is thread-safe.
-            summed_X[target_indices, c_start:c_end] += data_chunk[:, c_start:c_end]
+        for start in tqdm(range(0, n_obs, row_chunk_size)):
+            end = min(start + row_chunk_size, n_obs)
 
-        with ThreadPoolExecutor(max_workers=n_cpus) as executor:
-            list(executor.map(worker, range(0, n_vars, col_step)))
+            # Sequential read of the row chunk
+            X_chunk = adata.X[start:end, :]
 
-    for start in tqdm(range(0, n_obs, row_chunk_size)):
-        end = min(start + row_chunk_size, n_obs)
+            if sp.issparse(X_chunk):
+                X_chunk = X_chunk.tocoo()
+                r = X_chunk.row.astype(np.int32)
+                c = X_chunk.col.astype(np.int32)
+                v = X_chunk.data.astype(np.float32)
+            else:
+                X_chunk = np.array(X_chunk, dtype=np.float32)
+                r, c = X_chunk.nonzero()
+                r = r.astype(np.int32)
+                c = c.astype(np.int32)
+                v = X_chunk[r, c]
 
-        # Disk I/O: Sequential read of the row chunk
-        X_chunk = adata.X[start:end, :]
-        if sp.issparse(X_chunk):
-            X_chunk = X_chunk.toarray().astype(np.float32)
-        else:
-            X_chunk = np.array(X_chunk, dtype=np.float32)
+            if len(r) == 0:
+                continue
 
-        chunk_targets = group_indices[start:end]
+            # Map row to target barcode
+            t = group_indices[start + r]
 
-        # Intra-chunk aggregation: Reduce updates to the large matrix by summing
-        # multiple runs for the same cell that happen to be in this chunk.
-        u_in_chunk, inv_in_chunk = np.unique(chunk_targets, return_inverse=True)
+            # Determine bin for each element
+            bin_idx = t // barcodes_per_bin
 
-        if len(u_in_chunk) < len(chunk_targets):
-            # Efficiently sum rows within the chunk using a small sparse mapping matrix
-            agg_small = sp.csr_matrix(
-                (
-                    np.ones(len(chunk_targets), dtype=np.float32),
-                    (inv_in_chunk, np.arange(len(chunk_targets))),
-                ),
-                shape=(len(u_in_chunk), len(chunk_targets)),
-            )
-            # Sparse-Dense multiplication is highly optimized in SciPy/BLAS
-            res_chunk = agg_small @ X_chunk
-            parallel_add(u_in_chunk, res_chunk)
-        else:
-            # All cells in chunk belong to unique barcodes
-            parallel_add(chunk_targets, X_chunk)
+            # Sort by bin_idx to group writes
+            sort_idx = np.argsort(bin_idx)
+            bin_idx_sorted = bin_idx[sort_idx]
+            t_sorted = t[sort_idx]
+            c_sorted = c[sort_idx]
+            v_sorted = v[sort_idx]
 
-    print("Aggregation complete.")
+            # Find boundaries
+            unique_bins, bin_starts = np.unique(bin_idx_sorted, return_index=True)
+            bin_ends = np.append(bin_starts[1:], len(bin_idx_sorted))
 
-    # 4. Conversion and Save
-    print("Converting dense accumulator to sparse CSR format...")
-    # This step is single-threaded in SciPy but memory efficient.
-    summed_X_sparse = sp.csr_matrix(summed_X)
-    del summed_X
+            for ub, b_start, b_end in zip(unique_bins, bin_starts, bin_ends):
+                bin_files_t[ub].write(t_sorted[b_start:b_end].tobytes())
+                bin_files_c[ub].write(c_sorted[b_start:b_end].tobytes())
+                bin_files_v[ub].write(v_sorted[b_start:b_end].tobytes())
+
+        # Close all temp files
+        for f_list in (bin_files_t, bin_files_c, bin_files_v):
+            for f in f_list:
+                f.close()
+
+        print("Finished writing to temporary bins. Aggregating bins...")
+
+        # 4. Bin Aggregation
+        all_data = []
+        all_indices = []
+        all_indptr = [np.array([0], dtype=np.int64)]
+        current_nnz = 0
+
+        for i in tqdm(range(n_bins), desc="Aggregating bins"):
+            path_t = os.path.join(temp_dir, f"bin_{i}_t.dat")
+            path_c = os.path.join(temp_dir, f"bin_{i}_c.dat")
+            path_v = os.path.join(temp_dir, f"bin_{i}_v.dat")
+
+            bin_start_barcode = i * barcodes_per_bin
+            bin_end_barcode = min((i + 1) * barcodes_per_bin, n_unique)
+            num_barcodes = bin_end_barcode - bin_start_barcode
+
+            if os.path.getsize(path_t) == 0:
+                # Empty bin
+                all_indptr.append(np.full(num_barcodes, current_nnz, dtype=np.int64))
+                continue
+
+            # Localize target indices for this bin
+            t_bin = np.fromfile(path_t, dtype=np.int32) - bin_start_barcode
+            c_bin = np.fromfile(path_c, dtype=np.int32)
+            v_bin = np.fromfile(path_v, dtype=np.float32)
+
+            # Create COO and sum duplicates within this bin
+            coo = sp.coo_matrix((v_bin, (t_bin, c_bin)), shape=(num_barcodes, n_vars))
+            coo.sum_duplicates()
+            csr = coo.tocsr()
+
+            all_data.append(csr.data)
+            all_indices.append(csr.indices)
+            all_indptr.append(csr.indptr[1:] + current_nnz)
+
+            current_nnz += len(csr.data)
+
+            # Free memory early
+            del t_bin, c_bin, v_bin, coo, csr
+            gc.collect()
+
+    finally:
+        # 5. Clean up temp files
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    print("Constructing final sparse matrix...")
+    if all_data:
+        final_data = np.concatenate(all_data)
+        final_indices = np.concatenate(all_indices)
+    else:
+        final_data = np.array([], dtype=np.float32)
+        final_indices = np.array([], dtype=np.int32)
+
+    final_indptr = np.concatenate(all_indptr)
+
+    del all_data, all_indices, all_indptr
     gc.collect()
+
+    summed_X_sparse = sp.csr_matrix(
+        (final_data, final_indices, final_indptr), shape=(n_unique, n_vars)
+    )
 
     print("Constructing final AnnData object...")
     # Keep the first metadata entry for each barcode
