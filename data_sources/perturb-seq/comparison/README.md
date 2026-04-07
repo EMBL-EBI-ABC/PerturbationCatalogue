@@ -21,7 +21,8 @@ This directory contains tools to compare two versions of the Nadig 2025 Jurkat P
         --location=$GCLOUD_ZONE \
         --machine-type=n1-highmem-32 \
         --vm-image-project=cloud-notebooks-managed \
-        --vm-image-family=workbench-instances
+        --vm-image-family=workbench-instances \
+        --data-disk-size=1500
     ```
 
 ### Access JupyterLab
