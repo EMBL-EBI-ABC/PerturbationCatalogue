@@ -1,5 +1,5 @@
 import dash
-from dash import html
+from dash import html, Input, Output, State
 import dash_bootstrap_components as dbc
 import os
 
@@ -19,9 +19,60 @@ app = dash.Dash(
 )
 
 # Import pages to ensure they are registered
-from pages import api, about, dataset, targets, datasets
+from pages import api, about, dataset, targets, datasets, chat, login
 
 cookie_banner.register_callbacks(app)
+
+# Login form: POST credentials to backend, store token in sessionStorage
+app.clientside_callback(
+    """
+    function(n_clicks, email, password) {
+        if (!n_clicks) return [window.dash_clientside.no_update, ""];
+        if (!email || !password) return [window.dash_clientside.no_update, "Please enter email and password"];
+        var urlEl = document.getElementById("login-backend-url");
+        var baseUrl = urlEl ? urlEl.getAttribute("data-url") : "";
+        return fetch(baseUrl + "/v1/auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({email: email, password: password})
+        })
+        .then(function(r) {
+            if (r.ok) return r.json();
+            return r.json().then(function(err) { return Promise.reject(err); });
+        })
+        .then(function(data) {
+            sessionStorage.setItem("auth_token", data.token);
+            sessionStorage.setItem("auth_user", JSON.stringify(data.user));
+            window.location.href = "/perturbation-catalogue/chat";
+            return [window.dash_clientside.no_update, ""];
+        })
+        .catch(function(err) {
+            var msg = (err && err.detail) ? err.detail : "Invalid email or password";
+            return [window.dash_clientside.no_update, msg];
+        });
+    }
+    """,
+    [Output("login-redirect", "data"), Output("login-error", "children")],
+    Input("login-btn", "n_clicks"),
+    [State("login-email", "value"), State("login-password", "value")],
+    prevent_initial_call=True,
+)
+
+# Logout: clear sessionStorage and redirect to login
+app.clientside_callback(
+    """
+    function(n_clicks) {
+        if (!n_clicks) return window.dash_clientside.no_update;
+        sessionStorage.removeItem("auth_token");
+        sessionStorage.removeItem("auth_user");
+        window.location.href = "/perturbation-catalogue/login";
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("logout-link", "style"),
+    Input("logout-link", "n_clicks"),
+    prevent_initial_call=True,
+)
 
 # Inject Google Analytics scripts.
 app.index_string = google_analytics.inject
@@ -60,6 +111,11 @@ app.layout = html.Div(
                                 className="header-link",
                             ),
                             html.A(
+                                "AI Explorer (Beta)",
+                                href="/perturbation-catalogue/chat",
+                                className="header-link header-link-ai",
+                            ),
+                            html.A(
                                 "API Documentation",
                                 href=os.getenv(
                                     "PERTURBATION_CATALOGUE_BE",
@@ -79,6 +135,13 @@ app.layout = html.Div(
                                 href="https://pollunit.com/polls/zl6y1cje-smx6jikfvfwaw",
                                 target="_blank",
                                 className="header-link",
+                            ),
+                            html.A(
+                                "Logout",
+                                id="logout-link",
+                                href="#",
+                                className="header-link",
+                                style={"display": "none"},
                             ),
                         ],
                         className="header-links",

@@ -30,6 +30,14 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
 
+# Import AI chat router.
+import ai_chat
+from ai_chat import router as ai_chat_router
+
+# Import auth router.
+import auth
+from auth import router as auth_router
+
 load_dotenv()
 
 
@@ -49,6 +57,12 @@ class Settings(BaseSettings):
     es_url: str
     es_username: str
     es_password: str
+    google_cloud_project: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_api_key: str = ""
+    ot_mcp_url: str = ""
+    jwt_secret: str = ""
+    jwt_expiry_hours: int = 168
 
 
 settings = Settings()
@@ -67,6 +81,17 @@ async def lifespan(app: FastAPI):
     db_pools["es"] = AsyncElasticsearch(
         [settings.es_url], basic_auth=(settings.es_username, settings.es_password)
     )
+    ai_chat.configure(
+        google_cloud_project=settings.google_cloud_project,
+        gemini_model=settings.gemini_model,
+        gemini_api_key=settings.gemini_api_key,
+        ot_mcp_url=settings.ot_mcp_url,
+    )
+    await ai_chat.init_open_targets_mcp()
+    auth.configure(
+        jwt_secret=settings.jwt_secret,
+        jwt_expiry_hours=settings.jwt_expiry_hours,
+    )
     yield
     # Shutdown: Close connections
     await db_pools["pg"].close()
@@ -78,13 +103,20 @@ app = FastAPI(title="Search API", version="1.0.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "https://www.ebi.ac.uk",
+        "http://localhost:8050",
+        "http://127.0.0.1:8050",
+        "https://ai-explorer-dash-alpha-959149465821.europe-west2.run.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(data_query_router)
+app.include_router(ai_chat_router)
+app.include_router(auth_router)
 
 
 # Facet fields for target-summary index
