@@ -4,6 +4,7 @@ import tempfile
 import shutil
 import gc
 import uuid
+import argparse
 import numpy as np
 import scipy.sparse as sp
 import pandas as pd
@@ -20,20 +21,6 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 n_cpus = os.cpu_count() or 1
-
-
-def download_file(gs_path, local_path):
-    """Downloads a file from Google Cloud Storage using gsutil."""
-    if os.path.exists(local_path):
-        print(f"File {local_path} already exists. Skipping download.")
-        return
-
-    print(f"Downloading {gs_path} to {local_path}...")
-    # -m for multi-threaded/multi-processing copy
-    ret = os.system(f"gsutil -m cp {gs_path} {local_path}")
-    if ret != 0:
-        print(f"Error: gsutil failed with exit code {ret}")
-        sys.exit(1)
 
 
 def process_chunk_batch(args):
@@ -170,6 +157,10 @@ def aggregate_reprocessed(input_path, output_path):
     Highly-parallel, memory-efficient aggregation of reprocessed counts.
     Uses backed mode, ProcessPoolExecutor, and out-of-core disk partitioning.
     """
+    if not os.path.exists(input_path):
+        print(f"Error: Input file {input_path} not found.")
+        sys.exit(1)
+
     print(f"Opening {input_path} in backed mode...")
     adata = sc.read_h5ad(input_path, backed="r")
 
@@ -300,14 +291,13 @@ def aggregate_reprocessed(input_path, output_path):
 
 
 if __name__ == "__main__":
-    lake_bucket = os.environ.get("LAKE_BUCKET")
-    if not lake_bucket:
-        print("Error: LAKE_BUCKET environment variable is not set.")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Aggregate reprocessed Perturb-seq counts by barcode."
+    )
+    parser.add_argument("-i", "--input", required=True, help="Path to input h5ad file")
+    parser.add_argument(
+        "-o", "--output", required=True, help="Path to output h5ad file"
+    )
+    args = parser.parse_args()
 
-    gs_path = f"gs://{lake_bucket}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad"
-    local_in = "nadig_2025_jurkat_reprocessed.h5ad"
-    local_out = "nadig_2025_jurkat_reprocessed_summed.h5ad"
-
-    download_file(gs_path, local_in)
-    aggregate_reprocessed(local_in, local_out)
+    aggregate_reprocessed(args.input, args.output)
