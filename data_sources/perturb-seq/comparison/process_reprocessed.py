@@ -215,19 +215,46 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
 
     # 1. Prepare aggregation map
     print("Reading metadata and preparing aggregation map...")
-    with sc.read_h5ad(input_path, backed="r") as adata:
-        n_obs, n_vars = adata.shape
+
+    # Use h5py for metadata to avoid scanpy overhead in the main process
+    with h5py.File(input_path, "r") as f:
+        # Get dimensions
+        if "X" in f:
+            if isinstance(f["X"], h5py.Group):
+                n_obs = len(f["X/indptr"]) - 1
+                # var names are usually in /var/_index or /var/name etc.
+                # Scanpy standard: /var/_index
+                var_names = f["var/_index"][:]
+            else:
+                n_obs, n_vars = f["X"].shape
+                var_names = f["var/_index"][:]
+        else:
+            raise KeyError("Could not find 'X' in h5ad file.")
+
+        n_vars = len(var_names)
         print(f"Dataset dimensions: {n_obs} cells x {n_vars} genes")
 
-        # Read index in a memory-efficient way
-        barcodes_all = np.array(adata.obs_names, dtype=str)
-        log_mem("Loaded barcodes")
+        # Read obs index (barcodes) directly
+        print("Reading barcodes...")
+        barcodes_all = f["obs/_index"][:]
+        if barcodes_all.dtype.kind == "S":  # byte strings
+            barcodes_all = np.array(
+                [
+                    b.decode("utf-8").split("-", 1)[0]
+                    for b in tqdm(barcodes_all, desc="Decoding/Splitting")
+                ],
+                dtype=str,
+            )
+        else:
+            barcodes_all = np.array(
+                [
+                    b.split("-", 1)[0]
+                    for b in tqdm(barcodes_all, desc="Splitting barcodes")
+                ],
+                dtype=str,
+            )
 
-        # Split barcodes (e.g., 'ATGC-1' -> 'ATGC')
-        barcodes_all = np.array(
-            [b.split("-", 1)[0] for b in tqdm(barcodes_all, desc="Splitting barcodes")],
-            dtype=str,
-        )
+        log_mem("Loaded barcodes")
 
         unique_barcodes, first_indices, group_indices = np.unique(
             barcodes_all, return_index=True, return_inverse=True
@@ -235,13 +262,20 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         n_unique = len(unique_barcodes)
         print(f"Unique barcodes: {n_unique} (Reduction factor: {n_obs/n_unique:.2f}x)")
 
-        # Selective metadata extraction using backed iloc
-        obs_summed = adata.obs.iloc[first_indices].copy()
-        var = adata.var.copy()
-
         del barcodes_all
         gc.collect()
         log_mem("Metadata mapping complete")
+
+    # Load AnnData for metadata construction (only needed once, non-backed is fine for sub-selection)
+    print("Extracting metadata for final object...")
+    adata_full = sc.read_h5ad(input_path, backed="r")
+    obs_summed = adata_full.obs.iloc[first_indices].copy()
+    var = adata_full.var.copy()
+    # Explicitly close the file handle if it exists
+    if hasattr(adata_full, "file"):
+        adata_full.file.close()
+    del adata_full
+    gc.collect()
 
     # Setup temporary storage
     n_bins = max(1, n_unique // 50000)
