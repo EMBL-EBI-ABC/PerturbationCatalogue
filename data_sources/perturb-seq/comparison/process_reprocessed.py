@@ -216,17 +216,14 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
     # 1. Prepare aggregation map
     print("Reading metadata and preparing aggregation map...")
 
-    # Use h5py for metadata to avoid scanpy overhead in the main process
     with h5py.File(input_path, "r") as f:
         # Get dimensions
         if "X" in f:
             if isinstance(f["X"], h5py.Group):
                 n_obs = len(f["X/indptr"]) - 1
-                # var names are usually in /var/_index or /var/name etc.
-                # Scanpy standard: /var/_index
                 var_names = f["var/_index"][:]
             else:
-                n_obs, n_vars = f["X"].shape
+                n_obs, n_vars_file = f["X"].shape
                 var_names = f["var/_index"][:]
         else:
             raise KeyError("Could not find 'X' in h5ad file.")
@@ -234,28 +231,37 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         n_vars = len(var_names)
         print(f"Dataset dimensions: {n_obs} cells x {n_vars} genes")
 
-        # Read obs index (barcodes) directly
+        # Read obs index (barcodes) directly in chunks to save memory
         print("Reading barcodes...")
-        barcodes_all = f["obs/_index"][:]
-        if barcodes_all.dtype.kind == "S":  # byte strings
-            barcodes_all = np.array(
-                [
-                    b.decode("utf-8").split("-", 1)[0]
-                    for b in tqdm(barcodes_all, desc="Decoding/Splitting")
-                ],
-                dtype=str,
-            )
-        else:
-            barcodes_all = np.array(
-                [
-                    b.split("-", 1)[0]
-                    for b in tqdm(barcodes_all, desc="Splitting barcodes")
-                ],
-                dtype=str,
-            )
+        obs_ds = f["obs/_index"]
+        barcodes_all = np.empty(n_obs, dtype="O")
 
-        log_mem("Loaded barcodes")
+        # Use asstr() if possible for automatic decoding
+        try:
+            str_ds = obs_ds.asstr()
+        except AttributeError:
+            str_ds = obs_ds  # Fallback for older h5py
 
+        chunk_size = 10_000_000
+        for start in range(0, n_obs, chunk_size):
+            end = min(start + chunk_size, n_obs)
+            chunk = str_ds[start:end]
+
+            # Handle byte-string conversion if necessary
+            if len(chunk) > 0 and isinstance(chunk[0], bytes):
+                chunk = [b.decode("utf-8") for b in chunk]
+
+            # Vectorized split if it's already a numpy array of strings
+            if isinstance(chunk, np.ndarray) and chunk.dtype.kind == "U":
+                barcodes_all[start:end] = np.char.partition(chunk, "-")[:, 0]
+            else:
+                barcodes_all[start:end] = [b.split("-", 1)[0] for b in chunk]
+
+        log_mem("Loaded and split barcodes")
+
+        print("Finding unique barcodes (this may take a few minutes)...")
+        # Ensure we have a string array for np.unique for speed,
+        # but 'O' is safer for memory spikes during conversion
         unique_barcodes, first_indices, group_indices = np.unique(
             barcodes_all, return_index=True, return_inverse=True
         )
@@ -266,12 +272,11 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         gc.collect()
         log_mem("Metadata mapping complete")
 
-    # Load AnnData for metadata construction (only needed once, non-backed is fine for sub-selection)
+    # Extract metadata for final object
     print("Extracting metadata for final object...")
     adata_full = sc.read_h5ad(input_path, backed="r")
     obs_summed = adata_full.obs.iloc[first_indices].copy()
     var = adata_full.var.copy()
-    # Explicitly close the file handle if it exists
     if hasattr(adata_full, "file"):
         adata_full.file.close()
     del adata_full
