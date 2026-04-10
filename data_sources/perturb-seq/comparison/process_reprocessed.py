@@ -242,9 +242,9 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         except AttributeError:
             str_ds = obs_ds  # Fallback for older h5py
 
-        chunk_size = 10_000_000
-        for start in range(0, n_obs, chunk_size):
-            end = min(start + chunk_size, n_obs)
+        read_chunk_size = 10_000_000
+        for start in range(0, n_obs, read_chunk_size):
+            end = min(start + read_chunk_size, n_obs)
             chunk = str_ds[start:end]
 
             # Handle byte-string conversion if necessary
@@ -260,8 +260,6 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         log_mem("Loaded and split barcodes")
 
         print("Finding unique barcodes (this may take a few minutes)...")
-        # Ensure we have a string array for np.unique for speed,
-        # but 'O' is safer for memory spikes during conversion
         unique_barcodes, first_indices, group_indices = np.unique(
             barcodes_all, return_index=True, return_inverse=True
         )
@@ -348,7 +346,7 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
 
         # 4. Phase 4: Final Matrix Assembly
         print("Phase 4: Merging final matrix...")
-        total_nnz = 0
+        total_nnz = np.int64(0)
         for i in range(n_bins):
             with np.load(os.path.join(temp_dir, f"bin_{i}_csr.npz")) as data:
                 total_nnz += len(data["data"])
@@ -360,7 +358,7 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
         final_indptr = np.empty(n_unique + 1, dtype=np.int64)
         final_indptr[0] = 0
 
-        curr_nnz = 0
+        curr_nnz = np.int64(0)
         curr_row = 0
         for i in tqdm(range(n_bins), desc="Merging into final arrays"):
             out_path = os.path.join(temp_dir, f"bin_{i}_csr.npz")
@@ -371,8 +369,10 @@ def aggregate_reprocessed(input_path, output_path, n_cpus=None, row_chunk_size=2
 
             final_data[curr_nnz : curr_nnz + nnz_bin] = csr.data
             final_indices[curr_nnz : curr_nnz + nnz_bin] = csr.indices
+
+            # Critical: Ensure csr.indptr is cast to int64 before adding large curr_nnz
             final_indptr[curr_row + 1 : curr_row + 1 + n_rows_bin] = (
-                csr.indptr[1:] + curr_nnz
+                csr.indptr[1:].astype(np.int64) + curr_nnz
             )
 
             curr_nnz += nnz_bin
