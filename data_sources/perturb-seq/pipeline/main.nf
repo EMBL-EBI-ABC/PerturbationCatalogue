@@ -68,45 +68,19 @@ process KB_COUNT_STANDARD {
     """
     mkdir -p out
 
-    # Collect all fastq files and figure out which are R1 and R2
-    # kb count requires all R1s then all R2s if interleaving, or we can just pass them.
-    # Actually, kb count expects pairs or interleaved. We can pair them up.
-    # Or, as kb count takes them as R1 R2 R1 R2... let's pair them properly.
-    
-    # We will generate a batch file for kb count.
-    # Format: sample_id \t R1 \t R2
+    # Create batch file for kb count (Format: sample_id \\t R1 \\t R2)
     > batch.txt
     
-    # Simple heuristic: find all R1 and R2 files by sorting, but since they might be mixed, 
-    # we determine R1/R2 per file based on length.
-    
+    # Group FASTQ files by their run prefix by stripping the _[0-9].fastq.gz suffix
     for fq in ${reads.join(' ')}; do
-        seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
-        if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
-            echo "\$fq is R1" >&2
-            echo "\${fq}-R1" >> r1_list.txt
-        elif [ "\$seq_len" -gt 40 ]; then
-            echo "\$fq is R2" >&2
-            echo "\${fq}-R2" >> r2_list.txt
-        fi
-    done
-    
-    # Assuming standard _1 / _2 naming or something where sorting aligns them
-    # But since they are all from the same sample conceptually, we can just run kb count
-    # with the batch file. Wait, batch file requires R1 and R2 pairs.
-    # We can pair them by sorting names if they share a common prefix.
-    # Let's extract base names by stripping _1.fastq.gz, _2.fastq.gz, _R1.fastq.gz etc.
-    
-    for fq in ${reads.join(' ')}; do
-        base=\$(echo \$fq | sed -E 's/(_[123]|_R[12])\\.fastq\\.gz//')
+        base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
         echo "\$base \$fq" >> file_map.txt
     done
     
-    # Group by base
+    # For each run, auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
     awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
         r1=""
         r2=""
-        # Find R1/R2 for this base
         for fq in \$(grep "^\$base " file_map.txt | awk '{print \$2}'); do
             seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
             if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
@@ -119,7 +93,7 @@ process KB_COUNT_STANDARD {
         if [ -n "\$r1" ] && [ -n "\$r2" ]; then
             echo -e "ALL_CELLS\t\$r1\t\$r2" >> batch.txt
         else
-            echo "Warning: Could not pair files for \$base" >&2
+            echo "Warning: Could not pair R1 and R2 for run \$base" >&2
         fi
     done
 
@@ -154,13 +128,16 @@ process KB_COUNT_KITE {
     """
     mkdir -p out
 
+    # Create batch file for kb count (Format: sample_id \\t R1 \\t R2)
     > batch.txt
     
+    # Group FASTQ files by their run prefix by stripping the _[0-9].fastq.gz suffix
     for fq in ${reads.join(' ')}; do
-        base=\$(echo \$fq | sed -E 's/(_[123]|_R[12])\\.fastq\\.gz//')
+        base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
         echo "\$base \$fq" >> file_map.txt
     done
     
+    # For each run, auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
     awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
         r1=""
         r2=""
@@ -175,8 +152,13 @@ process KB_COUNT_KITE {
         
         if [ -n "\$r1" ] && [ -n "\$r2" ]; then
             echo -e "ALL_CELLS\t\$r1\t\$r2" >> batch.txt
+        else
+            echo "Warning: Could not pair R1 and R2 for run \$base" >&2
         fi
     done
+
+    echo "Batch file generated:"
+    cat batch.txt
 
     kb count -i ${index} \\
              -g ${t2g} \\
