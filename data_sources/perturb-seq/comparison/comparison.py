@@ -25,13 +25,29 @@ def download_only(gs_path, local_path):
         os.system(f"gsutil -m cp {gs_path} {local_path}")
 
 
-def preprocess_adata(adata, is_raw, name, run_hvg=False):
+def preprocess_adata(adata, name, run_hvg=False):
     """Normalization, QC metrics, and PCA in one go for parallel execution."""
     print(f"Starting preprocessing for {name}...")
-    if is_raw:
-        print(f"  [{name}] Normalizing and log-transforming...")
+    
+    # Heuristic to check data state
+    X_sample = adata.X
+    if hasattr(X_sample, "data"):
+        sample = X_sample.data[:2000]
+    else:
+        sample = X_sample.flatten()[:2000]
+    
+    is_integers = np.all(np.equal(np.mod(sample, 1), 0))
+    max_val = sample.max()
+    
+    if is_integers:
+        print(f"  [{name}] Data appears to be raw counts (integers). Normalizing and log-transforming...")
         sc.pp.normalize_total(adata, target_sum=1e4)
         sc.pp.log1p(adata)
+    elif max_val > 25:
+        print(f"  [{name}] Data appears to be normalized but NOT logged (max={max_val:.2f}). Log-transforming...")
+        sc.pp.log1p(adata)
+    else:
+        print(f"  [{name}] Data appears to be already log-normalized (max={max_val:.2f}).")
 
     print(f"  [{name}] Calculating QC metrics...")
     sc.pp.calculate_qc_metrics(adata, inplace=True)
@@ -41,18 +57,6 @@ def preprocess_adata(adata, is_raw, name, run_hvg=False):
         sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="seurat")
 
     return adata
-
-
-def is_raw_counts(adata):
-    """Heuristic to check if data contains raw counts (integers)."""
-    X = adata.X
-    if hasattr(X, "data"):
-        # Sparse matrix
-        sample = X.data[:1000]
-    else:
-        # Dense matrix
-        sample = X.flatten()[:1000]
-    return np.all(np.equal(np.mod(sample, 1), 0))
 
 
 def plot_scatter_comparison(df, x_col, y_col, title, xlabel, ylabel, filename):
@@ -92,18 +96,19 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
     # Try to find perturbation columns
     cur_pert_col = None
-    for col in ["perturbation", "condition", "gene_target", "guide"]:
+    for col in ["perturbation", "condition", "gene_target", "guide", "target"]:
         if col in adata_cur.obs.columns:
             cur_pert_col = col
             break
 
     rep_pert_col = None
-    for col in ["perturbation", "guide", "target", "gene"]:
+    for col in ["perturbation", "guide", "target", "gene", "condition"]:
         if col in adata_rep.obs.columns:
             rep_pert_col = col
             break
 
     if cur_pert_col and rep_pert_col:
+        print(f"  Found columns: Curated='{cur_pert_col}', Reprocessed='{rep_pert_col}'")
         p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
         p_rep = adata_rep.obs.loc[common_cells, rep_pert_col].astype(str)
 
@@ -122,7 +127,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             )
             plt.figure(figsize=(12, 10))
             sns.heatmap(ct, annot=False, cmap="YlGnBu")
-            plt.title("Perturbation Assignment Overlap (Top 20)")
+            plt.title(f"Perturbation Assignment Overlap (Top 20)\nColumns: {cur_pert_col} vs {rep_pert_col}")
             plt.tight_layout()
             plt.savefig("comparison_results/perturbation_confusion_matrix.png")
             plt.show()
@@ -138,7 +143,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
 
 # ==============================================================================
-# 2. CONFIGURATION AND DOWNLOAD
+# 2. CONFIGURATION AND PATHS
 # ==============================================================================
 # File paths
 curated_local = "GSE264667_jurkat_raw_singlecell_01.h5ad"
@@ -156,24 +161,18 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     adata_rep_sum = f_rep.result()
 
 # ==============================================================================
-# 4. HEURISTIC CHECK FOR NORMALIZATION
-# ==============================================================================
-raw_cur = is_raw_counts(adata_cur)
-raw_rep = is_raw_counts(adata_rep_sum)
-
-print(f"Curated is raw: {raw_cur}")
-print(f"Reprocessed is raw: {raw_rep}")
-
-# ==============================================================================
-# 6. RAW DISTRIBUTION HISTOGRAMS (CELLS AND GENES)
+# 4. INITIAL CHECKS AND HISTOGRAMS
 # ==============================================================================
 print("Computing raw distribution statistics in parallel...")
 
 
 def get_sums(adata):
     """Computes total counts per cell and per gene."""
-    cell_sums = np.array(adata.X.sum(axis=1)).flatten()
-    gene_sums = np.array(adata.X.sum(axis=0)).flatten()
+    # Ensure we use raw counts if available in a layer, otherwise use .X
+    # We assume histograms should be on raw-ish data if possible
+    X = adata.X
+    cell_sums = np.array(X.sum(axis=1)).flatten()
+    gene_sums = np.array(X.sum(axis=0)).flatten()
     return cell_sums, gene_sums
 
 
@@ -238,7 +237,7 @@ plt.savefig("comparison_results/raw_distributions_histogram.png", dpi=300)
 plt.show()
 
 # ==============================================================================
-# 7. BASIC SUMMARY STATISTICS
+# 5. DATASET STRUCTURE COMPARISON
 # ==============================================================================
 summary_df = pd.DataFrame(
     {
@@ -273,7 +272,7 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
     print(summary_df)
 
 # ==============================================================================
-# 8. DATAFRAME EXPLORATION
+# 6. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
@@ -294,7 +293,7 @@ with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
     print(adata_rep_sum.var.head())
 
 # ==============================================================================
-# 9. GENE AND CELL ALIGNMENT
+# 7. GENE AND CELL ALIGNMENT
 # ==============================================================================
 # Gene Alignment
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep_sum.var_names)
@@ -302,10 +301,12 @@ if len(common_genes) == 0:
     print("No direct gene overlap. Attempting to align via var columns...")
     for col in ["gene_symbols", "symbols", "gene_name"]:
         if col in adata_cur.var.columns:
+            print(f"  Setting Curated var_names to column: {col}")
             adata_cur.var_names = adata_cur.var[col].astype(str)
             break
     for col in ["gene_symbols", "symbols", "gene_name"]:
         if col in adata_rep_sum.var.columns:
+            print(f"  Setting Reprocessed var_names to column: {col}")
             adata_rep_sum.var_names = adata_rep_sum.var[col].astype(str)
             break
     common_genes = np.intersect1d(adata_cur.var_names, adata_rep_sum.var_names)
@@ -318,25 +319,25 @@ print(f"Common genes: {len(common_genes)}")
 
 if len(common_cells) == 0 or len(common_genes) == 0:
     print("ERROR: No overlap found.")
+    # In Jupyter, we might want to stop here. In a script, sys.exit.
 else:
     # Subset to common elements
     cur_sub = adata_cur[common_cells, common_genes].copy()
     rep_sub = adata_rep_sum[common_cells, common_genes].copy()
+    gc.collect()
 
 # ==============================================================================
-# 10. PREPROCESSING
+# 8. PREPROCESSING
 # ==============================================================================
 print("Preprocessing subsets in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
-    f_cur = executor.submit(preprocess_adata, cur_sub, raw_cur, "Curated", run_hvg=True)
-    f_rep = executor.submit(
-        preprocess_adata, rep_sub, raw_rep, "Reprocessed", run_hvg=False
-    )
+    f_cur = executor.submit(preprocess_adata, cur_sub, "Curated", run_hvg=True)
+    f_rep = executor.submit(preprocess_adata, rep_sub, "Reprocessed", run_hvg=False)
     cur_sub = f_cur.result()
     rep_sub = f_rep.result()
 
 # ==============================================================================
-# 11. QC AND GENE EXPRESSION COMPARISON
+# 9. QC AND GENE EXPRESSION COMPARISON
 # ==============================================================================
 metrics_df = pd.DataFrame(
     {
@@ -351,7 +352,7 @@ plot_scatter_comparison(
     metrics_df,
     "total_counts_cur",
     "total_counts_rep",
-    "Total Counts (Normalized/Log) Correlation",
+    "Total Counts Correlation (Normalized & Logged)",
     "Curated",
     "Reprocessed",
     "comparison_results/counts_comparison.png",
@@ -383,16 +384,59 @@ plot_scatter_comparison(
 )
 
 # ==============================================================================
-# 12. PERTURBATION COMPARISON
+# 10. CELL-WISE CORRELATION (SCIENTIFIC RIGOR)
+# ==============================================================================
+print("Calculating cell-wise correlations...")
+# For high cell counts, this can be memory intensive if not careful
+# We use a vectorized approach: corr = cov(x,y) / (std(x)*std(y))
+def get_cell_corrs(m1, m2):
+    if sp.issparse(m1): m1 = m1.toarray()
+    if sp.issparse(m2): m2 = m2.toarray()
+    
+    # Center rows
+    m1_c = m1 - m1.mean(axis=1)[:, None]
+    m2_c = m2 - m2.mean(axis=1)[:, None]
+    
+    # Pearson
+    num = (m1_c * m2_c).sum(axis=1)
+    den = np.sqrt((m1_c**2).sum(axis=1)) * np.sqrt((m2_c**2).sum(axis=1))
+    return num / den
+
+# Sample if too large for memory (e.g. > 50k cells)
+if cur_sub.n_obs > 50000:
+    print(f"  Sampling 50,000 cells for cell-wise correlation...")
+    idx = np.random.choice(cur_sub.n_obs, 50000, replace=False)
+    cell_corrs = get_cell_corrs(cur_sub.X[idx], rep_sub.X[idx])
+else:
+    cell_corrs = get_cell_corrs(cur_sub.X, rep_sub.X)
+
+plt.figure(figsize=(8, 5))
+sns.histplot(cell_corrs, bins=100, color="green")
+plt.axvline(np.median(cell_corrs), color="red", linestyle="--", label=f"Median: {np.median(cell_corrs):.4f}")
+plt.title("Distribution of Pearson Correlations per Cell")
+plt.xlabel("Pearson r")
+plt.legend()
+plt.tight_layout()
+plt.savefig("comparison_results/cell_wise_correlation_hist.png")
+plt.show()
+plt.close()
+
+# ==============================================================================
+# 11. PERTURBATION COMPARISON
 # ==============================================================================
 pert_acc = compare_perturbations(adata_cur, adata_rep_sum, common_cells)
 
 # ==============================================================================
-# 13. STRUCTURAL COMPARISON (PCA)
+# 12. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
 # Use the same highly variable genes for both to ensure comparability
 rep_sub.var["highly_variable"] = cur_sub.var["highly_variable"]
+
+# Scaling before PCA is crucial for scientific soundness
+print("  Scaling data...")
+sc.pp.scale(cur_sub, max_value=10)
+sc.pp.scale(rep_sub, max_value=10)
 
 print("  Calculating PCA in parallel...")
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -423,6 +467,12 @@ plt.show()
 plt.close()
 
 # ==============================================================================
+# 13. LAYER COMPARISON (OPTIONAL CHECK)
+# ==============================================================================
+# If datasets have multiple layers, this would be the place to compare them.
+# For now, we've focused on .X.
+
+# ==============================================================================
 # 14. SUMMARY REPORT
 # ==============================================================================
 with open("comparison_results/summary_report.txt", "w") as f:
@@ -449,6 +499,7 @@ with open("comparison_results/summary_report.txt", "w") as f:
     f.write(f"- Total counts per cell: {counts_corr:.4f}\n")
     f.write(f"- Number of genes per cell: {genes_corr:.4f}\n")
     f.write(f"- Average gene expression: {expr_corr:.4f}\n")
+    f.write(f"- Median cell-wise correlation: {np.median(cell_corrs):.4f}\n")
 
     if pert_acc is not None:
         f.write(f"- Perturbation assignment match: {pert_acc:.2%}\n")
