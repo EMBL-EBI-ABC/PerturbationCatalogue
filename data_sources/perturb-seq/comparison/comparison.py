@@ -161,15 +161,52 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     adata_rep_sum = f_rep.result()
 
 # ==============================================================================
-# 4. INITIAL CHECKS AND HISTOGRAMS
+# 4. DATASET DIMENSIONS AND STRUCTURE
 # ==============================================================================
-print("Computing raw distribution statistics in parallel...")
+print(f"\n### Dataset Dimensions ###")
+print(f"Curated:      {adata_cur.n_obs} cells, {adata_cur.n_vars} genes")
+print(f"Reprocessed:  {adata_rep_sum.n_obs} cells, {adata_rep_sum.n_vars} genes")
+
+summary_df = pd.DataFrame(
+    {
+        "Metric": [
+            "Total Cells (n_obs)",
+            "Total Genes (n_vars)",
+            "Obs Columns",
+            "Var Columns",
+            "Layers",
+            "Unstructured (uns) Keys",
+        ],
+        "Curated": [
+            adata_cur.n_obs,
+            adata_cur.n_vars,
+            ", ".join(adata_cur.obs.columns),
+            ", ".join(adata_cur.var.columns),
+            ", ".join(adata_cur.layers.keys()),
+            ", ".join(adata_cur.uns.keys()),
+        ],
+        "Reprocessed (summed)": [
+            adata_rep_sum.n_obs,
+            adata_rep_sum.n_vars,
+            ", ".join(adata_rep_sum.obs.columns),
+            ", ".join(adata_rep_sum.var.columns),
+            ", ".join(adata_rep_sum.layers.keys()),
+            ", ".join(adata_rep_sum.uns.keys()),
+        ],
+    }
+)
+print("\n### Detailed Dataset Comparison ###")
+with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
+    print(summary_df)
+
+# ==============================================================================
+# 5. INITIAL CHECKS AND HISTOGRAMS
+# ==============================================================================
+print("\nComputing raw distribution statistics in parallel...")
 
 
 def get_sums(adata):
     """Computes total counts per cell and per gene."""
-    # Ensure we use raw counts if available in a layer, otherwise use .X
-    # We assume histograms should be on raw-ish data if possible
     X = adata.X
     cell_sums = np.array(X.sum(axis=1)).flatten()
     gene_sums = np.array(X.sum(axis=0)).flatten()
@@ -237,41 +274,6 @@ plt.savefig("comparison_results/raw_distributions_histogram.png", dpi=300)
 plt.show()
 
 # ==============================================================================
-# 5. DATASET STRUCTURE COMPARISON
-# ==============================================================================
-summary_df = pd.DataFrame(
-    {
-        "Metric": [
-            "Total Cells (n_obs)",
-            "Total Genes (n_vars)",
-            "Obs Columns",
-            "Var Columns",
-            "Layers",
-            "Unstructured (uns) Keys",
-        ],
-        "Curated": [
-            adata_cur.n_obs,
-            adata_cur.n_vars,
-            ", ".join(adata_cur.obs.columns),
-            ", ".join(adata_cur.var.columns),
-            ", ".join(adata_cur.layers.keys()),
-            ", ".join(adata_cur.uns.keys()),
-        ],
-        "Reprocessed (summed)": [
-            adata_rep_sum.n_obs,
-            adata_rep_sum.n_vars,
-            ", ".join(adata_rep_sum.obs.columns),
-            ", ".join(adata_rep_sum.var.columns),
-            ", ".join(adata_rep_sum.layers.keys()),
-            ", ".join(adata_rep_sum.uns.keys()),
-        ],
-    }
-)
-print("\n### Basic Dataset Comparison ###")
-with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(summary_df)
-
-# ==============================================================================
 # 6. DATAFRAME EXPLORATION
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
@@ -319,7 +321,6 @@ print(f"Common genes: {len(common_genes)}")
 
 if len(common_cells) == 0 or len(common_genes) == 0:
     print("ERROR: No overlap found.")
-    # In Jupyter, we might want to stop here. In a script, sys.exit.
 else:
     # Subset to common elements
     cur_sub = adata_cur[common_cells, common_genes].copy()
@@ -387,22 +388,17 @@ plot_scatter_comparison(
 # 10. CELL-WISE CORRELATION (SCIENTIFIC RIGOR)
 # ==============================================================================
 print("Calculating cell-wise correlations...")
-# For high cell counts, this can be memory intensive if not careful
-# We use a vectorized approach: corr = cov(x,y) / (std(x)*std(y))
 def get_cell_corrs(m1, m2):
     if sp.issparse(m1): m1 = m1.toarray()
     if sp.issparse(m2): m2 = m2.toarray()
     
-    # Center rows
     m1_c = m1 - m1.mean(axis=1)[:, None]
     m2_c = m2 - m2.mean(axis=1)[:, None]
     
-    # Pearson
     num = (m1_c * m2_c).sum(axis=1)
     den = np.sqrt((m1_c**2).sum(axis=1)) * np.sqrt((m2_c**2).sum(axis=1))
     return num / den
 
-# Sample if too large for memory (e.g. > 50k cells)
 if cur_sub.n_obs > 50000:
     print(f"  Sampling 50,000 cells for cell-wise correlation...")
     idx = np.random.choice(cur_sub.n_obs, 50000, replace=False)
@@ -430,10 +426,8 @@ pert_acc = compare_perturbations(adata_cur, adata_rep_sum, common_cells)
 # 12. STRUCTURAL COMPARISON (PCA)
 # ==============================================================================
 print("Performing structural comparison (PCA)...")
-# Use the same highly variable genes for both to ensure comparability
 rep_sub.var["highly_variable"] = cur_sub.var["highly_variable"]
 
-# Scaling before PCA is crucial for scientific soundness
 print("  Scaling data...")
 sc.pp.scale(cur_sub, max_value=10)
 sc.pp.scale(rep_sub, max_value=10)
@@ -457,7 +451,6 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     f_cur.result()
     f_rep.result()
 
-# Plot side-by-side PCA
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 sc.pl.pca(cur_sub, ax=ax1, show=False, title="PCA Curated (on Curated HVGs)")
 sc.pl.pca(rep_sub, ax=ax2, show=False, title="PCA Reprocessed (on Curated HVGs)")
@@ -469,8 +462,7 @@ plt.close()
 # ==============================================================================
 # 13. LAYER COMPARISON (OPTIONAL CHECK)
 # ==============================================================================
-# If datasets have multiple layers, this would be the place to compare them.
-# For now, we've focused on .X.
+# Placeholder for layer-specific analysis
 
 # ==============================================================================
 # 14. SUMMARY REPORT
