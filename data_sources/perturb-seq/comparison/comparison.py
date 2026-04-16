@@ -10,6 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 import scipy.sparse as sp
 import gc
 
+# For nice Jupyter rendering
+try:
+    from IPython.display import display
+except ImportError:
+    display = print
+
 
 # ==============================================================================
 # 1. FUNCTIONS AND UTILITIES
@@ -197,7 +203,7 @@ summary_df = pd.DataFrame(
 )
 print("\n### Detailed Dataset Comparison ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(summary_df)
+    display(summary_df)
 
 # ==============================================================================
 # 5. INITIAL CHECKS AND HISTOGRAMS
@@ -278,21 +284,21 @@ plt.show()
 # ==============================================================================
 print("\n### Curated - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(adata_cur.obs.head())
+    display(adata_cur.obs.head())
 
 print("\n### Curated - Var (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(adata_cur.var.head())
+    display(adata_cur.var.head())
 
 print("\n" + "=" * 40)
 
 print("\n### Reprocessed (summed) - Obs (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(adata_rep_sum.obs.head())
+    display(adata_rep_sum.obs.head())
 
 print("\n### Reprocessed (summed) - Var (first 5 rows) ###")
 with pd.option_context("display.max_colwidth", None, "display.max_rows", None):
-    print(adata_rep_sum.var.head())
+    display(adata_rep_sum.var.head())
 
 # ==============================================================================
 # 7. GENE AND CELL ALIGNMENT
