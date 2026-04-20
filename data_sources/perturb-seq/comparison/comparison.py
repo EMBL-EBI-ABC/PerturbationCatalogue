@@ -80,21 +80,23 @@ def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
 def plot_scatter_comparison(
     df, x_col, y_col, title, xlabel, ylabel, filename, log_scale=False, subtitle=""
 ):
-    """Creates a scatter plot with correlation info, identity line, and subtitle."""
-    plt.figure(figsize=(9, 10))
+    """Creates a scatter plot with correlation info, identity line, and tight top-aligned subtitle."""
+    plt.figure(figsize=(10, 10))
 
     plot_df = df.copy().dropna(subset=[x_col, y_col])
+    
+    # Diagnostic print for the blank plot issue
+    if "counts" in x_col:
+        print(f"DEBUG [{title}]: x_min={plot_df[x_col].min()}, x_max={plot_df[x_col].max()}, y_min={plot_df[y_col].min()}, y_max={plot_df[y_col].max()}")
 
-    # Handle zeros for log scale to avoid blank plots
+    # Handle zeros for log scale
     if log_scale:
         plot_df[x_col] = plot_df[x_col] + 1
         plot_df[y_col] = plot_df[y_col] + 1
 
-    if len(plot_df) > 10000:
-        plt.hexbin(
-            plot_df[x_col], plot_df[y_col], gridsize=60, cmap="viridis", bins="log"
-        )
-        plt.colorbar(label="log10(count)")
+    # Use scatter with very low alpha for large datasets
+    if len(plot_df) > 5000:
+        plt.scatter(plot_df[x_col], plot_df[y_col], alpha=0.05, s=1, color='teal', rasterized=True)
     else:
         sns.scatterplot(data=plot_df, x=x_col, y=y_col, alpha=0.3, s=10)
 
@@ -107,11 +109,11 @@ def plot_scatter_comparison(
     pearson, _ = stats.pearsonr(plot_df[x_col], plot_df[y_col])
     spearman, _ = stats.spearmanr(plot_df[x_col], plot_df[y_col])
 
-    plt.title(
-        f"{title}\nPearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}",
-        fontsize=14,
-        pad=20,
-    )
+    # Tight Title and Subtitle at the top
+    plt.suptitle(title, fontsize=16, fontweight='bold', y=0.96)
+    plt.title(f"Pearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}\n{subtitle}", 
+              fontsize=10, pad=5, loc='center', wrap=True, style='italic')
+
     plt.xlabel(f"{xlabel} {'(+1 for log)' if log_scale else ''}")
     plt.ylabel(f"{ylabel} {'(+1 for log)' if log_scale else ''}")
 
@@ -119,19 +121,8 @@ def plot_scatter_comparison(
         plt.xscale("log")
         plt.yscale("log")
 
-    # Add subtitle for context
-    plt.figtext(
-        0.5,
-        0.02,
-        subtitle,
-        wrap=True,
-        horizontalalignment="center",
-        fontsize=10,
-        style="italic",
-    )
-
     plt.legend()
-    plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
     plt.savefig(filename, dpi=300)
     plt.show()
     plt.close()
@@ -182,14 +173,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
     # 1. Get Curated Labels
     cur_pert_col = None
-    for col in [
-        "sgID_AB",
-        "perturbation",
-        "condition",
-        "gene_target",
-        "guide",
-        "target",
-    ]:
+    for col in ["sgID_AB", "perturbation", "condition", "gene_target", "guide", "target"]:
         if col in adata_cur.obs.columns:
             cur_pert_col = col
             break
@@ -206,6 +190,18 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
         p_rep = rep_labels.loc[common_cells].astype(str)
 
+        # Aggressive cleaning and re-sorting of pipes to ensure matching
+        def normalize_perturb(s):
+            if "|" in s:
+                return "|".join(sorted([x.strip() for x in s.split("|")]))
+            return s.strip()
+
+        p_cur = p_cur.apply(normalize_perturb)
+        p_rep = p_rep.apply(normalize_perturb)
+        
+        print(f"  Sample Curated cleaned:     {p_cur.iloc[:3].tolist()}")
+        print(f"  Sample Reprocessed cleaned: {p_rep.iloc[:3].tolist()}")
+
         overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
 
         # Calculate overall accuracy
@@ -218,12 +214,14 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
         ct = pd.crosstab(sub_df["Curated"], sub_df["Reprocessed"])
 
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(ct, annot=False, cmap="YlGnBu")
-        plt.title(
-            f"Perturbation Confusion Matrix (Top 20)\nOverall Match: {accuracy:.2%}"
-        )
-        plt.tight_layout()
+        plt.figure(figsize=(15, 12))
+        sns.heatmap(ct, annot=False, cmap="YlGnBu", cbar_kws={'label': 'Cell Count'})
+        plt.suptitle("Perturbation Confusion Matrix (Top 20)", fontsize=16, fontweight='bold', y=0.98)
+        plt.title(f"Overall Match: {accuracy:.2%}\nMatches are based on alphabetically sorted dual-guide strings.", 
+                  fontsize=10, pad=10, style='italic', loc='center')
+        plt.xticks(rotation=45, ha='right', fontsize=7)
+        plt.yticks(fontsize=7)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
         plt.savefig("comparison_results/perturbation_confusion_matrix.png")
         plt.show()
         plt.close()
@@ -457,7 +455,10 @@ results_summary["cell_wise_corr"] = {
     "mean": float(np.nanmean(cell_corrs)),
 }
 
-plt.figure(figsize=(8, 6))
+plt.figure(figsize=(10, 8))
+plt.suptitle("Distribution of Cell-wise Expression Correlations", fontsize=16, fontweight='bold', y=0.98)
+plt.title("Pearson correlation of full expression vectors for individual cells.\nMeasures the stability of cell profiles.", 
+          fontsize=10, pad=20, style='italic')
 sns.histplot(cell_corrs, bins=50, color="teal")
 plt.axvline(
     np.nanmedian(cell_corrs),
@@ -465,18 +466,8 @@ plt.axvline(
     linestyle="--",
     label=f"Median: {np.nanmedian(cell_corrs):.4f}",
 )
-plt.title("Distribution of Cell-wise Expression Correlations")
 plt.xlabel("Pearson r")
-plt.figtext(
-    0.5,
-    0.01,
-    "Pearson correlation of full expression vectors for individual cells. Measures the stability of cell profiles.",
-    wrap=True,
-    horizontalalignment="center",
-    fontsize=9,
-    style="italic",
-)
-plt.tight_layout()
+plt.tight_layout(rect=[0, 0.03, 1, 0.90])
 plt.savefig("comparison_results/cell_wise_correlation_hist.png")
 plt.show()
 
@@ -497,19 +488,14 @@ if len(common_hvgs) < 50:
 sc.tl.pca(cur_sub, n_comps=30, use_highly_variable=False)
 sc.tl.pca(rep_sub, n_comps=30, use_highly_variable=False)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 9))
+plt.suptitle("Comparison of Global Biological Structure (PCA)", fontsize=16, fontweight='bold', y=0.98)
+fig.text(0.5, 0.92, "Both plots use common HVGs to ensure a direct visual comparison of variance components.", 
+         wrap=True, horizontalalignment='center', fontsize=11, style='italic')
+
 sc.pl.pca(cur_sub, ax=ax1, show=False, title="PCA Curated (on Shared HVGs)")
 sc.pl.pca(rep_sub, ax=ax2, show=False, title="PCA Reprocessed (on Shared HVGs)")
-plt.figtext(
-    0.5,
-    0.02,
-    "Comparison of the global biological structure via PCA. Both plots use common HVGs to ensure a direct visual comparison of variance components.",
-    wrap=True,
-    horizontalalignment="center",
-    fontsize=10,
-    style="italic",
-)
-plt.tight_layout()
+plt.tight_layout(rect=[0, 0.03, 1, 0.88])
 plt.savefig("comparison_results/pca_comparison.png")
 plt.show()
 
