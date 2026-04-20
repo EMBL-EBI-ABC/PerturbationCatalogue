@@ -176,8 +176,8 @@ process MERGE_MODALITIES {
     publishDir "${params.outdir}", mode: 'copy'
     
     input:
-    path std_h5ad
-    path kite_h5ad
+    path "std_adata.h5ad"
+    path "kite_adata.h5ad"
     
     output:
     path "experiment_final.h5ad"
@@ -192,10 +192,10 @@ process MERGE_MODALITIES {
     import scipy.sparse as sp
 
     print("Loading standard expression matrix...")
-    adata_std = ad.read_h5ad("${std_h5ad}")
+    adata_std = ad.read_h5ad("std_adata.h5ad")
     
     print("Loading KITE guides matrix...")
-    adata_kite = ad.read_h5ad("${kite_h5ad}")
+    adata_kite = ad.read_h5ad("kite_adata.h5ad")
 
     # Align the kite (guide) matrix rows to the standard (cDNA) cell barcodes
     kite_obs_map = pd.Series(np.arange(adata_kite.n_obs), index=adata_kite.obs_names)
