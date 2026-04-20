@@ -80,49 +80,44 @@ def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
 def plot_scatter_comparison(
     df, x_col, y_col, title, xlabel, ylabel, filename, log_scale=False, subtitle=""
 ):
-    """Creates a scatter plot with correlation info, identity line, and tight top-aligned subtitle."""
-    plt.figure(figsize=(10, 10))
+    """Standardized scatter plot with properly positioned title and subtitle."""
+    fig, ax = plt.subplots(figsize=(10, 10))
 
     plot_df = df.copy().dropna(subset=[x_col, y_col])
     
-    # Diagnostic print for the blank plot issue
     if "counts" in x_col:
-        print(f"DEBUG [{title}]: x_min={plot_df[x_col].min()}, x_max={plot_df[x_col].max()}, y_min={plot_df[y_col].min()}, y_max={plot_df[y_col].max()}")
+        print(f"DEBUG [{title}]: x_range=({plot_df[x_col].min():.1f}, {plot_df[x_col].max():.1f}), y_range=({plot_df[y_col].min():.1f}, {plot_df[y_col].max():.1f})")
 
-    # Handle zeros for log scale
     if log_scale:
         plot_df[x_col] = plot_df[x_col] + 1
         plot_df[y_col] = plot_df[y_col] + 1
 
-    # Use scatter with very low alpha for large datasets
     if len(plot_df) > 5000:
-        plt.scatter(plot_df[x_col], plot_df[y_col], alpha=0.05, s=1, color='teal', rasterized=True)
+        ax.scatter(plot_df[x_col], plot_df[y_col], alpha=0.05, s=1, color='teal', rasterized=True)
     else:
-        sns.scatterplot(data=plot_df, x=x_col, y=y_col, alpha=0.3, s=10)
+        sns.scatterplot(data=plot_df, x=x_col, y=y_col, alpha=0.3, s=10, ax=ax)
 
-    # Add identity line
     min_val = min(plot_df[x_col].min(), plot_df[y_col].min())
     max_val = max(plot_df[x_col].max(), plot_df[y_col].max())
-    plt.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.8, label="Identity")
+    ax.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.8, label="Identity")
 
-    # Calculate correlations
     pearson, _ = stats.pearsonr(plot_df[x_col], plot_df[y_col])
     spearman, _ = stats.spearmanr(plot_df[x_col], plot_df[y_col])
 
-    # Tight Title and Subtitle at the top
-    plt.suptitle(title, fontsize=16, fontweight='bold', y=0.96)
-    plt.title(f"Pearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}\n{subtitle}", 
-              fontsize=10, pad=5, loc='center', wrap=True, style='italic')
+    # Systematic Titling with improved spacing
+    ax.set_title(title, fontsize=16, fontweight='bold', pad=45)
+    ax.text(0.5, 1.035, f"\nPearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}\n{subtitle}", 
+            transform=ax.transAxes, ha='center', va='bottom', fontsize=10, style='italic', linespacing=1.5)
 
-    plt.xlabel(f"{xlabel} {'(+1 for log)' if log_scale else ''}")
-    plt.ylabel(f"{ylabel} {'(+1 for log)' if log_scale else ''}")
+    ax.set_xlabel(f"{xlabel} {'(+1 for log)' if log_scale else ''}")
+    ax.set_ylabel(f"{ylabel} {'(+1 for log)' if log_scale else ''}")
 
     if log_scale:
-        plt.xscale("log")
-        plt.yscale("log")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
 
-    plt.legend()
-    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    ax.legend(loc='upper left')
+    plt.tight_layout()
     plt.savefig(filename, dpi=300)
     plt.show()
     plt.close()
@@ -131,36 +126,34 @@ def plot_scatter_comparison(
 
 
 def call_guides(adata, count_threshold=5):
-    """Dual-guide caller: identifies top 2 guides and joins them with '|'."""
+    """Dual-guide caller with diagnostic count checks."""
     if "guides" not in adata.obsm:
         return None
 
-    # Force to CSR and then to array for the specific calculation to avoid matrix ambiguity
     guide_matrix = adata.obsm["guides"]
     if sp.issparse(guide_matrix):
         guide_matrix = guide_matrix.tocsr()
-
+    
+    # Diagnostics
+    total_guide_counts = np.array(guide_matrix.sum(axis=1)).flatten()
+    print(f"  DEBUG [Guides]: max_counts={total_guide_counts.max()}, mean={total_guide_counts.mean():.2f}, nonzero_cells={(total_guide_counts > 0).sum()}")
+    
     guide_names = np.array(
-        adata.uns.get(
-            "guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])]
-        )
+        adata.uns.get("guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])])
     )
+    print(f"  DEBUG [Guide Names Sample]: {guide_names[:5].tolist()}")
 
     print(f"  Calling dual guides (threshold={count_threshold})...")
     calls = []
-
-    # Process row by row for safety against matrix/array ambiguity
     for i in range(guide_matrix.shape[0]):
         row = np.array(guide_matrix[i].toarray()).flatten()
-        # Find indices of guides above threshold
         top_idx = np.where(row >= count_threshold)[0]
-
+        
         if len(top_idx) == 0:
             calls.append("None")
         else:
-            # Sort by counts descending and take top 2
+            # Take top 2 and sort names alphabetically
             top_idx = top_idx[np.argsort(row[top_idx])[::-1][:2]]
-            # Sort names alphabetically for consistent pipe joining
             names = sorted(guide_names[top_idx])
             calls.append("|".join(names))
 
