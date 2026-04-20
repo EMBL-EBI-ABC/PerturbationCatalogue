@@ -104,10 +104,14 @@ def plot_scatter_comparison(
     pearson, _ = stats.pearsonr(plot_df[x_col], plot_df[y_col])
     spearman, _ = stats.spearmanr(plot_df[x_col], plot_df[y_col])
 
-    # Systematic Titling with improved spacing
+    # Systematic Titling: Main Title
     ax.set_title(title, fontsize=16, fontweight='bold', pad=45)
-    ax.text(0.5, 1.035, f"\nPearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}\n{subtitle}", 
-            transform=ax.transAxes, ha='center', va='bottom', fontsize=10, style='italic', linespacing=1.5)
+    
+    # Subtitle with fixed offset points for a perfect gap
+    ax.annotate(f"Pearson r = {pearson:.4f}, Spearman rho = {spearman:.4f}\n{subtitle}", 
+                xy=(0.5, 1), xycoords='axes fraction', xytext=(0, 10), 
+                textcoords='offset points', ha='center', va='bottom', 
+                fontsize=10, style='italic', wrap=True)
 
     ax.set_xlabel(f"{xlabel} {'(+1 for log)' if log_scale else ''}")
     ax.set_ylabel(f"{ylabel} {'(+1 for log)' if log_scale else ''}")
@@ -117,7 +121,7 @@ def plot_scatter_comparison(
         ax.set_yscale("log")
 
     ax.legend(loc='upper left')
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(filename, dpi=300)
     plt.show()
     plt.close()
@@ -192,8 +196,17 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         p_cur = p_cur.apply(normalize_perturb)
         p_rep = p_rep.apply(normalize_perturb)
         
+        # Diagnostics
         print(f"  Sample Curated cleaned:     {p_cur.iloc[:3].tolist()}")
         print(f"  Sample Reprocessed cleaned: {p_rep.iloc[:3].tolist()}")
+        
+        # Check first 5 cells that HAVE guides in reprocessed to see if they match Curated
+        has_guide_idx = np.where(p_rep != "None")[0]
+        if len(has_guide_idx) > 0:
+            print(f"  Matching diagnostics (showing cells where Reprocessed has guides):")
+            for idx in has_guide_idx[:min(5, len(has_guide_idx))]:
+                is_match = "MATCH" if p_cur.iloc[idx] == p_rep.iloc[idx] else "MISMATCH"
+                print(f"    Cell {common_cells[idx]}: Curated='{p_cur.iloc[idx]}' vs Rep='{p_rep.iloc[idx]}' -> {is_match}")
 
         overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
 
@@ -201,20 +214,22 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         match_mask = p_cur == p_rep
         accuracy = match_mask.mean()
 
-        # Top 20 perturbations in Curated for the heatmap
+        # Top 20 perturbations
         top_perts = p_cur.value_counts().head(20).index
         sub_df = overlap_df[overlap_df["Curated"].isin(top_perts)]
-
         ct = pd.crosstab(sub_df["Curated"], sub_df["Reprocessed"])
 
         plt.figure(figsize=(15, 12))
         sns.heatmap(ct, annot=False, cmap="YlGnBu", cbar_kws={'label': 'Cell Count'})
         plt.suptitle("Perturbation Confusion Matrix (Top 20)", fontsize=16, fontweight='bold', y=0.98)
-        plt.title(f"Overall Match: {accuracy:.2%}\nMatches are based on alphabetically sorted dual-guide strings.", 
-                  fontsize=10, pad=10, style='italic', loc='center')
+        
+        desc = ("This heatmap compares guide assignments between the original study (Y) and our reprocessed pipeline (X).\n"
+                "A strong diagonal indicates consistent guide recovery and labeling across pipelines.")
+        plt.title(f"Overall Match: {accuracy:.2%}\n{desc}", fontsize=10, pad=15, style='italic', loc='center')
+        
         plt.xticks(rotation=45, ha='right', fontsize=7)
         plt.yticks(fontsize=7)
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
         plt.savefig("comparison_results/perturbation_confusion_matrix.png")
         plt.show()
         plt.close()
@@ -347,7 +362,7 @@ results_summary["cell_metrics"] = {
         "Reprocessed",
         "comparison_results/counts_comparison.png",
         log_scale=True,
-        subtitle="Correlation of total UMI counts per cell. Data is normalized to 10k and log-transformed. (+1 offset added for log visibility).",
+        subtitle="Correlation of total UMI counts per cell. Data is normalized to 10k and log-transformed.",
     ),
     "n_genes": plot_scatter_comparison(
         metrics_df,
@@ -357,7 +372,7 @@ results_summary["cell_metrics"] = {
         "Curated",
         "Reprocessed",
         "comparison_results/genes_comparison.png",
-        subtitle="Correlation of unique genes detected per cell. Shows consistency in library complexity between pipelines.",
+        subtitle="Correlation of unique genes detected per cell. Shows consistency in library complexity.",
     ),
 }
 
@@ -391,7 +406,7 @@ results_summary["gene_metrics"] = {
         "Reprocessed",
         "comparison_results/gene_expression_mean.png",
         log_scale=True,
-        subtitle="Mean expression per gene across all common cells. High correlation indicates preserved biological signal.",
+        subtitle="Mean expression per gene across all common cells. Indicates preserved biological signal.",
     ),
     "sparsity": plot_scatter_comparison(
         gene_metrics,
@@ -401,7 +416,7 @@ results_summary["gene_metrics"] = {
         "Curated",
         "Reprocessed",
         "comparison_results/sparsity_comparison.png",
-        subtitle="Percentage of cells with zero counts for each gene. Highlights any systematic differences in sensitivity.",
+        subtitle="Percentage of cells with zero counts for each gene. Highlights differences in sensitivity.",
     ),
 }
 
