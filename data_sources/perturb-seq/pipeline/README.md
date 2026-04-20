@@ -89,7 +89,7 @@ Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN
 module load nextflow/25.04.6
 
 # Run the pipeline head process via srun
-srun --mem=16G --time=28-00:00:00 --unbuffered \
+time srun --mem=16G --time=7-00:00:00 --unbuffered \
   nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
