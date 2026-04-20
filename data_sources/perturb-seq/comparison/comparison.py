@@ -117,24 +117,36 @@ def plot_scatter_comparison(
     return {"pearson": pearson, "spearman": spearman}
 
 
-def call_guides(adata):
-    """Simple guide caller: assigns the guide with max counts in .obsm['guides']."""
+def call_guides(adata, count_threshold=5):
+    """Dual-guide caller: identifies top 2 guides and joins them with '|'."""
     if "guides" not in adata.obsm:
         return None
 
     guide_matrix = adata.obsm["guides"]
-    guide_names = adata.uns.get(
-        "guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])]
+    guide_names = np.array(
+        adata.uns.get("guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])])
     )
 
-    # Get index of max guide per cell
-    max_idx = np.array(guide_matrix.argmax(axis=1)).flatten()
-    max_counts = np.array(guide_matrix.max(axis=1)).flatten()
+    # Convert to CSR if not already for efficient row slicing
+    if not sp.iscsr(guide_matrix):
+        guide_matrix = sp.csr_matrix(guide_matrix)
 
-    # Assign 'None' if counts are 0
-    calls = [
-        guide_names[i] if max_counts[j] > 0 else "None" for j, i in enumerate(max_idx)
-    ]
+    print(f"  Calling dual guides (threshold={count_threshold})...")
+    calls = []
+    for i in range(guide_matrix.shape[0]):
+        row = guide_matrix.getrow(i).toarray().flatten()
+        # Find indices of guides above threshold
+        top_idx = np.where(row >= count_threshold)[0]
+        
+        if len(top_idx) == 0:
+            calls.append("None")
+        else:
+            # Sort by counts descending and take top 2
+            top_idx = top_idx[np.argsort(row[top_idx])[::-1][:2]]
+            # Sort names alphabetically for consistent pipe joining
+            names = sorted(guide_names[top_idx])
+            calls.append("|".join(names))
+
     return pd.Series(calls, index=adata.obs_names)
 
 
@@ -199,9 +211,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 # 2. CONFIGURATION AND PATHS
 # ==============================================================================
 curated_local = "GSE264667_jurkat_raw_singlecell_01.h5ad"
-reprocessed_local = (
-    "experiment_compressed_downsampled_recompressed.h5ad"  # or experiment_final.h5ad
-)
+reprocessed_local = "experiment_final.h5ad"
 os.makedirs("comparison_results", exist_ok=True)
 
 # ==============================================================================
@@ -215,25 +225,52 @@ print("Aligning barcodes and genes...")
 adata_cur = clean_barcodes(adata_cur)
 adata_rep = clean_barcodes(adata_rep)
 
-# Gene Alignment - handle potential symbol/ID mismatches
+# Strip Ensembl versions from reprocessed data if present
+if adata_rep.var_names.str.contains(r"\.").any():
+    print("  Stripping Ensembl versions from reprocessed var_names...")
+    adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
+    adata_rep.var_names_make_unique()
+
+# Gene Alignment
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
 if len(common_genes) < 100:
-    print("  Low gene overlap. Attempting alignment via common var columns...")
-    for c1 in ["gene_symbols", "symbols", "gene_name", "index"]:
+    print("  Low gene overlap. Attempting alignment via curated 'gene_name' vs reprocessed index...")
+    # Curated has gene_name, Reprocessed has index (Ensembl)
+    # This might happen if Curated var_names are Symbols. 
+    # Let's check if Curated var names look like Ensembl
+    is_ensembl_cur = adata_cur.var_names.str.startswith("ENSG").any()
+    
+    if not is_ensembl_cur and "gene_name" in adata_cur.var.columns:
+        print("    Curated var_names are likely symbols. Switching to Ensembl IDs from index...")
+        # (Actually, diagnostics showed Curated var_names ARE Ensembl IDs)
+        pass
+
+    # Fallback search
+    cur_cols = [c for c in ["gene_symbols", "symbols", "gene_name", "gene_ids"] if c in adata_cur.var.columns] + ["index"]
+    rep_cols = [c for c in ["gene_symbols", "symbols", "gene_name", "gene_ids"] if c in adata_rep.var.columns] + ["index"]
+    
+    best_overlap = len(common_genes)
+    best_pair = ("index", "index")
+
+    for c1 in cur_cols:
         v1 = adata_cur.var_names if c1 == "index" else adata_cur.var[c1].astype(str)
-        for c2 in ["gene_symbols", "symbols", "gene_name", "index"]:
+        for c2 in rep_cols:
             v2 = adata_rep.var_names if c2 == "index" else adata_rep.var[c2].astype(str)
             overlap = np.intersect1d(v1, v2)
-            if len(overlap) > len(common_genes):
-                print(
-                    f"    Best alignment: Curated['{c1}'] vs Reprocessed['{c2}'] ({len(overlap)} genes)"
-                )
-                # Update var names for alignment
-                if c1 != "index":
-                    adata_cur.var_names = v1
-                if c2 != "index":
-                    adata_rep.var_names = v2
-                common_genes = overlap
+            if len(overlap) > best_overlap:
+                best_overlap = len(overlap)
+                best_pair = (c1, c2)
+    
+    if best_overlap > len(common_genes):
+        print(f"    Best alignment: Curated['{best_pair[0]}'] vs Reprocessed['{best_pair[1]}'] ({best_overlap} genes)")
+        if best_pair[0] != "index":
+            adata_cur.var_names = adata_cur.var[best_pair[0]].astype(str)
+        if best_pair[1] != "index":
+            adata_rep.var_names = adata_rep.var[best_pair[1]].astype(str)
+        
+        adata_cur.var_names_make_unique()
+        adata_rep.var_names_make_unique()
+        common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
 
 common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
 
