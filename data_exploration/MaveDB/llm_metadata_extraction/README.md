@@ -25,11 +25,15 @@ By default it writes:
 - downloaded raw full text to `pub_full_text_raw/`
 - converted Markdown to `pub_full_text_md/`
 
-Arguments:
-
-- none
-
 This script currently has no CLI arguments. Running it launches the full data collection pipeline using the hard-coded/default paths in the script.
+
+Note: publication retrieval in this step uses the API keys listed in the `llm_metadata_extraction/scraper_api_keys.txt`. The script expects that file to exist and uses it when calling `paperscraper` to download publication full text.
+This file should contain just two lines:
+
+```
+WILEY_TDM_API_TOKEN=<WILEY_TOKEN>
+ELSEVIER_TDM_API_KEY=<ELSEVIER_TOKEN>
+```
 
 Run it from the repository root:
 
