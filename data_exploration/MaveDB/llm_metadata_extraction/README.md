@@ -115,13 +115,9 @@ The extraction script defaults to:
 
 The LLM client is initialized through `instructor.from_provider(..., vertexai=True, location='global')`, so you need working Vertex AI / Google credentials in the environment before running extraction.
 
-`extract_mave_pub_text.py` also expects a paperscraper API key file at:
 
-```text
-data_exploration/MaveDB/llm_metadata_extraction/scraper_api_keys.txt
-```
 
-## Notes
+Notes
 
 - The Markdown conversion step tries to remove trailing reference sections conservatively.
 - Publication downloads can yield either PDF or XML; both are supported.
