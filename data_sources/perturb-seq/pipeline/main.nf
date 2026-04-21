@@ -4,16 +4,32 @@ nextflow.enable.dsl=2
 
 // Pipeline Parameters
 params.fastq_dir = null
+params.metadata_tsv = null
+params.sample_sheet = "samples.csv"
 params.outdir = "results"
-params.chemistry = "10xv3"  // e.g. 10xv2, 10xv3
-params.limit = 0 // Limit number of FASTQs processed (for debugging). 0 = no limit.
+params.chemistry = "10xv3"
+params.limit = 0
 
-// Reference parameters for standard workflow (Gene Expression)
+// Reference parameters
 params.transcriptome_fa = null
 params.gtf = null
-
-// Reference parameters for KITE workflow (Guides/CRISPR)
 params.features_tsv = null
+
+process PREPARE_SAMPLES {
+    executor 'local'
+    
+    input:
+    path metadata_tsv
+    path fastq_dir
+
+    output:
+    path "samples.csv"
+
+    script:
+    """
+    python3 ${baseDir}/prepare_samples.py ${metadata_tsv} ${fastq_dir} samples.csv
+    """
+}
 
 process BUILD_INDEX_STANDARD {
     tag "cDNA_index"
@@ -52,32 +68,30 @@ process BUILD_INDEX_KITE {
 }
 
 process KB_COUNT_STANDARD {
-    publishDir "${params.outdir}/counts_standard", mode: 'copy'
+    tag "std_${sample_id}"
+    publishDir "${params.outdir}/counts_standard/${sample_id}", mode: 'copy'
 
     input:
-    path reads
+    tuple val(sample_id), path(reads)
     path index
     path t2g
     val chemistry
 
     output:
-    path "out/counts_filtered/adata.h5ad", emit: h5ad, optional: true
-    path "out/**", emit: all_outputs
+    tuple val(sample_id), path("out/counts_filtered/adata.h5ad"), emit: h5ad
 
     script:
     """
     mkdir -p out
-
-    # Create batch file for kb count (Format: sample_id \\t R1 \\t R2)
     > batch.txt
     
-    # Group FASTQ files by their run prefix by stripping the _[0-9].fastq.gz suffix
+    # Group FASTQ files by their run prefix
     for fq in ${reads.join(' ')}; do
         base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
         echo "\$base \$fq" >> file_map.txt
     done
     
-    # For each run, auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
+    # Auto-detect R1/R2 per run
     awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
         r1=""
         r2=""
@@ -89,55 +103,38 @@ process KB_COUNT_STANDARD {
                 r2=\$fq
             fi
         done
-        
         if [ -n "\$r1" ] && [ -n "\$r2" ]; then
-            echo -e "ALL_CELLS\t\$r1\t\$r2" >> batch.txt
-        else
-            echo "Warning: Could not pair R1 and R2 for run \$base" >&2
+            echo -e "${sample_id}\t\$r1\t\$r2" >> batch.txt
         fi
     done
 
-    echo "Batch file generated:"
-    cat batch.txt
-
-    kb count -i ${index} \\
-             -g ${t2g} \\
-             -x ${chemistry} \\
-             -o out \\
-             --h5ad \\
-             --filter bustools \\
-             -t ${task.cpus} \\
-             batch.txt
+    kb count -i ${index} -g ${t2g} -x ${chemistry} -o out --h5ad --filter bustools -t ${task.cpus} batch.txt
     """
 }
 
 process KB_COUNT_KITE {
-    publishDir "${params.outdir}/counts_kite", mode: 'copy'
+    tag "kite_${sample_id}"
+    publishDir "${params.outdir}/counts_kite/${sample_id}", mode: 'copy'
 
     input:
-    path reads
+    tuple val(sample_id), path(reads)
     path index
     path t2g
     val chemistry
 
     output:
-    path "out/counts_filtered/adata.h5ad", emit: h5ad, optional: true
-    path "out/**", emit: all_outputs
+    tuple val(sample_id), path("out/counts_filtered/adata.h5ad"), emit: h5ad
 
     script:
     """
     mkdir -p out
-
-    # Create batch file for kb count (Format: sample_id \\t R1 \\t R2)
     > batch.txt
     
-    # Group FASTQ files by their run prefix by stripping the _[0-9].fastq.gz suffix
     for fq in ${reads.join(' ')}; do
         base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
         echo "\$base \$fq" >> file_map.txt
     done
     
-    # For each run, auto-detect R1 (barcode+UMI) and R2 (biological read) based on sequence length
     awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
         r1=""
         r2=""
@@ -149,64 +146,42 @@ process KB_COUNT_KITE {
                 r2=\$fq
             fi
         done
-        
         if [ -n "\$r1" ] && [ -n "\$r2" ]; then
-            echo -e "ALL_CELLS\t\$r1\t\$r2" >> batch.txt
-        else
-            echo "Warning: Could not pair R1 and R2 for run \$base" >&2
+            echo -e "${sample_id}\t\$r1\t\$r2" >> batch.txt
         fi
     done
 
-    echo "Batch file generated:"
-    cat batch.txt
-
-    kb count -i ${index} \\
-             -g ${t2g} \\
-             -x ${chemistry} \\
-             -o out \\
-             --workflow kite \\
-             --h5ad \\
-             --filter bustools \\
-             -t ${task.cpus} \\
-             batch.txt
+    kb count -i ${index} -g ${t2g} -x ${chemistry} -o out --workflow kite --h5ad --filter bustools -t ${task.cpus} batch.txt
     """
 }
 
 process MERGE_MODALITIES {
-    publishDir "${params.outdir}", mode: 'copy'
+    tag "${sample_id}"
+    publishDir "${params.outdir}/merged_samples", mode: 'copy'
     
     input:
-    path "std_adata.h5ad"
-    path "kite_adata.h5ad"
+    tuple val(sample_id), path("std_adata.h5ad"), path("kite_adata.h5ad")
     
     output:
-    path "experiment_final.h5ad"
+    path "${sample_id}_merged.h5ad", emit: h5ad
     
     script:
     """
     #!/usr/bin/env python3
-    import sys
     import anndata as ad
     import pandas as pd
     import numpy as np
     import scipy.sparse as sp
 
-    print("Loading standard expression matrix...")
     adata_std = ad.read_h5ad("std_adata.h5ad")
-    
-    print("Loading KITE guides matrix...")
     adata_kite = ad.read_h5ad("kite_adata.h5ad")
 
-    # Align the kite (guide) matrix rows to the standard (cDNA) cell barcodes
+    # Align kite to std
     kite_obs_map = pd.Series(np.arange(adata_kite.n_obs), index=adata_kite.obs_names)
     target_indices = kite_obs_map.reindex(adata_std.obs_names).values
-    
     mask = ~pd.isna(target_indices)
     valid_indices = target_indices[mask].astype(int)
     
-    print(f"Matched {mask.sum()} out of {adata_std.n_obs} cells with guide counts.")
-    
-    # Construct the aligned sparse matrix for guides
     X_found = adata_kite.X[valid_indices, :]
     row_indices = np.where(mask)[0]
     
@@ -224,34 +199,91 @@ process MERGE_MODALITIES {
 
     adata_std.obsm['guides'] = guides_sparse
     adata_std.uns['guide_names'] = adata_kite.var_names.tolist()
+    
+    # Store sample_id in obs
+    adata_std.obs['sample_id'] = "${sample_id}"
 
-    print("Saving final combined matrix...")
-    adata_std.write_h5ad("experiment_final.h5ad")
-    print("Done!")
+    adata_std.write_h5ad("${sample_id}_merged.h5ad")
+    """
+}
+
+process CONCATENATE_SAMPLES {
+    publishDir "${params.outdir}", mode: 'copy'
+    
+    input:
+    path "h5ads/*"
+    
+    output:
+    path "experiment_final.h5ad"
+    
+    script:
+    """
+    #!/usr/bin/env python3
+    import anndata as ad
+    import os
+    import glob
+
+    files = sorted(glob.glob("h5ads/*.h5ad"))
+    adatas = []
+    for f in files:
+        a = ad.read_h5ad(f)
+        # Suffix barcodes with sample_id to prevent collisions
+        sample_id = a.obs['sample_id'].iloc[0]
+        a.obs_names = a.obs_names + "-" + str(sample_id)
+        adatas.append(a)
+
+    print(f"Concatenating {len(adatas)} samples...")
+    # join='outer' to ensure we keep all genes, but they should be aligned already
+    merged = ad.concat(adatas, join='outer', index_unique=None, merge='same')
+    
+    # Re-verify guides consistency
+    merged.uns['guide_names'] = adatas[0].uns['guide_names']
+    
+    merged.write_h5ad("experiment_final.h5ad", compression="gzip")
     """
 }
 
 workflow {
-    if (!params.fastq_dir || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
-        error "Please provide --fastq_dir, --transcriptome_fa, --gtf, and --features_tsv"
+    if (!params.fastq_dir || !params.transcriptome_fa || !params.gtf || !params.features_tsv || !params.metadata_tsv) {
+        error "Please provide --fastq_dir, --metadata_tsv, --transcriptome_fa, --gtf, and --features_tsv"
     }
     
-    fa = file(params.transcriptome_fa, checkIfExists: true)
-    gtf = file(params.gtf, checkIfExists: true)
-    features = file(params.features_tsv, checkIfExists: true)
+    fa = file(params.transcriptome_fa)
+    gtf = file(params.gtf)
+    features = file(params.features_tsv)
+    metadata = file(params.metadata_tsv)
+    fastq_dir = file(params.fastq_dir)
 
-    // Collect all FASTQ files
-    fastq_files = Channel.fromPath("${params.fastq_dir}/*_{1,2,3}.fastq.gz")
+    sample_sheet = PREPARE_SAMPLES(metadata, fastq_dir)
+    
+    samples_ch = sample_sheet
+        .splitCsv(header:true)
+        .map { row -> 
+            def sid = row.sample_id
+            def mrna_srrs = row.mRNA_srrs.split(';')
+            def sgrna_srrs = row.sgRNA_srrs.split(';')
+            
+            def mrna_files = mrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
+            def sgrna_files = sgrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
+            
+            return [sid, mrna_files, sgrna_files]
+        }
+
     if (params.limit > 0) {
-        fastq_files = fastq_files.take(params.limit)
+        samples_ch = samples_ch.take(params.limit)
     }
-    reads_ch = fastq_files.collect()
 
     std_idx = BUILD_INDEX_STANDARD(fa, gtf)
     kite_idx = BUILD_INDEX_KITE(features)
 
-    std_counts = KB_COUNT_STANDARD(reads_ch, std_idx.index, std_idx.t2g, params.chemistry)
-    kite_counts = KB_COUNT_KITE(reads_ch, kite_idx.index, kite_idx.t2g, params.chemistry)
+    // Parallel processing per sample
+    std_counts = KB_COUNT_STANDARD(samples_ch.map { it[0], it[1] }, std_idx.index, std_idx.t2g, params.chemistry)
+    kite_counts = KB_COUNT_KITE(samples_ch.map { it[0], it[2] }, kite_idx.index, kite_idx.t2g, params.chemistry)
 
-    MERGE_MODALITIES(std_counts.h5ad, kite_counts.h5ad)
+    // Join cDNA and Guide results by sample_id
+    merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
+    
+    merged_samples = MERGE_MODALITIES(merge_ch)
+    
+    CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 }

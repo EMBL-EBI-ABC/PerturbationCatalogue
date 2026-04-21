@@ -2,90 +2,54 @@
 
 This Nextflow pipeline processes raw Perturb-seq FASTQ files (downloaded from ENA/SRA) into a **single, unified `h5ad` count matrix**. 
 
-In Perturb-seq, the FASTQ files often contain a mixture of standard Single-Cell RNA-seq (cDNA) reads and Feature Barcode (CRISPR/guide RNA) reads. This pipeline leverages the [kallisto-bustools (`kb-python`)](https://www.kallistobus.tools/) suite to process **both modalities simultaneously** across all sequencing runs (SRRs), and automatically merges the results. 
-
-The final output is a single `experiment_final.h5ad` where:
-- The standard cell-by-gene expression matrix is in the main `.X` layer.
-- The cell-by-guide CRISPR counts are securely mapped to the exact same cells and stored in `.obsm['guides']`.
-- The guide names/IDs are stored in `.uns['guide_names']`.
+The pipeline is **sample-aware**: it uses ENA metadata to group multiple sequencing runs (SRRs) and lanes (L001-L004) into their original physical libraries. This prevents barcode collisions across separate 10x reactions and ensures that CRISPR guide RNA counts are correctly linked to the matching cell's mRNA profile.
 
 ## Requirements
-- **Nextflow**: On the cluster, load the module via `module load nextflow/25.04.6`.
-- **kb-python**: The core kallisto-bustools wrapper. 
-  - **Option 1 (Virtual Environment):** Create a Python virtual environment and run `pip install kb-python`. Ensure the `kb` command is in your `$PATH`.
-  - **Option 2 (Singularity/Apptainer):** The pipeline includes a `Singularity.def` file to build a custom image containing `kb-python` and the necessary Python stack.
-  1. Build the image: `singularity build kb_python.sif Singularity.def`
-  2. Run the pipeline with `-profile slurm,singularity`. It will automatically use the `kb_python.sif` file in the pipeline directory.
-- **Python Data Stack (for extraction script only)**: `pip install pandas openpyxl`
+- **Nextflow**: Version 25.04.6 or newer.
+- **kb-python**: Installed via `pip install kb-python` or provided via Singularity.
+- **Python Data Stack**: `pip install pandas openpyxl anndata`
 
-## The "Whitelist of Probes" (Features List)
-When processing CRISPR guides, the pipeline's internal KITE workflow requires a "whitelist of probes". This is a simple tab-separated values (TSV) file mapping the guide name to its sequence.
-
-**Format for `features.tsv`:**
-```tsv
-ATCGATCGATCGATCG    sgRNA_A
-GCTAGCTAGCTAGCTA    sgRNA_B
-```
-*Note: The file should NOT contain a header. Column 1 is the sequence, and Column 2 is the feature ID (e.g., guide name).*
-
-## Understanding the Guide Output Matrix (Multiplexed / Dual-Guide Libraries)
-
-Many modern Perturb-seq libraries (like Nadig 2025) use **dual-guide** expression vectors. A single plasmid expresses a single transcript that gets processed into two distinct guide RNAs.
-
-**How the pipeline handles this:**
-1. **Independent Quantification:** The 10x Feature Barcode technology captures and sequences these mature guide RNA molecules *independently*. Therefore, the pipeline quantifies each guide sequence as an independent feature. It does not output "paired" counts.
-2. **The Output Matrix:** In the final `experiment_final.h5ad` file, the `.obsm['guides']` layer will contain separate columns for Guide A and Guide B.
-3. **Downstream Perturbation Calling:** Because counts are independent, it is the responsibility of the downstream analysis script (e.g., using `Scanpy` or `MuData`) to determine the final perturbation state. A common logic is: *If a cell has > X counts of Guide A AND > X counts of Guide B, assign the "A+B" perturbation label.*
-
-**Handling Duplicate Sequences:**
-Occasionally, library designs reuse the exact same guide sequence for different logical targets (e.g., targeting a genomic region that produces a readthrough fusion transcript). 
-If the `features.tsv` generation script detects multiple IDs sharing the exact same nucleotide sequence, it will merge those IDs with a semicolon (e.g., `Sequence -> ID_1;ID_2`). The pipeline will assign all counts for that sequence to that single merged ID string.
-
-## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset
-
-The Nadig 2025 Jurkat dataset (`SAMN40972597`) uses a multiplexed CRISPRi library with two guides per cell. To process this, we must download the reference human transcriptome, extract the guide sequences from the authors' supplementary data, and then run the unified pipeline.
-
-The following steps provide exact, copy-pasteable commands with no placeholders.
+## End-to-End Example: Processing the Nadig 2025 Jurkat Dataset (SAMN40972597)
 
 ### 1. Download the Reference Transcriptome and GTF
-We will use the standard Ensembl GRCh38 (Release 111) for mapping cDNA reads. These files will be stored in `$HPS_PATH/cache/reference`.
+We use Ensembl GRCh38 (Release 111).
 
 ```bash
 mkdir -p $HPS_PATH/cache/reference
 cd $HPS_PATH/cache/reference
 
-# Download the FASTA and GTF files
 wget -q http://ftp.ensembl.org/pub/release-111/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
 wget -q http://ftp.ensembl.org/pub/release-111/gtf/homo_sapiens/Homo_sapiens.GRCh38.111.gtf.gz
 ```
 
 ### 2. Generate the Guide Whitelist (`features.tsv`)
-The script `generate_features_nadig.py` extracts the individual guide sequences from the authors' supplementary Excel file.
+Extract guide sequences from the authors' supplementary data.
 
 ```bash
 cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
 
-# Install required python packages
-pip install pandas openpyxl
-
-# Generate the whitelist (saving to the dataset directory)
-python3 generate_features_nadig.py ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
+python3 generate_features_nadig.py \
+  ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx \
+  $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
 ```
 
-### 3. Build the Custom Singularity Image
-Before running the pipeline, build the Singularity image from the provided definition file locally, then upload it to the cluster to `$HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline/kb_python.sif`.
+### 3. Fetch ENA Metadata
+This is required for the pipeline to correctly group FASTQs by physical sample.
 
+```bash
+curl -s "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=SAMN40972597&result=read_run&fields=run_accession,library_name,fastq_ftp&format=tsv" \
+  > $HPS_PATH/perturb_seq_fastq/SAMN40972597/ena_metadata.tsv
+```
+
+### 4. Build the Custom Singularity Image (Optional)
 ```bash
 sudo singularity build kb_python.sif Singularity.def
 ```
 
-### 4. Run the Unified Pipeline on the SLURM Cluster
-Assuming the raw FASTQ files are downloaded to `$HPS_PATH/perturb_seq_fastq/SAMN40972597`, you can now run the pipeline. 
-
-*(Note: The pipeline automatically inspects the 10x FASTQ triplet files per SRR and dynamically detects which is the barcode read and which is the biological read based on their internal sequence lengths. You no longer need to specify read patterns.)*
+### 5. Run the Pipeline
+The pipeline will automatically identify samples (e.g., `8_4`) and process mRNA and sgRNA modalities in parallel before merging and concatenating with unique barcode suffixes (e.g., `BARCODE-8_4`).
 
 ```bash
-# Load Nextflow module
 module load nextflow/25.04.6
 
 # Run the pipeline head process via srun
@@ -93,6 +57,7 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
   nextflow run main.nf \
     -profile slurm,singularity \
     --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
+    --metadata_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/ena_metadata.tsv \
     --outdir $HPS_PATH/perturb_seq_fastq/results \
     --chemistry 10xv3 \
     --transcriptome_fa $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
@@ -100,19 +65,12 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
     --features_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
 ```
 
-### Important Parameters
-- `--fastq_dir`: Path to the directory containing downloaded `fastq.gz` files.
-- `--chemistry`: Single-cell chemistry version. E.g., `10xv2`, `10xv3`. Note: Do not use underscores.
-- `--transcriptome_fa` / `--gtf`: Reference genome files for the standard expression matrix.
-- `--features_tsv`: Whitelist mapping guides for the KITE matrix.
-- `--limit`: (Optional) Integer. Limits the number of SRR FASTQ sets processed. Useful for debugging (e.g., `--limit 2` to only process the first 2 runs). Default is 0 (process all).
-
 ## Outputs
-- `results/reference/standard/`: cDNA Kallisto index.
-- `results/reference/kite/`: CRISPR Guide Kallisto index.
-- `results/experiment_final.h5ad`: The fully combined, merged matrix containing all cells across all FASTQs, with both gene expression and guide assignments.
+- `results/merged_samples/`: Individual H5AD files for each physical 10x well.
+- `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
 
-# Upload
-Currently, the output is an uncompressed H5AD. It needs to be first compressed:
-* `time srun --mem=64G --time=1-00:00:00 --unbuffered h5repack -f SHUF -f GZIP=4 experiment_final.h5ad experiment_compressed.h5ad`
-* And then uploaded with `gcloud`
+## Understanding the "Sample ID" logic
+The ENA libraries use the notation `jurkat_<modality>_<sample_id>_L<lane>`.
+Example: `jurkat_mRNA_8_4_L004` vs `jurkat_sgRNA_8_4_L001`.
+
+The pipeline identifies **`8_4`** as the unique Sample ID. It aggregates all lanes (L001-L004) for that specific well and ensures mRNA and sgRNA are merged correctly for that physical pool of cells. During the final concatenation, barcodes are suffixed with `-8_4` to prevent collisions with other wells (e.g., `8_1`).
