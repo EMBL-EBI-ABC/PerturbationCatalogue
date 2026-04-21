@@ -23,12 +23,20 @@ except ImportError:
 # ==============================================================================
 
 
-def clean_barcodes(adata):
-    """Removes common suffixes from barcodes (e.g., '-1') for alignment."""
-    adata.obs_names = adata.obs_names.str.split("-").str[0]
-    if adata.obs_names.duplicated().any():
-        print(f"  Warning: Found {adata.obs_names.duplicated().sum()} duplicate barcodes. Suffixing...")
-        adata.obs_names_make_unique()
+def filter_unique_barcodes(adata, name):
+    """Strips suffixes and keeps only globally unique barcodes."""
+    original_count = adata.n_obs
+    base_barcodes = adata.obs_names.str.split("-").str[0]
+    
+    barcode_counts = base_barcodes.value_counts()
+    unique_barcodes = set(barcode_counts[barcode_counts == 1].index)
+    
+    mask = base_barcodes.isin(unique_barcodes)
+    adata = adata[mask].copy()
+    adata.obs_names = base_barcodes[mask]
+    
+    filtered_count = original_count - adata.n_obs
+    print(f"[{name}] Filtered out {filtered_count} cells due to barcode collisions ({(filtered_count/original_count)*100:.2f}%). Remaining: {adata.n_obs}")
     return adata
 
 
@@ -159,10 +167,16 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         p_cur, p_rep = p_cur.apply(normalize), p_rep.apply(normalize)
         
         # Deep Diagnostics
-        has_guide_idx = np.where(p_rep != "None")[0]
-        if len(has_guide_idx) > 0:
-            print(f"  Mismatched cells diagnostics (Cells where Reprocessed has guides):")
-            for idx in has_guide_idx[:10]:
+        valid_cur = (p_cur != "None") & (p_cur != "nan")
+        valid_rep = (p_rep != "None") & (p_rep != "nan")
+        print(f"  Curated cells with guides: {valid_cur.sum()} / {len(common_cells)} ({valid_cur.mean():.1%})")
+        print(f"  Reprocessed cells with guides: {valid_rep.sum()} / {len(common_cells)} ({valid_rep.mean():.1%})")
+
+        mismatches = np.where(valid_rep & (p_cur != p_rep))[0]
+        if len(mismatches) > 0:
+            print(f"  Mismatched cells diagnostics (Sample of mismatches where Reprocessed has guides):")
+            print(f"  Total such mismatches: {len(mismatches)}")
+            for idx in mismatches[:10]:
                 print(f"    {common_cells[idx]}: Curated='{p_cur.iloc[idx]}' vs Rep='{p_rep.iloc[idx]}'")
 
         accuracy = (p_cur == p_rep).mean()
@@ -189,7 +203,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         plt.show()
         plt.close()
 
-        return {"accuracy": accuracy, "n_rep_with_guides": len(has_guide_idx)}
+        return {"accuracy": accuracy, "n_rep_with_guides": int(valid_rep.sum())}
     return None
 
 
@@ -198,8 +212,8 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 # ==============================================================================
 os.makedirs("comparison_results", exist_ok=True)
 print("Loading and aligning...")
-adata_cur = clean_barcodes(sc.read_h5ad("GSE264667_jurkat_raw_singlecell_01.h5ad"))
-adata_rep = clean_barcodes(sc.read_h5ad("experiment_final.h5ad"))
+adata_cur = filter_unique_barcodes(sc.read_h5ad("GSE264667_jurkat_raw_singlecell_01.h5ad"), "Curated")
+adata_rep = filter_unique_barcodes(sc.read_h5ad("experiment_final.h5ad"), "Reprocessed")
 
 if adata_rep.var_names.str.contains(r"\.").any():
     adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
