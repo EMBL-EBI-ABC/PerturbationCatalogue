@@ -9,10 +9,11 @@ def main(metadata_path, fastq_dir, output_csv):
     df = pd.read_csv(metadata_path, sep="\t")
 
     # Extract Sample ID and Modality from library_name
-    # Pattern: jurkat_<modality>_<sample_id>_L<lane>
-    # Example: jurkat_mRNA_8_1_L003 -> modality=mRNA, sample_id=8_1
+    # Pattern: jurkat_<modality>_<sample_group>_<sub_sample>_L<lane>
+    # Example: jurkat_mRNA_8_1_L003 -> modality=mRNA, sample_id=8
+    # We group by the main sample number (X) and ignore the sub-sample (Y)
     def parse_library(name):
-        match = re.search(r"jurkat_(mRNA|sgRNA)_([\d_]+)_L\d+", name)
+        match = re.search(r'jurkat_(mRNA|sgRNA)_(\d+)_', name)
         if match:
             return match.group(1), match.group(2)
         return None, None

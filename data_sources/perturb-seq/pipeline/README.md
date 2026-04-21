@@ -76,7 +76,7 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
 - `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
 
 ## Understanding the "Sample ID" logic
-The ENA libraries use the notation `jurkat_<modality>_<sample_id>_L<lane>`.
-Example: `jurkat_mRNA_8_4_L004` vs `jurkat_sgRNA_8_4_L001`.
+The ENA libraries use the notation `jurkat_<modality>_<sample_group>_<sub_sample>_L<lane>`.
+Example: `jurkat_mRNA_8_4_L004` vs `jurkat_sgRNA_8_1_L001`.
 
-The pipeline identifies **`8_4`** as the unique Sample ID. It aggregates all lanes (L001-L004) for that specific well and ensures mRNA and sgRNA are merged correctly for that physical pool of cells. During the final concatenation, barcodes are suffixed with `-8_4` to prevent collisions with other wells (e.g., `8_1`).
+The pipeline identifies **`8`** as the unique Sample ID (the main well or condition pool). It aggregates all sub-samples (`8_1`, `8_4`) and lanes for that specific group and ensures mRNA and sgRNA are merged correctly for that physical pool of cells. During the final concatenation, barcodes are suffixed with `-8` to prevent collisions with other pools (e.g., `1`).
