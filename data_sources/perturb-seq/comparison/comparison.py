@@ -26,13 +26,19 @@ except ImportError:
 def filter_unique_barcodes(adata, name):
     """Strips suffixes and keeps only globally unique barcodes."""
     original_count = adata.n_obs
+    
+    # Strip the suffix (e.g., "-1" or "-8")
     base_barcodes = adata.obs_names.str.split("-").str[0]
     
+    # Identify barcodes that are truly unique across the dataset
     barcode_counts = base_barcodes.value_counts()
     unique_barcodes = set(barcode_counts[barcode_counts == 1].index)
     
+    # Filter the matrix
     mask = base_barcodes.isin(unique_barcodes)
     adata = adata[mask].copy()
+    
+    # Re-index with the base barcode for direct comparison
     adata.obs_names = base_barcodes[mask]
     
     filtered_count = original_count - adata.n_obs

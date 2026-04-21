@@ -53,7 +53,7 @@ scp kb_python.sif user@cluster:$HPS_PATH/PerturbationCatalogue/data_sources/pert
 ```
 
 ### 5. Run the Pipeline
-The pipeline will automatically identify samples (e.g., `8_4`) and process mRNA and sgRNA modalities in parallel before merging and concatenating with unique barcode suffixes (e.g., `BARCODE-8_4`).
+The pipeline will automatically identify samples by their primary group (e.g., `8`) and process mRNA and sgRNA modalities in parallel before merging and concatenating with unique barcode suffixes (e.g., `BARCODE-8`).
 
 ```bash
 module load nextflow/25.04.6
