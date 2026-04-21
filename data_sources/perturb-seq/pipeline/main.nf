@@ -2,7 +2,9 @@
 
 nextflow.enable.dsl=2
 
-// Pipeline Parameters
+// =============================================================================
+// PIPELINE PARAMETERS
+// =============================================================================
 params.fastq_dir = null
 params.metadata_tsv = null
 params.sample_sheet = "samples.csv"
@@ -10,11 +12,21 @@ params.outdir = "results"
 params.chemistry = "10xv3"
 params.limit = 0
 
-// Reference parameters
+// cDNA Reference parameters
 params.transcriptome_fa = null
 params.gtf = null
+
+// KITE Guide Reference parameters
 params.features_tsv = null
 
+// =============================================================================
+// PROCESSES
+// =============================================================================
+
+/**
+ * Parses ENA metadata to group SRRs into logical libraries (samples).
+ * This ensures mRNA and sgRNA from the same physical well are paired correctly.
+ */
 process PREPARE_SAMPLES {
     executor 'local'
     
@@ -31,6 +43,9 @@ process PREPARE_SAMPLES {
     """
 }
 
+/**
+ * Builds the Kallisto index for the standard cDNA/mRNA workflow.
+ */
 process BUILD_INDEX_STANDARD {
     tag "cDNA_index"
     publishDir "${params.outdir}/reference/standard", mode: 'copy'
@@ -49,6 +64,9 @@ process BUILD_INDEX_STANDARD {
     """
 }
 
+/**
+ * Builds the Kallisto index for the KITE (Guide RNA) workflow.
+ */
 process BUILD_INDEX_KITE {
     tag "KITE_index"
     publishDir "${params.outdir}/reference/kite", mode: 'copy'
@@ -67,6 +85,10 @@ process BUILD_INDEX_KITE {
     """
 }
 
+/**
+ * Standard cDNA quantification per sample using Kallisto-Bustools.
+ * Groups all lanes (L001-L004) for a single physical well.
+ */
 process KB_COUNT_STANDARD {
     tag "std_${sample_id}"
     publishDir "${params.outdir}/counts_standard/${sample_id}", mode: 'copy'
@@ -85,13 +107,13 @@ process KB_COUNT_STANDARD {
     mkdir -p out
     > batch.txt
     
-    # Group FASTQ files by their run prefix
+    # Map SRRs to their constituent FASTQ files
     for fq in ${reads.join(' ')}; do
         base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
         echo "\$base \$fq" >> file_map.txt
     done
     
-    # Auto-detect R1/R2 per run
+    # Pair R1 (Barcode/UMI) and R2 (Transcript) based on read length
     awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
         r1=""
         r2=""
@@ -112,6 +134,9 @@ process KB_COUNT_STANDARD {
     """
 }
 
+/**
+ * KITE Guide RNA quantification per sample.
+ */
 process KB_COUNT_KITE {
     tag "kite_${sample_id}"
     publishDir "${params.outdir}/counts_kite/${sample_id}", mode: 'copy'
@@ -155,6 +180,10 @@ process KB_COUNT_KITE {
     """
 }
 
+/**
+ * Merges mRNA and Guide RNA matrices for a single sample.
+ * Aligns guides to the detected mRNA cell barcodes.
+ */
 process MERGE_MODALITIES {
     tag "${sample_id}"
     publishDir "${params.outdir}/merged_samples", mode: 'copy'
@@ -176,7 +205,7 @@ process MERGE_MODALITIES {
     adata_std = ad.read_h5ad("std_adata.h5ad")
     adata_kite = ad.read_h5ad("kite_adata.h5ad")
 
-    # Align kite to std
+    # Align kite to std barcodes
     kite_obs_map = pd.Series(np.arange(adata_kite.n_obs), index=adata_kite.obs_names)
     target_indices = kite_obs_map.reindex(adata_std.obs_names).values
     mask = ~pd.isna(target_indices)
@@ -200,13 +229,17 @@ process MERGE_MODALITIES {
     adata_std.obsm['guides'] = guides_sparse
     adata_std.uns['guide_names'] = adata_kite.var_names.tolist()
     
-    # Store sample_id in obs
+    # Attach sample metadata
     adata_std.obs['sample_id'] = "${sample_id}"
 
     adata_std.write_h5ad("${sample_id}_merged.h5ad")
     """
 }
 
+/**
+ * Concatenates all samples into a final unified matrix.
+ * Appends sample-specific suffixes to barcodes to prevent collisions.
+ */
 process CONCATENATE_SAMPLES {
     publishDir "${params.outdir}", mode: 'copy'
     
@@ -227,21 +260,25 @@ process CONCATENATE_SAMPLES {
     adatas = []
     for f in files:
         a = ad.read_h5ad(f)
-        # Suffix barcodes with sample_id to prevent collisions
+        # Suffix barcodes with sample_id to prevent collisions across wells
         sample_id = a.obs['sample_id'].iloc[0]
         a.obs_names = a.obs_names + "-" + str(sample_id)
         adatas.append(a)
 
     print(f"Concatenating {len(adatas)} samples...")
-    # join='outer' to ensure we keep all genes, but they should be aligned already
     merged = ad.concat(adatas, join='outer', index_unique=None, merge='same')
     
-    # Re-verify guides consistency
+    # Restore guide metadata
     merged.uns['guide_names'] = adatas[0].uns['guide_names']
     
+    # Save with gzip compression for efficiency
     merged.write_h5ad("experiment_final.h5ad", compression="gzip")
     """
 }
+
+// =============================================================================
+// WORKFLOW
+// =============================================================================
 
 workflow {
     if (!params.fastq_dir || !params.transcriptome_fa || !params.gtf || !params.features_tsv || !params.metadata_tsv) {
@@ -254,6 +291,7 @@ workflow {
     metadata = file(params.metadata_tsv)
     fastq_dir = file(params.fastq_dir)
 
+    // Step 1: Group SRRs by physical library
     sample_sheet = PREPARE_SAMPLES(metadata, fastq_dir)
     
     samples_ch = sample_sheet
@@ -273,17 +311,18 @@ workflow {
         samples_ch = samples_ch.take(params.limit)
     }
 
+    // Step 2: Build Indices
     std_idx = BUILD_INDEX_STANDARD(fa, gtf)
     kite_idx = BUILD_INDEX_KITE(features)
 
-    // Parallel processing per sample
-    std_counts = KB_COUNT_STANDARD(samples_ch.map { it[0], it[1] }, std_idx.index, std_idx.t2g, params.chemistry)
-    kite_counts = KB_COUNT_KITE(samples_ch.map { it[0], it[2] }, kite_idx.index, kite_idx.t2g, params.chemistry)
+    // Step 3: Quantify cDNA and Guides in parallel per sample
+    std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
+    kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna -> [sid, sgrna] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
 
-    // Join cDNA and Guide results by sample_id
+    // Step 4: Merge modalities per sample
     merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
-    
     merged_samples = MERGE_MODALITIES(merge_ch)
     
+    // Step 5: Final Global Concatenation
     CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 }

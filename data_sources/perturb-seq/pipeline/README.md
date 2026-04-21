@@ -41,9 +41,15 @@ curl -s "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=SAMN40972597&
   > $HPS_PATH/perturb_seq_fastq/SAMN40972597/ena_metadata.tsv
 ```
 
-### 4. Build the Custom Singularity Image (Optional)
+### 4. Build the Custom Singularity Image
+Before running the pipeline, build the Singularity image from the provided definition file locally, then upload it to the cluster to `$HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline/kb_python.sif`.
+
 ```bash
+# On your local machine with sudo access
 sudo singularity build kb_python.sif Singularity.def
+
+# Upload to the cluster
+scp kb_python.sif user@cluster:$HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline/
 ```
 
 ### 5. Run the Pipeline
