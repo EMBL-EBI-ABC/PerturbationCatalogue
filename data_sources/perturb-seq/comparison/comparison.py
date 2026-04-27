@@ -136,12 +136,38 @@ def plot_scatter_comparison(
     return {"pearson": pearson, "spearman": spearman, "pct_deviant": pct_deviant}
 
 
+def canonical_guide_id(guide_name):
+    """Normalize guide IDs to match the curated Nadig label formatting."""
+    return str(guide_name).strip().replace(",", "-")
+
+
+def guide_aliases(guide_name):
+    """Return all guide IDs represented by a potentially semicolon-joined KITE feature."""
+    aliases = [
+        canonical_guide_id(part)
+        for part in str(guide_name).split(";")
+        if str(part).strip()
+    ]
+    return aliases or [canonical_guide_id(guide_name)]
+
+
 def guide_target_name(guide_name):
     """Extract the target label used to validate same-gene dual-guide calls."""
-    guide_name = str(guide_name).strip()
+    guide_name = canonical_guide_id(guide_name)
     if guide_name.startswith("non-targeting"):
         return "non-targeting"
     return guide_name.split("_", 1)[0]
+
+
+def guide_target_names(guide_name):
+    return {guide_target_name(alias) for alias in guide_aliases(guide_name)}
+
+
+def label_guide_alias_sets(label):
+    label = str(label).strip()
+    if label.lower() in {"", "none", "nan"}:
+        return []
+    return [set(guide_aliases(part)) for part in label.split("|") if part.strip()]
 
 
 def label_target_name(label):
@@ -150,10 +176,62 @@ def label_target_name(label):
     if label.lower() in {"", "none", "nan"}:
         return "None"
 
-    targets = {guide_target_name(part) for part in label.split("|") if part.strip()}
+    per_guide_targets = [
+        guide_target_names(part) for part in label.split("|") if part.strip()
+    ]
+    if not per_guide_targets:
+        return "None"
+
+    shared_targets = set.intersection(*per_guide_targets)
+    targets = shared_targets if shared_targets else set.union(*per_guide_targets)
     if len(targets) == 1:
         return next(iter(targets))
     return "mixed:" + "|".join(sorted(targets))
+
+
+def labels_exact_match(cur_label, rep_label):
+    cur_parts = label_guide_alias_sets(cur_label)
+    rep_parts = label_guide_alias_sets(rep_label)
+    if len(cur_parts) != len(rep_parts):
+        return False
+    if len(cur_parts) == 0:
+        return True
+    if len(cur_parts) == 1:
+        return bool(cur_parts[0] & rep_parts[0])
+    if len(cur_parts) == 2:
+        return (
+            bool(cur_parts[0] & rep_parts[0]) and bool(cur_parts[1] & rep_parts[1])
+        ) or (
+            bool(cur_parts[0] & rep_parts[1]) and bool(cur_parts[1] & rep_parts[0])
+        )
+
+    unmatched = list(rep_parts)
+    for cur_aliases in cur_parts:
+        for i, rep_aliases in enumerate(unmatched):
+            if cur_aliases & rep_aliases:
+                unmatched.pop(i)
+                break
+        else:
+            return False
+    return True
+
+
+def labels_target_match(cur_label, rep_label):
+    cur_target = label_target_name(cur_label)
+    rep_target = label_target_name(rep_label)
+    if cur_target == "None" or rep_target == "None":
+        return cur_target == rep_target
+    cur_targets = set(cur_target.removeprefix("mixed:").split("|"))
+    rep_targets = set(rep_target.removeprefix("mixed:").split("|"))
+    return bool(cur_targets & rep_targets)
+
+
+def canonical_label_for_display(label):
+    label = str(label).strip()
+    if label.lower() in {"", "none", "nan"}:
+        return "None"
+    parts = [canonical_guide_id(part) for part in label.split("|") if part.strip()]
+    return "|".join(sorted(parts)) if parts else "None"
 
 
 def summarize_numeric(values):
@@ -204,19 +282,17 @@ def call_guides(
         if len(positive_idx) == 0:
             calls.append("None")
         elif require_dual_same_target:
-            by_target = {}
-            for guide_idx, count in zip(positive_idx, positive_counts):
-                target = guide_target_name(guide_names[guide_idx])
-                by_target.setdefault(target, []).append((guide_idx, count))
-
             candidate_pairs = []
-            for target, entries in by_target.items():
-                if len(entries) < 2:
-                    continue
-                entries = sorted(entries, key=lambda item: (-item[1], guide_names[item[0]]))
-                pair = entries[:2]
-                score = sum(count for _, count in pair)
-                candidate_pairs.append((score, target, [guide_idx for guide_idx, _ in pair]))
+            entries = list(zip(positive_idx, positive_counts))
+            for left_pos, (left_idx, left_count) in enumerate(entries):
+                left_targets = guide_target_names(guide_names[left_idx])
+                for right_idx, right_count in entries[left_pos + 1:]:
+                    shared_targets = left_targets & guide_target_names(guide_names[right_idx])
+                    if not shared_targets:
+                        continue
+                    score = left_count + right_count
+                    target = sorted(shared_targets)[0]
+                    candidate_pairs.append((score, target, [left_idx, right_idx]))
 
             if not candidate_pairs:
                 calls.append("None")
@@ -271,10 +347,8 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
         p_rep = rep_labels.loc[common_cells].astype(str)
 
-        normalize = lambda s: "|".join(sorted([x.strip() for x in s.split("|")])) if "|" in s else s.strip()
-        p_cur, p_rep = p_cur.apply(normalize), p_rep.apply(normalize)
-        p_cur_target = p_cur.apply(label_target_name)
-        p_rep_target = p_rep.apply(label_target_name)
+        p_cur = p_cur.apply(canonical_label_for_display)
+        p_rep = p_rep.apply(canonical_label_for_display)
         
         # Deep Diagnostics
         valid_cur = ~p_cur.str.lower().isin(["", "none", "nan"])
@@ -287,31 +361,63 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         print("  Reprocessed guide matrix diagnostics:")
         print(textwrap.indent(json.dumps(rep_diagnostics, indent=2), "    "))
 
-        mismatches = np.where(valid_rep & (p_cur != p_rep))[0]
+        exact_matches = pd.Series(
+            [
+                labels_exact_match(cur_label, rep_label)
+                for cur_label, rep_label in zip(p_cur, p_rep)
+            ],
+            index=p_cur.index,
+        )
+        target_matches = pd.Series(
+            [
+                labels_target_match(cur_label, rep_label)
+                for cur_label, rep_label in zip(p_cur, p_rep)
+            ],
+            index=p_cur.index,
+        )
+
+        missing_rep = valid_cur & ~valid_rep
+        n_valid_cur = int(valid_cur.sum())
+        missing_rate = (int(missing_rep.sum()) / n_valid_cur) if n_valid_cur else 0.0
+        print(
+            "  Curated-guide cells missing a valid Reprocessed dual same-target call: "
+            f"{missing_rep.sum()} / {n_valid_cur} ({missing_rate:.1%})"
+        )
+        print(f"  Alias-aware exact pair matches: {exact_matches.sum()} / {len(common_cells)} ({exact_matches.mean():.1%})")
+        print(f"  Alias-aware target matches: {target_matches.sum()} / {len(common_cells)} ({target_matches.mean():.1%})")
+
+        mismatches = np.where(valid_rep & ~exact_matches.to_numpy())[0]
         if len(mismatches) > 0:
             print(f"  Mismatched cells diagnostics (Sample of mismatches where Reprocessed has guides):")
             print(f"  Total such mismatches: {len(mismatches)}")
             for idx in mismatches[:10]:
                 print(f"    {common_cells[idx]}: Curated='{p_cur.iloc[idx]}' vs Rep='{p_rep.iloc[idx]}'")
 
-        accuracy = (p_cur == p_rep).mean()
-        target_accuracy = (p_cur_target == p_rep_target).mean()
+        accuracy = exact_matches.mean()
+        target_accuracy = target_matches.mean()
         overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
         top_perts = p_cur.value_counts().head(20).index
         sub_df = overlap_df[overlap_df["Curated"].isin(top_perts)]
-        ct = pd.crosstab(sub_df["Curated"], sub_df["Reprocessed"])
+        ct = pd.crosstab(sub_df["Reprocessed"], sub_df["Curated"])
 
         plt.figure(figsize=(15, 13))
-        sns.heatmap(ct, annot=False, cmap="YlGnBu")
+        ax = sns.heatmap(
+            ct,
+            annot=False,
+            cmap="YlGnBu",
+            cbar_kws={"label": "Number of shared cells"},
+        )
         plt.suptitle("Perturbation Confusion Matrix (Top 20)", fontsize=18, fontweight='bold', y=0.98)
         
-        desc = ("This heatmap compares dual same-target guide assignments between the original study (Y) and the reprocessed pipeline (X). "
-                "A strong diagonal indicates consistent recovery of the paired guide identity. "
-                "Off-diagonal calls should be interpreted together with the guide matrix diagnostics printed by this script.")
+        desc = ("Columns are original study / Curated guide-pair assignments; rows are Reprocessed dual same-target calls. "
+                "Each tile is the number of shared cells with that assignment pair. "
+                "The diagonal is exact guide-pair agreement; the Reprocessed 'None' row contains cells where no valid dual same-target call passed the count threshold.")
         wrapped_desc = "\n".join(textwrap.wrap(desc, width=110))
         plt.title(f"Exact Pair Match: {accuracy:.4%} | Target Match: {target_accuracy:.4%}\n{wrapped_desc}",
                   fontsize=10, pad=15, style='italic', loc='center')
         
+        ax.set_xlabel("Original study / Curated assignment")
+        ax.set_ylabel("Reprocessed assignment")
         plt.xticks(rotation=45, ha='right', fontsize=7)
         plt.yticks(fontsize=7)
         plt.tight_layout(rect=[0, 0.05, 1, 0.94])
@@ -323,6 +429,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             "accuracy": float(accuracy),
             "target_accuracy": float(target_accuracy),
             "n_rep_with_guides": int(valid_rep.sum()),
+            "n_curated_cells_missing_reprocessed_call": int(missing_rep.sum()),
             "guide_call_diagnostics": rep_diagnostics,
         }
     return None

@@ -23,6 +23,7 @@ def generate_features_tsv(xlsx_path, output_tsv):
 
     # Combine all guides
     features_df = pd.concat([df_A, df_B]).dropna()
+    features_df["id"] = features_df["id"].astype(str).str.replace(",", "-", regex=False)
 
     # Resolve duplicate guide sequences by grouping by 'seq' and joining the 'id's
     features_df = features_df.groupby("seq", as_index=False).agg(
