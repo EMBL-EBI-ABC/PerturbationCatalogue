@@ -76,7 +76,7 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
 - `results/merged_samples/*_guide_diagnostics.json`: Per-sample KITE barcode overlap and guide UMI diagnostics.
 - `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
 
-KITE guide counts are merged from `counts_unfiltered`, then aligned to the filtered mRNA cell barcodes. This avoids independently filtering the guide barcode universe before mRNA/guide alignment.
+KITE guide counts are merged from `counts_unfiltered`, then aligned to the filtered mRNA cell barcodes. This avoids independently filtering the guide barcode universe before mRNA/guide alignment. For this dataset, sgRNA-library cell barcodes are first corrected by complementing bases 8-9 before alignment to the mRNA barcodes; the per-sample diagnostics report both raw and corrected barcode overlap.
 
 ## Understanding the "Sample ID" logic
 The ENA libraries use the notation `jurkat_<modality>_<sample_group>_<sub_sample>_L<lane>`.

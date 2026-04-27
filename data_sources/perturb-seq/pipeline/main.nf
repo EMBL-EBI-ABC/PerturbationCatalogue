@@ -220,6 +220,13 @@ process MERGE_MODALITIES {
     adata_std = ad.read_h5ad("std_adata.h5ad")
     adata_kite = ad.read_h5ad("kite_adata.h5ad")
 
+    def complement_kite_barcode_positions_8_9(barcode):
+        barcode = str(barcode)
+        if len(barcode) < 9:
+            return barcode
+        comp = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+        return barcode[:7] + barcode[7:9].translate(comp) + barcode[9:]
+
     def row_sums(matrix):
         if sp.issparse(matrix):
             return np.asarray(matrix.sum(axis=1)).ravel()
@@ -229,6 +236,14 @@ process MERGE_MODALITIES {
         if sp.issparse(matrix):
             return np.diff(matrix.tocsr().indptr)
         return np.count_nonzero(matrix, axis=1)
+
+    # The deposited sgRNA FASTQs encode barcode bases 8-9 as complements relative to mRNA.
+    raw_kite_obs_names = pd.Index(adata_kite.obs_names.astype(str))
+    corrected_kite_obs_names = raw_kite_obs_names.map(complement_kite_barcode_positions_8_9)
+    std_obs_names = pd.Index(adata_std.obs_names.astype(str))
+    raw_overlap = int(raw_kite_obs_names.isin(std_obs_names).sum())
+    corrected_overlap = int(pd.Index(corrected_kite_obs_names).isin(std_obs_names).sum())
+    adata_kite.obs_names = corrected_kite_obs_names
 
     # Align kite to std barcodes
     kite_obs_map = pd.Series(np.arange(adata_kite.n_obs), index=adata_kite.obs_names)
@@ -261,8 +276,11 @@ process MERGE_MODALITIES {
 
     diagnostics = {
         "sample_id": "${sample_id}",
+        "kite_barcode_correction": "complement_positions_8_9",
         "n_mrna_cells": int(adata_std.n_obs),
         "n_kite_barcodes": int(adata_kite.n_obs),
+        "n_raw_kite_barcodes_overlapping_mrna_barcodes": raw_overlap,
+        "n_corrected_kite_barcodes_overlapping_mrna_barcodes": corrected_overlap,
         "n_barcode_overlap": int(mask.sum()),
         "pct_mrna_barcodes_with_kite_barcode": float(mask.mean()) if adata_std.n_obs else 0.0,
         "total_kite_umis_all_barcodes": float(guide_umis_all_kite.sum()),
