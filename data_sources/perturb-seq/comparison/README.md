@@ -55,7 +55,8 @@ The script generates the following outputs in the `comparison_results/` folder:
 *   **pca_comparison.png**: Side-by-side PCA plots to compare the global structure and variance of the two datasets.
 
 ### Perturbation Assignment
-*   **perturbation_confusion_matrix.png**: Heatmap showing the overlap of perturbation assignments (e.g., guide or target gene labels) between the two versions for the top 20 most frequent perturbations.
+*   **perturbation_confusion_matrix.png**: Heatmap showing the overlap of dual same-target guide assignments between the two versions for the top 20 most frequent perturbations.
+*   **summary_report.txt**: Includes guide matrix diagnostics for the reprocessed data, including guide UMI distributions and counts of cells with any, two-or-more, and valid dual same-target guide calls.
 
 ## 4. How the Pipeline Works
 *   **Full Loading**: Datasets are loaded fully into memory for faster processing and more complex analyses.

@@ -73,7 +73,10 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
 
 ## Outputs
 - `results/merged_samples/`: Individual H5AD files for each physical 10x well.
+- `results/merged_samples/*_guide_diagnostics.json`: Per-sample KITE barcode overlap and guide UMI diagnostics.
 - `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
+
+KITE guide counts are merged from `counts_unfiltered`, then aligned to the filtered mRNA cell barcodes. This avoids independently filtering the guide barcode universe before mRNA/guide alignment.
 
 ## Understanding the "Sample ID" logic
 The ENA libraries use the notation `jurkat_<modality>_<sample_group>_<sub_sample>_L<lane>`.

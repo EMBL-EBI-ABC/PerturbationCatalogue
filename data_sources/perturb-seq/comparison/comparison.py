@@ -136,26 +136,125 @@ def plot_scatter_comparison(
     return {"pearson": pearson, "spearman": spearman, "pct_deviant": pct_deviant}
 
 
-def call_guides(adata, count_threshold=5):
-    """Dual-guide caller."""
+def guide_target_name(guide_name):
+    """Extract the target label used to validate same-gene dual-guide calls."""
+    guide_name = str(guide_name).strip()
+    if guide_name.startswith("non-targeting"):
+        return "non-targeting"
+    return guide_name.split("_", 1)[0]
+
+
+def label_target_name(label):
+    """Extract the target label from a pipe-delimited guide assignment."""
+    label = str(label).strip()
+    if label.lower() in {"", "none", "nan"}:
+        return "None"
+
+    targets = {guide_target_name(part) for part in label.split("|") if part.strip()}
+    if len(targets) == 1:
+        return next(iter(targets))
+    return "mixed:" + "|".join(sorted(targets))
+
+
+def summarize_numeric(values):
+    values = np.asarray(values)
+    if values.size == 0:
+        return {"min": 0.0, "p50": 0.0, "p90": 0.0, "p99": 0.0, "max": 0.0}
+    return {
+        "min": float(np.min(values)),
+        "p50": float(np.percentile(values, 50)),
+        "p90": float(np.percentile(values, 90)),
+        "p99": float(np.percentile(values, 99)),
+        "max": float(np.max(values)),
+    }
+
+
+def call_guides(
+    adata,
+    count_threshold=5,
+    require_dual_same_target=True,
+    max_guides=2,
+    return_diagnostics=False,
+):
+    """Call guides, optionally requiring two above-threshold guides to the same target."""
     if "guides" not in adata.obsm:
-        return None
+        return (None, None) if return_diagnostics else None
+
     guide_matrix = adata.obsm["guides"]
     if sp.issparse(guide_matrix):
         guide_matrix = guide_matrix.tocsr()
     
     guide_names = np.array(adata.uns.get("guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])]))
+    total_guide_umis = np.asarray(guide_matrix.sum(axis=1)).ravel()
+    positive_guide_counts = []
     calls = []
+
     for i in range(guide_matrix.shape[0]):
-        row = np.array(guide_matrix[i].toarray()).flatten()
-        top_idx = np.where(row >= count_threshold)[0]
-        if len(top_idx) == 0:
-            calls.append("None")
+        if sp.issparse(guide_matrix):
+            row = guide_matrix.getrow(i)
+            keep = row.data >= count_threshold
+            positive_idx = row.indices[keep]
+            positive_counts = row.data[keep]
         else:
-            top_idx = top_idx[np.argsort(row[top_idx])[::-1][:2]]
+            row = np.asarray(guide_matrix[i]).ravel()
+            positive_idx = np.where(row >= count_threshold)[0]
+            positive_counts = row[positive_idx]
+
+        positive_guide_counts.append(len(positive_idx))
+        if len(positive_idx) == 0:
+            calls.append("None")
+        elif require_dual_same_target:
+            by_target = {}
+            for guide_idx, count in zip(positive_idx, positive_counts):
+                target = guide_target_name(guide_names[guide_idx])
+                by_target.setdefault(target, []).append((guide_idx, count))
+
+            candidate_pairs = []
+            for target, entries in by_target.items():
+                if len(entries) < 2:
+                    continue
+                entries = sorted(entries, key=lambda item: (-item[1], guide_names[item[0]]))
+                pair = entries[:2]
+                score = sum(count for _, count in pair)
+                candidate_pairs.append((score, target, [guide_idx for guide_idx, _ in pair]))
+
+            if not candidate_pairs:
+                calls.append("None")
+                continue
+
+            _, _, top_idx = sorted(candidate_pairs, key=lambda item: (-item[0], item[1]))[0]
             names = sorted(guide_names[top_idx])
             calls.append("|".join(names))
-    return pd.Series(calls, index=adata.obs_names)
+        else:
+            top_idx = positive_idx[np.argsort(positive_counts)[::-1][:max_guides]]
+            names = sorted(guide_names[top_idx])
+            calls.append("|".join(names))
+
+    calls = pd.Series(calls, index=adata.obs_names)
+    positive_guide_counts = np.asarray(positive_guide_counts)
+    count_values, count_freqs = np.unique(positive_guide_counts, return_counts=True)
+    positive_cell_mask = positive_guide_counts > 0
+
+    diagnostics = {
+        "count_threshold": int(count_threshold),
+        "require_dual_same_target": bool(require_dual_same_target),
+        "n_cells": int(guide_matrix.shape[0]),
+        "n_guides": int(guide_matrix.shape[1]),
+        "n_cells_with_any_positive_guide": int((positive_guide_counts >= 1).sum()),
+        "n_cells_with_two_or_more_positive_guides": int((positive_guide_counts >= 2).sum()),
+        "n_cells_with_dual_same_target_call": int((calls != "None").sum()),
+        "positive_guide_count_distribution": {
+            str(int(count)): int(freq) for count, freq in zip(count_values, count_freqs)
+        },
+        "total_guide_umi_distribution_all_cells": summarize_numeric(total_guide_umis),
+        "total_guide_umi_distribution_cells_with_any_positive_guide": summarize_numeric(
+            total_guide_umis[positive_cell_mask]
+        ),
+    }
+
+    if return_diagnostics:
+        return calls, diagnostics
+    return calls
 
 
 def compare_perturbations(adata_cur, adata_rep, common_cells):
@@ -163,7 +262,10 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
     print("Comparing perturbation assignments...")
 
     cur_pert_col = next((c for c in ["sgID_AB", "perturbation"] if c in adata_cur.obs.columns), None)
-    rep_labels = call_guides(adata_rep) if "guides" in adata_rep.obsm else None
+    if "guides" in adata_rep.obsm:
+        rep_labels, rep_diagnostics = call_guides(adata_rep, return_diagnostics=True)
+    else:
+        rep_labels, rep_diagnostics = None, None
 
     if cur_pert_col and rep_labels is not None:
         p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
@@ -171,12 +273,19 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
         normalize = lambda s: "|".join(sorted([x.strip() for x in s.split("|")])) if "|" in s else s.strip()
         p_cur, p_rep = p_cur.apply(normalize), p_rep.apply(normalize)
+        p_cur_target = p_cur.apply(label_target_name)
+        p_rep_target = p_rep.apply(label_target_name)
         
         # Deep Diagnostics
-        valid_cur = (p_cur != "None") & (p_cur != "nan")
-        valid_rep = (p_rep != "None") & (p_rep != "nan")
+        valid_cur = ~p_cur.str.lower().isin(["", "none", "nan"])
+        valid_rep = ~p_rep.str.lower().isin(["", "none", "nan"])
         print(f"  Curated cells with guides: {valid_cur.sum()} / {len(common_cells)} ({valid_cur.mean():.1%})")
-        print(f"  Reprocessed cells with guides: {valid_rep.sum()} / {len(common_cells)} ({valid_rep.mean():.1%})")
+        print(
+            "  Reprocessed cells with valid dual same-target guide calls: "
+            f"{valid_rep.sum()} / {len(common_cells)} ({valid_rep.mean():.1%})"
+        )
+        print("  Reprocessed guide matrix diagnostics:")
+        print(textwrap.indent(json.dumps(rep_diagnostics, indent=2), "    "))
 
         mismatches = np.where(valid_rep & (p_cur != p_rep))[0]
         if len(mismatches) > 0:
@@ -186,6 +295,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
                 print(f"    {common_cells[idx]}: Curated='{p_cur.iloc[idx]}' vs Rep='{p_rep.iloc[idx]}'")
 
         accuracy = (p_cur == p_rep).mean()
+        target_accuracy = (p_cur_target == p_rep_target).mean()
         overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
         top_perts = p_cur.value_counts().head(20).index
         sub_df = overlap_df[overlap_df["Curated"].isin(top_perts)]
@@ -195,11 +305,11 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         sns.heatmap(ct, annot=False, cmap="YlGnBu")
         plt.suptitle("Perturbation Confusion Matrix (Top 20)", fontsize=18, fontweight='bold', y=0.98)
         
-        desc = ("This heatmap compares guide assignments between the original study (Y) and our reprocessed pipeline (X). "
-                "A strong diagonal indicates consistent guide recovery and labeling across pipelines. "
-                "Mismatches may suggest barcode collisions or thresholding differences.")
+        desc = ("This heatmap compares dual same-target guide assignments between the original study (Y) and the reprocessed pipeline (X). "
+                "A strong diagonal indicates consistent recovery of the paired guide identity. "
+                "Off-diagonal calls should be interpreted together with the guide matrix diagnostics printed by this script.")
         wrapped_desc = "\n".join(textwrap.wrap(desc, width=110))
-        plt.title(f"Overall Match: {accuracy:.4%}\n{wrapped_desc}", 
+        plt.title(f"Exact Pair Match: {accuracy:.4%} | Target Match: {target_accuracy:.4%}\n{wrapped_desc}",
                   fontsize=10, pad=15, style='italic', loc='center')
         
         plt.xticks(rotation=45, ha='right', fontsize=7)
@@ -209,7 +319,12 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         plt.show()
         plt.close()
 
-        return {"accuracy": accuracy, "n_rep_with_guides": int(valid_rep.sum())}
+        return {
+            "accuracy": float(accuracy),
+            "target_accuracy": float(target_accuracy),
+            "n_rep_with_guides": int(valid_rep.sum()),
+            "guide_call_diagnostics": rep_diagnostics,
+        }
     return None
 
 
