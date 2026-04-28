@@ -69,27 +69,9 @@
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Pipeline Status}
-    \begin{itemize}
-        \item The unified FASTQ-to-H5AD pipeline is now implemented in Nextflow and runs on the EBI Slurm cluster with Singularity.
-        \item The first full dataset has been processed end-to-end: Nadig 2025 Jurkat.
-        \item The output is a single compressed \texttt{experiment\_final.h5ad}.
-        \item Gene expression counts are stored in \texttt{.X}; guide counts are stored in \texttt{.obsm['guides']} with guide names in \texttt{.uns['guide\_names']}.
-        \item Per-sample guide merge diagnostics are written next to the merged H5AD files.
-    \end{itemize}
-\end{frame}
-
 \begin{frame}{Pipeline Architecture}
-    \begin{enumerate}
-        \item \textbf{Prepare samples:} Parse ENA metadata and group SRR runs by physical 10x well.
-        \item \textbf{Build references:} Create cDNA and KITE guide indices from Ensembl GRCh38 and \texttt{features.tsv}.
-        \item \textbf{Count reads:} Run \texttt{kb count} separately for mRNA and sgRNA FASTQs for each physical sample.
-        \item \textbf{Merge modalities:} Align guide counts to filtered mRNA cell barcodes.
-        \item \textbf{Concatenate samples:} Add sample-specific barcode suffixes and write one unified H5AD.
-    \end{enumerate}
-    \vspace{0.8em}
     \centering
-    \textbf{Key design point:} sample-aware grouping prevents barcode collisions between separate physical wells.
+    \includegraphics[width=0.98\linewidth,height=0.78\textheight,keepaspectratio]{pipeline_workflow.pdf}
 \end{frame}
 
 \begin{frame}{Development Issues Solved}
@@ -123,7 +105,8 @@ nextflow run main.nf \
 
 \begin{frame}{First Dataset: Nadig 2025 Jurkat}
     \begin{itemize}
-        \item Processed from raw FASTQs into a unified H5AD.
+        \item The unified FASTQ-to-H5AD pipeline now runs end-to-end on the EBI Slurm cluster.
+        \item The first full dataset has been processed: Nadig 2025 Jurkat.
         \item The comparison was run against the author-provided H5AD.
         \item Analysis compares shared cells and shared genes after barcode and gene-name alignment.
         \item The main question: does the reprocessed dataset preserve expression signal, and how many guide calls match the original labels?
@@ -135,20 +118,20 @@ nextflow run main.nf \
 
 \begin{frame}{Expression Agreement: Summary}
     \centering
-    \begin{tabular}{lccc}
+    \begin{tabular}{lc}
         \toprule
-        \textbf{Metric} & \textbf{Pearson} & \textbf{Spearman} & \textbf{Deviant cells/genes} \\
+        \textbf{Metric} & \textbf{Pearson r} \\
         \midrule
-        Total UMI counts per cell & 0.9997 & 0.9995 & 60.18\% \\
-        Detected genes per cell & 0.9999 & 0.9998 & 0.01\% \\
-        Mean expression per gene & 0.9588 & 0.9523 & 13.39\% \\
-        Gene dropout rate & 0.9598 & 0.9523 & 7.48\% \\
+        Total UMI counts per cell & 0.9997 \\
+        Detected genes per cell & 0.9999 \\
+        Mean expression per gene & 0.9588 \\
+        Gene dropout rate & 0.9598 \\
         \bottomrule
     \end{tabular}
     \vspace{1.0em}
     \begin{itemize}
-        \item Cell-level expression structure is almost identical to the author-processed dataset.
-        \item Median cell-wise expression correlation is 0.9597.
+        \item Cell-level expression metrics are almost identical to the author-processed dataset.
+        \item Gene-level expression and dropout also show strong agreement.
         \item The main total-count difference is scale, not loss of biological structure.
     \end{itemize}
 \end{frame}
@@ -157,15 +140,11 @@ nextflow run main.nf \
     \begin{columns}[T,onlytextwidth]
         \begin{column}{0.49\textwidth}
             \centering
-            \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{umi.png}
-
-            \small Total UMI counts
+            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{umi.png}
         \end{column}
         \begin{column}{0.49\textwidth}
             \centering
-            \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{genes.png}
-
-            \small Number of detected genes
+            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{genes.png}
         \end{column}
     \end{columns}
 \end{frame}
@@ -174,15 +153,11 @@ nextflow run main.nf \
     \begin{columns}[T,onlytextwidth]
         \begin{column}{0.49\textwidth}
             \centering
-            \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{expression.png}
-
-            \small Mean gene expression
+            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{expression.png}
         \end{column}
         \begin{column}{0.49\textwidth}
             \centering
-            \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{dropout.png}
-
-            \small Gene dropout rate
+            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{dropout.png}
         \end{column}
     \end{columns}
 \end{frame}
@@ -191,13 +166,12 @@ nextflow run main.nf \
     \begin{itemize}
         \item The comparison uses a strict guide call: two positive guides, both targeting the same gene, with at least 5 counts each.
         \item Under this rule, the reprocessed data recovers 164,757 of 214,522 curated dual-guide cells.
-        \item Exact guide-pair agreement: \textbf{76.80\%}.
-        \item Target-level agreement: \textbf{76.80\%}.
-        \item The missing calls are mostly cells where only one of the two curated probes passes the 5-count threshold.
+        \item Guide-call agreement: \textbf{76.80\%}.
+        \item The missing calls are mostly cells where only one of the two curated probes is picked up strongly enough.
     \end{itemize}
     \vspace{0.8em}
     \centering
-    \textbf{Interpretation:} current guide recovery is about threshold/calling behaviour, not a failure of the expression pipeline.
+    \textbf{Interpretation:} current guide recovery is about guide calling behaviour, not a failure of the expression pipeline.
 \end{frame}
 
 \begin{frame}{Guide Signal Diagnostics}
@@ -214,9 +188,9 @@ nextflow run main.nf \
     \end{tabular}
     \vspace{1.0em}
     \begin{itemize}
-        \item Across all reprocessed cells, 539,208 have at least one guide with 5+ counts.
-        \item 487,177 have two or more guides with 5+ counts.
-        \item 302,165 receive a dual same-target guide call before restricting to curated shared cells.
+        \item These counts are for curated guide-labelled shared cells.
+        \item The threshold alone is not the main issue: even at 1 count, many cells still have only one of the two curated probes detected.
+        \item We should test an alternative guide-calling rule that rescues a cell when one guide unambiguously points to the construct being present, and no other guide gives a conflicting signal.
     \end{itemize}
 \end{frame}
 
@@ -225,21 +199,16 @@ nextflow run main.nf \
         \item A working, reproducible FASTQ-to-H5AD pipeline for perturb-seq datasets with GEX and guide modalities.
         \item A comparison workflow that checks cell-level expression, gene-level expression, dropout, and perturbation labels.
         \item First results showing very strong expression agreement with the author-processed data.
-        \item A clear guide-calling question to tune next: how strict should dual-probe recovery be?
+        \item A clear guide-calling question to tune next: how should we handle cells where one guide is strong and the second is weak or missing?
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Next Steps}
     \begin{itemize}
-        \item \textbf{Guide recovery:} Experiment with guide recovery settings. The current 5+5 threshold may be too strict.
+        \item \textbf{Guide recovery:} Test alternative guide-calling logic, including one-guide rescue when the signal is unambiguous.
         \item \textbf{Scale-out:} Run the pipeline on all available perturb-seq datasets.
         \item \textbf{Downstream analysis:} Run distance metrics between genes, plus the existing DEA and GSEA workflows.
     \end{itemize}
-\end{frame}
-
-\begin{frame}{Questions}
-    \centering
-    \Large Thank you
 \end{frame}
 
 \end{document}
