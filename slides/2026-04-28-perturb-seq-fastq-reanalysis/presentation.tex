@@ -116,6 +116,30 @@ nextflow run main.nf \
     \textbf{Short answer:} expression alignment is excellent; guide recovery is currently limited by strict dual-probe calling.
 \end{frame}
 
+\begin{frame}{First Dataset: Scale and Runtime}
+    \begin{columns}[T,onlytextwidth]
+        \begin{column}{0.49\textwidth}
+            \textbf{Input scale}
+            \vspace{0.5em}
+            \begin{itemize}
+                \item Full raw-data project: 2.618 TB and 2,688 reported FASTQ files.
+                \item Jurkat subset processed here: 1,792 SRR runs, reported as 1,792 FASTQ files.
+                \item Split by modality: 896 mRNA runs and 896 sgRNA runs.
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.49\textwidth}
+            \textbf{Pipeline run}
+            \vspace{0.5em}
+            \begin{itemize}
+                \item Wall time: \textbf{1h 18m}.
+                \item Total compute: \textbf{504 CPU-hours}.
+                \item Near-terabyte input processed with modest total compute.
+                \item This is efficient enough to make catalogue-scale reprocessing realistic.
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
 \begin{frame}{Expression Agreement: Summary}
     \centering
     \begin{tabular}{lc}
@@ -134,6 +158,27 @@ nextflow run main.nf \
         \item Gene-level expression and dropout also show strong agreement.
         \item The main total-count difference is scale, not loss of biological structure.
     \end{itemize}
+\end{frame}
+
+\begin{frame}{Expression Vectors Are Preserved}
+    \begin{itemize}
+        \item For each shared cell, the comparison takes the curated and reprocessed expression vectors over the same shared genes.
+        \item It then computes a Pearson correlation between those two vectors for that cell.
+        \item This is done on a random sample of up to 10,000 shared cells after the same preprocessing.
+    \end{itemize}
+    \vspace{1.0em}
+    \centering
+    \begin{tabular}{lc}
+        \toprule
+        \textbf{Cell-wise expression vector correlation} & \textbf{Pearson r} \\
+        \midrule
+        Median across sampled cells & 0.9597 \\
+        Mean across sampled cells & 0.9594 \\
+        \bottomrule
+    \end{tabular}
+    \vspace{1.0em}
+
+    \textbf{Interpretation:} the same cells have very similar expression profiles after reprocessing.
 \end{frame}
 
 \begin{frame}{Cell-Level Expression Agreement}
