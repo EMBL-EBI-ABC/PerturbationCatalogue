@@ -76,7 +76,16 @@ def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
 
 
 def plot_scatter_comparison(
-    df, x_col, y_col, title, xlabel, ylabel, filename, log_scale=False, description=""
+    df,
+    x_col,
+    y_col,
+    title,
+    xlabel,
+    ylabel,
+    filename,
+    log_scale=False,
+    description="",
+    deviation_on_log=False,
 ):
     """
     Standardized scatter plot with professional layout:
@@ -88,12 +97,20 @@ def plot_scatter_comparison(
 
     plot_df = df.copy().dropna(subset=[x_col, y_col])
 
-    # Calculate deviation stats (within 10%)
-    diff = np.abs(plot_df[x_col] - plot_df[y_col])
-    # Use max to avoid division by zero
-    denom = plot_df[[x_col, y_col]].mean(axis=1).replace(0, 1)
+    # Calculate deviation stats (within 10%). For UMI counts, use the log-value so
+    # proportional differences at very high depth do not dominate this summary.
+    deviation_df = plot_df[[x_col, y_col]].astype(float)
+    if deviation_on_log:
+        deviation_df = np.log1p(deviation_df)
+
+    diff = np.abs(deviation_df[x_col] - deviation_df[y_col])
+    # Avoid division by zero for cells/genes with zero values in both datasets.
+    denom = deviation_df[[x_col, y_col]].mean(axis=1).replace(0, 1)
     rel_diff = diff / denom
     pct_deviant = (rel_diff > 0.1).mean() * 100
+    deviant_label = (
+        "Deviants (>10% on log1p values)" if deviation_on_log else "Deviants (>10%)"
+    )
 
     if log_scale:
         plot_df[x_col] = plot_df[x_col] + 1
@@ -126,7 +143,7 @@ def plot_scatter_comparison(
     ax.text(
         0.5,
         1.02,
-        f"Pearson r = {pearson:.4f} | Spearman rho = {spearman:.4f} | Deviants (>10%): {pct_deviant:.1f}%",
+        f"Pearson r = {pearson:.4f} | Spearman rho = {spearman:.4f} | {deviant_label}: {pct_deviant:.1f}%",
         transform=ax.transAxes,
         ha="center",
         va="bottom",
@@ -731,11 +748,12 @@ results_summary["cell_metrics"]["total_counts"] = plot_scatter_comparison(
     "cur",
     "rep",
     "Total UMI Counts",
-    "Curated",
+    "Original",
     "Reprocessed",
     "comparison_results/counts_comparison.png",
     log_scale=True,
-    description="Correlation of total UMI counts per cell. Kallisto+Bustools (Reprocessed) generally identifies more UMIs per cell, especially in the high-sensitivity regime, likely due to transcript-level mapping vs gene-level quantification.",
+    deviation_on_log=True,
+    description="Each point is one shared cell. The x-axis shows the original study total UMI count; the y-axis shows the reprocessed total UMI count. Values are plotted on log-scaled axes after adding 1.",
 )
 
 results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
@@ -748,10 +766,10 @@ results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
     "cur",
     "rep",
     "Number of Detected Genes",
-    "Curated",
+    "Original",
     "Reprocessed",
     "comparison_results/genes_comparison.png",
-    description="Correlation of unique genes detected per cell. The reprocessed pipeline recovers significantly more unique transcripts in a subset of cells, indicating higher detection sensitivity.",
+    description="Each point is one shared cell. The x-axis shows the number of genes detected in the original study; the y-axis shows the number of genes detected in the reprocessed data.",
 )
 
 # --- Gene-wise Scatter Plots (Restored) ---
@@ -779,11 +797,11 @@ results_summary["gene_metrics"]["mean_expression"] = plot_scatter_comparison(
     "mean_cur",
     "mean_rep",
     "Mean Gene Expression",
-    "Curated",
+    "Original",
     "Reprocessed",
     "comparison_results/gene_expression_mean.png",
     log_scale=True,
-    description="Average expression level for each shared gene. High correlation confirms that the biological signal is preserved across quantification methods.",
+    description="Each point is one shared gene. The x-axis shows mean expression across shared cells in the original study; the y-axis shows mean expression across shared cells in the reprocessed data. Values are plotted on log-scaled axes after adding 1.",
 )
 
 results_summary["gene_metrics"]["dropout_rate"] = plot_scatter_comparison(
@@ -791,10 +809,10 @@ results_summary["gene_metrics"]["dropout_rate"] = plot_scatter_comparison(
     "dropout_cur",
     "dropout_rep",
     "Gene Dropout Rate (%)",
-    "Curated",
+    "Original",
     "Reprocessed",
     "comparison_results/sparsity_comparison.png",
-    description="Percentage of cells where a gene has zero counts. Lower values in Reprocessed indicate higher sensitivity for those genes.",
+    description="Each point is one shared gene. The x-axis shows the percentage of shared cells with zero counts in the original study; the y-axis shows the percentage of shared cells with zero counts in the reprocessed data.",
 )
 
 # --- Cell-wise Correlation (Restored Summary) ---
