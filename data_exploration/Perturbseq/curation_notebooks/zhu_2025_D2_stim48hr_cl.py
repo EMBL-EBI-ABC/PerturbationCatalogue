@@ -27,14 +27,14 @@ pd.set_option('display.max_columns', None)
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-log("=== zhu_2025_D4_stim8hr_cl curation started ===")
+log("=== zhu_2025_D2_stim48hr_cl curation started ===")
 
 # %% Download data
 # Download the data from AWS as such:
 # !aws s3 cp --no-sign-request s3://genome-scale-tcell-perturb-seq/marson2025_data/{name_of_the_file}.h5ad ..aa/non_curated/h5ad/{name_of_the_file}.h5ad
 
 # %% Initialise the dataset object
-noncurated_path = '/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl.h5ad'
+noncurated_path = '/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim48hr_cl.h5ad'
 cur_data = CuratedDataset(
     obs_schema=ObsSchema,
     var_schema=VarSchema,
@@ -55,7 +55,7 @@ log(f"Filtering done (after: {cur_data.adata.n_obs} cells)")
 
 # %% Add index as perturbation_name
 log("Adding perturbation_name...")
-cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0] + '_' + 'D4-STIM8HR'
+cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0] + '_' + 'D2-STIM48HR'
 cur_data.adata.obs['perturbation_name'] = cur_data.adata.obs['cell_barcode'] + '_' + cur_data.adata.obs['lane_id'].astype(str)
 
 # %% Add guide RNA information
@@ -160,7 +160,7 @@ cur_data.create_columns(
         "treatment_label": "anti-CD3 antibody|anti-CD28 antibody|anti-CD2 antibody",
         "treatment_id": "EFO:0003317|EFO:0003304|NCIT:C184729",
         # replicates
-        "biological_replicate": "D4_CE0006864",
+        "biological_replicate": "D2_CE0010866",
         # model system
         "model_system_label": "primary_cell",
         "model_system_id": None,
@@ -171,7 +171,7 @@ cur_data.create_columns(
         "disease_label": "healthy",
         "disease_id": None,
 
-        "timepoint": "P12DT8H0M0S",
+        "timepoint": "P14DT0H0M0S",
         "species": "Homo sapiens",
         "sex_label": "male",
         "sex_id": None,
@@ -184,7 +184,7 @@ cur_data.create_columns(
         "first_author": "Ronghui Zhu",
         "last_author": "Alexander Marson",
 
-        "experiment_title": "Perturb-seq of primary human CD4-positive T cells for patient D4_CE0006864, stimulated for 8hr with ImmunoCult CD3/CD28/CD2 activator",
+        "experiment_title": "Perturb-seq of primary human CD4-positive T cells for patient D2_CE0010866, stimulated for 48hr with ImmunoCult CD3/CD28/CD2 activator",
         "experiment_summary": """
             Isolated human CD4-positive cells from four healthy donors were stimulated with ImmunoCult CD3/CD28/CD2 activator and sequentially transduced with dCas9-KRAB-Zim3 lentivirus (next morning after stimulation) and a Perturb-seq guide library (next afternoon after stimulation, MOI 0.2).
             The library consisted all genes expressed in human CD4+ T cells, all transcription factors annotated in the Lambert et al. (2018) and non-targeting controls totalling 12,748 genes.
@@ -279,9 +279,9 @@ cur_data.create_columns(
         "associated_datasets": json.dumps([
             {
                 "dataset_accession": "Primary Human CD4+ T Cell Perturb-seq",
-                "dataset_uri": "s3://genome-scale-tcell-perturb-seq/marson2025_data/D4_Stim8hr.assigned_guide.h5ad",
-                "dataset_description": "Cell expression profiles for cells from donor D4_CE0006864, stimulated for 8hr with ImmunoCult CD3/CD28/CD2 activator.",
-                "dataset_file_name": "D4_Stim8hr.assigned_guide.h5ad",
+                "dataset_uri": "s3://genome-scale-tcell-perturb-seq/marson2025_data/D2_Stim48hr.assigned_guide.h5ad",
+                "dataset_description": "Cell expression profiles for cells from donor D2_CE0010866, stimulated for 48hr with ImmunoCult CD3/CD28/CD2 activator.",
+                "dataset_file_name": "D2_Stim48hr.assigned_guide.h5ad",
             }
         ])
     }
@@ -364,7 +364,7 @@ log("Parquet saved.")
 
 # %% Upload to BigQuery (commented out)
 upload_parquet_to_bq(
-    parquet_path='/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl_curated_metadata.parquet',
+    parquet_path='/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim48hr_cl_curated_metadata.parquet',
     bq_dataset_id='prj-ext-dev-pertcat-437314.perturb_seq',
     bq_table_name='metadata',
     key_columns=['dataset_id', 'sample_id'],
@@ -372,6 +372,6 @@ upload_parquet_to_bq(
 )
 
 # %% Upload to GC Storage (commented out)
-# !gcloud storage cp /hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
+# !gcloud storage cp /hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim48hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
 
 log("=== Curation complete ===")

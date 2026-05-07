@@ -1,6 +1,7 @@
 # %% Import
 import pandas as pd
 import json
+from datetime import datetime
 
 from curation_tools.curation_tools import (
     CuratedDataset,
@@ -23,12 +24,17 @@ logging.basicConfig(
 )
 pd.set_option('display.max_columns', None)
 
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+log("=== zhu_2025_D2_stim8hr_cl curation started ===")
+
 # %% Download data
 # Download the data from AWS as such:
 # !aws s3 cp --no-sign-request s3://genome-scale-tcell-perturb-seq/marson2025_data/{name_of_the_file}.h5ad ..aa/non_curated/h5ad/{name_of_the_file}.h5ad
 
 # %% Initialise the dataset object
-noncurated_path = '../non_curated/h5ad/zhu_2025_D2_stim8hr_cl.h5ad'
+noncurated_path = '/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim8hr_cl.h5ad'
 cur_data = CuratedDataset(
     obs_schema=ObsSchema,
     var_schema=VarSchema,
@@ -36,21 +42,24 @@ cur_data = CuratedDataset(
     noncurated_path=noncurated_path
 )
 
+log(f"Loading data from {noncurated_path}...")
 cur_data.load_data()
+log(f"Data loaded: {cur_data.adata.n_obs} cells, {cur_data.adata.n_vars} vars")
 
 # %% OBS slot curation
 # Since for multi-guide perturbations the identities of said guides are unknown,
 # we are filtering out these cells.
-print(f"Number of cells before filtering: {cur_data.adata.n_obs}")
+log(f"Filtering multi_sgRNA cells (before: {cur_data.adata.n_obs} cells)...")
 cur_data.adata = cur_data.adata[cur_data.adata.obs['guide_id'] != 'multi_sgRNA']
-print(f"Number of cells after filtering: {cur_data.adata.n_obs}")
+log(f"Filtering done (after: {cur_data.adata.n_obs} cells)")
 
 # %% Add index as perturbation_name
-cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0]
+log("Adding perturbation_name...")
+cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0] + '_' + 'D2-STIM8HR'
 cur_data.adata.obs['perturbation_name'] = cur_data.adata.obs['cell_barcode'] + '_' + cur_data.adata.obs['lane_id'].astype(str)
 
 # %% Add guide RNA information
-# Download the guide RNA spreadsheet
+log("Downloading guide RNA spreadsheet...")
 download_file(
     url="https://raw.githubusercontent.com/emdann/GWT_perturbseq_analysis_2025/refs/heads/master/metadata/suppl_tables/sgrna_library_metadata.suppl_table.csv",
     dest_path="../supplementary/zhu_2025_guide_info.csv"
@@ -64,19 +73,19 @@ guide_info_df['sgRNA'] = guide_info_df['sgRNA'].str.replace('1-Jun', 'JUN-1').st
 
 guide_info_df = guide_info_df.rename(columns={'seq': 'guide_sequence', 'sgRNA': 'guide_id'})
 
-guide_info_df
-
 # %% Check guide overlap
-print("Number of overlapping guides with cur_data:")
-cur_data.adata.obs['guide_id'].isin(guide_info_df['guide_id'].to_list()).value_counts()
+log(f"Checking guide overlap ({len(guide_info_df)} guides in reference)...")
+print(cur_data.adata.obs['guide_id'].isin(guide_info_df['guide_id'].to_list()).value_counts())
 
 # %% Merge guide info into obs
+log("Merging guide info into obs...")
 cur_data.adata.obs = cur_data.adata.obs.merge(guide_info_df, on='guide_id', how='left')
-print(f"Number of missing guide sequences: {cur_data.adata.obs['guide_sequence'].isna().sum()}")
+log(f"Merge done. Missing guide sequences: {cur_data.adata.obs['guide_sequence'].isna().sum()}")
 
 # %% Fix perturbed gene id/name types and set control labels
-cur_data.adata.obs['perturbed_gene_id'] = cur_data.adata.obs['perturbed_gene_id'].astype(str)
-cur_data.adata.obs['perturbed_gene_name'] = cur_data.adata.obs['perturbed_gene_name'].astype(str)
+log("Setting control labels...")
+cur_data.adata.obs['perturbed_gene_id'] = cur_data.adata.obs['perturbed_gene_id'].astype("string")
+cur_data.adata.obs['perturbed_gene_name'] = cur_data.adata.obs['perturbed_gene_name'].astype("string")
 
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_id'].isin(['NTC']), 'perturbed_gene_id'] = 'control_nontargeting'
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_name'].isin(['NTC']), 'perturbed_gene_name'] = 'control_nontargeting'
@@ -85,6 +94,7 @@ cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_id'].isna(), 'perturbe
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_name'].isna(), 'perturbed_gene_name'] = 'control_casonly'
 
 # %% Standardise perturbation targets
+log("Standardising perturbation target genes...")
 cur_data.standardize_genes(
     slot='obs',
     input_column='perturbed_gene_id',
@@ -94,6 +104,7 @@ cur_data.standardize_genes(
 
 # %% Manually replace some genes
 genes_to_replace = cur_data.adata.obs[cur_data.adata.obs['perturbed_target_symbol'].isna()]['perturbed_gene_name'].drop_duplicates().to_list()
+log(f"Manually replacing {len(genes_to_replace)} unmapped genes...")
 cols_to_replace = ['perturbed_target_ensg', 'perturbed_target_symbol', 'perturbed_target_biotype', 'perturbed_target_coord', 'perturbed_target_chromosome']
 gene_ont_col_mapping = {
     'ensembl_gene_id': 'perturbed_target_ensg',
@@ -109,9 +120,9 @@ for replacement_gene in genes_to_replace:
             .loc[cur_data.gene_ont['synonym'].isin([replacement_gene]), cols_to_replace]
         )[cols_to_replace].values[0]
         cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_name'].isin([replacement_gene]), cols_to_replace] = replacement
-        print(f"Replaced {replacement_gene} with {replacement}")
+        log(f"  Replaced {replacement_gene} with {replacement}")
     else:
-        print(f"No replacement found for {replacement_gene}")
+        log(f"  No replacement found for {replacement_gene}")
 
 # %% Replace non-mapped perturbed_target_symbol with original gene symbols
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_target_symbol'].isna(), 'perturbed_target_symbol'] = cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_target_symbol'].isna(), 'perturbed_gene_name'].values
@@ -123,15 +134,14 @@ cur_data.adata.obs.loc[(~cur_data.adata.obs['perturbed_target_ensg'].str.startsw
 cur_data.adata.obs['perturbed_target_number'] = 1
 
 # %% Encode chromosomes as integers
+log("Encoding chromosomes...")
 cur_data.chromosome_encoding()
-
-# %% Inspect chromosome encoding
-cur_data.adata.obs[['perturbation_name', 'perturbed_target_chromosome_encoding']]
 
 # %% Curate replicates
 cur_data.adata.obs = cur_data.adata.obs.rename(columns={'lane_id': 'technical_replicate'})
 
 # %% Add metadata
+log("Adding obs metadata columns...")
 cur_data.create_columns(
     overwrite=True,
     slot="obs",
@@ -163,7 +173,7 @@ cur_data.create_columns(
 
         "timepoint": "P12DT8H0M0S",
         "species": "Homo sapiens",
-        "sex_label": "female",
+        "sex_label": "male",
         "sex_id": None,
         "developmental_stage_label": "adult",
         "developmental_stage_id": None,
@@ -276,8 +286,10 @@ cur_data.create_columns(
         ])
     }
 )
+log("Obs metadata added.")
 
 # %% Curate tissue information
+log("Standardising ontology: tissue...")
 cur_data.standardize_ontology(
     input_column='tissue',
     column_type='term_name',
@@ -286,6 +298,7 @@ cur_data.standardize_ontology(
 )
 
 # %% Curate cell type information
+log("Standardising ontology: cell_type...")
 cur_data.standardize_ontology(
     input_column='cell_type_label',
     column_type='term_name',
@@ -294,6 +307,7 @@ cur_data.standardize_ontology(
 )
 
 # %% Curate disease information
+log("Standardising ontology: disease...")
 cur_data.standardize_ontology(
     input_column='disease_label',
     column_type='term_name',
@@ -302,12 +316,16 @@ cur_data.standardize_ontology(
 )
 
 # %% Match schema column order
+log("Matching schema column order...")
 cur_data.match_schema_columns(slot='obs')
 
 # %% Validate obs metadata
+log("Validating obs...")
 cur_data.validate_data(slot='obs', verbose=True)
+log("Obs validation done.")
 
 # %% Standardise genes in var
+log("Standardising var genes...")
 cur_data.standardize_genes(
     slot="var",
     input_column="gene_ids",
@@ -331,22 +349,29 @@ cur_data.adata.var.loc[
 cur_data.adata.var.loc[cur_data.adata.var['ensembl_gene_id'] == 'CUSTOM001_PuroR', 'ensembl_gene_id'] = None
 
 # %% Validate var metadata
+log("Validating var...")
 cur_data.validate_data(slot='var')
+log("Var validation done.")
 
 # %% Save the dataset
+log("Saving h5ad...")
 cur_data.save_curated_data_h5ad()
+log("h5ad saved.")
 
-# %%
+log("Saving parquet...")
 cur_data.save_curated_data_parquet(split_metadata=True, save_metadata_only=True)
+log("Parquet saved.")
 
 # %% Upload to BigQuery (commented out)
-# upload_parquet_to_bq(
-#     parquet_path='../curated/parquet/zhu_2025_D1_rest_cl_curated_metadata.parquet',
-#     bq_dataset_id='prj-ext-dev-pertcat-437314.perturb_seq',
-#     bq_table_name='metadata',
-#     key_columns=['dataset_id', 'sample_id'],
-#     verbose=True
-# )
+upload_parquet_to_bq(
+    parquet_path='/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim8hr_cl_curated_metadata.parquet',
+    bq_dataset_id='prj-ext-dev-pertcat-437314.perturb_seq',
+    bq_table_name='metadata',
+    key_columns=['dataset_id', 'sample_id'],
+    verbose=True
+)
 
 # %% Upload to GC Storage (commented out)
-# !gcloud storage cp ../curated/h5ad/zhu_2025_D2_stim8hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
+# !gcloud storage cp /hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D2_stim8hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
+
+log("=== Curation complete ===")
