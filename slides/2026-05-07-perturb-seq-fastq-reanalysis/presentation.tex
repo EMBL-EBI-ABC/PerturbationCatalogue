@@ -31,9 +31,9 @@
 
 \title{Re-processing Perturb-Seq datasets from FASTQ}
 \subtitle{First Results for the Unified Pipeline}
-\date{2026-04-28}
+\date{2026-05-07}
 \author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
-\institute{All Hands Meeting}
+\institute{Perturbation Catalogue Fortnightly Meeting}
 
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{footline}{%
@@ -109,11 +109,8 @@ nextflow run main.nf \
         \item The first full dataset has been processed: Nadig 2025 Jurkat.
         \item The comparison was run against the author-provided H5AD.
         \item Analysis compares shared cells and shared genes after barcode and gene-name alignment.
-        \item The main question: does the reprocessed dataset preserve expression signal, and how many guide calls match the original labels?
+        \item The main question: does the reprocessed dataset reasonably reproduce the expression and guide signals?
     \end{itemize}
-    \vspace{0.8em}
-    \centering
-    \textbf{Short answer:} expression alignment is excellent; guide recovery is currently limited by strict dual-probe calling.
 \end{frame}
 
 \begin{frame}{First Dataset: Scale and Runtime}
@@ -138,47 +135,6 @@ nextflow run main.nf \
             \end{itemize}
         \end{column}
     \end{columns}
-\end{frame}
-
-\begin{frame}{Expression Agreement: Summary}
-    \centering
-    \begin{tabular}{lc}
-        \toprule
-        \textbf{Metric} & \textbf{Pearson r} \\
-        \midrule
-        Total UMI counts per cell & 0.9997 \\
-        Detected genes per cell & 0.9999 \\
-        Mean expression per gene & 0.9588 \\
-        Gene dropout rate & 0.9598 \\
-        \bottomrule
-    \end{tabular}
-    \vspace{1.0em}
-    \begin{itemize}
-        \item Cell-level expression metrics are almost identical to the author-processed dataset.
-        \item Gene-level expression and dropout also show strong agreement.
-        \item The main total-count difference is scale, not loss of biological structure.
-    \end{itemize}
-\end{frame}
-
-\begin{frame}{Expression Vectors Are Preserved}
-    \begin{itemize}
-        \item For each shared cell, the comparison takes the curated and reprocessed expression vectors over the same shared genes.
-        \item It then computes a Pearson correlation between those two vectors for that cell.
-        \item This is done on a random sample of up to 10,000 shared cells after the same preprocessing.
-    \end{itemize}
-    \vspace{1.0em}
-    \centering
-    \begin{tabular}{lc}
-        \toprule
-        \textbf{Cell-wise expression vector correlation} & \textbf{Pearson r} \\
-        \midrule
-        Median across sampled cells & 0.9597 \\
-        Mean across sampled cells & 0.9594 \\
-        \bottomrule
-    \end{tabular}
-    \vspace{1.0em}
-
-    \textbf{Interpretation:} the same cells have very similar expression profiles after reprocessing.
 \end{frame}
 
 \begin{frame}{Cell-Level Expression Agreement}
@@ -207,52 +163,41 @@ nextflow run main.nf \
     \end{columns}
 \end{frame}
 
-\begin{frame}{Guide Recovery: Current Result}
+\begin{frame}{Expression Vectors Are Preserved}
     \begin{itemize}
-        \item The comparison uses a strict guide call: two positive guides, both targeting the same gene, with at least 5 counts each.
-        \item Under this rule, the reprocessed data recovers 164,757 of 214,522 curated dual-guide cells.
-        \item Guide-call agreement: \textbf{76.80\%}.
-        \item The missing calls are mostly cells where only one of the two curated probes is picked up strongly enough.
+        \item For each shared cell, we compare the original and reprocessed expression vectors over the same genes.
+        \item The histogram shows the distribution of Pearson correlation values for a sample of 10,000 cells.
     \end{itemize}
-    \vspace{0.8em}
+    \vspace{0.5em}
     \centering
-    \textbf{Interpretation:} current guide recovery is about guide calling behaviour, not a failure of the expression pipeline.
+    \includegraphics[width=0.7\linewidth,height=0.6\textheight,keepaspectratio]{pearson_per_cell.png}
 \end{frame}
 
-\begin{frame}{Guide Signal Diagnostics}
-    \centering
-    \begin{tabular}{lrrr}
-        \toprule
-        \textbf{Threshold} & \textbf{Both curated probes} & \textbf{Exactly one probe} & \textbf{Neither probe} \\
-        \midrule
-        $\geq$ 1 count & 173,043 & 41,332 & 147 \\
-        $\geq$ 2 counts & 170,245 & 44,038 & 239 \\
-        $\geq$ 5 counts & 164,752 & 46,288 & 3,482 \\
-        $\geq$ 10 counts & 158,854 & 47,254 & 8,414 \\
-        \bottomrule
-    \end{tabular}
-    \vspace{1.0em}
+\begin{frame}{Guide Recovery: Mixture Model Approach}
     \begin{itemize}
-        \item These counts are for curated guide-labelled shared cells.
-        \item The threshold alone is not the main issue: even at 1 count, many cells still have only one of the two curated probes detected.
-        \item We should test an alternative guide-calling rule that rescues a cell when one guide unambiguously points to the construct being present, and no other guide gives a conflicting signal.
+        \item We use a \textbf{Gaussian-Poisson mixture model} to separate guide signal from background.
+        \item The background is modeled as a Poisson distribution, while the true signal follows a Gaussian distribution.
+        \item The decision threshold is automatically set at the crossover point where the probability of signal becomes higher than background.
+        \item Cells are assigned a guide if at least one probe targets the gene and passes this threshold.
+        \item Result: \textbf{205,457 / 214,522 (95.8\%)} of cells match the original study assignments.
     \end{itemize}
 \end{frame}
 
 \begin{frame}{What We Have Now}
     \begin{itemize}
-        \item A working, reproducible FASTQ-to-H5AD pipeline for perturb-seq datasets with GEX and guide modalities.
+        \item A working, reproducible FASTQ-to-H5AD pipeline for perturb-seq datasets.
+        \item Both expression and guide calling are solved with very good alignment to original data.
         \item A comparison workflow that checks cell-level expression, gene-level expression, dropout, and perturbation labels.
-        \item First results showing very strong expression agreement with the author-processed data.
-        \item A clear guide-calling question to tune next: how should we handle cells where one guide is strong and the second is weak or missing?
+        \item Pipeline is ready to scale to other datasets in the catalogue.
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Next Steps}
     \begin{itemize}
-        \item \textbf{Guide recovery:} Test alternative guide-calling logic, including one-guide rescue when the signal is unambiguous.
-        \item \textbf{Scale-out:} Run the pipeline on all available perturb-seq datasets.
+        \item \textbf{Parameter fine-tuning:} Optimizing the mixture model components for better signal separation.
+        \item \textbf{Scale-out:} Start running the pipeline for all other available perturb-seq datasets.
         \item \textbf{Downstream analysis:} Run distance metrics between genes, plus the existing DEA and GSEA workflows.
+        \item \textbf{Feedback:} This meeting is the last opportunity for feedback before we begin full-scale processing.
     \end{itemize}
 \end{frame}
 
