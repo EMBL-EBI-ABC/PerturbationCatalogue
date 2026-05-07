@@ -449,6 +449,11 @@ def call_guides(
         if len(positive_idx) == 0:
             calls.append("None")
         elif require_dual_same_target:
+            # If there is exactly one guide above threshold, accept it as a single-guide cell.
+            if len(positive_idx) == 1:
+                calls.append(guide_names[positive_idx[0]])
+                continue
+
             candidate_pairs = []
             entries = list(zip(positive_idx, positive_counts))
             for left_pos, (left_idx, left_count) in enumerate(entries):
@@ -491,7 +496,7 @@ def call_guides(
         "n_cells_with_two_or_more_positive_guides": int(
             (positive_guide_counts >= 2).sum()
         ),
-        "n_cells_with_dual_same_target_call": int((calls != "None").sum()),
+        "n_cells_with_valid_call": int((calls != "None").sum()),
         "positive_guide_count_distribution": {
             str(int(count)): int(freq) for count, freq in zip(count_values, count_freqs)
         },
@@ -532,7 +537,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             f"  Curated cells with guides: {valid_cur.sum()} / {len(common_cells)} ({valid_cur.mean():.1%})"
         )
         print(
-            "  Reprocessed cells with valid dual same-target guide calls: "
+            "  Reprocessed cells with valid same-target pair or single guide calls: "
             f"{valid_rep.sum()} / {len(common_cells)} ({valid_rep.mean():.1%})"
         )
         print("  Reprocessed guide matrix diagnostics:")
@@ -560,7 +565,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             adata_rep, common_cells, p_cur, valid_cur, valid_rep
         )
         print(
-            "  Curated-guide cells missing a valid Reprocessed dual same-target call: "
+            "  Curated-guide cells missing a valid Reprocessed same-target pair or single call: "
             f"{missing_rep.sum()} / {n_valid_cur} ({missing_rate:.1%})"
         )
         print(
@@ -605,9 +610,9 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         )
 
         desc = (
-            "Columns are original study / Curated guide-pair assignments; rows are Reprocessed dual same-target calls. "
+            "Columns are original study / Curated guide-pair assignments; rows are Reprocessed same-target pair or single guide calls. "
             "Each tile is the number of shared cells with that assignment pair. "
-            "The diagonal is exact guide-pair agreement; the Reprocessed 'None' row contains cells where no valid dual same-target call passed the count threshold."
+            "The diagonal is exact guide-pair agreement; the Reprocessed 'None' row contains cells where no valid call passed the count threshold."
         )
         wrapped_desc = "\n".join(textwrap.wrap(desc, width=110))
         plt.title(
