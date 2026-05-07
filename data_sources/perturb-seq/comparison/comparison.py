@@ -410,20 +410,112 @@ def curated_guide_count_diagnostics(
     }
 
 
+def fit_poisson_gaussian_mixture(counts, max_iter=100, tol=1e-4):
+    """Fits a 2-component mixture (Poisson bg, Gaussian sig) on non-zero UMI counts."""
+    vals, freqs = np.unique(counts, return_counts=True)
+
+    threshold_init = np.percentile(counts, 90)
+    sig_mask = vals >= threshold_init
+    bg_mask = vals < threshold_init
+
+    if sig_mask.sum() == 0 or bg_mask.sum() == 0:
+        sig_mask = vals >= np.median(vals)
+        bg_mask = ~sig_mask
+
+    pi_bg = np.sum(freqs[bg_mask]) / np.sum(freqs)
+    lambda_ = np.average(vals[bg_mask], weights=freqs[bg_mask])
+    mu = np.average(vals[sig_mask], weights=freqs[sig_mask])
+    var_sig = np.average((vals[sig_mask] - mu) ** 2, weights=freqs[sig_mask])
+    sigma = np.sqrt(var_sig) if var_sig > 0 else 1.0
+
+    lambda_ = max(lambda_, 0.1)
+    sigma = max(sigma, 1.0)
+
+    log_likelihood = -np.inf
+    W_sig = np.zeros_like(vals, dtype=float)
+    W_bg = np.ones_like(vals, dtype=float)
+
+    for i in range(max_iter):
+        L_bg = stats.poisson.pmf(vals, mu=lambda_)
+        L_sig = stats.norm.pdf(vals, loc=mu, scale=sigma)
+
+        Z_bg = pi_bg * L_bg
+        Z_sig = (1 - pi_bg) * L_sig
+        Z_total = Z_bg + Z_sig
+        Z_total[Z_total == 0] = 1e-12
+
+        W_bg = Z_bg / Z_total
+        W_sig = Z_sig / Z_total
+
+        N_bg = np.sum(freqs * W_bg)
+        N_sig = np.sum(freqs * W_sig)
+
+        if N_bg > 0:
+            pi_bg = N_bg / np.sum(freqs)
+            lambda_ = np.sum(freqs * W_bg * vals) / N_bg
+        if N_sig > 0:
+            mu = np.sum(freqs * W_sig * vals) / N_sig
+            var_sig = np.sum(freqs * W_sig * (vals - mu) ** 2) / N_sig
+            sigma = np.sqrt(var_sig) if var_sig > 0 else 0.1
+
+        lambda_ = max(lambda_, 0.1)
+        sigma = max(sigma, 0.1)
+
+        new_log_likelihood = np.sum(freqs * np.log(Z_total))
+        if np.abs(new_log_likelihood - log_likelihood) < tol:
+            break
+        log_likelihood = new_log_likelihood
+
+    crossover_vals = vals[W_sig > W_bg]
+    if len(crossover_vals) > 0 and mu > lambda_:
+        decision_threshold = max(2, int(np.min(crossover_vals)))
+    else:
+        decision_threshold = 5
+
+    return {
+        "pi_bg": float(pi_bg),
+        "lambda_bg": float(lambda_),
+        "mu_sig": float(mu),
+        "sigma_sig": float(sigma),
+        "decision_threshold": decision_threshold,
+    }
+
+
 def call_guides(
     adata,
+    method="mixture",
     count_threshold=5,
     require_dual_same_target=True,
     max_guides=2,
     return_diagnostics=False,
 ):
-    """Call guides, optionally requiring two above-threshold guides to the same target."""
+    """Call guides using either a fixed threshold or a Poisson-Gaussian mixture model."""
     if "guides" not in adata.obsm:
         return (None, None) if return_diagnostics else None
 
     guide_matrix = adata.obsm["guides"]
     if sp.issparse(guide_matrix):
         guide_matrix = guide_matrix.tocsr()
+
+    if method == "mixture":
+        if sp.issparse(guide_matrix):
+            non_zeros = guide_matrix.data
+        else:
+            non_zeros = guide_matrix[guide_matrix > 0]
+
+        if len(non_zeros) > 0:
+            mixture_res = fit_poisson_gaussian_mixture(non_zeros)
+            count_threshold = mixture_res["decision_threshold"]
+            print(f"  [Guide Calling] Fitted Poisson-Gaussian mixture:")
+            print(
+                f"    Background Lambda: {mixture_res['lambda_bg']:.2f}, Signal Mu: {mixture_res['mu_sig']:.2f}"
+            )
+            print(f"    Dynamic Threshold derived: >= {count_threshold} UMIs")
+        else:
+            print(
+                "  [Guide Calling] No non-zero guides found, defaulting to threshold 5."
+            )
+            count_threshold = 5
 
     guide_names = np.array(
         adata.uns.get(
