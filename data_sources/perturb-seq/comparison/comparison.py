@@ -986,3 +986,198 @@ display(
         ]
     )
 )
+
+# ==============================================================================
+# 4. SUPPLEMENTARY VISUALIZATIONS (For Jupyter Notebook / Panel Presentation)
+# ==============================================================================
+# The following code block is designed to be copy-pasted into a new Jupyter Cell.
+# It assumes the main execution block above has already run and variables like
+# `cur_sub`, `rep_sub`, and `cell_corrs` are in memory.
+
+import os
+import scipy.sparse as sp
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy import stats
+import scanpy as sc
+
+os.makedirs("comparison_results/supplementary", exist_ok=True)
+
+# ------------------------------------------------------------------------------
+# Graph 1: Distribution of Cell-wise Correlations
+# ------------------------------------------------------------------------------
+print("Generating Cell-wise Correlation Distribution...")
+plt.figure(figsize=(9, 6))
+sns.histplot(cell_corrs, bins=100, kde=True, color="purple", alpha=0.4)
+median_val = np.nanmedian(cell_corrs)
+plt.axvline(
+    median_val,
+    color="red",
+    linestyle="dashed",
+    linewidth=2,
+    label=f"Median: {median_val:.3f}",
+)
+plt.title(
+    "Preservation of Single-Cell Identity\n(Cell-wise Pearson Correlation)",
+    fontsize=16,
+    fontweight="bold",
+    pad=15,
+)
+plt.xlabel("Pearson Correlation (Original vs Reprocessed cell)", fontsize=12)
+plt.ylabel("Number of Cells", fontsize=12)
+plt.legend()
+desc1 = (
+    "This distribution shows the correlation of the full expression profile for "
+    "each individual cell against its exact counterpart in the reprocessed dataset. "
+    "A strong peak near 1.0 confirms that single-cell identities are highly preserved."
+)
+plt.figtext(
+    0.5,
+    -0.05,
+    desc1,
+    wrap=True,
+    horizontalalignment="center",
+    fontsize=10,
+    style="italic",
+)
+plt.tight_layout(rect=[0, 0.08, 1, 1])
+plt.savefig(
+    "comparison_results/supplementary/cellwise_correlation_dist.png",
+    bbox_inches="tight",
+    dpi=300,
+)
+plt.show()
+
+# ------------------------------------------------------------------------------
+# Graph 2: Principal Component Alignment Heatmap
+# ------------------------------------------------------------------------------
+print("Calculating PCA for Structural Alignment...")
+# Calculate PCA independently for both datasets to ensure structure is inherent
+sc.tl.pca(cur_sub, n_comps=10)
+sc.tl.pca(rep_sub, n_comps=10)
+
+pc_corr = np.zeros((10, 10))
+for i in range(10):
+    for j in range(10):
+        # We use absolute correlation because the sign (direction) of a PC is arbitrary
+        corr, _ = stats.pearsonr(
+            cur_sub.obsm["X_pca"][:, i], rep_sub.obsm["X_pca"][:, j]
+        )
+        pc_corr[i, j] = np.abs(corr)
+
+plt.figure(figsize=(9, 7))
+sns.heatmap(
+    pc_corr,
+    annot=True,
+    cmap="YlGnBu",
+    fmt=".2f",
+    vmin=0,
+    vmax=1,
+    xticklabels=[f"Rep PC{i+1}" for i in range(10)],
+    yticklabels=[f"Cur PC{i+1}" for i in range(10)],
+)
+plt.title(
+    "Latent Structural Integrity\n(Alignment of Top 10 Principal Components)",
+    fontsize=16,
+    fontweight="bold",
+    pad=15,
+)
+desc2 = (
+    "Absolute Pearson correlation between the top 10 independent Principal Components of "
+    "both datasets. A strong diagonal demonstrates that the global biological covariance "
+    "structure and major axes of variation remain intact."
+)
+plt.figtext(
+    0.5,
+    -0.05,
+    desc2,
+    wrap=True,
+    horizontalalignment="center",
+    fontsize=10,
+    style="italic",
+)
+plt.tight_layout(rect=[0, 0.08, 1, 1])
+plt.savefig(
+    "comparison_results/supplementary/pca_alignment_heatmap.png",
+    bbox_inches="tight",
+    dpi=300,
+)
+plt.show()
+
+# ------------------------------------------------------------------------------
+# Graph 3: Gene Variance (Dispersion) Scatter Plot
+# ------------------------------------------------------------------------------
+print("Calculating Gene Variances...")
+
+
+def calc_variance(matrix):
+    if sp.issparse(matrix):
+        # E[X^2] - (E[X])^2 for sparse matrices to avoid dense memory explosion
+        mean = matrix.mean(axis=0).A.squeeze()
+        sq_mean = matrix.multiply(matrix).mean(axis=0).A.squeeze()
+        return sq_mean - (mean**2)
+    else:
+        return np.var(matrix, axis=0)
+
+
+cur_var = calc_variance(cur_sub.X)
+rep_var = calc_variance(rep_sub.X)
+
+plt.figure(figsize=(9, 9))
+# Add 1e-4 pseudocount for log-scale plotting
+plt.scatter(cur_var + 1e-4, rep_var + 1e-4, alpha=0.3, s=15, color="darkgreen")
+
+# Identity line
+min_val = min(np.min(cur_var), np.min(rep_var)) + 1e-4
+max_val = max(np.max(cur_var), np.max(rep_var)) + 1e-4
+plt.plot(
+    [min_val, max_val], [min_val, max_val], "r--", linewidth=2, label="Identity (y=x)"
+)
+
+pearson_var, _ = stats.pearsonr(cur_var, rep_var)
+spearman_var, _ = stats.spearmanr(cur_var, rep_var)
+
+plt.xscale("log")
+plt.yscale("log")
+plt.title(
+    "Statistical Noise Preservation\n(Gene Variance Comparison)",
+    fontsize=16,
+    fontweight="bold",
+    pad=35,
+)
+plt.text(
+    0.5,
+    1.02,
+    f"Pearson r = {pearson_var:.4f} | Spearman rho = {spearman_var:.4f}",
+    transform=plt.gca().transAxes,
+    ha="center",
+    va="bottom",
+    fontsize=12,
+    style="italic",
+)
+plt.xlabel("Gene Variance in Original Data (+ 1e-4)", fontsize=13)
+plt.ylabel("Gene Variance in Reprocessed Data (+ 1e-4)", fontsize=13)
+plt.legend(loc="upper left")
+
+desc3 = (
+    "Compares the variance of each gene across all cells. High correlation indicates "
+    "that the biological overdispersion and noise characteristics required for rigorous "
+    "differential expression modeling (like DESeq2/TRADE) are fully preserved."
+)
+plt.figtext(
+    0.5,
+    -0.05,
+    desc3,
+    wrap=True,
+    horizontalalignment="center",
+    fontsize=10,
+    style="italic",
+)
+plt.tight_layout(rect=[0, 0.08, 1, 1])
+plt.savefig(
+    "comparison_results/supplementary/gene_variance_scatter.png",
+    bbox_inches="tight",
+    dpi=300,
+)
+plt.show()
