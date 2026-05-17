@@ -13,7 +13,7 @@ tar -xzf sratoolkit.current-ubuntu64.tar.gz
 rm sratoolkit.current-ubuntu64.tar.gz
 ```
 
-In your `~/.bashrc` / `~/.bash_profile`, add `$HPS_PATH/software/sratoolkit.3.3.0-ubuntu64/bin` to your PATH.
+In your `~/.bashrc` / `~/.bash_profile`, add `$HPS_PATH/software/sratoolkit.3.4.1-ubuntu64/bin` to your PATH.
 
 Configure cache settings:
 1. Run vdb-config -i
