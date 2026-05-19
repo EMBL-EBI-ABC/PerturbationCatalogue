@@ -190,28 +190,25 @@ def get_dois_from_mavedb_entry(entry, log: bool = True) -> list[str] | None:
     Returns:
     - A list of DOIs if found, otherwise None.
     """
-    # The location of doi in the entry may vary, so we need to check multiple places
-    doi1 = entry.get("doiIdentifiers", [])
-    doi2 = entry.get("primaryPublicationIdentifiers", [])
-    doi3 = entry.get('experiment', {}).get('primaryPublicationIdentifiers', [])
-    dois = set()
-    if len(doi1) > 0:
-        for e in doi1:
-            doi = e.get('identifier', None)
-            if doi:
-                dois.add(doi)
-    if len(doi2) > 0:
-        for e in doi2:
-            doi = e.get('doi', None)
-            if doi:
-                dois.add(doi)
-    if len(doi3) > 0:
-        for e in doi3:
-            doi = e.get('doi', None)
-            if doi:
-                dois.add(doi)
+    # MaveDB places publication identifiers in a few different fields depending on record type.
+    experiment = entry.get("experiment") or {}
+    doi_sources = (
+        (entry.get("doiIdentifiers") or [], "identifier"),
+        (entry.get("primaryPublicationIdentifiers") or [], "doi"),
+        (entry.get("secondaryPublicationIdentifiers") or [], "doi"),
+        (experiment.get("primaryPublicationIdentifiers") or [], "doi"),
+        (experiment.get("secondaryPublicationIdentifiers") or [], "doi"),
+    )
+    dois = sorted(
+        {
+            doi
+            for identifiers, field_name in doi_sources
+            for identifier in identifiers
+            if isinstance(identifier, dict)
+            if (doi := identifier.get(field_name))
+        }
+    )
     if dois:
-        dois = sorted(dois)
         if log:
             print_status_block(
                 "MaveDB publication identifiers found",
