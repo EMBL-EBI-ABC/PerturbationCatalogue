@@ -37,53 +37,57 @@ mv ~/kb_python.sif $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipe
 
 ## Run (for every individual dataset)
 
-### 1. Generate the Guide Whitelist (`features.tsv`)
-Extract guide sequences from the authors' supplementary data.
+For each dataset, add a dataset-specific script under `datasets/<dataset_or_group>/` that produces:
+
+- `<dataset>_features.tsv`: headerless TSV with a 20 bp guide sequence and probe name.
+- `<dataset>_samples.tsv`: TSV with `sample_id`, `mRNA_srrs`, and `sgRNA_srrs`. SRR lists are semicolon-separated. It is important to group all runs for a given sample into one row. The grouping is usually clear from the `library_name` field, which is a bit different from dataset to dataset, but includes a clearly identifiable sample name. It is this sample name which the dataset-specific script must extract. 
+
+Then, run the script to generate the inputs (in this example for nadig_2025 dataset group):
 
 ```bash
 cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
-
-python3 generate_features_nadig.py \
-  ../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx \
-  $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
+python3 datasets/nadig_2025/generate_inputs.py
 ```
 
-### 2. Fetch ENA Metadata
-This is required for the pipeline to correctly group FASTQs by physical sample.
+This will produce the $FEATURES_PATH and $SAMPLE_SHEET_PATH files in the same directory as the script.
 
+### 1. Set up pipeline parameters
 ```bash
-curl -s "https://www.ebi.ac.uk/ena/portal/api/filereport?accession=SAMN40972597&result=read_run&fields=run_accession,library_name,fastq_ftp&format=tsv" \
-  > $HPS_PATH/perturb_seq_fastq/SAMN40972597/ena_metadata.tsv
+# Dataset
+export DATASET_ID=nadig_2025_jurkat
+export FEATURES_PATH=datasets/nadig_2025/jurkat_features.tsv
+export SAMPLE_SHEET_PATH=datasets/nadig_2025/jurkat_samples.tsv
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN40972597
+export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
+# Chemistry
+export CHEMISTRY=10xv3
+# Reference
+export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 ```
 
-### 3. Run the Pipeline
-The pipeline will automatically identify samples by their primary group (e.g., `8`) and process mRNA and sgRNA modalities in parallel before merging and concatenating with unique barcode suffixes (e.g., `BARCODE-8`).
+### 2. Run the pipeline
 
 ```bash
 module load nextflow/25.04.6
-
-# Run the pipeline head process via srun
 time srun --mem=16G --time=7-00:00:00 --unbuffered \
   nextflow run main.nf \
     -profile slurm,singularity \
-    --fastq_dir $HPS_PATH/perturb_seq_fastq/SAMN40972597 \
-    --metadata_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/ena_metadata.tsv \
-    --outdir $HPS_PATH/perturb_seq_fastq/results \
-    --chemistry 10xv3 \
-    --transcriptome_fa $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
-    --gtf $HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz \
-    --features_tsv $HPS_PATH/perturb_seq_fastq/SAMN40972597/features.tsv
+    --fastq_dir $FASTQ_DIR_PATH \
+    --sample_sheet $SAMPLE_SHEET_PATH \
+    --features_tsv $FEATURES_PATH
+    --transcriptome_fa $TRANSCRIPTOME_FA \
+    --gtf $GTF \
+    --chemistry $CHEMISTRY \
+    --outdir $OUTPUT_DIR
 ```
 
-## Outputs
+## Details
+
+### Processing and merging logic
+KITE guide counts are merged from `counts_unfiltered`, then aligned to the filtered mRNA cell barcodes. This avoids independently filtering the guide barcode universe before mRNA/guide alignment. For 10xv3 chemistry, sgRNA-library cell barcodes are first corrected by complementing bases 8-9 before alignment to the mRNA barcodes; the per-sample diagnostics report both raw and corrected barcode overlap.
+
+### Outputs
 - `results/merged_samples/`: Individual H5AD files for each physical 10x well.
 - `results/merged_samples/*_guide_diagnostics.json`: Per-sample KITE barcode overlap and guide UMI diagnostics.
 - `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
-
-KITE guide counts are merged from `counts_unfiltered`, then aligned to the filtered mRNA cell barcodes. This avoids independently filtering the guide barcode universe before mRNA/guide alignment. For this dataset, sgRNA-library cell barcodes are first corrected by complementing bases 8-9 before alignment to the mRNA barcodes; the per-sample diagnostics report both raw and corrected barcode overlap.
-
-## Understanding the "Sample ID" logic
-The ENA libraries use the notation `jurkat_<modality>_<sample_group>_<sub_sample>_L<lane>`.
-Example: `jurkat_mRNA_8_4_L004` vs `jurkat_sgRNA_8_1_L001`.
-
-The pipeline identifies **`8`** as the unique Sample ID (the main well or condition pool). It aggregates all sub-samples (`8_1`, `8_4`) and lanes for that specific group and ensures mRNA and sgRNA are merged correctly for that physical pool of cells. During the final concatenation, barcodes are suffixed with `-8` to prevent collisions with other pools (e.g., `1`).
