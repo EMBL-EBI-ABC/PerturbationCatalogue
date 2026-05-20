@@ -84,6 +84,52 @@ export CHEMISTRY=10xv3
 export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
 export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 ```
+
+#### replogle_2022_k562_essential_normalized
+```bash
+# Dataset
+export DATASET_ID=replogle_2022_k562_essential_normalized
+export FEATURES_PATH=datasets/replogle_2022/replogle_2022_k562_essential_normalized_features.tsv
+export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_k562_essential_normalized_samples.tsv
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561243
+export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
+# Chemistry
+export CHEMISTRY=10xv3
+# Reference
+export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
+```
+
+#### replogle_2022_rpe1_essential_normalized
+```bash
+# Dataset
+export DATASET_ID=replogle_2022_rpe1_essential_normalized
+export FEATURES_PATH=datasets/replogle_2022/replogle_2022_rpe1_essential_normalized_features.tsv
+export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_rpe1_essential_normalized_samples.tsv
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561244
+export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
+# Chemistry
+export CHEMISTRY=10xv3
+# Reference
+export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
+```
+
+#### replogle_2022_k562_gw_normalized
+```bash
+# Dataset
+export DATASET_ID=replogle_2022_k562_gw_normalized
+export FEATURES_PATH=datasets/replogle_2022/replogle_2022_k562_gw_normalized_features.tsv
+export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_k562_gw_normalized_samples.tsv
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561242
+export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
+# Chemistry
+export CHEMISTRY=10xv3
+# Reference
+export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
+```
+
 ### 3. Run the pipeline
 
 ```bash
