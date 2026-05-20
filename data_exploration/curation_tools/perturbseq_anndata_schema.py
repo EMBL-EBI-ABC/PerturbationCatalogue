@@ -418,6 +418,7 @@ class ObsSchema(DataFrameModel):
             "Illumina HiSeq 4000",
             "Illumina HiSeq 2500",
             "Illumina HiSeq 2000",
+            "Illumina MiSeq",
             "Illumina NovaSeq 6000",
             "Illumina NextSeq 500",
             "Ultima Genomics UG100",
