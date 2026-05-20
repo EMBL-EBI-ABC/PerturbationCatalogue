@@ -136,8 +136,11 @@ export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
 module load nextflow/25.04.6
 time srun --mem=16G --time=7-00:00:00 --unbuffered \
-  nextflow run main.nf \
+  nextflow -log logs/${DATASET_ID}.nextflow.log \
+    run main.nf \
     -profile slurm,singularity \
+    -name $DATASET_ID \
+    -work-dir work/$DATASET_ID \
     --fastq_dir $FASTQ_DIR_PATH \
     --sample_sheet $SAMPLE_SHEET_PATH \
     --features_tsv $FEATURES_PATH \
