@@ -37,6 +37,8 @@ mv ~/kb_python.sif $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipe
 
 ## Run (for every individual dataset)
 
+### 1. Prepare probe whitelist and sample sheet
+
 For each dataset, add a dataset-specific script under `datasets/<dataset_or_group>/` that produces:
 
 - `<dataset>_features.tsv`: headerless TSV with a 20 bp guide sequence and probe name.
@@ -51,7 +53,7 @@ python3 datasets/nadig_2025/generate_inputs.py
 
 This will produce the $FEATURES_PATH and $SAMPLE_SHEET_PATH files in the same directory as the script.
 
-### 1. Set up pipeline parameters
+### 2. Set up pipeline parameters
 ```bash
 # Dataset
 export DATASET_ID=nadig_2025_jurkat
@@ -66,9 +68,10 @@ export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primar
 export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 ```
 
-### 2. Run the pipeline
+### 3. Run the pipeline
 
 ```bash
+cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipeline
 module load nextflow/25.04.6
 time srun --mem=16G --time=7-00:00:00 --unbuffered \
   nextflow run main.nf \
