@@ -47,14 +47,22 @@ To download data for a dataset:
 3. `cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/fastq`
 4. Start data download, example:
 ```bash
-while read -r SAMPLE_ID; do
-  echo "Starting ${SAMPLE_ID}"
+while read -r SAMPLE_ID <&3; do
+  echo "Submitting ${SAMPLE_ID}"
 
-  time srun --cpus-per-task 64 --mem-per-cpu 2G --time 7-00:00:00 --unbuffered \
-    python3 ena_download.py \
-    --sample-id "${SAMPLE_ID}" \
-    --out-dir "$HPS_PATH/perturb_seq_fastq" \
-    --jobs 64
+  sbatch \
+    --cpus-per-task=96 \
+    --mem-per-cpu=2G \
+    --time=7-00:00:00 \
+    --job-name="ena_${SAMPLE_ID}" \
+    --output="logs/${SAMPLE_ID}.out" \
+    --error="logs/${SAMPLE_ID}.err" \
+    --wrap="
+      python3 ena_download.py \
+        --sample-id ${SAMPLE_ID} \
+        --out-dir $HPS_PATH/perturb_seq_fastq \
+        --jobs 96
+    "
 
-done < samples.txt
+done 3< samples.txt
 ```
