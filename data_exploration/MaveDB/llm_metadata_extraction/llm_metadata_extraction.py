@@ -455,7 +455,7 @@ def _extract_metadata_for_prompt_context(
     client = instructor.from_provider(
         model_name,
         location='global',
-        vertexai=True,
+        enterprise=True,
     )
     extraction_response = client.create(
         response_model=MavedbMetadataExtractionSchema,
