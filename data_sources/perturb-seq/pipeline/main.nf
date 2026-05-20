@@ -6,8 +6,7 @@ nextflow.enable.dsl=2
 // PIPELINE PARAMETERS
 // =============================================================================
 params.fastq_dir = null
-params.metadata_tsv = null
-params.sample_sheet = "samples.csv"
+params.sample_sheet = null
 params.outdir = "results"
 params.chemistry = "10xv3"
 params.limit = 0
@@ -22,26 +21,6 @@ params.features_tsv = null
 // =============================================================================
 // PROCESSES
 // =============================================================================
-
-/**
- * Parses ENA metadata to group SRRs into logical libraries (samples).
- * This ensures mRNA and sgRNA from the same physical well are paired correctly.
- */
-process PREPARE_SAMPLES {
-    executor 'local'
-    
-    input:
-    path metadata_tsv
-    path fastq_dir
-
-    output:
-    path "samples.csv"
-
-    script:
-    """
-    python3 ${baseDir}/prepare_samples.py ${metadata_tsv} ${fastq_dir} samples.csv
-    """
-}
 
 /**
  * Builds the Kallisto index for the standard cDNA/mRNA workflow.
@@ -349,25 +328,21 @@ process CONCATENATE_SAMPLES {
 // =============================================================================
 
 workflow {
-    if (!params.fastq_dir || !params.transcriptome_fa || !params.gtf || !params.features_tsv || !params.metadata_tsv) {
-        error "Please provide --fastq_dir, --metadata_tsv, --transcriptome_fa, --gtf, and --features_tsv"
+    if (!params.fastq_dir || !params.sample_sheet || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
+        error "Please provide --fastq_dir, --sample_sheet, --transcriptome_fa, --gtf, and --features_tsv"
     }
     
     fa = file(params.transcriptome_fa)
     gtf = file(params.gtf)
     features = file(params.features_tsv)
-    metadata = file(params.metadata_tsv)
-    fastq_dir = file(params.fastq_dir)
-
-    // Step 1: Group SRRs by physical library
-    sample_sheet = PREPARE_SAMPLES(metadata, fastq_dir)
+    sample_sheet = file(params.sample_sheet)
     
     samples_ch = sample_sheet
-        .splitCsv(header:true)
+        .splitCsv(header:true, sep:'\t')
         .map { row -> 
             def sid = row.sample_id
-            def mrna_srrs = row.mRNA_srrs.split(';')
-            def sgrna_srrs = row.sgRNA_srrs.split(';')
+            def mrna_srrs = row.mRNA_srrs.tokenize(';')
+            def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
             
             def mrna_files = mrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
             def sgrna_files = sgrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
@@ -379,18 +354,18 @@ workflow {
         samples_ch = samples_ch.take(params.limit)
     }
 
-    // Step 2: Build Indices
+    // Step 1: Build Indices
     std_idx = BUILD_INDEX_STANDARD(fa, gtf)
     kite_idx = BUILD_INDEX_KITE(features)
 
-    // Step 3: Quantify cDNA and Guides in parallel per sample
+    // Step 2: Quantify cDNA and Guides in parallel per sample
     std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
     kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna -> [sid, sgrna] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
 
-    // Step 4: Merge modalities per sample
+    // Step 3: Merge modalities per sample
     merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
     merged_samples = MERGE_MODALITIES(merge_ch)
     
-    // Step 5: Final Global Concatenation
+    // Step 4: Final Global Concatenation
     CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 }
