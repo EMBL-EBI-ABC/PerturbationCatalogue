@@ -78,7 +78,7 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
     -profile slurm,singularity \
     --fastq_dir $FASTQ_DIR_PATH \
     --sample_sheet $SAMPLE_SHEET_PATH \
-    --features_tsv $FEATURES_PATH
+    --features_tsv $FEATURES_PATH \
     --transcriptome_fa $TRANSCRIPTOME_FA \
     --gtf $GTF \
     --chemistry $CHEMISTRY \
