@@ -335,9 +335,9 @@ workflow {
     fa = file(params.transcriptome_fa)
     gtf = file(params.gtf)
     features = file(params.features_tsv)
-    sample_sheet = file(params.sample_sheet)
     
-    samples_ch = sample_sheet
+    samples_ch = Channel
+        .fromPath(params.sample_sheet)
         .splitCsv(header:true, sep:'\t')
         .map { row -> 
             def sid = row.sample_id
