@@ -57,7 +57,7 @@ This will produce the $FEATURES_PATH and $SAMPLE_SHEET_PATH files in the same di
 ```bash
 # Dataset
 export DATASET_ID=nadig_2025_jurkat
-export FEATURES_PATH=datasets/nadig_2025/jurkat_features.tsv
+export FEATURES_PATH=datasets/nadig_2025/features.tsv
 export SAMPLE_SHEET_PATH=datasets/nadig_2025/jurkat_samples.tsv
 export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN40972597
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID

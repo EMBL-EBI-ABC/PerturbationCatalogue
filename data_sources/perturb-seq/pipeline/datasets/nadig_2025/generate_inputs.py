@@ -2,6 +2,7 @@
 
 from io import StringIO
 from pathlib import Path
+from urllib.parse import urlencode
 from urllib.request import urlopen
 import re
 import sys
@@ -14,16 +15,22 @@ GUIDE_XLSX = (
     DATASET_DIR
     / "../../../../../data_exploration/Perturbseq/supplementary/nadig_2025_guide_info.xlsx"
 ).resolve()
-ENA_ACCESSION = "SAMN40972597"
-ENA_URL = (
-    "https://www.ebi.ac.uk/ena/portal/api/filereport"
-    f"?accession={ENA_ACCESSION}"
-    "&result=read_run"
-    "&fields=run_accession,library_name,fastq_ftp"
-    "&format=tsv"
-)
-FEATURES_TSV = DATASET_DIR / "jurkat_features.tsv"
-SAMPLES_TSV = DATASET_DIR / "jurkat_samples.tsv"
+FEATURES_TSV = DATASET_DIR / "features.tsv"
+ENA_API_URL = "https://www.ebi.ac.uk/ena/portal/api/filereport"
+DATASETS = [
+    {
+        "name": "jurkat",
+        "accession": "SAMN40972597",
+        "library_prefix": "jurkat",
+        "samples_tsv": DATASET_DIR / "jurkat_samples.tsv",
+    },
+    {
+        "name": "hepg2",
+        "accession": "SAMN40972598",
+        "library_prefix": "hepg2",
+        "samples_tsv": DATASET_DIR / "hepg2_samples.tsv",
+    },
+]
 
 
 def generate_features_tsv(xlsx_path, output_tsv):
@@ -64,24 +71,39 @@ def generate_features_tsv(xlsx_path, output_tsv):
     print(f"Wrote {len(features_df)} unique guides to {output_tsv}")
 
 
-def fetch_ena_metadata(url):
-    print(f"Fetching ENA metadata for {ENA_ACCESSION}")
+def ena_url(accession):
+    query = urlencode(
+        {
+            "accession": accession,
+            "result": "read_run",
+            "fields": "run_accession,library_name,fastq_ftp",
+            "format": "tsv",
+        }
+    )
+    return f"{ENA_API_URL}?{query}"
+
+
+def fetch_ena_metadata(accession):
+    print(f"Fetching ENA metadata for {accession}")
+    url = ena_url(accession)
     with urlopen(url, timeout=60) as response:
         text = response.read().decode("utf-8")
     return pd.read_csv(StringIO(text), sep="\t")
 
 
-def parse_jurkat_library(library_name):
-    match = re.search(r"jurkat_(mRNA|sgRNA)_(\d+)_", str(library_name))
+def parse_library(library_name, library_prefix):
+    pattern = rf"{re.escape(library_prefix)}_(mRNA|sgRNA)_(\d+)(?:_|$)"
+    match = re.search(pattern, str(library_name), flags=re.IGNORECASE)
     if not match:
         return None, None
-    return match.group(1), match.group(2)
+    modality = {"mrna": "mRNA", "sgrna": "sgRNA"}[match.group(1).lower()]
+    return modality, match.group(2)
 
 
-def generate_samples_tsv(output_tsv):
-    metadata = fetch_ena_metadata(ENA_URL)
+def generate_samples_tsv(dataset):
+    metadata = fetch_ena_metadata(dataset["accession"])
     metadata[["modality", "sample_id"]] = metadata["library_name"].apply(
-        lambda value: pd.Series(parse_jurkat_library(value))
+        lambda value: pd.Series(parse_library(value, dataset["library_prefix"]))
     )
     metadata = metadata.dropna(subset=["sample_id"])
 
@@ -89,7 +111,7 @@ def generate_samples_tsv(output_tsv):
     for _, row in metadata.iterrows():
         sample_id = str(row["sample_id"])
         modality = row["modality"]
-        run_accession = row["run_accession"]
+        run_accession = str(row["run_accession"])
 
         samples.setdefault(sample_id, {"mRNA": set(), "sgRNA": set()})
         samples[sample_id][modality].add(run_accession)
@@ -104,14 +126,16 @@ def generate_samples_tsv(output_tsv):
             }
         )
 
+    output_tsv = dataset["samples_tsv"]
     pd.DataFrame(rows).to_csv(output_tsv, sep="\t", index=False)
-    print(f"Wrote {len(rows)} samples to {output_tsv}")
+    print(f"Wrote {len(rows)} {dataset['name']} samples to {output_tsv}")
 
 
 def main():
     DATASET_DIR.mkdir(parents=True, exist_ok=True)
     generate_features_tsv(GUIDE_XLSX, FEATURES_TSV)
-    generate_samples_tsv(SAMPLES_TSV)
+    for dataset in DATASETS:
+        generate_samples_tsv(dataset)
 
 
 if __name__ == "__main__":
