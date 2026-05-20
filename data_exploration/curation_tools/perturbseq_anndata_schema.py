@@ -226,14 +226,16 @@ class ObsSchema(DataFrameModel):
     library_generation_type_label: Series[String] = Field(
         nullable=True,
         description="Library generation type ontology term label, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
+        isin=["endogenous genetic perturbation method", "exogenous genetic perturbation method"],
     )
     library_generation_method_id: Series[String] = Field(
         nullable=True,
-        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)"
     )
     library_generation_method_label: Series[String] = Field(
         nullable=True,
         description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        isin=["doped oligo synthesis", "error-prone PCR", "microarray synthesis", "nicking mutagenesis", "oligo-directed mutagenic PCR", "site-directed mutagenesis"]
     )
     enzyme_delivery_method_id: Series[String] = Field(
         nullable=True,
