@@ -54,6 +54,8 @@ python3 datasets/nadig_2025/generate_inputs.py
 This will produce the $FEATURES_PATH and $SAMPLE_SHEET_PATH files in the same directory as the script.
 
 ### 2. Set up pipeline parameters
+
+#### nadig_2025_jurkat
 ```bash
 # Dataset
 export DATASET_ID=nadig_2025_jurkat
@@ -68,6 +70,20 @@ export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primar
 export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 ```
 
+#### nadig_2025_hepg2
+```bash
+# Dataset
+export DATASET_ID=nadig_2025_hepg2
+export FEATURES_PATH=datasets/nadig_2025/features.tsv
+export SAMPLE_SHEET_PATH=datasets/nadig_2025/hepg2_samples.tsv
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN40972598
+export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
+# Chemistry
+export CHEMISTRY=10xv3
+# Reference
+export TRANSCRIPTOME_FA=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
+```
 ### 3. Run the pipeline
 
 ```bash
