@@ -10,6 +10,8 @@ params.sample_sheet = null
 params.outdir = "results"
 params.chemistry = "10xv3"
 params.limit = 0
+params.concat_max_loaded_elems = 100000000
+params.h5repack_filter = "GZIP=4"
 
 // cDNA Reference parameters
 params.transcriptome_fa = null
@@ -286,40 +288,73 @@ process MERGE_MODALITIES {
 /**
  * Concatenates all samples into a final unified matrix.
  * Appends sample-specific suffixes to barcodes to prevent collisions.
+ * Uses on-disk concatenation so large experiments do not require all samples in RAM.
  */
 process CONCATENATE_SAMPLES {
-    publishDir "${params.outdir}", mode: 'copy'
-    
     input:
     path "h5ads/*"
     
     output:
-    path "experiment_final.h5ad"
+    path "experiment_final_uncompressed.h5ad", emit: h5ad
     
     script:
     """
     #!/usr/bin/env python3
     import anndata as ad
-    import os
-    import glob
+    from pathlib import Path
 
-    files = sorted(glob.glob("h5ads/*.h5ad"))
-    adatas = []
-    for f in files:
-        a = ad.read_h5ad(f)
-        # Suffix barcodes with sample_id to prevent collisions across wells
-        sample_id = a.obs['sample_id'].iloc[0]
-        a.obs_names = a.obs_names + "-" + str(sample_id)
-        adatas.append(a)
+    files = sorted(Path("h5ads").glob("*.h5ad"))
+    if not files:
+        raise RuntimeError("No sample H5AD files found in h5ads/")
 
-    print(f"Concatenating {len(adatas)} samples...")
-    merged = ad.concat(adatas, join='outer', index_unique=None, merge='same')
-    
-    # Restore guide metadata
-    merged.uns['guide_names'] = adatas[0].uns['guide_names']
-    
-    # Save with gzip compression for efficiency
-    merged.write_h5ad("experiment_final.h5ad", compression="gzip")
+    inputs = {}
+    for path in files:
+        adata = ad.read_h5ad(path, backed="r")
+        try:
+            sample_ids = adata.obs["sample_id"].astype(str).unique()
+        finally:
+            adata.file.close()
+
+        if len(sample_ids) != 1:
+            raise RuntimeError(
+                f"Expected exactly one sample_id in {path}, found {sample_ids.tolist()}"
+            )
+
+        sample_id = sample_ids[0]
+        if sample_id in inputs:
+            raise RuntimeError(f"Duplicate sample_id across merged H5AD files: {sample_id}")
+
+        inputs[sample_id] = str(path)
+
+    print(f"Concatenating {len(inputs)} samples on disk...")
+    ad.experimental.concat_on_disk(
+        inputs,
+        "experiment_final_uncompressed.h5ad",
+        max_loaded_elems=${params.concat_max_loaded_elems},
+        axis=0,
+        join="outer",
+        merge="same",
+        uns_merge="same",
+        index_unique="-",
+    )
+    """
+}
+
+/**
+ * Re-packs the final H5AD with HDF5 gzip compression.
+ */
+process COMPRESS_FINAL_H5AD {
+    publishDir "${params.outdir}", mode: 'copy'
+
+    input:
+    path uncompressed_h5ad
+
+    output:
+    path "experiment_final.h5ad"
+
+    script:
+    """
+    h5repack -f ${params.h5repack_filter} ${uncompressed_h5ad} experiment_final.h5ad
     """
 }
 
@@ -367,5 +402,8 @@ workflow {
     merged_samples = MERGE_MODALITIES(merge_ch)
     
     // Step 4: Final Global Concatenation
-    CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
+    uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
+
+    // Step 5: Final HDF5 Compression
+    COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
 }

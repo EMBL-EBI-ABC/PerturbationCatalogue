@@ -10,6 +10,7 @@ From: python:3.10-slim
     apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libhdf5-dev \
+        hdf5-tools \
         curl \
         ca-certificates \
         zlib1g-dev \

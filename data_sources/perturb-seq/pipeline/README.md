@@ -158,4 +158,4 @@ KITE guide counts are merged from `counts_unfiltered`, then aligned to the filte
 ### Outputs
 - `results/merged_samples/`: Individual H5AD files for each physical 10x well.
 - `results/merged_samples/*_guide_diagnostics.json`: Per-sample KITE barcode overlap and guide UMI diagnostics.
-- `results/experiment_final.h5ad`: The final unified matrix (Gzip compressed).
+- `results/experiment_final.h5ad`: The final unified matrix, re-packed with HDF5 gzip compression.
