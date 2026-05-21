@@ -374,7 +374,7 @@ class ObsSchema(DataFrameModel):
     readout_measurment_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the measurement type of the readout assay.",
-        isin=["surface protein expression", "cell viability", "gene expression", "protein abundance", "cell proliferation"],
+        isin=["surface protein expression", "cell viability", "gene expression", "ligand binding", "protein abundance", "cell proliferation"],
     )
     method_name_id: Series[String] = Field(
         nullable=True,
