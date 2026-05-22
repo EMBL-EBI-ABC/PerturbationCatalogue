@@ -8,6 +8,8 @@ import os
 from datetime import datetime
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Type
+from pydantic import BaseModel
 from controlled_vocab_model import MavedbMetadataExtractionSchema, MavedbMetadataSchema
 from tqdm import tqdm
 
@@ -359,7 +361,7 @@ def create_csv_from_curated_metadata_json(
 
 def save_metadata_outputs(
     publication_full_text_path: str | Path,
-    extraction_result_with_evidence: MavedbMetadataExtractionSchema,
+    extraction_result_with_evidence: BaseModel,
     clean_result: MavedbMetadataSchema,
     output_dir: str | Path = EXTRACTED_METADATA_OUTPUT_DIR,
     suffix: str = "",
@@ -395,7 +397,7 @@ def save_metadata_outputs(
 
 
 def to_final_metadata_schema(
-    extraction_result_with_evidence: MavedbMetadataExtractionSchema,
+    extraction_result_with_evidence: BaseModel,
 ) -> MavedbMetadataSchema:
     final_payload = {
         field_name: field_value
@@ -426,6 +428,7 @@ def _extract_metadata_for_prompt_context(
     output_dir: Path,
     overwrite: bool,
     model_name: str,
+    extraction_schema: Type[BaseModel],
     prompt_context: dict[str, object] | None,
     output_suffix: str,
 ) -> MavedbMetadataSchema:
@@ -455,10 +458,10 @@ def _extract_metadata_for_prompt_context(
     client = instructor.from_provider(
         model_name,
         location='global',
-        enterprise=True,
+        vertexai=True,
     )
     extraction_response = client.create(
-        response_model=MavedbMetadataExtractionSchema,
+        response_model=extraction_schema,
         messages=[
             {
                 "role": "user",
@@ -490,6 +493,7 @@ def _extract_metadata_for_prompt_context(
 
 def extract_metadata_from_publication(
     publication_full_text_path: str | Path,
+    extraction_schema: Type[BaseModel],
     output_dir: str | Path = EXTRACTED_METADATA_OUTPUT_DIR,
     overwrite: bool = False,
     model_name: str = DEFAULT_LLM_MODEL_NAME,
@@ -500,6 +504,7 @@ def extract_metadata_from_publication(
     a separate prompt and output pair will be generated for each distinct context.
     Parameters:
     - publication_full_text_path: Path to the full text of the publication (e.g., a markdown file).
+    - extraction_schema: Pydantic schema passed to instructor as the response model.
     - output_dir: Directory where the extracted metadata JSON files will be saved.
     - overwrite: Whether to overwrite existing extracted metadata outputs.
     - model_name: LLM model ID to use for metadata extraction.
@@ -515,6 +520,7 @@ def extract_metadata_from_publication(
         f"Publication text: {publication_full_text_path}",
         f"Output directory: {output_dir}",
         f"Model: {model_name}",
+        f"Extraction schema: {extraction_schema.__name__}",
         f"Overwrite: {overwrite}",
         f"Matched MaveDB prompt contexts: {context_count}",
     )
@@ -526,6 +532,7 @@ def extract_metadata_from_publication(
                 output_dir=output_dir,
                 overwrite=overwrite,
                 model_name=model_name,
+                extraction_schema=extraction_schema,
                 prompt_context=None,
                 output_suffix="",
             )
@@ -548,6 +555,7 @@ def extract_metadata_from_publication(
                 output_dir=output_dir,
                 overwrite=overwrite,
                 model_name=model_name,
+                extraction_schema=extraction_schema,
                 prompt_context=prompt_context,
                 output_suffix=output_suffix,
             )
@@ -577,6 +585,7 @@ def bulk_extract_metadata_from_publications(
     max_workers: int = DEFAULT_DOWNLOAD_MAX_WORKERS,
     overwrite: bool = False,
     model_name: str = DEFAULT_LLM_MODEL_NAME,
+    extraction_schema: Type[BaseModel] = MavedbMetadataExtractionSchema,
     create_csv: bool = False,
 ) -> list[Path]:
     """Extract metadata from multiple publication full-text files in parallel.
@@ -587,6 +596,7 @@ def bulk_extract_metadata_from_publications(
     - max_workers: Number of worker threads used to process publications concurrently.
     - overwrite: Whether to overwrite existing extracted metadata outputs.
     - model_name: LLM model ID to use for metadata extraction.
+    - extraction_schema: Pydantic schema passed to instructor as the response model.
     - create_csv: Whether to create a single CSV from the curated clean metadata JSON outputs.
 
     Returns:
@@ -623,6 +633,7 @@ def bulk_extract_metadata_from_publications(
                 output_dir=output_dir,
                 overwrite=overwrite,
                 model_name=model_name,
+                extraction_schema=extraction_schema,
             ): index
             for index, publication_path in enumerate(publication_paths)
         }
