@@ -606,30 +606,32 @@ def resolve_output_path(input_path, output_path=None, output_dir=None):
         return Path(output_dir) / f"{input_path.stem}.md"
 
     return input_path.with_suffix(".md")
-def xml_to_md(input_file, output_dir=None, remove_references=False, output_path=None):
+def xml_to_md(filepath_xml, output_dir=None, remove_references=False, output_path=None):
     """Extract a single XML file into a Markdown file."""
-    print_status_block("Parsing XML file.", f"Input: {input_file}")
+    print_status_block("Parsing XML file.", f"Input: {filepath_xml}")
 
     try:
-        data, parser_name = extract_document_data(input_file)
+        data, parser_name = extract_document_data(filepath_xml)
         if parser_name == "lxml-recover":
             print_status_block(
                 "Recovered malformed XML with lxml recovery parser.",
-                f"Input: {input_file}",
+                f"Input: {filepath_xml}",
             )
     except ET.ParseError as exc:
         print_status_block(
             "Error parsing XML with xml.etree.",
-            f"Input: {input_file}",
+            f"Input: {filepath_xml}",
             f"Details: {exc}",
             "Falling back to regex-based extraction due to malformed XML.",
         )
-        data = extract_regex_fallback(input_file)
+        data = extract_regex_fallback(filepath_xml)
 
-    output_path = resolve_output_path(input_file, output_path=output_path, output_dir=output_dir)
+    output_path = resolve_output_path(filepath_xml, output_path=output_path, output_dir=output_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(build_markdown(data, remove_references=remove_references), encoding="utf-8")
     print_status_block("Successfully converted paper XML to Markdown.", f"Output: {output_path}")
+    
+    return output_path
 
 
 def iter_input_files(input_path, recursive=False):
