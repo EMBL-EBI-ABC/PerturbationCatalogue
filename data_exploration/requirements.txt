@@ -23,7 +23,12 @@ gprofiler-official
 pydantic
 google-cloud-bigquery
 thefuzz
-awscli
+instructor
+lxml
+paperscraper
+pymupdf4llm
+requests
+tqdm
 
 # Local package install (editable mode)
 -e .
