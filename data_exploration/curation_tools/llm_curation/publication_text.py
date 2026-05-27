@@ -11,9 +11,7 @@ from curation_tools.llm_curation.logging_utils import append_log_line, print_sta
 from curation_tools.llm_curation.xml_parser import xml_to_md
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
 LLM_CURATION_DIR = Path(__file__).resolve().parent
-PAPERSCRAPER_API_KEYS_FILE = LLM_CURATION_DIR / "scraper_api_keys.txt"
 PAPERSCRAPER_DUMP_DIR = LLM_CURATION_DIR / "paperscraper_dumps"
 PAPERSCRAPER_FULL_TEXT_RAW_DIR = LLM_CURATION_DIR / "pub_full_text_raw"
 FULL_TEXT_MD_DIR = LLM_CURATION_DIR / "pub_full_text_md"
@@ -23,16 +21,12 @@ DEFAULT_DOWNLOAD_MAX_WORKERS = min(32, (os.cpu_count() or 1) * 4)
 
 def retrieve_pub_full_text(
     doi: str,
-    api_keys_file: str | Path = PAPERSCRAPER_API_KEYS_FILE,
     output_dir: str | Path = PAPERSCRAPER_FULL_TEXT_RAW_DIR,
     overwrite: bool = False,
 ) -> Path | None:
     """Retrieve the full text of a publication given its DOI using paperscraper."""
-    api_keys_file = Path(api_keys_file).resolve()
     output_dir = Path(output_dir).resolve()
 
-    if not api_keys_file.is_file():
-        raise ValueError(f"API keys file not found: {api_keys_file}")
     output_dir.mkdir(parents=True, exist_ok=True)
     paper_data = {"doi": doi}
     filename_base = re.sub(r"[/.]", "_", doi)
@@ -59,7 +53,7 @@ def retrieve_pub_full_text(
             )
             return filepath_xml
 
-    out = save_pdf(paper_data, api_keys=str(api_keys_file), filepath=str(filepath_pdf))
+    out = save_pdf(paper_data, filepath=str(filepath_pdf))
     if out:
         if filepath_pdf.is_file():
             print_status_block(
