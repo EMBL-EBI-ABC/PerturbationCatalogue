@@ -9,6 +9,7 @@
 __pycache__
 data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump
-data_exploration/text_extraction
+data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata
+data_exploration/MaveDB/llm_metadata_extraction/extracted_metadata
 # Python package build metadata
 *.egg-info/
