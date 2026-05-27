@@ -6,6 +6,10 @@ This folder contains an analysis pipeline for deriving structured MaveDB experim
 2. Download publication full text and convert it to Markdown.
 3. Use an LLM plus a user-provided Pydantic schema to extract normalized metadata into JSON and CSV outputs.
 
+For now, this workflow has been designed primarily for MaveDB dataset curation. Work to further develop the workflow for CRISPR and Perturb-seq curation is ongoing.
+
+For an example MaveDB curation workflow of an individual entry, see `data_exploration/MaveDB/mavedb_example.ipynb`.
+
 ## Pipeline Overview
 
 ### 1. Collect MaveDB entries and publication text
@@ -27,10 +31,9 @@ By default it writes:
 
 This script currently has no CLI arguments. Running it launches the full data collection pipeline using the hard-coded/default paths in the script.
 
-Note: publication retrieval in this step uses the API keys listed in the `llm_metadata_extraction/scraper_api_keys.txt`. The script expects that file to exist and uses it when calling `paperscraper` to download publication full text.
-This file should contain just two lines:
+Note: publication retrieval in this step uses `paperscraper`, which reads publisher API credentials from the repository root `.env` file. Add these variables to `.env` before running the collection pipeline:
 
-```
+```bash
 WILEY_TDM_API_TOKEN=<WILEY_TOKEN>
 ELSEVIER_TDM_API_KEY=<ELSEVIER_TOKEN>
 ```
@@ -72,7 +75,7 @@ PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadat
 Arguments:
 
 - `--extraction-schema`: required Pydantic `BaseModel` subclass to use for extraction, formatted as `package.module:SchemaClass` or `path/to/schema.py:SchemaClass`
-- `--llm-model`: model ID used for extraction; defaults to `LLM_MODEL_NAME` from the environment, or `google/gemini-2.5-flash` if unset
+- `--llm-model`: model ID used for extraction; defaults to `LLM_MODEL_NAME` from the environment, or `google/gemini-3.5-flash` if unset
 - `--max-workers`: number of worker threads used for bulk extraction; must be at least `1`
 - `--overwrite`: overwrite existing outputs in `extracted_metadata/` instead of skipping files that already have clean JSON outputs
 - `--create-csv`: create `extracted_metadata/clean_metadata.csv` from the curated JSON files in `extracted_metadata/clean/`
@@ -83,7 +86,7 @@ Arguments:
 
 - MaveDB dump CSVs in `data_exploration/MaveDB/Dump/.../csv`
 - publication full text resolved via DOI (`.xml` or `.pdf` files)
-- prompt template in `metadata_extraction_prompt_template.md`
+- prompt template in `mavedb_metadata_extraction_prompt_template.md`
 - user-provided Pydantic extraction schema
 
 ### Outputs
@@ -95,7 +98,7 @@ Arguments:
 - extraction JSON in `extracted_metadata/with_evidence/*.json`
 - curated extraction JSON in `extracted_metadata/clean/*.json`
 - combined CSV in `extracted_metadata/clean_metadata.csv`
-- progress logs in `pub_full_text_download.log` and `metadata_extraction.log`
+- progress logs in `pub_full_text_download.log` and `mavedb_metadata_extraction.log`
 
 If multiple distinct MaveDB contexts map to the same publication, `mavedb/metadata_extraction_runner.py` writes separate output files with URN suffixes.
 
@@ -113,7 +116,7 @@ This folder uses several external Python packages, including:
 
 The extraction script defaults to:
 
-- model: `google/gemini-2.5-flash` (alternatively, e.g. `google/gemini-2.5-pro`)
+- model: `google/gemini-3.5-flash` (alternatively, e.g. `google/gemini-2.5-pro`)
 - environment variable override: `LLM_MODEL_NAME`
 
 The LLM client is initialized through `instructor.from_provider(..., vertexai=True, location='global')`, so you need working Vertex AI / Google credentials in the environment before running extraction.
@@ -136,7 +139,7 @@ From the repository root:
 PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing
 PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadata_extraction_runner \
   --extraction-schema path/to/schema.py:MyMetadataExtractionSchema \
-  --llm-model google/gemini-2.5-pro \
+  --llm-model google/gemini-3.5-flash \
   --create-csv
 ```
 
