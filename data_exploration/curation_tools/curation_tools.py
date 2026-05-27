@@ -2,7 +2,10 @@ import datetime
 import glob
 import os
 import subprocess
+import tarfile
+import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -33,6 +36,79 @@ from curation_tools.unified_metadata_schema.unified_metadata_schema import Exper
 
 # Module-level logger
 logger = logging.getLogger(__name__)
+
+_ALLOWED_DOWNLOAD_SCHEMES = {"http", "https", "ftp"}
+
+
+def _validate_download_url(url: str) -> str:
+    """Validate a remote download URL."""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("Download URL must be a non-empty string.")
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in _ALLOWED_DOWNLOAD_SCHEMES or not parsed.netloc:
+        raise ValueError(
+            "Download URL must use one of the following schemes: http, https, ftp."
+        )
+
+    return url.strip()
+
+
+def _validate_output_path(path: str) -> Path:
+    """Validate and normalize an output path."""
+    if not isinstance(path, (str, os.PathLike)) or not str(path).strip():
+        raise ValueError("Output path must be a non-empty path string.")
+
+    return Path(path).expanduser()
+
+
+def _resolve_extraction_target(extract_root: Path, member_name: str) -> Path:
+    """Resolve an archive member path and ensure it stays within the extraction root."""
+    if not member_name:
+        raise ValueError("Archive member name cannot be empty.")
+
+    member_path = Path(member_name)
+    if member_path.is_absolute():
+        raise ValueError(f"Unsafe archive member path: {member_name}")
+
+    target_path = (extract_root / member_path).resolve()
+    root_path = extract_root.resolve()
+    if os.path.commonpath([root_path, target_path]) != str(root_path):
+        raise ValueError(f"Archive member escapes extraction directory: {member_name}")
+
+    return target_path
+
+
+def _validate_zip_members(zip_file: zipfile.ZipFile, extract_root: Path) -> None:
+    """Reject unsafe paths in a zip archive before extraction."""
+    for member in zip_file.infolist():
+        _resolve_extraction_target(extract_root, member.filename)
+
+
+def _validate_tar_members(tar_file: tarfile.TarFile, extract_root: Path) -> None:
+    """Reject unsafe paths and links in a tar archive before extraction."""
+    for member in tar_file.getmembers():
+        if member.issym() or member.islnk():
+            raise ValueError(
+                f"Archive member uses an unsupported link type: {member.name}"
+            )
+        _resolve_extraction_target(extract_root, member.name)
+
+
+def _safe_extract_zip(dest_path: Path) -> None:
+    """Extract a zip archive after validating all members."""
+    extract_root = dest_path.parent.resolve()
+    with zipfile.ZipFile(dest_path) as archive:
+        _validate_zip_members(archive, extract_root)
+        archive.extractall(extract_root)
+
+
+def _safe_extract_tar(dest_path: Path) -> None:
+    """Extract a gzip-compressed tar archive after validating all members."""
+    extract_root = dest_path.parent.resolve()
+    with tarfile.open(dest_path, "r:gz") as archive:
+        _validate_tar_members(archive, extract_root)
+        archive.extractall(extract_root, filter="data")
 
 
 # function to add a new synonym to the ontology
@@ -260,12 +336,18 @@ class CuratedDataset:
         """
         Download the data from the specified source.
         """
+        download_url = _validate_download_url(self.data_source_link)
+        output_path = _validate_output_path(self.noncurated_path)
+
         if not os.path.exists(self.noncurated_path):
             print(
-                f"Downloading data from {self.data_source_link} to {self.noncurated_path}"
+                f"Downloading data from {download_url} to {output_path}"
             )
-            os.makedirs(os.path.dirname(self.noncurated_path), exist_ok=True)
-            os.system(f"wget {self.data_source_link} -O {self.noncurated_path}")
+            os.makedirs(output_path.parent, exist_ok=True)
+            subprocess.run(
+                ["wget", download_url, "-O", str(output_path)],
+                check=True,
+            )
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
@@ -2178,30 +2260,34 @@ def download_file(
         unarchive: bool
             Whether to unarchive the file if it's an archive (zip/tar.gz/tgz)
     """
+    download_url = _validate_download_url(url)
+    output_path = _validate_output_path(dest_path)
+
     # check if the file already exists
-    if os.path.exists(dest_path):
+    if output_path.exists():
         if not overwrite:
-            print(f"File {dest_path} already exists. Skipping download.")
+            print(f"File {output_path} already exists. Skipping download.")
             return
         else:
-            print(f"File {dest_path} already exists. Overwriting...")
-    response = requests.get(url, stream=True)
+            print(f"File {output_path} already exists. Overwriting...")
+    response = requests.get(download_url, stream=True)
     response.raise_for_status()  # Raise an error for bad responses
     # if the destination directory does not exist, create it
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    os.makedirs(output_path.parent, exist_ok=True)
     # write the content to the destination file
-    with open(dest_path, "wb") as f:
+    with open(output_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     if unarchive:
-        if dest_path.endswith(".zip"):
-            subprocess.run(["unzip", "-o", dest_path, "-d", os.path.dirname(dest_path)])
-        elif dest_path.endswith((".tar.gz", ".tgz")):
-            subprocess.run(["tar", "-xzf", dest_path, "-C", os.path.dirname(dest_path)])
+        output_name = output_path.name.lower()
+        if output_name.endswith(".zip"):
+            _safe_extract_zip(output_path)
+        elif output_name.endswith((".tar.gz", ".tgz")):
+            _safe_extract_tar(output_path)
         else:
-            print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
+            print(f"Unsupported archive format for {output_path}. Skipping unarchive.")
 
-    print(f"Downloaded {url} to {dest_path}")
+    print(f"Downloaded {download_url} to {output_path}")
 
 def concatenate_parquet_files(
     parquet_dir: str,
