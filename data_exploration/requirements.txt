@@ -11,7 +11,9 @@ ibis-framework
 fastapi
 
 # scverse
-scanpy==1.11.1
+decoupler==2.0.1
+pertpy==1.0.5
+scanpy==1.12
 anndata==0.12.2
 
 # Data curation
