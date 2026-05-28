@@ -18,6 +18,10 @@ except ImportError:
     display = print
 
 
+CURATED_H5AD_PATH = "GSE264667_jurkat_raw_singlecell_01.h5ad"
+REPROCESSED_H5AD_PATH = "experiment_final.h5ad"
+
+
 # ==============================================================================
 # 1. FUNCTIONS AND UTILITIES
 # ==============================================================================
@@ -740,10 +744,8 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 # ==============================================================================
 os.makedirs("comparison_results", exist_ok=True)
 print("Loading and aligning...")
-adata_cur = filter_unique_barcodes(
-    sc.read_h5ad("GSE264667_jurkat_raw_singlecell_01.h5ad"), "Curated"
-)
-adata_rep = filter_unique_barcodes(sc.read_h5ad("experiment_final.h5ad"), "Reprocessed")
+adata_cur = filter_unique_barcodes(sc.read_h5ad(CURATED_H5AD_PATH), "Curated")
+adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reprocessed")
 
 if adata_rep.var_names.str.contains(r"\.").any():
     adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
