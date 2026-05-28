@@ -18,13 +18,36 @@ except ImportError:
     display = print
 
 
-CURATED_H5AD_PATH = "GSE264667_jurkat_raw_singlecell_01.h5ad"
-REPROCESSED_H5AD_PATH = "experiment_final.h5ad"
+CURATED_H5AD_PATH = (
+    "/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/nadig_2025_jurkat.h5ad"
+)
+REPROCESSED_H5AD_PATH = (
+    "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
+    "nadig_2025_jurkat/experiment_final.h5ad"
+)
+GUIDE_COUNT_THRESHOLDS = [1, 2, 3, 4, 5]
+GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 
 
 # ==============================================================================
 # 1. FUNCTIONS AND UTILITIES
 # ==============================================================================
+
+
+def json_default(value):
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, set):
+        return sorted(value)
+    return str(value)
+
+
+def log_record(event, **fields):
+    print(json.dumps({"event": event, **fields}, sort_keys=True, default=json_default))
 
 
 def filter_unique_barcodes(adata, name):
@@ -46,8 +69,15 @@ def filter_unique_barcodes(adata, name):
     adata.obs_names = base_barcodes[mask]
 
     filtered_count = original_count - adata.n_obs
-    print(
-        f"[{name}] Filtered out {filtered_count} cells due to barcode collisions ({(filtered_count/original_count)*100:.2f}%). Remaining: {adata.n_obs}"
+    log_record(
+        "barcode_filter",
+        dataset=name,
+        original_cells=original_count,
+        removed_collision_cells=filtered_count,
+        removed_collision_pct=(
+            (filtered_count / original_count) * 100 if original_count else 0.0
+        ),
+        remaining_cells=adata.n_obs,
     )
     return adata
 
@@ -64,10 +94,16 @@ def get_raw_counts(adata):
 
 def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
     """Standardized preprocessing: Raw -> Norm -> Log -> HVG -> Scale -> PCA."""
-    print(f"Starting standardized preprocessing for {name}...")
     is_raw = get_raw_counts(adata)
-    if not is_raw:
-        print(f"  [{name}] WARNING: Data does not appear to be raw counts.")
+    log_record(
+        "preprocess_input",
+        dataset=name,
+        cells=adata.n_obs,
+        genes=adata.n_vars,
+        raw_counts_detected=bool(is_raw),
+        normalization_target_sum=target_sum,
+        hvg_n_top_genes=n_top_genes,
+    )
 
     adata.layers["counts"] = adata.X.copy()
     sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
@@ -194,7 +230,7 @@ def guide_aliases(guide_name):
 
 
 def guide_target_name(guide_name):
-    """Extract the target label used to validate same-gene dual-guide calls."""
+    """Extract the target gene symbol from a probe ID."""
     guide_name = canonical_guide_id(guide_name)
     if guide_name.startswith("non-targeting"):
         return "non-targeting"
@@ -205,73 +241,110 @@ def guide_target_names(guide_name):
     return {guide_target_name(alias) for alias in guide_aliases(guide_name)}
 
 
-def label_guide_alias_sets(label):
+def is_empty_guide_label(label):
     label = str(label).strip()
-    if label.lower() in {"", "none", "nan"}:
-        return []
-    return [set(guide_aliases(part)) for part in label.split("|") if part.strip()]
-
-
-def label_target_name(label):
-    """Extract the target label from a pipe-delimited guide assignment."""
-    label = str(label).strip()
-    if label.lower() in {"", "none", "nan"}:
-        return "None"
-
-    per_guide_targets = [
-        guide_target_names(part) for part in label.split("|") if part.strip()
-    ]
-    if not per_guide_targets:
-        return "None"
-
-    shared_targets = set.intersection(*per_guide_targets)
-    targets = shared_targets if shared_targets else set.union(*per_guide_targets)
-    if len(targets) == 1:
-        return next(iter(targets))
-    return "mixed:" + "|".join(sorted(targets))
-
-
-def labels_exact_match(cur_label, rep_label):
-    cur_parts = label_guide_alias_sets(cur_label)
-    rep_parts = label_guide_alias_sets(rep_label)
-    if len(cur_parts) != len(rep_parts):
-        return False
-    if len(cur_parts) == 0:
-        return True
-    if len(cur_parts) == 1:
-        return bool(cur_parts[0] & rep_parts[0])
-    if len(cur_parts) == 2:
-        return (
-            bool(cur_parts[0] & rep_parts[0]) and bool(cur_parts[1] & rep_parts[1])
-        ) or (bool(cur_parts[0] & rep_parts[1]) and bool(cur_parts[1] & rep_parts[0]))
-
-    unmatched = list(rep_parts)
-    for cur_aliases in cur_parts:
-        for i, rep_aliases in enumerate(unmatched):
-            if cur_aliases & rep_aliases:
-                unmatched.pop(i)
-                break
-        else:
-            return False
-    return True
-
-
-def labels_target_match(cur_label, rep_label):
-    cur_target = label_target_name(cur_label)
-    rep_target = label_target_name(rep_label)
-    if cur_target == "None" or rep_target == "None":
-        return cur_target == rep_target
-    cur_targets = set(cur_target.removeprefix("mixed:").split("|"))
-    rep_targets = set(rep_target.removeprefix("mixed:").split("|"))
-    return bool(cur_targets & rep_targets)
+    return label.lower() in {"", "none", "nan"}
 
 
 def canonical_label_for_display(label):
     label = str(label).strip()
-    if label.lower() in {"", "none", "nan"}:
+    if is_empty_guide_label(label):
         return "None"
     parts = [canonical_guide_id(part) for part in label.split("|") if part.strip()]
     return "|".join(sorted(parts)) if parts else "None"
+
+
+def label_to_probe_list(label):
+    label = canonical_label_for_display(label)
+    if label == "None":
+        return []
+    return [part for part in label.split("|") if part]
+
+
+def genes_from_probe_list(probes):
+    genes = set()
+    for probe in probes:
+        for gene in guide_target_names(probe):
+            if gene and gene != "non-targeting":
+                genes.add(gene)
+    return sorted(genes)
+
+
+def gene_call_outcome(probes, genes):
+    if len(genes) == 0:
+        return "0_genes"
+    if len(genes) > 1:
+        return ">1_gene"
+
+    gene = genes[0]
+    n_gene_probes = sum(gene in guide_target_names(probe) for probe in probes)
+    if n_gene_probes <= 1:
+        return "1_gene_1_probe"
+    return "1_gene_2_probes"
+
+
+def build_gene_call_table(labels):
+    records = []
+    for cell_id, label in labels.items():
+        probe_label = canonical_label_for_display(label)
+        probes = label_to_probe_list(probe_label)
+        genes = genes_from_probe_list(probes)
+        records.append(
+            {
+                "cell_id": cell_id,
+                "probe_label": probe_label,
+                "n_probes": len(probes),
+                "genes": genes,
+                "gene_label": "|".join(genes) if genes else "None",
+                "n_genes": len(genes),
+                "outcome": gene_call_outcome(probes, genes),
+            }
+        )
+    return pd.DataFrame.from_records(records, index=labels.index)
+
+
+def outcome_count_dict(outcomes):
+    counts = outcomes.value_counts().reindex(GENE_CALL_OUTCOMES, fill_value=0)
+    return {outcome: int(counts.loc[outcome]) for outcome in GENE_CALL_OUTCOMES}
+
+
+def outcome_matrix_dict(cur_outcomes, rep_outcomes):
+    matrix = pd.crosstab(cur_outcomes, rep_outcomes)
+    matrix = matrix.reindex(
+        index=GENE_CALL_OUTCOMES, columns=GENE_CALL_OUTCOMES, fill_value=0
+    )
+    return {
+        cur_outcome: {
+            rep_outcome: int(matrix.loc[cur_outcome, rep_outcome])
+            for rep_outcome in GENE_CALL_OUTCOMES
+        }
+        for cur_outcome in GENE_CALL_OUTCOMES
+    }
+
+
+def single_gene_match_summary(cur_calls, rep_calls):
+    cur_single = cur_calls["n_genes"] == 1
+    rep_single = rep_calls["n_genes"] == 1
+    both_single = cur_single & rep_single
+    same_gene = (
+        cur_calls.loc[both_single, "gene_label"]
+        == rep_calls.loc[both_single, "gene_label"]
+    )
+
+    n_both_single = int(both_single.sum())
+    n_same = int(same_gene.sum())
+    n_different = n_both_single - n_same
+    return {
+        "n_cells_curated_single_gene": int(cur_single.sum()),
+        "n_cells_reprocessed_single_gene": int(rep_single.sum()),
+        "n_cells_both_single_gene": n_both_single,
+        "n_same_gene": n_same,
+        "n_different_gene": n_different,
+        "pct_same_gene": (n_same / n_both_single * 100) if n_both_single else 0.0,
+        "pct_different_gene": (
+            n_different / n_both_single * 100 if n_both_single else 0.0
+        ),
+    }
 
 
 def summarize_numeric(values):
@@ -285,132 +358,6 @@ def summarize_numeric(values):
         "p90": float(np.percentile(values, 90)),
         "p99": float(np.percentile(values, 99)),
         "max": float(np.max(values)),
-    }
-
-
-def build_guide_alias_index(guide_names):
-    alias_to_indices = {}
-    for idx, guide_name in enumerate(guide_names):
-        for alias in guide_aliases(guide_name):
-            alias_to_indices.setdefault(alias, set()).add(idx)
-    return {alias: sorted(indices) for alias, indices in alias_to_indices.items()}
-
-
-def label_feature_index_sets(label, alias_to_indices):
-    index_sets = []
-    for guide_part in str(label).split("|"):
-        guide_part = guide_part.strip()
-        if not guide_part or guide_part.lower() in {"none", "nan"}:
-            continue
-
-        indices = set()
-        for alias in guide_aliases(guide_part):
-            indices.update(alias_to_indices.get(alias, []))
-        index_sets.append(indices)
-    return index_sets
-
-
-def max_count_for_indices(row, indices):
-    if not indices:
-        return np.nan
-
-    if sp.issparse(row):
-        data_by_col = {
-            int(col): float(value) for col, value in zip(row.indices, row.data)
-        }
-        return max(data_by_col.get(int(idx), 0.0) for idx in indices)
-
-    row = np.asarray(row).ravel()
-    return float(np.max(row[list(indices)]))
-
-
-def summarize_curated_pair_counts(count_a, count_b, mask, thresholds):
-    mask = np.asarray(mask, dtype=bool)
-    resolved = mask & np.isfinite(count_a) & np.isfinite(count_b)
-    a = count_a[resolved]
-    b = count_b[resolved]
-    min_counts = np.minimum(a, b)
-    max_counts = np.maximum(a, b)
-
-    summary = {
-        "n_cells": int(mask.sum()),
-        "n_cells_with_both_curated_guides_in_reference": int(resolved.sum()),
-        "min_curated_guide_count_distribution": summarize_numeric(min_counts),
-        "max_curated_guide_count_distribution": summarize_numeric(max_counts),
-        "total_curated_pair_count_distribution": summarize_numeric(a + b),
-        "thresholds": {},
-    }
-
-    for threshold in thresholds:
-        both = min_counts >= threshold
-        one = (max_counts >= threshold) & ~both
-        neither = max_counts < threshold
-        summary["thresholds"][str(threshold)] = {
-            "n_cells_with_both_curated_guides_ge_threshold": int(both.sum()),
-            "n_cells_with_exactly_one_curated_guide_ge_threshold": int(one.sum()),
-            "n_cells_with_neither_curated_guide_ge_threshold": int(neither.sum()),
-        }
-
-    return summary
-
-
-def curated_guide_count_diagnostics(
-    adata_rep, common_cells, curated_labels, valid_cur, valid_rep
-):
-    if "guides" not in adata_rep.obsm:
-        return None
-
-    guide_matrix = adata_rep.obsm["guides"]
-    if sp.issparse(guide_matrix):
-        guide_matrix = guide_matrix.tocsr()
-
-    guide_names = np.array(
-        adata_rep.uns.get(
-            "guide_names", [f"guide_{i}" for i in range(guide_matrix.shape[1])]
-        )
-    )
-    alias_to_indices = build_guide_alias_index(guide_names)
-    obs_to_pos = pd.Series(np.arange(adata_rep.n_obs), index=adata_rep.obs_names)
-    row_positions = obs_to_pos.loc[common_cells].to_numpy()
-
-    count_a = np.full(len(common_cells), np.nan)
-    count_b = np.full(len(common_cells), np.nan)
-    resolved_parts = np.zeros(len(common_cells), dtype=int)
-
-    for i, (row_pos, label) in enumerate(zip(row_positions, curated_labels)):
-        index_sets = label_feature_index_sets(label, alias_to_indices)
-        if len(index_sets) < 2:
-            continue
-
-        first, second = index_sets[:2]
-        resolved_parts[i] = int(bool(first)) + int(bool(second))
-        row = (
-            guide_matrix.getrow(row_pos)
-            if sp.issparse(guide_matrix)
-            else guide_matrix[row_pos, :]
-        )
-        count_a[i] = max_count_for_indices(row, first)
-        count_b[i] = max_count_for_indices(row, second)
-
-    thresholds = [1, 2, 3, 4, 5, 10]
-    valid_cur_np = np.asarray(valid_cur, dtype=bool)
-    valid_rep_np = np.asarray(valid_rep, dtype=bool)
-    missing_rep_np = valid_cur_np & ~valid_rep_np
-    resolved_values, resolved_counts = np.unique(
-        resolved_parts[valid_cur_np], return_counts=True
-    )
-
-    return {
-        "curated_label_feature_resolved_distribution": {
-            str(int(value)): int(count)
-            for value, count in zip(resolved_values, resolved_counts)
-        },
-        "all_curated_guide_cells": summarize_curated_pair_counts(
-            count_a, count_b, valid_cur_np, thresholds
-        ),
-        "curated_cells_missing_reprocessed_call": summarize_curated_pair_counts(
-            count_a, count_b, missing_rep_np, thresholds
-        ),
     }
 
 
@@ -485,15 +432,10 @@ def fit_poisson_gaussian_mixture(counts, max_iter=100, tol=1e-4):
     }
 
 
-def call_guides(
-    adata,
-    method="mixture",
-    count_threshold=5,
-    require_dual_same_target=True,
-    max_guides=2,
-    return_diagnostics=False,
+def call_probe_lists(
+    adata, method="gaussian_poisson", count_threshold=None, return_diagnostics=False
 ):
-    """Call guides using either a fixed threshold or a Poisson-Gaussian mixture model."""
+    """Call all probe features above threshold for each cell."""
     if "guides" not in adata.obsm:
         return (None, None) if return_diagnostics else None
 
@@ -501,7 +443,8 @@ def call_guides(
     if sp.issparse(guide_matrix):
         guide_matrix = guide_matrix.tocsr()
 
-    if method == "mixture":
+    mixture_res = None
+    if method == "gaussian_poisson":
         if sp.issparse(guide_matrix):
             non_zeros = guide_matrix.data
         else:
@@ -510,16 +453,13 @@ def call_guides(
         if len(non_zeros) > 0:
             mixture_res = fit_poisson_gaussian_mixture(non_zeros)
             count_threshold = mixture_res["decision_threshold"]
-            print(f"  [Guide Calling] Fitted Poisson-Gaussian mixture:")
-            print(
-                f"    Background Lambda: {mixture_res['lambda_bg']:.2f}, Signal Mu: {mixture_res['mu_sig']:.2f}"
-            )
-            print(f"    Dynamic Threshold derived: >= {count_threshold} UMIs")
         else:
-            print(
-                "  [Guide Calling] No non-zero guides found, defaulting to threshold 5."
-            )
             count_threshold = 5
+    elif method == "threshold":
+        if count_threshold is None:
+            raise ValueError("count_threshold is required when method='threshold'")
+    else:
+        raise ValueError(f"Unsupported guide calling method: {method}")
 
     guide_names = np.array(
         adata.uns.get(
@@ -535,72 +475,44 @@ def call_guides(
             row = guide_matrix.getrow(i)
             keep = row.data >= count_threshold
             positive_idx = row.indices[keep]
-            positive_counts = row.data[keep]
         else:
             row = np.asarray(guide_matrix[i]).ravel()
             positive_idx = np.where(row >= count_threshold)[0]
-            positive_counts = row[positive_idx]
 
         positive_guide_counts.append(len(positive_idx))
         if len(positive_idx) == 0:
             calls.append("None")
-        elif require_dual_same_target:
-            # If there is exactly one guide above threshold, accept it as a single-guide cell.
-            if len(positive_idx) == 1:
-                calls.append(guide_names[positive_idx[0]])
-                continue
-
-            candidate_pairs = []
-            entries = list(zip(positive_idx, positive_counts))
-            for left_pos, (left_idx, left_count) in enumerate(entries):
-                left_targets = guide_target_names(guide_names[left_idx])
-                for right_idx, right_count in entries[left_pos + 1 :]:
-                    shared_targets = left_targets & guide_target_names(
-                        guide_names[right_idx]
-                    )
-                    if not shared_targets:
-                        continue
-                    score = left_count + right_count
-                    target = sorted(shared_targets)[0]
-                    candidate_pairs.append((score, target, [left_idx, right_idx]))
-
-            if not candidate_pairs:
-                calls.append("None")
-                continue
-
-            _, _, top_idx = sorted(
-                candidate_pairs, key=lambda item: (-item[0], item[1])
-            )[0]
-            names = sorted(guide_names[top_idx])
-            calls.append("|".join(names))
         else:
-            top_idx = positive_idx[np.argsort(positive_counts)[::-1][:max_guides]]
-            names = sorted(guide_names[top_idx])
+            names = sorted(canonical_guide_id(guide_names[idx]) for idx in positive_idx)
             calls.append("|".join(names))
 
     calls = pd.Series(calls, index=adata.obs_names)
     positive_guide_counts = np.asarray(positive_guide_counts)
     count_values, count_freqs = np.unique(positive_guide_counts, return_counts=True)
     positive_cell_mask = positive_guide_counts > 0
+    gene_calls = build_gene_call_table(calls)
 
     diagnostics = {
+        "method": method,
         "count_threshold": int(count_threshold),
-        "require_dual_same_target": bool(require_dual_same_target),
         "n_cells": int(guide_matrix.shape[0]),
         "n_guides": int(guide_matrix.shape[1]),
-        "n_cells_with_any_positive_guide": int((positive_guide_counts >= 1).sum()),
-        "n_cells_with_two_or_more_positive_guides": int(
+        "n_cells_with_any_called_probe": int((positive_guide_counts >= 1).sum()),
+        "n_cells_with_two_or_more_called_probes": int(
             (positive_guide_counts >= 2).sum()
         ),
-        "n_cells_with_valid_call": int((calls != "None").sum()),
-        "positive_guide_count_distribution": {
+        "n_cells_with_any_called_gene": int((gene_calls["n_genes"] >= 1).sum()),
+        "called_probe_count_distribution": {
             str(int(count)): int(freq) for count, freq in zip(count_values, count_freqs)
         },
+        "gene_call_outcome_counts": outcome_count_dict(gene_calls["outcome"]),
         "total_guide_umi_distribution_all_cells": summarize_numeric(total_guide_umis),
-        "total_guide_umi_distribution_cells_with_any_positive_guide": summarize_numeric(
+        "total_guide_umi_distribution_cells_with_any_called_probe": summarize_numeric(
             total_guide_umis[positive_cell_mask]
         ),
     }
+    if mixture_res is not None:
+        diagnostics["gaussian_poisson_parameters"] = mixture_res
 
     if return_diagnostics:
         return calls, diagnostics
@@ -608,142 +520,103 @@ def call_guides(
 
 
 def compare_perturbations(adata_cur, adata_rep, common_cells):
-    """Compares perturbation assignments with deep mismatch diagnostics."""
-    print("Comparing perturbation assignments...")
-
+    """Compare perturbation assignments at gene level, after probe calling."""
     cur_pert_col = next(
         (c for c in ["sgID_AB", "perturbation"] if c in adata_cur.obs.columns), None
     )
-    if "guides" in adata_rep.obsm:
-        rep_labels, rep_diagnostics = call_guides(adata_rep, return_diagnostics=True)
-    else:
-        rep_labels, rep_diagnostics = None, None
 
-    if cur_pert_col and rep_labels is not None:
-        p_cur = adata_cur.obs.loc[common_cells, cur_pert_col].astype(str)
-        p_rep = rep_labels.loc[common_cells].astype(str)
+    if not cur_pert_col:
+        log_record(
+            "perturbation_comparison_skipped",
+            reason="curated_perturbation_column_missing",
+            candidate_columns=["sgID_AB", "perturbation"],
+        )
+        return None
 
-        p_cur = p_cur.apply(canonical_label_for_display)
-        p_rep = p_rep.apply(canonical_label_for_display)
+    if "guides" not in adata_rep.obsm:
+        log_record(
+            "perturbation_comparison_skipped",
+            reason="reprocessed_guide_matrix_missing",
+            expected_obsm_key="guides",
+        )
+        return None
 
-        # Deep Diagnostics
-        valid_cur = ~p_cur.str.lower().isin(["", "none", "nan"])
-        valid_rep = ~p_rep.str.lower().isin(["", "none", "nan"])
-        print(
-            f"  Curated cells with guides: {valid_cur.sum()} / {len(common_cells)} ({valid_cur.mean():.1%})"
-        )
-        print(
-            "  Reprocessed cells with valid same-target pair or single guide calls: "
-            f"{valid_rep.sum()} / {len(common_cells)} ({valid_rep.mean():.1%})"
-        )
-        print("  Reprocessed guide matrix diagnostics:")
-        print(textwrap.indent(json.dumps(rep_diagnostics, indent=2), "    "))
+    p_cur = (
+        adata_cur.obs.loc[common_cells, cur_pert_col]
+        .astype(str)
+        .apply(canonical_label_for_display)
+    )
+    cur_calls = build_gene_call_table(p_cur)
+    curated_summary = {
+        "perturbation_column": cur_pert_col,
+        "n_common_cells": int(len(common_cells)),
+        "n_cells_with_any_probe": int((cur_calls["n_probes"] > 0).sum()),
+        "n_cells_with_any_gene": int((cur_calls["n_genes"] > 0).sum()),
+        "outcome_counts": outcome_count_dict(cur_calls["outcome"]),
+        "probe_count_distribution": {
+            str(int(count)): int(freq)
+            for count, freq in cur_calls["n_probes"].value_counts().sort_index().items()
+        },
+    }
+    log_record("curated_gene_call_summary", **curated_summary)
 
-        exact_matches = pd.Series(
-            [
-                labels_exact_match(cur_label, rep_label)
-                for cur_label, rep_label in zip(p_cur, p_rep)
-            ],
-            index=p_cur.index,
-        )
-        target_matches = pd.Series(
-            [
-                labels_target_match(cur_label, rep_label)
-                for cur_label, rep_label in zip(p_cur, p_rep)
-            ],
-            index=p_cur.index,
-        )
-
-        missing_rep = valid_cur & ~valid_rep
-        n_valid_cur = int(valid_cur.sum())
-        missing_rate = (int(missing_rep.sum()) / n_valid_cur) if n_valid_cur else 0.0
-        missing_call_diagnostics = curated_guide_count_diagnostics(
-            adata_rep, common_cells, p_cur, valid_cur, valid_rep
-        )
-        print(
-            "  Curated-guide cells missing a valid Reprocessed same-target pair or single call: "
-            f"{missing_rep.sum()} / {n_valid_cur} ({missing_rate:.1%})"
-        )
-        print(
-            f"  Alias-aware exact pair matches: {exact_matches.sum()} / {len(common_cells)} ({exact_matches.mean():.1%})"
-        )
-        print(
-            f"  Alias-aware target matches: {target_matches.sum()} / {len(common_cells)} ({target_matches.mean():.1%})"
-        )
-        print("  Curated-guide count diagnostics:")
-        print(textwrap.indent(json.dumps(missing_call_diagnostics, indent=2), "    "))
-
-        mismatches = np.where(valid_rep & ~exact_matches.to_numpy())[0]
-        if len(mismatches) > 0:
-            print(
-                f"  Mismatched cells diagnostics (Sample of mismatches where Reprocessed has guides):"
-            )
-            print(f"  Total such mismatches: {len(mismatches)}")
-            for idx in mismatches[:10]:
-                print(
-                    f"    {common_cells[idx]}: Curated='{p_cur.iloc[idx]}' vs Rep='{p_rep.iloc[idx]}'"
-                )
-
-        accuracy = exact_matches.mean()
-        target_accuracy = target_matches.mean()
-        overlap_df = pd.DataFrame({"Curated": p_cur, "Reprocessed": p_rep})
-        top_perts = p_cur.value_counts().head(20).index
-        sub_df = overlap_df[overlap_df["Curated"].isin(top_perts)]
-        ct = pd.crosstab(sub_df["Reprocessed"], sub_df["Curated"])
-
-        plt.figure(figsize=(15, 13))
-        ax = sns.heatmap(
-            ct,
-            annot=False,
-            cmap="YlGnBu",
-            cbar_kws={"label": "Number of shared cells"},
-        )
-        plt.suptitle(
-            "Perturbation Confusion Matrix (Top 20)",
-            fontsize=18,
-            fontweight="bold",
-            y=0.98,
-        )
-
-        desc = (
-            "Columns are original study / Curated guide-pair assignments; rows are Reprocessed same-target pair or single guide calls. "
-            "Each tile is the number of shared cells with that assignment pair. "
-            "The diagonal is exact guide-pair agreement; the Reprocessed 'None' row contains cells where no valid call passed the count threshold."
-        )
-        wrapped_desc = "\n".join(textwrap.wrap(desc, width=110))
-        plt.title(
-            f"Exact Pair Match: {accuracy:.4%} | Target Match: {target_accuracy:.4%}\n{wrapped_desc}",
-            fontsize=10,
-            pad=15,
-            style="italic",
-            loc="center",
-        )
-
-        ax.set_xlabel("Original study / Curated assignment")
-        ax.set_ylabel("Reprocessed assignment")
-        plt.xticks(rotation=45, ha="right", fontsize=7)
-        plt.yticks(fontsize=7)
-        plt.tight_layout(rect=[0, 0.05, 1, 0.94])
-        plt.savefig("comparison_results/perturbation_confusion_matrix.png")
-        plt.show()
-        plt.close()
-
-        return {
-            "accuracy": float(accuracy),
-            "target_accuracy": float(target_accuracy),
-            "n_rep_with_guides": int(valid_rep.sum()),
-            "n_curated_cells_missing_reprocessed_call": int(missing_rep.sum()),
-            "curated_guide_count_diagnostics": missing_call_diagnostics,
-            "guide_call_diagnostics": rep_diagnostics,
+    model_specs = [
+        {
+            "model": f"threshold_{threshold}",
+            "method": "threshold",
+            "count_threshold": threshold,
         }
-    return None
+        for threshold in GUIDE_COUNT_THRESHOLDS
+    ]
+    model_specs.append({"model": "gaussian_poisson", "method": "gaussian_poisson"})
+
+    model_results = {}
+    for spec in model_specs:
+        rep_labels, rep_diagnostics = call_probe_lists(
+            adata_rep,
+            method=spec["method"],
+            count_threshold=spec.get("count_threshold"),
+            return_diagnostics=True,
+        )
+        p_rep = (
+            rep_labels.loc[common_cells].astype(str).apply(canonical_label_for_display)
+        )
+        rep_calls = build_gene_call_table(p_rep)
+
+        result = {
+            "method": spec["method"],
+            "count_threshold": rep_diagnostics["count_threshold"],
+            "probe_call_diagnostics": rep_diagnostics,
+            "reprocessed_outcome_counts": outcome_count_dict(rep_calls["outcome"]),
+            "outcome_matrix_rows_curated_columns_reprocessed": outcome_matrix_dict(
+                cur_calls["outcome"], rep_calls["outcome"]
+            ),
+            "single_gene_match": single_gene_match_summary(cur_calls, rep_calls),
+        }
+        model_results[spec["model"]] = result
+        log_record("perturbation_gene_comparison", model=spec["model"], **result)
+
+    return {
+        "curated": curated_summary,
+        "models": model_results,
+        "outcome_definitions": {
+            "0_genes": "no gene-targeting probes called",
+            "1_gene_1_probe": "one gene called from one gene-targeting probe",
+            "1_gene_2_probes": "one gene called from two or more gene-targeting probes",
+            ">1_gene": "more than one gene called",
+        },
+    }
 
 
 # ==============================================================================
 # 3. MAIN EXECUTION
 # ==============================================================================
 os.makedirs("comparison_results", exist_ok=True)
-print("Loading and aligning...")
+log_record(
+    "input_paths",
+    curated_h5ad_path=CURATED_H5AD_PATH,
+    reprocessed_h5ad_path=REPROCESSED_H5AD_PATH,
+)
 adata_cur = filter_unique_barcodes(sc.read_h5ad(CURATED_H5AD_PATH), "Curated")
 adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reprocessed")
 
@@ -754,16 +627,36 @@ if adata_rep.var_names.str.contains(r"\.").any():
 common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
 
-print(f"  Common cells: {len(common_cells)}")
-print(f"  Common genes: {len(common_genes)}")
+overlap_summary = {
+    "common_cells": int(len(common_cells)),
+    "common_genes": int(len(common_genes)),
+    "curated_cells": int(adata_cur.n_obs),
+    "curated_genes": int(adata_cur.n_vars),
+    "reprocessed_cells": int(adata_rep.n_obs),
+    "reprocessed_genes": int(adata_rep.n_vars),
+    "common_cells_pct_of_curated": (
+        len(common_cells) / adata_cur.n_obs * 100 if adata_cur.n_obs else 0.0
+    ),
+    "common_genes_pct_of_curated": (
+        len(common_genes) / adata_cur.n_vars * 100 if adata_cur.n_vars else 0.0
+    ),
+}
+log_record("overlap_summary", **overlap_summary)
 
 cur_sub = preprocess_adata(adata_cur[common_cells, common_genes].copy(), "Curated")
 rep_sub = preprocess_adata(adata_rep[common_cells, common_genes].copy(), "Reprocessed")
 
-results_summary = {"cell_metrics": {}, "gene_metrics": {}}
+results_summary = {
+    "input_paths": {
+        "curated_h5ad_path": CURATED_H5AD_PATH,
+        "reprocessed_h5ad_path": REPROCESSED_H5AD_PATH,
+    },
+    "overlap": overlap_summary,
+    "cell_metrics": {},
+    "gene_metrics": {},
+}
 
 # --- Overlap Distributions (3 Histograms) ---
-print("Generating distribution histograms...")
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
 # 1. Cell UMI Counts distribution
@@ -854,6 +747,12 @@ results_summary["cell_metrics"]["total_counts"] = plot_scatter_comparison(
     deviation_on_log=True,
     description="Each point is one shared cell. The x-axis shows the original study total UMI count; the y-axis shows the reprocessed total UMI count. Values are plotted on log-scaled axes after adding 1.",
 )
+log_record(
+    "comparison_metric",
+    metric_group="cell_metrics",
+    metric="total_counts",
+    **results_summary["cell_metrics"]["total_counts"],
+)
 
 results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
     pd.DataFrame(
@@ -869,6 +768,12 @@ results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
     "Reprocessed",
     "comparison_results/genes_comparison.png",
     description="Each point is one shared cell. The x-axis shows the number of genes detected in the original study; the y-axis shows the number of genes detected in the reprocessed data.",
+)
+log_record(
+    "comparison_metric",
+    metric_group="cell_metrics",
+    metric="n_genes",
+    **results_summary["cell_metrics"]["n_genes"],
 )
 
 # --- Gene-wise Scatter Plots (Restored) ---
@@ -902,6 +807,12 @@ results_summary["gene_metrics"]["mean_expression"] = plot_scatter_comparison(
     log_scale=True,
     description="Each point is one shared gene. The x-axis shows mean expression across shared cells in the original study; the y-axis shows mean expression across shared cells in the reprocessed data. Values are plotted on log-scaled axes after adding 1.",
 )
+log_record(
+    "comparison_metric",
+    metric_group="gene_metrics",
+    metric="mean_expression",
+    **results_summary["gene_metrics"]["mean_expression"],
+)
 
 results_summary["gene_metrics"]["dropout_rate"] = plot_scatter_comparison(
     gene_metrics_df,
@@ -913,9 +824,14 @@ results_summary["gene_metrics"]["dropout_rate"] = plot_scatter_comparison(
     "comparison_results/sparsity_comparison.png",
     description="Each point is one shared gene. The x-axis shows the percentage of shared cells with zero counts in the original study; the y-axis shows the percentage of shared cells with zero counts in the reprocessed data.",
 )
+log_record(
+    "comparison_metric",
+    metric_group="gene_metrics",
+    metric="dropout_rate",
+    **results_summary["gene_metrics"]["dropout_rate"],
+)
 
 # --- Cell-wise Correlation (Restored Summary) ---
-print("Calculating cell-wise correlations...")
 
 
 def get_cell_corrs(adata1, adata2):
@@ -936,6 +852,7 @@ results_summary["cell_wise_corr"] = {
     "median": float(np.nanmedian(cell_corrs)),
     "mean": float(np.nanmean(cell_corrs)),
 }
+log_record("cell_wise_correlation", **results_summary["cell_wise_corr"])
 
 # --- Perturbations ---
 results_summary["perturbation"] = compare_perturbations(
@@ -943,16 +860,22 @@ results_summary["perturbation"] = compare_perturbations(
 )
 
 # --- Final Report ---
-print("\n" + "=" * 50)
-print("COMPARISON COMPLETE")
-print("=" * 50)
-
 with open("comparison_results/summary_report.txt", "w") as f:
-    f.write(json.dumps(results_summary, indent=4))
+    f.write(json.dumps(results_summary, indent=4, default=json_default))
+log_record("summary_report_written", path="comparison_results/summary_report.txt")
 
-print("\n[LLM_DATA_START]")
-print(json.dumps(results_summary))
-print("[LLM_DATA_END]\n")
+perturbation_summary = results_summary["perturbation"]
+if perturbation_summary and "gaussian_poisson" in perturbation_summary["models"]:
+    gaussian_poisson_match = perturbation_summary["models"]["gaussian_poisson"][
+        "single_gene_match"
+    ]
+    gaussian_poisson_match_value = (
+        f"{gaussian_poisson_match['pct_same_gene']:.2f}% "
+        f"({gaussian_poisson_match['n_same_gene']}/"
+        f"{gaussian_poisson_match['n_cells_both_single_gene']})"
+    )
+else:
+    gaussian_poisson_match_value = "N/A"
 
 display(
     pd.DataFrame(
@@ -978,12 +901,8 @@ display(
                 "Value": f"{results_summary['cell_wise_corr']['median']:.4f}",
             },
             {
-                "Metric": "Perturbation Accuracy",
-                "Value": (
-                    f"{results_summary['perturbation']['accuracy']:.2%}"
-                    if results_summary["perturbation"]
-                    else "N/A"
-                ),
+                "Metric": "Gaussian-Poisson single-gene match",
+                "Value": gaussian_poisson_match_value,
             },
         ]
     )
@@ -1009,7 +928,6 @@ os.makedirs("comparison_results/supplementary", exist_ok=True)
 # ------------------------------------------------------------------------------
 # Graph 1: Distribution of Cell-wise Correlations
 # ------------------------------------------------------------------------------
-print("Generating Cell-wise Correlation Distribution...")
 plt.figure(figsize=(9, 6))
 sns.histplot(cell_corrs, bins=100, kde=True, color="purple", alpha=0.4)
 median_val = np.nanmedian(cell_corrs)
@@ -1054,7 +972,6 @@ plt.show()
 # ------------------------------------------------------------------------------
 # Graph 2: Principal Component Alignment Heatmap
 # ------------------------------------------------------------------------------
-print("Calculating PCA for Structural Alignment...")
 # Calculate PCA independently for both datasets to ensure structure is inherent
 sc.tl.pca(cur_sub, n_comps=10)
 sc.tl.pca(rep_sub, n_comps=10)
@@ -1067,6 +984,13 @@ for i in range(10):
             cur_sub.obsm["X_pca"][:, i], rep_sub.obsm["X_pca"][:, j]
         )
         pc_corr[i, j] = np.abs(corr)
+
+off_diagonal = pc_corr[~np.eye(pc_corr.shape[0], dtype=bool)]
+log_record(
+    "pca_alignment",
+    diagonal_abs_correlations=[float(value) for value in np.diag(pc_corr)],
+    max_off_diagonal_abs_correlation=float(np.max(off_diagonal)),
+)
 
 plt.figure(figsize=(9, 7))
 sns.heatmap(
@@ -1110,7 +1034,6 @@ plt.show()
 # ------------------------------------------------------------------------------
 # Graph 3: Gene Variance (Dispersion) Scatter Plot
 # ------------------------------------------------------------------------------
-print("Calculating Gene Variances...")
 
 
 def calc_variance(matrix):
@@ -1139,6 +1062,11 @@ plt.plot(
 
 pearson_var, _ = stats.pearsonr(cur_var, rep_var)
 spearman_var, _ = stats.spearmanr(cur_var, rep_var)
+log_record(
+    "gene_variance_metric",
+    pearson=float(pearson_var),
+    spearman=float(spearman_var),
+)
 
 plt.xscale("log")
 plt.yscale("log")
