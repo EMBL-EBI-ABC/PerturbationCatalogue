@@ -46,8 +46,108 @@ def json_default(value):
     return str(value)
 
 
+def format_pct(value):
+    return f"{value:.1f}%"
+
+
+def format_count_pct(count, total):
+    pct = (count / total * 100) if total else 0.0
+    return f"{count}/{total} ({pct:.1f}%)"
+
+
+def format_outcome_counts(counts):
+    return ", ".join(
+        f"{outcome}: {counts.get(outcome, 0)}" for outcome in GENE_CALL_OUTCOMES
+    )
+
+
 def log_record(event, **fields):
-    print(json.dumps({"event": event, **fields}, sort_keys=True, default=json_default))
+    if event == "input_paths":
+        print("Inputs")
+        print(f"  Curated H5AD: {fields['curated_h5ad_path']}")
+        print(f"  Reprocessed H5AD: {fields['reprocessed_h5ad_path']}")
+    elif event == "barcode_filter":
+        print(
+            f"Barcode filtering - {fields['dataset']}: "
+            f"removed {format_count_pct(fields['removed_collision_cells'], fields['original_cells'])}; "
+            f"remaining {fields['remaining_cells']}"
+        )
+    elif event == "preprocess_input":
+        raw_status = "yes" if fields["raw_counts_detected"] else "no"
+        print(
+            f"Preprocessing input - {fields['dataset']}: "
+            f"{fields['cells']} cells, {fields['genes']} genes, raw counts detected: {raw_status}"
+        )
+    elif event == "overlap_summary":
+        print("Overlap")
+        print(
+            f"  Cells: {fields['common_cells']} common; "
+            f"curated {fields['curated_cells']}, reprocessed {fields['reprocessed_cells']}; "
+            f"{format_pct(fields['common_cells_pct_of_curated'])} of curated"
+        )
+        print(
+            f"  Genes: {fields['common_genes']} common; "
+            f"curated {fields['curated_genes']}, reprocessed {fields['reprocessed_genes']}; "
+            f"{format_pct(fields['common_genes_pct_of_curated'])} of curated"
+        )
+    elif event == "comparison_metric":
+        print(
+            f"{fields['metric_group']}.{fields['metric']}: "
+            f"Pearson {fields['pearson']:.4f}, Spearman {fields['spearman']:.4f}, "
+            f"deviant {fields['pct_deviant']:.1f}%"
+        )
+    elif event == "cell_wise_correlation":
+        print(
+            f"Cell-wise expression correlation: median {fields['median']:.4f}, "
+            f"mean {fields['mean']:.4f}"
+        )
+    elif event == "curated_gene_call_summary":
+        print("Perturbation gene calls")
+        print(
+            f"  Curated column: {fields['perturbation_column']}; "
+            f"cells with probes {format_count_pct(fields['n_cells_with_any_probe'], fields['n_common_cells'])}; "
+            f"cells with genes {format_count_pct(fields['n_cells_with_any_gene'], fields['n_common_cells'])}"
+        )
+        print(f"  Curated outcomes: {format_outcome_counts(fields['outcome_counts'])}")
+    elif event == "perturbation_gene_comparison":
+        match = fields["single_gene_match"]
+        common_summary = fields["reprocessed_common_call_summary"]
+        print(
+            f"  {fields['model']}: threshold >= {fields['count_threshold']} UMI; "
+            f"called probes in "
+            f"{format_count_pct(common_summary['n_cells_with_any_probe'], common_summary['n_common_cells'])}; "
+            f"called genes in "
+            f"{format_count_pct(common_summary['n_cells_with_any_gene'], common_summary['n_common_cells'])}"
+        )
+        print(
+            f"    Outcomes: {format_outcome_counts(fields['reprocessed_outcome_counts'])}"
+        )
+        print(
+            f"    Same single-gene calls: "
+            f"{format_count_pct(match['n_same_gene'], match['n_cells_both_single_gene'])}; "
+            f"different {format_count_pct(match['n_different_gene'], match['n_cells_both_single_gene'])}"
+        )
+        if fields.get("plot_path"):
+            print(f"    Matrix plot: {fields['plot_path']}")
+    elif event == "perturbation_comparison_skipped":
+        print(f"Perturbation comparison skipped: {fields['reason']}")
+    elif event == "summary_report_written":
+        print(f"Summary report: {fields['path']}")
+    elif event == "pca_alignment":
+        diagonal = ", ".join(
+            f"{value:.3f}" for value in fields["diagonal_abs_correlations"]
+        )
+        print(
+            f"PCA alignment: diagonal absolute correlations [{diagonal}]; "
+            f"max off-diagonal {fields['max_off_diagonal_abs_correlation']:.3f}"
+        )
+    elif event == "gene_variance_metric":
+        print(
+            f"Gene variance: Pearson {fields['pearson']:.4f}, "
+            f"Spearman {fields['spearman']:.4f}"
+        )
+    else:
+        print(f"{event}: {fields}")
 
 
 def filter_unique_barcodes(adata, name):
@@ -322,6 +422,52 @@ def outcome_matrix_dict(cur_outcomes, rep_outcomes):
     }
 
 
+def outcome_matrix_dataframe(matrix_dict):
+    return (
+        pd.DataFrame.from_dict(matrix_dict, orient="index")
+        .reindex(index=GENE_CALL_OUTCOMES, columns=GENE_CALL_OUTCOMES, fill_value=0)
+        .astype(int)
+    )
+
+
+def plot_gene_outcome_matrix(
+    model_name, matrix_dict, single_gene_match, count_threshold
+):
+    matrix_df = outcome_matrix_dataframe(matrix_dict)
+    display_labels = ["0 genes", "1 gene\n1 probe", "1 gene\n2+ probes", ">1 gene"]
+    plot_path = f"comparison_results/perturbation_gene_outcome_matrix_{model_name}.png"
+
+    fig, ax = plt.subplots(figsize=(8.5, 7))
+    sns.heatmap(
+        matrix_df,
+        annot=True,
+        fmt="d",
+        cmap="YlGnBu",
+        cbar_kws={"label": "Cells"},
+        xticklabels=display_labels,
+        yticklabels=display_labels,
+        ax=ax,
+    )
+
+    same = single_gene_match["n_same_gene"]
+    total = single_gene_match["n_cells_both_single_gene"]
+    same_pct = (same / total * 100) if total else 0.0
+    ax.set_title(
+        f"{model_name.replace('_', ' ')}: Gene-Call Outcome Matrix\n"
+        f"threshold >= {count_threshold} UMI | same single-gene calls: "
+        f"{same}/{total} ({same_pct:.1f}%)",
+        fontsize=13,
+        pad=12,
+    )
+    ax.set_xlabel("Reprocessed outcome")
+    ax.set_ylabel("Curated outcome")
+    plt.tight_layout()
+    plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+    plt.show()
+    plt.close(fig)
+    return plot_path
+
+
 def single_gene_match_summary(cur_calls, rep_calls):
     cur_single = cur_calls["n_genes"] == 1
     rep_single = rep_calls["n_genes"] == 1
@@ -582,16 +728,29 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             rep_labels.loc[common_cells].astype(str).apply(canonical_label_for_display)
         )
         rep_calls = build_gene_call_table(p_rep)
+        reprocessed_common_call_summary = {
+            "n_common_cells": int(len(common_cells)),
+            "n_cells_with_any_probe": int((rep_calls["n_probes"] > 0).sum()),
+            "n_cells_with_any_gene": int((rep_calls["n_genes"] > 0).sum()),
+        }
+        outcome_matrix = outcome_matrix_dict(cur_calls["outcome"], rep_calls["outcome"])
+        single_gene_match = single_gene_match_summary(cur_calls, rep_calls)
+        plot_path = plot_gene_outcome_matrix(
+            spec["model"],
+            outcome_matrix,
+            single_gene_match,
+            rep_diagnostics["count_threshold"],
+        )
 
         result = {
             "method": spec["method"],
             "count_threshold": rep_diagnostics["count_threshold"],
             "probe_call_diagnostics": rep_diagnostics,
+            "reprocessed_common_call_summary": reprocessed_common_call_summary,
             "reprocessed_outcome_counts": outcome_count_dict(rep_calls["outcome"]),
-            "outcome_matrix_rows_curated_columns_reprocessed": outcome_matrix_dict(
-                cur_calls["outcome"], rep_calls["outcome"]
-            ),
-            "single_gene_match": single_gene_match_summary(cur_calls, rep_calls),
+            "outcome_matrix_rows_curated_columns_reprocessed": outcome_matrix,
+            "single_gene_match": single_gene_match,
+            "plot_path": plot_path,
         }
         model_results[spec["model"]] = result
         log_record("perturbation_gene_comparison", model=spec["model"], **result)
