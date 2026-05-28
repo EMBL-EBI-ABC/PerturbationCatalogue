@@ -25,7 +25,6 @@ REPROCESSED_H5AD_PATH = (
     "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
     "nadig_2025_jurkat/experiment_final.h5ad"
 )
-GUIDE_COUNT_THRESHOLDS = [1, 2, 3, 4, 5]
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 
 
@@ -133,19 +132,6 @@ def log_record(event, **fields):
         print(f"Perturbation comparison skipped: {fields['reason']}")
     elif event == "summary_report_written":
         print(f"Summary report: {fields['path']}")
-    elif event == "pca_alignment":
-        diagonal = ", ".join(
-            f"{value:.3f}" for value in fields["diagonal_abs_correlations"]
-        )
-        print(
-            f"PCA alignment: diagonal absolute correlations [{diagonal}]; "
-            f"max off-diagonal {fields['max_off_diagonal_abs_correlation']:.3f}"
-        )
-    elif event == "gene_variance_metric":
-        print(
-            f"Gene variance: Pearson {fields['pearson']:.4f}, "
-            f"Spearman {fields['spearman']:.4f}"
-        )
     else:
         print(f"{event}: {fields}")
 
@@ -193,7 +179,7 @@ def get_raw_counts(adata):
 
 
 def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
-    """Standardized preprocessing: Raw -> Norm -> Log -> HVG -> Scale -> PCA."""
+    """Standardized preprocessing: raw counts -> normalized/log counts -> HVGs."""
     is_raw = get_raw_counts(adata)
     log_record(
         "preprocess_input",
@@ -578,10 +564,8 @@ def fit_poisson_gaussian_mixture(counts, max_iter=100, tol=1e-4):
     }
 
 
-def call_probe_lists(
-    adata, method="gaussian_poisson", count_threshold=None, return_diagnostics=False
-):
-    """Call all probe features above threshold for each cell."""
+def call_probe_lists(adata, return_diagnostics=False):
+    """Call all probe features above the Gaussian-Poisson-derived threshold."""
     if "guides" not in adata.obsm:
         return (None, None) if return_diagnostics else None
 
@@ -589,23 +573,17 @@ def call_probe_lists(
     if sp.issparse(guide_matrix):
         guide_matrix = guide_matrix.tocsr()
 
-    mixture_res = None
-    if method == "gaussian_poisson":
-        if sp.issparse(guide_matrix):
-            non_zeros = guide_matrix.data
-        else:
-            non_zeros = guide_matrix[guide_matrix > 0]
-
-        if len(non_zeros) > 0:
-            mixture_res = fit_poisson_gaussian_mixture(non_zeros)
-            count_threshold = mixture_res["decision_threshold"]
-        else:
-            count_threshold = 5
-    elif method == "threshold":
-        if count_threshold is None:
-            raise ValueError("count_threshold is required when method='threshold'")
+    if sp.issparse(guide_matrix):
+        non_zeros = guide_matrix.data
     else:
-        raise ValueError(f"Unsupported guide calling method: {method}")
+        non_zeros = guide_matrix[guide_matrix > 0]
+
+    if len(non_zeros) > 0:
+        mixture_res = fit_poisson_gaussian_mixture(non_zeros)
+        count_threshold = mixture_res["decision_threshold"]
+    else:
+        mixture_res = None
+        count_threshold = 5
 
     guide_names = np.array(
         adata.uns.get(
@@ -639,7 +617,7 @@ def call_probe_lists(
     gene_calls = build_gene_call_table(calls)
 
     diagnostics = {
-        "method": method,
+        "method": "gaussian_poisson",
         "count_threshold": int(count_threshold),
         "n_cells": int(guide_matrix.shape[0]),
         "n_guides": int(guide_matrix.shape[1]),
@@ -706,22 +684,12 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
     }
     log_record("curated_gene_call_summary", **curated_summary)
 
-    model_specs = [
-        {
-            "model": f"threshold_{threshold}",
-            "method": "threshold",
-            "count_threshold": threshold,
-        }
-        for threshold in GUIDE_COUNT_THRESHOLDS
-    ]
-    model_specs.append({"model": "gaussian_poisson", "method": "gaussian_poisson"})
+    model_specs = [{"model": "gaussian_poisson"}]
 
     model_results = {}
     for spec in model_specs:
         rep_labels, rep_diagnostics = call_probe_lists(
             adata_rep,
-            method=spec["method"],
-            count_threshold=spec.get("count_threshold"),
             return_diagnostics=True,
         )
         p_rep = (
@@ -743,7 +711,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         )
 
         result = {
-            "method": spec["method"],
+            "method": "gaussian_poisson",
             "count_threshold": rep_diagnostics["count_threshold"],
             "probe_call_diagnostics": rep_diagnostics,
             "reprocessed_common_call_summary": reprocessed_common_call_summary,
@@ -1074,14 +1042,6 @@ display(
 # It assumes the main execution block above has already run and variables like
 # `cur_sub`, `rep_sub`, and `cell_corrs` are in memory.
 
-import os
-import scipy.sparse as sp
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-from scipy import stats
-import scanpy as sc
-
 os.makedirs("comparison_results/supplementary", exist_ok=True)
 
 # ------------------------------------------------------------------------------
@@ -1123,149 +1083,6 @@ plt.figtext(
 plt.tight_layout(rect=[0, 0.08, 1, 1])
 plt.savefig(
     "comparison_results/supplementary/cellwise_correlation_dist.png",
-    bbox_inches="tight",
-    dpi=300,
-)
-plt.show()
-
-# ------------------------------------------------------------------------------
-# Graph 2: Principal Component Alignment Heatmap
-# ------------------------------------------------------------------------------
-# Calculate PCA independently for both datasets to ensure structure is inherent
-sc.tl.pca(cur_sub, n_comps=10)
-sc.tl.pca(rep_sub, n_comps=10)
-
-pc_corr = np.zeros((10, 10))
-for i in range(10):
-    for j in range(10):
-        # We use absolute correlation because the sign (direction) of a PC is arbitrary
-        corr, _ = stats.pearsonr(
-            cur_sub.obsm["X_pca"][:, i], rep_sub.obsm["X_pca"][:, j]
-        )
-        pc_corr[i, j] = np.abs(corr)
-
-off_diagonal = pc_corr[~np.eye(pc_corr.shape[0], dtype=bool)]
-log_record(
-    "pca_alignment",
-    diagonal_abs_correlations=[float(value) for value in np.diag(pc_corr)],
-    max_off_diagonal_abs_correlation=float(np.max(off_diagonal)),
-)
-
-plt.figure(figsize=(9, 7))
-sns.heatmap(
-    pc_corr,
-    annot=True,
-    cmap="YlGnBu",
-    fmt=".2f",
-    vmin=0,
-    vmax=1,
-    xticklabels=[f"Rep PC{i+1}" for i in range(10)],
-    yticklabels=[f"Cur PC{i+1}" for i in range(10)],
-)
-plt.title(
-    "Latent Structural Integrity\n(Alignment of Top 10 Principal Components)",
-    fontsize=16,
-    fontweight="bold",
-    pad=15,
-)
-desc2 = (
-    "Absolute Pearson correlation between the top 10 independent Principal Components of "
-    "both datasets. A strong diagonal demonstrates that the global biological covariance "
-    "structure and major axes of variation remain intact."
-)
-plt.figtext(
-    0.5,
-    -0.05,
-    desc2,
-    wrap=True,
-    horizontalalignment="center",
-    fontsize=10,
-    style="italic",
-)
-plt.tight_layout(rect=[0, 0.08, 1, 1])
-plt.savefig(
-    "comparison_results/supplementary/pca_alignment_heatmap.png",
-    bbox_inches="tight",
-    dpi=300,
-)
-plt.show()
-
-# ------------------------------------------------------------------------------
-# Graph 3: Gene Variance (Dispersion) Scatter Plot
-# ------------------------------------------------------------------------------
-
-
-def calc_variance(matrix):
-    if sp.issparse(matrix):
-        # E[X^2] - (E[X])^2 for sparse matrices to avoid dense memory explosion
-        mean = matrix.mean(axis=0).A.squeeze()
-        sq_mean = matrix.multiply(matrix).mean(axis=0).A.squeeze()
-        return sq_mean - (mean**2)
-    else:
-        return np.var(matrix, axis=0)
-
-
-cur_var = calc_variance(cur_sub.X)
-rep_var = calc_variance(rep_sub.X)
-
-plt.figure(figsize=(9, 9))
-# Add 1e-4 pseudocount for log-scale plotting
-plt.scatter(cur_var + 1e-4, rep_var + 1e-4, alpha=0.3, s=15, color="darkgreen")
-
-# Identity line
-min_val = min(np.min(cur_var), np.min(rep_var)) + 1e-4
-max_val = max(np.max(cur_var), np.max(rep_var)) + 1e-4
-plt.plot(
-    [min_val, max_val], [min_val, max_val], "r--", linewidth=2, label="Identity (y=x)"
-)
-
-pearson_var, _ = stats.pearsonr(cur_var, rep_var)
-spearman_var, _ = stats.spearmanr(cur_var, rep_var)
-log_record(
-    "gene_variance_metric",
-    pearson=float(pearson_var),
-    spearman=float(spearman_var),
-)
-
-plt.xscale("log")
-plt.yscale("log")
-plt.title(
-    "Statistical Noise Preservation\n(Gene Variance Comparison)",
-    fontsize=16,
-    fontweight="bold",
-    pad=35,
-)
-plt.text(
-    0.5,
-    1.02,
-    f"Pearson r = {pearson_var:.4f} | Spearman rho = {spearman_var:.4f}",
-    transform=plt.gca().transAxes,
-    ha="center",
-    va="bottom",
-    fontsize=12,
-    style="italic",
-)
-plt.xlabel("Gene Variance in Original Data (+ 1e-4)", fontsize=13)
-plt.ylabel("Gene Variance in Reprocessed Data (+ 1e-4)", fontsize=13)
-plt.legend(loc="upper left")
-
-desc3 = (
-    "Compares the variance of each gene across all cells. High correlation indicates "
-    "that the biological overdispersion and noise characteristics required for rigorous "
-    "differential expression modeling (like DESeq2/TRADE) are fully preserved."
-)
-plt.figtext(
-    0.5,
-    -0.05,
-    desc3,
-    wrap=True,
-    horizontalalignment="center",
-    fontsize=10,
-    style="italic",
-)
-plt.tight_layout(rect=[0, 0.08, 1, 1])
-plt.savefig(
-    "comparison_results/supplementary/gene_variance_scatter.png",
     bbox_inches="tight",
     dpi=300,
 )
