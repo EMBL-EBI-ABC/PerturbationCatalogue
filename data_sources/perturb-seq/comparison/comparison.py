@@ -25,6 +25,16 @@ REPROCESSED_H5AD_PATH = (
     "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
     "nadig_2025_jurkat/experiment_final.h5ad"
 )
+FILTERED_REPROCESSED_H5AD_PATH = (
+    "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
+    "nadig_2025_jurkat/experiment_final.filtered.h5ad"
+)
+DATASET_ID = "nadig_2025_jurkat"
+CELL_QC_LOWER_QUANTILE = 0.01
+CELL_MIN_COUNTS_FLOOR = 1000
+CELL_MIN_GENES_FLOOR = 200
+GENE_MIN_CELLS_FLOOR = 10
+GENE_MIN_CELLS_PCT = 0.01
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 
 
@@ -65,6 +75,9 @@ def log_record(event, **fields):
         print("Inputs")
         print(f"  Curated H5AD: {fields['curated_h5ad_path']}")
         print(f"  Reprocessed H5AD: {fields['reprocessed_h5ad_path']}")
+        print(
+            f"  Filtered reprocessed H5AD: {fields['filtered_reprocessed_h5ad_path']}"
+        )
     elif event == "barcode_filter":
         print(
             f"Barcode filtering - {fields['dataset']}: "
@@ -132,6 +145,37 @@ def log_record(event, **fields):
         print(f"Perturbation comparison skipped: {fields['reason']}")
     elif event == "summary_report_written":
         print(f"Summary report: {fields['path']}")
+    elif event == "qc_filter":
+        print("QC filtering - Reprocessed")
+        print(
+            f"  Cells: {fields['cells_before']} -> {fields['cells_after']} "
+            f"(removed {format_count_pct(fields['cells_removed'], fields['cells_before'])})"
+        )
+        print(
+            f"  Cell thresholds: total counts >= {fields['min_total_counts']}, "
+            f"detected genes >= {fields['min_genes_by_counts']}"
+        )
+        print(
+            f"  Genes: {fields['genes_before']} -> {fields['genes_after']} "
+            f"(removed {format_count_pct(fields['genes_removed'], fields['genes_before'])})"
+        )
+        print(
+            f"  Gene threshold: detected in >= {fields['min_cells_by_counts']} cells "
+            f"({fields['min_cells_pct']:.3f}% of QC-passing cells)"
+        )
+    elif event == "knockout_annotation":
+        print(
+            "Knockout annotation - Reprocessed: "
+            f"Gaussian-Poisson threshold >= {fields['count_threshold']} UMI; "
+            f"single-gene calls {format_count_pct(fields['n_single_gene_calls'], fields['n_cells'])}; "
+            f"multi-gene calls {fields['n_multi_gene_calls']}; no-gene calls {fields['n_no_gene_calls']}"
+        )
+    elif event == "filtered_h5ad_written":
+        print(
+            f"Filtered H5AD written: {fields['path']} "
+            f"({fields['cells']} cells x {fields['genes']} genes; "
+            f"compression={fields['compression']})"
+        )
     else:
         print(f"{event}: {fields}")
 
@@ -176,6 +220,86 @@ def get_raw_counts(adata):
     else:
         sample = X.flatten()[:2000]
     return np.all(np.equal(np.mod(sample, 1), 0))
+
+
+def matrix_sum(matrix, axis):
+    return np.asarray(matrix.sum(axis=axis)).ravel()
+
+
+def matrix_nnz(matrix, axis):
+    return np.asarray((matrix > 0).sum(axis=axis)).ravel()
+
+
+def lower_quantile_threshold(values, floor, quantile):
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return int(floor)
+    return int(max(floor, np.floor(np.quantile(values, quantile))))
+
+
+def filter_low_signal_cells_and_genes(adata):
+    """Apply liberal expression QC before comparison and downstream export."""
+    cells_before = adata.n_obs
+    genes_before = adata.n_vars
+
+    total_counts = matrix_sum(adata.X, axis=1)
+    n_genes_by_counts = matrix_nnz(adata.X, axis=1)
+    min_total_counts = lower_quantile_threshold(
+        total_counts, CELL_MIN_COUNTS_FLOOR, CELL_QC_LOWER_QUANTILE
+    )
+    min_genes_by_counts = lower_quantile_threshold(
+        n_genes_by_counts, CELL_MIN_GENES_FLOOR, CELL_QC_LOWER_QUANTILE
+    )
+
+    adata.obs["qc_total_counts"] = total_counts
+    adata.obs["qc_n_genes_by_counts"] = n_genes_by_counts
+
+    cell_mask = (total_counts >= min_total_counts) & (
+        n_genes_by_counts >= min_genes_by_counts
+    )
+    if not np.any(cell_mask):
+        raise ValueError(
+            "Expression QC removed all cells. "
+            f"Thresholds were total_counts >= {min_total_counts}, "
+            f"n_genes_by_counts >= {min_genes_by_counts}."
+        )
+
+    adata = adata[cell_mask].copy()
+
+    n_cells_by_counts = matrix_nnz(adata.X, axis=0)
+    min_cells_by_counts = int(
+        max(GENE_MIN_CELLS_FLOOR, np.ceil(GENE_MIN_CELLS_PCT * adata.n_obs))
+    )
+    gene_mask = n_cells_by_counts >= min_cells_by_counts
+    if not np.any(gene_mask):
+        raise ValueError(
+            "Expression QC removed all genes. "
+            f"Threshold was detection in >= {min_cells_by_counts} cells."
+        )
+
+    adata.var["qc_n_cells_by_counts"] = n_cells_by_counts
+    adata.var["qc_pct_cells_by_counts"] = (
+        n_cells_by_counts / adata.n_obs * 100 if adata.n_obs else 0.0
+    )
+    adata = adata[:, gene_mask].copy()
+
+    summary = {
+        "cells_before": int(cells_before),
+        "cells_after": int(adata.n_obs),
+        "cells_removed": int(cells_before - adata.n_obs),
+        "genes_before": int(genes_before),
+        "genes_after": int(adata.n_vars),
+        "genes_removed": int(genes_before - adata.n_vars),
+        "min_total_counts": int(min_total_counts),
+        "min_genes_by_counts": int(min_genes_by_counts),
+        "min_cells_by_counts": int(min_cells_by_counts),
+        "min_cells_pct": float(min_cells_by_counts / adata.n_obs * 100),
+        "cell_qc_lower_quantile": float(CELL_QC_LOWER_QUANTILE),
+    }
+    adata.uns["expression_qc"] = summary
+    log_record("qc_filter", **summary)
+    return adata, summary
 
 
 def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
@@ -643,6 +767,72 @@ def call_probe_lists(adata, return_diagnostics=False):
     return calls
 
 
+def annotate_knockout_genes(adata):
+    """Add per-cell Gaussian-Poisson probe and knockout-gene calls to adata.obs."""
+    probe_labels, diagnostics = call_probe_lists(adata, return_diagnostics=True)
+    if probe_labels is None:
+        log_record(
+            "perturbation_comparison_skipped",
+            reason="reprocessed_guide_matrix_missing",
+            expected_obsm_key="guides",
+        )
+        return None
+
+    call_table = build_gene_call_table(probe_labels)
+    gene_labels = call_table["gene_label"].replace("None", "")
+    single_gene = call_table["n_genes"] == 1
+
+    adata.obs["called_probe_label"] = call_table["probe_label"].astype(str).to_numpy()
+    adata.obs["called_probe_count"] = call_table["n_probes"].astype(int).to_numpy()
+    adata.obs["called_knockout_genes"] = gene_labels.astype(str).to_numpy()
+    adata.obs["called_knockout_gene_count"] = (
+        call_table["n_genes"].astype(int).to_numpy()
+    )
+    adata.obs["knockout_call_outcome"] = call_table["outcome"].astype(str).to_numpy()
+    adata.obs["perturbed_target_symbol"] = np.where(
+        single_gene.to_numpy(), call_table["gene_label"].to_numpy(), ""
+    )
+    adata.obs["perturbation_call_method"] = "gaussian_poisson"
+    adata.obs["dataset_id"] = DATASET_ID
+
+    if "counts" not in adata.layers:
+        adata.layers["counts"] = adata.X.copy()
+
+    adata.uns["dataset_id"] = DATASET_ID
+    adata.uns["perturbation_calling"] = diagnostics
+    adata.uns["downstream_columns"] = {
+        "expression_counts": "layers['counts']",
+        "perturbed_target_symbol": "obs['perturbed_target_symbol']",
+        "all_called_knockout_genes": "obs['called_knockout_genes']",
+        "call_outcome": "obs['knockout_call_outcome']",
+    }
+
+    summary = {
+        "n_cells": int(adata.n_obs),
+        "count_threshold": int(diagnostics["count_threshold"]),
+        "n_single_gene_calls": int(single_gene.sum()),
+        "n_multi_gene_calls": int((call_table["n_genes"] > 1).sum()),
+        "n_no_gene_calls": int((call_table["n_genes"] == 0).sum()),
+        "outcome_counts": outcome_count_dict(call_table["outcome"]),
+    }
+    log_record("knockout_annotation", **summary)
+    return summary
+
+
+def write_filtered_h5ad(adata, path):
+    output_dir = os.path.dirname(path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    adata.write_h5ad(path, compression="gzip")
+    log_record(
+        "filtered_h5ad_written",
+        path=path,
+        cells=adata.n_obs,
+        genes=adata.n_vars,
+        compression="gzip",
+    )
+
+
 def compare_perturbations(adata_cur, adata_rep, common_cells):
     """Compare perturbation assignments at gene level, after probe calling."""
     cur_pert_col = next(
@@ -688,13 +878,23 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 
     model_results = {}
     for spec in model_specs:
-        rep_labels, rep_diagnostics = call_probe_lists(
-            adata_rep,
-            return_diagnostics=True,
-        )
-        p_rep = (
-            rep_labels.loc[common_cells].astype(str).apply(canonical_label_for_display)
-        )
+        if "called_probe_label" in adata_rep.obs:
+            rep_diagnostics = adata_rep.uns.get("perturbation_calling", {})
+            p_rep = (
+                adata_rep.obs.loc[common_cells, "called_probe_label"]
+                .astype(str)
+                .apply(canonical_label_for_display)
+            )
+        else:
+            rep_labels, rep_diagnostics = call_probe_lists(
+                adata_rep,
+                return_diagnostics=True,
+            )
+            p_rep = (
+                rep_labels.loc[common_cells]
+                .astype(str)
+                .apply(canonical_label_for_display)
+            )
         rep_calls = build_gene_call_table(p_rep)
         reprocessed_common_call_summary = {
             "n_common_cells": int(len(common_cells)),
@@ -707,12 +907,12 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             spec["model"],
             outcome_matrix,
             single_gene_match,
-            rep_diagnostics["count_threshold"],
+            rep_diagnostics.get("count_threshold"),
         )
 
         result = {
             "method": "gaussian_poisson",
-            "count_threshold": rep_diagnostics["count_threshold"],
+            "count_threshold": rep_diagnostics.get("count_threshold"),
             "probe_call_diagnostics": rep_diagnostics,
             "reprocessed_common_call_summary": reprocessed_common_call_summary,
             "reprocessed_outcome_counts": outcome_count_dict(rep_calls["outcome"]),
@@ -743,6 +943,7 @@ log_record(
     "input_paths",
     curated_h5ad_path=CURATED_H5AD_PATH,
     reprocessed_h5ad_path=REPROCESSED_H5AD_PATH,
+    filtered_reprocessed_h5ad_path=FILTERED_REPROCESSED_H5AD_PATH,
 )
 adata_cur = filter_unique_barcodes(sc.read_h5ad(CURATED_H5AD_PATH), "Curated")
 adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reprocessed")
@@ -750,6 +951,10 @@ adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reproce
 if adata_rep.var_names.str.contains(r"\.").any():
     adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
     adata_rep.var_names_make_unique()
+
+adata_rep, qc_summary = filter_low_signal_cells_and_genes(adata_rep)
+knockout_annotation_summary = annotate_knockout_genes(adata_rep)
+write_filtered_h5ad(adata_rep, FILTERED_REPROCESSED_H5AD_PATH)
 
 common_cells = np.intersect1d(adata_cur.obs_names, adata_rep.obs_names)
 common_genes = np.intersect1d(adata_cur.var_names, adata_rep.var_names)
@@ -777,7 +982,10 @@ results_summary = {
     "input_paths": {
         "curated_h5ad_path": CURATED_H5AD_PATH,
         "reprocessed_h5ad_path": REPROCESSED_H5AD_PATH,
+        "filtered_reprocessed_h5ad_path": FILTERED_REPROCESSED_H5AD_PATH,
     },
+    "expression_qc": qc_summary,
+    "knockout_annotation": knockout_annotation_summary,
     "overlap": overlap_summary,
     "cell_metrics": {},
     "gene_metrics": {},
