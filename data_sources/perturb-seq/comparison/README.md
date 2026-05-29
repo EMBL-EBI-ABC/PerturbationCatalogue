@@ -64,7 +64,7 @@ The script generates the following outputs in the `comparison_results/` folder:
 *   **Aggressive Alignment**: Gene names are aligned even if they are stored in different `var` columns (e.g., `gene_symbols` vs index).
 *   **Structural Validation**: PCA is used to verify that the reprocessed data preserves the biological structure of the original curated dataset.
 *   **Control Annotation**: `non-targeting_*` guides are recorded separately from gene-targeting guides. A control cell is one with at least one non-targeting guide and zero gene-targeting guides. A valid perturbation cell is one with exactly one gene-targeting gene and zero non-targeting guides.
-*   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names` when a GTF is available through `PERTURB_SEQ_GTF`, `GTF`, or `$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`.
+*   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names` derived from `/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`. The script fails if that GTF is missing or if features cannot be resolved to symbols.
 
 # Raw data from source
 ```

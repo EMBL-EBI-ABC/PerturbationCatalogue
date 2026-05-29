@@ -38,17 +38,8 @@ GENE_MIN_CELLS_FLOOR = 10
 GENE_MIN_CELLS_PCT = 0.01
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 CONTROL_TARGET_SYMBOL = "non-targeting"
-GTF_PATH = (
-    os.environ.get("PERTURB_SEQ_GTF")
-    or os.environ.get("GTF")
-    or (
-        os.path.join(
-            os.environ["HPS_PATH"],
-            "cache/reference/Homo_sapiens.GRCh38.115.gtf.gz",
-        )
-        if os.environ.get("HPS_PATH")
-        else None
-    )
+REFERENCE_GTF_PATH = (
+    "/hps/nobackup/mfreeberg/cache/reference/" "Homo_sapiens.GRCh38.115.gtf.gz"
 )
 
 
@@ -336,8 +327,8 @@ def parse_gtf_attributes(raw):
 
 
 def load_gtf_gene_symbols(path):
-    if not path or not os.path.exists(path):
-        return {}
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Reference GTF not found: {path}")
 
     opener = gzip.open if str(path).endswith(".gz") else open
     mapping = {}
@@ -354,14 +345,22 @@ def load_gtf_gene_symbols(path):
             if gene_id and gene_name:
                 mapping[gene_id] = gene_name
                 mapping.setdefault(gene_id.split(".", 1)[0], gene_name)
+    if not mapping:
+        raise ValueError(
+            f"No gene_id/gene_name records loaded from reference GTF: {path}"
+        )
     return mapping
 
 
-def make_unique_index(values, fallback_values):
+def make_unique_index(values):
     seen = {}
     unique = []
-    for value, fallback in zip(values, fallback_values):
-        base = str(value) if str(value) else str(fallback)
+    for value in values:
+        base = str(value).strip()
+        if not base:
+            raise ValueError(
+                "Cannot create feature index: empty gene symbol encountered"
+            )
         count = seen.get(base, 0)
         candidate = base if count == 0 else f"{base}-{count}"
         while candidate in seen:
@@ -374,45 +373,33 @@ def make_unique_index(values, fallback_values):
 
 
 def annotate_expression_gene_symbols(adata, dataset_name):
-    """Ensure expression features carry gene symbols and use them as var_names."""
+    """Ensure expression features carry GTF-derived gene symbols and use them as var_names."""
     original_index = pd.Index(adata.var_names.astype(str))
     if "gene_id" not in adata.var.columns:
         adata.var["gene_id"] = original_index.to_numpy()
 
-    symbol_source = None
-    symbols = None
-    for column in ["gene_symbol", "gene_symbols", "gene_name", "symbol"]:
-        if column in adata.var.columns:
-            candidate = adata.var[column].astype("string")
-            if candidate.notna().any():
-                symbols = candidate
-                symbol_source = f"var['{column}']"
-                break
-
-    mapping = {}
-    if symbols is None:
-        mapping = load_gtf_gene_symbols(GTF_PATH)
-        if mapping:
-            gene_ids = adata.var["gene_id"].astype(str)
-            symbols = pd.Series(
-                [
-                    mapping.get(gene_id) or mapping.get(gene_id.split(".", 1)[0]) or ""
-                    for gene_id in gene_ids
-                ],
-                index=adata.var.index,
-                dtype="string",
-            )
-            symbol_source = GTF_PATH
+    mapping = load_gtf_gene_symbols(REFERENCE_GTF_PATH)
+    symbols = []
+    unresolved = []
+    for feature_name, gene_id in zip(original_index, adata.var["gene_id"].astype(str)):
+        gene_id = str(gene_id).strip()
+        feature_name = str(feature_name).strip()
+        symbol = mapping.get(gene_id) or mapping.get(gene_id.split(".", 1)[0])
+        if symbol is None:
+            unresolved.append({"feature_name": feature_name, "gene_id": gene_id})
         else:
-            symbols = pd.Series(original_index, index=adata.var.index, dtype="string")
-            symbol_source = "var_names_fallback"
+            symbols.append(symbol)
 
-    symbols = symbols.fillna("").astype(str).str.strip()
-    fallback = adata.var["gene_id"].astype(str)
-    symbols = symbols.where(symbols.str.len() > 0, fallback)
+    if unresolved:
+        raise ValueError(
+            f"Could not resolve {len(unresolved)} {dataset_name} expression features "
+            f"to gene symbols using {REFERENCE_GTF_PATH}. Examples: {unresolved[:10]}"
+        )
+
+    symbols = pd.Series(symbols, index=adata.var.index, dtype="string")
     adata.var["gene_symbol"] = symbols.to_numpy()
     adata.var["feature_id"] = original_index.to_numpy()
-    adata.var_names = make_unique_index(adata.var["gene_symbol"], fallback)
+    adata.var_names = make_unique_index(adata.var["gene_symbol"])
     adata.var.index.name = "gene_symbol_unique"
 
     n_mapped = int(
@@ -428,7 +415,7 @@ def annotate_expression_gene_symbols(adata, dataset_name):
         dataset=dataset_name,
         n_mapped=n_mapped,
         n_genes=adata.n_vars,
-        source=symbol_source,
+        source=REFERENCE_GTF_PATH,
     )
     return adata
 
