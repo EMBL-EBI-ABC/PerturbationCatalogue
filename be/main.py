@@ -5,6 +5,7 @@ from elasticsearch import AsyncElasticsearch
 import asyncpg
 from dotenv import load_dotenv
 import json
+import logging
 import re
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -52,6 +53,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -583,15 +585,25 @@ async def health_check():
             es_status = "not_connected"
     except Exception as e:
         es_status = "not_connected"
-        es_error = str(e)
+        es_error = "Elasticsearch health check failed"
+        logger.exception(
+            "Elasticsearch health check failed: %s",
+            {
+                "status": "unhealthy",
+                "elasticsearch": {
+                    "status": es_status,
+                    "host": urlparse(settings.es_url).hostname,
+                    "error": str(e),
+                },
+            },
+        )
 
     overall_status = "healthy" if es_status == "connected" else "unhealthy"
 
     return {
-        "status": overall_status,
+        "status": overall_status + ". Check the logs" if overall_status == "unhealthy" else overall_status,
         "elasticsearch": {
             "status": es_status,
-            "host": urlparse(settings.es_url).hostname,
             "error": es_error,
         },
     }
