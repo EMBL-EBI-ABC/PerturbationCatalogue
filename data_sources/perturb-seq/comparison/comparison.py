@@ -183,6 +183,12 @@ def log_record(event, **fields):
             f"mapped {format_count_pct(fields['n_mapped'], fields['n_genes'])}; "
             f"source {fields['source']}"
         )
+    elif event == "gene_symbol_filter":
+        print(
+            f"Gene symbol filtering - {fields['dataset']}: "
+            f"removed {format_count_pct(fields['n_removed'], fields['n_before'])} "
+            "features without gene_name in the reference GTF"
+        )
     elif event == "filtered_h5ad_written":
         print(
             f"Filtered H5AD written: {fields['path']} "
@@ -390,7 +396,7 @@ def annotate_expression_gene_symbols(adata, dataset_name):
             )
     else:
         mapping = load_gtf_gene_symbols(REFERENCE_GTF_PATH)
-        resolved = []
+        symbols_by_row = []
         unresolved = []
         for feature_name, gene_id in zip(
             original_index, adata.var["gene_id"].astype(str)
@@ -400,16 +406,28 @@ def annotate_expression_gene_symbols(adata, dataset_name):
             symbol = mapping.get(gene_id) or mapping.get(gene_id.split(".", 1)[0])
             if symbol is None:
                 unresolved.append({"feature_name": feature_name, "gene_id": gene_id})
+                symbols_by_row.append(None)
             else:
-                resolved.append(symbol)
+                symbols_by_row.append(symbol)
 
         if unresolved:
-            raise ValueError(
-                f"Could not resolve {len(unresolved)} {dataset_name} expression "
-                f"features to gene symbols using {REFERENCE_GTF_PATH}. "
-                f"Examples: {unresolved[:10]}"
+            keep_mask = np.asarray([symbol is not None for symbol in symbols_by_row])
+            log_record(
+                "gene_symbol_filter",
+                dataset=dataset_name,
+                n_removed=int((~keep_mask).sum()),
+                n_before=int(len(keep_mask)),
             )
-        symbols = pd.Series(resolved, index=adata.var.index, dtype="string")
+            adata._inplace_subset_var(keep_mask)
+            original_index = pd.Index(adata.var_names.astype(str))
+            symbols_by_row = [symbol for symbol in symbols_by_row if symbol is not None]
+            if not symbols_by_row:
+                raise ValueError(
+                    f"No {dataset_name} expression features could be resolved to "
+                    f"gene symbols using {REFERENCE_GTF_PATH}."
+                )
+
+        symbols = pd.Series(symbols_by_row, index=adata.var.index, dtype="string")
         source = REFERENCE_GTF_PATH
 
     adata.var["gene_symbol"] = symbols.to_numpy()
