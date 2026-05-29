@@ -27,7 +27,8 @@ From: python:3.11-slim
         "scipy>=1.11,<2" \
         "h5py>=3.10,<4" \
         "pyarrow>=15,<22" \
-        "statsmodels>=0.14,<1"
+        "statsmodels>=0.14,<1" \
+        "PyYAML>=6,<7"
 
     apt-get clean
     rm -rf /var/lib/apt/lists/*
@@ -39,10 +40,11 @@ From: python:3.11-slim
     export OPENBLAS_NUM_THREADS=1
     export MKL_NUM_THREADS=1
     export NUMEXPR_NUM_THREADS=1
+    export PYTHONNOUSERSITE=1
 
 %runscript
     exec python "$@"
 
 %help
     Build with:
-      singularity build dea_gsea.sif Singularity.def
+      singularity build --force dea_gsea.sif Singularity.def
