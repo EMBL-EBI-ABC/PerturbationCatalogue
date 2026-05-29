@@ -10,6 +10,7 @@ import scipy.sparse as sp
 import gc
 import json
 import textwrap
+import gzip
 
 # For nice Jupyter rendering
 try:
@@ -36,6 +37,19 @@ CELL_MIN_GENES_FLOOR = 200
 GENE_MIN_CELLS_FLOOR = 10
 GENE_MIN_CELLS_PCT = 0.01
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
+CONTROL_TARGET_SYMBOL = "non-targeting"
+GTF_PATH = (
+    os.environ.get("PERTURB_SEQ_GTF")
+    or os.environ.get("GTF")
+    or (
+        os.path.join(
+            os.environ["HPS_PATH"],
+            "cache/reference/Homo_sapiens.GRCh38.115.gtf.gz",
+        )
+        if os.environ.get("HPS_PATH")
+        else None
+    )
+)
 
 
 # ==============================================================================
@@ -167,8 +181,16 @@ def log_record(event, **fields):
         print(
             "Knockout annotation - Reprocessed: "
             f"Gaussian-Poisson threshold >= {fields['count_threshold']} UMI; "
-            f"single-gene calls {format_count_pct(fields['n_single_gene_calls'], fields['n_cells'])}; "
-            f"multi-gene calls {fields['n_multi_gene_calls']}; no-gene calls {fields['n_no_gene_calls']}"
+            f"single-gene/no-control calls {format_count_pct(fields['n_single_gene_calls'], fields['n_cells'])}; "
+            f"control-only calls {fields['n_control_calls']}; "
+            f"multi-gene calls {fields['n_multi_gene_calls']}; "
+            f"no-guide calls {fields['n_no_guide_calls']}"
+        )
+    elif event == "gene_symbol_annotation":
+        print(
+            f"Gene symbol annotation - {fields['dataset']}: "
+            f"mapped {format_count_pct(fields['n_mapped'], fields['n_genes'])}; "
+            f"source {fields['source']}"
         )
     elif event == "filtered_h5ad_written":
         print(
@@ -300,6 +322,115 @@ def filter_low_signal_cells_and_genes(adata):
     adata.uns["expression_qc"] = summary
     log_record("qc_filter", **summary)
     return adata, summary
+
+
+def parse_gtf_attributes(raw):
+    fields = {}
+    for item in raw.rstrip(";").split(";"):
+        item = item.strip()
+        if not item or " " not in item:
+            continue
+        key, value = item.split(" ", 1)
+        fields[key] = value.strip().strip('"')
+    return fields
+
+
+def load_gtf_gene_symbols(path):
+    if not path or not os.path.exists(path):
+        return {}
+
+    opener = gzip.open if str(path).endswith(".gz") else open
+    mapping = {}
+    with opener(path, "rt") as handle:
+        for line in handle:
+            if not line or line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 9 or parts[2] != "gene":
+                continue
+            attrs = parse_gtf_attributes(parts[8])
+            gene_id = attrs.get("gene_id")
+            gene_name = attrs.get("gene_name")
+            if gene_id and gene_name:
+                mapping[gene_id] = gene_name
+                mapping.setdefault(gene_id.split(".", 1)[0], gene_name)
+    return mapping
+
+
+def make_unique_index(values, fallback_values):
+    seen = {}
+    unique = []
+    for value, fallback in zip(values, fallback_values):
+        base = str(value) if str(value) else str(fallback)
+        count = seen.get(base, 0)
+        candidate = base if count == 0 else f"{base}-{count}"
+        while candidate in seen:
+            count += 1
+            candidate = f"{base}-{count}"
+        seen[base] = count + 1
+        seen[candidate] = 1
+        unique.append(candidate)
+    return pd.Index(unique)
+
+
+def annotate_expression_gene_symbols(adata, dataset_name):
+    """Ensure expression features carry gene symbols and use them as var_names."""
+    original_index = pd.Index(adata.var_names.astype(str))
+    if "gene_id" not in adata.var.columns:
+        adata.var["gene_id"] = original_index.to_numpy()
+
+    symbol_source = None
+    symbols = None
+    for column in ["gene_symbol", "gene_symbols", "gene_name", "symbol"]:
+        if column in adata.var.columns:
+            candidate = adata.var[column].astype("string")
+            if candidate.notna().any():
+                symbols = candidate
+                symbol_source = f"var['{column}']"
+                break
+
+    mapping = {}
+    if symbols is None:
+        mapping = load_gtf_gene_symbols(GTF_PATH)
+        if mapping:
+            gene_ids = adata.var["gene_id"].astype(str)
+            symbols = pd.Series(
+                [
+                    mapping.get(gene_id) or mapping.get(gene_id.split(".", 1)[0]) or ""
+                    for gene_id in gene_ids
+                ],
+                index=adata.var.index,
+                dtype="string",
+            )
+            symbol_source = GTF_PATH
+        else:
+            symbols = pd.Series(original_index, index=adata.var.index, dtype="string")
+            symbol_source = "var_names_fallback"
+
+    symbols = symbols.fillna("").astype(str).str.strip()
+    fallback = adata.var["gene_id"].astype(str)
+    symbols = symbols.where(symbols.str.len() > 0, fallback)
+    adata.var["gene_symbol"] = symbols.to_numpy()
+    adata.var["feature_id"] = original_index.to_numpy()
+    adata.var_names = make_unique_index(adata.var["gene_symbol"], fallback)
+    adata.var.index.name = "gene_symbol_unique"
+
+    n_mapped = int(
+        sum(
+            bool(symbol)
+            and not str(symbol).startswith("ENSG")
+            and str(symbol) != str(gene_id)
+            for symbol, gene_id in zip(adata.var["gene_symbol"], adata.var["gene_id"])
+        )
+    )
+    log_record(
+        "gene_symbol_annotation",
+        dataset=dataset_name,
+        n_mapped=n_mapped,
+        n_genes=adata.n_vars,
+        source=symbol_source,
+    )
+    return adata
 
 
 def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
@@ -442,8 +573,8 @@ def guide_aliases(guide_name):
 def guide_target_name(guide_name):
     """Extract the target gene symbol from a probe ID."""
     guide_name = canonical_guide_id(guide_name)
-    if guide_name.startswith("non-targeting"):
-        return "non-targeting"
+    if guide_name.startswith(CONTROL_TARGET_SYMBOL):
+        return CONTROL_TARGET_SYMBOL
     return guide_name.split("_", 1)[0]
 
 
@@ -475,9 +606,17 @@ def genes_from_probe_list(probes):
     genes = set()
     for probe in probes:
         for gene in guide_target_names(probe):
-            if gene and gene != "non-targeting":
+            if gene and gene != CONTROL_TARGET_SYMBOL:
                 genes.add(gene)
     return sorted(genes)
+
+
+def control_probes_from_probe_list(probes):
+    control_probes = []
+    for probe in probes:
+        if CONTROL_TARGET_SYMBOL in guide_target_names(probe):
+            control_probes.append(probe)
+    return sorted(control_probes)
 
 
 def gene_call_outcome(probes, genes):
@@ -493,21 +632,42 @@ def gene_call_outcome(probes, genes):
     return "1_gene_2_probes"
 
 
+def perturbation_call_type(n_genes, n_control_probes, n_probes):
+    if n_genes == 0 and n_control_probes > 0:
+        return "control"
+    if n_genes == 1 and n_control_probes == 0:
+        return "single_gene"
+    if n_genes > 1 and n_control_probes == 0:
+        return "multi_gene"
+    if n_genes > 0 and n_control_probes > 0:
+        return "mixed_gene_control"
+    if n_probes == 0:
+        return "unassigned"
+    return "unclassified_probe"
+
+
 def build_gene_call_table(labels):
     records = []
     for cell_id, label in labels.items():
         probe_label = canonical_label_for_display(label)
         probes = label_to_probe_list(probe_label)
         genes = genes_from_probe_list(probes)
+        control_probes = control_probes_from_probe_list(probes)
+        control_label = "|".join(control_probes) if control_probes else "None"
         records.append(
             {
                 "cell_id": cell_id,
                 "probe_label": probe_label,
                 "n_probes": len(probes),
+                "control_probe_label": control_label,
+                "n_control_probes": len(control_probes),
                 "genes": genes,
                 "gene_label": "|".join(genes) if genes else "None",
                 "n_genes": len(genes),
                 "outcome": gene_call_outcome(probes, genes),
+                "perturbation_call_type": perturbation_call_type(
+                    len(genes), len(control_probes), len(probes)
+                ),
             }
         )
     return pd.DataFrame.from_records(records, index=labels.index)
@@ -579,8 +739,8 @@ def plot_gene_outcome_matrix(
 
 
 def single_gene_match_summary(cur_calls, rep_calls):
-    cur_single = cur_calls["n_genes"] == 1
-    rep_single = rep_calls["n_genes"] == 1
+    cur_single = (cur_calls["n_genes"] == 1) & (cur_calls["n_control_probes"] == 0)
+    rep_single = (rep_calls["n_genes"] == 1) & (rep_calls["n_control_probes"] == 0)
     both_single = cur_single & rep_single
     same_gene = (
         cur_calls.loc[both_single, "gene_label"]
@@ -750,10 +910,26 @@ def call_probe_lists(adata, return_diagnostics=False):
             (positive_guide_counts >= 2).sum()
         ),
         "n_cells_with_any_called_gene": int((gene_calls["n_genes"] >= 1).sum()),
+        "n_cells_with_any_called_control_probe": int(
+            (gene_calls["n_control_probes"] >= 1).sum()
+        ),
+        "n_control_only_calls": int(
+            (gene_calls["perturbation_call_type"] == "control").sum()
+        ),
+        "n_single_gene_no_control_calls": int(
+            (gene_calls["perturbation_call_type"] == "single_gene").sum()
+        ),
         "called_probe_count_distribution": {
             str(int(count)): int(freq) for count, freq in zip(count_values, count_freqs)
         },
         "gene_call_outcome_counts": outcome_count_dict(gene_calls["outcome"]),
+        "perturbation_call_type_counts": {
+            str(call_type): int(count)
+            for call_type, count in gene_calls["perturbation_call_type"]
+            .value_counts()
+            .sort_index()
+            .items()
+        },
         "total_guide_umi_distribution_all_cells": summarize_numeric(total_guide_umis),
         "total_guide_umi_distribution_cells_with_any_called_probe": summarize_numeric(
             total_guide_umis[positive_cell_mask]
@@ -780,17 +956,32 @@ def annotate_knockout_genes(adata):
 
     call_table = build_gene_call_table(probe_labels)
     gene_labels = call_table["gene_label"].replace("None", "")
-    single_gene = call_table["n_genes"] == 1
+    single_gene_no_control = call_table["perturbation_call_type"] == "single_gene"
+    control_only = call_table["perturbation_call_type"] == "control"
 
     adata.obs["called_probe_label"] = call_table["probe_label"].astype(str).to_numpy()
     adata.obs["called_probe_count"] = call_table["n_probes"].astype(int).to_numpy()
+    adata.obs["called_control_probe_label"] = (
+        call_table["control_probe_label"].replace("None", "").astype(str).to_numpy()
+    )
+    adata.obs["called_control_probe_count"] = (
+        call_table["n_control_probes"].astype(int).to_numpy()
+    )
+    adata.obs["has_called_control_probe"] = (
+        call_table["n_control_probes"].astype(int).to_numpy() > 0
+    )
     adata.obs["called_knockout_genes"] = gene_labels.astype(str).to_numpy()
     adata.obs["called_knockout_gene_count"] = (
         call_table["n_genes"].astype(int).to_numpy()
     )
     adata.obs["knockout_call_outcome"] = call_table["outcome"].astype(str).to_numpy()
+    adata.obs["perturbation_call_type"] = (
+        call_table["perturbation_call_type"].astype(str).to_numpy()
+    )
+    adata.obs["is_control"] = control_only.to_numpy()
+    adata.obs["is_single_gene_perturbation"] = single_gene_no_control.to_numpy()
     adata.obs["perturbed_target_symbol"] = np.where(
-        single_gene.to_numpy(), call_table["gene_label"].to_numpy(), ""
+        single_gene_no_control.to_numpy(), call_table["gene_label"].to_numpy(), ""
     )
     adata.obs["perturbation_call_method"] = "gaussian_poisson"
     adata.obs["dataset_id"] = DATASET_ID
@@ -803,17 +994,36 @@ def annotate_knockout_genes(adata):
     adata.uns["downstream_columns"] = {
         "expression_counts": "layers['counts']",
         "perturbed_target_symbol": "obs['perturbed_target_symbol']",
+        "control_indicator": "obs['is_control']",
+        "perturbation_indicator": "obs['is_single_gene_perturbation']",
+        "control_probe_count": "obs['called_control_probe_count']",
         "all_called_knockout_genes": "obs['called_knockout_genes']",
         "call_outcome": "obs['knockout_call_outcome']",
+        "perturbation_call_type": "obs['perturbation_call_type']",
     }
 
     summary = {
         "n_cells": int(adata.n_obs),
         "count_threshold": int(diagnostics["count_threshold"]),
-        "n_single_gene_calls": int(single_gene.sum()),
+        "n_single_gene_calls": int(single_gene_no_control.sum()),
+        "n_single_gene_with_control_calls": int(
+            ((call_table["n_genes"] == 1) & (call_table["n_control_probes"] > 0)).sum()
+        ),
+        "n_control_calls": int(control_only.sum()),
         "n_multi_gene_calls": int((call_table["n_genes"] > 1).sum()),
         "n_no_gene_calls": int((call_table["n_genes"] == 0).sum()),
+        "n_no_guide_calls": int((call_table["n_probes"] == 0).sum()),
+        "n_gene_control_mixed_calls": int(
+            (call_table["perturbation_call_type"] == "mixed_gene_control").sum()
+        ),
         "outcome_counts": outcome_count_dict(call_table["outcome"]),
+        "perturbation_call_type_counts": {
+            str(call_type): int(count)
+            for call_type, count in call_table["perturbation_call_type"]
+            .value_counts()
+            .sort_index()
+            .items()
+        },
     }
     log_record("knockout_annotation", **summary)
     return summary
@@ -866,7 +1076,20 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
         "n_common_cells": int(len(common_cells)),
         "n_cells_with_any_probe": int((cur_calls["n_probes"] > 0).sum()),
         "n_cells_with_any_gene": int((cur_calls["n_genes"] > 0).sum()),
+        "n_cells_with_any_control_probe": int(
+            (cur_calls["n_control_probes"] > 0).sum()
+        ),
+        "n_valid_single_gene_no_control_cells": int(
+            ((cur_calls["n_genes"] == 1) & (cur_calls["n_control_probes"] == 0)).sum()
+        ),
         "outcome_counts": outcome_count_dict(cur_calls["outcome"]),
+        "perturbation_call_type_counts": {
+            str(call_type): int(count)
+            for call_type, count in cur_calls["perturbation_call_type"]
+            .value_counts()
+            .sort_index()
+            .items()
+        },
         "probe_count_distribution": {
             str(int(count)): int(freq)
             for count, freq in cur_calls["n_probes"].value_counts().sort_index().items()
@@ -900,6 +1123,14 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             "n_common_cells": int(len(common_cells)),
             "n_cells_with_any_probe": int((rep_calls["n_probes"] > 0).sum()),
             "n_cells_with_any_gene": int((rep_calls["n_genes"] > 0).sum()),
+            "n_cells_with_any_control_probe": int(
+                (rep_calls["n_control_probes"] > 0).sum()
+            ),
+            "n_valid_single_gene_no_control_cells": int(
+                (
+                    (rep_calls["n_genes"] == 1) & (rep_calls["n_control_probes"] == 0)
+                ).sum()
+            ),
         }
         outcome_matrix = outcome_matrix_dict(cur_calls["outcome"], rep_calls["outcome"])
         single_gene_match = single_gene_match_summary(cur_calls, rep_calls)
@@ -932,6 +1163,13 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
             "1_gene_2_probes": "one gene called from two or more gene-targeting probes",
             ">1_gene": "more than one gene called",
         },
+        "control_definition": (
+            "control means one or more non-targeting probes called and zero "
+            "gene-targeting probes called"
+        ),
+        "valid_single_gene_definition": (
+            "exactly one gene-targeting gene called and zero non-targeting probes called"
+        ),
     }
 
 
@@ -951,6 +1189,9 @@ adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reproce
 if adata_rep.var_names.str.contains(r"\.").any():
     adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
     adata_rep.var_names_make_unique()
+
+adata_cur = annotate_expression_gene_symbols(adata_cur, "Curated")
+adata_rep = annotate_expression_gene_symbols(adata_rep, "Reprocessed")
 
 adata_rep, qc_summary = filter_low_signal_cells_and_genes(adata_rep)
 knockout_annotation_summary = annotate_knockout_genes(adata_rep)

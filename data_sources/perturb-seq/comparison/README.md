@@ -56,13 +56,15 @@ The script generates the following outputs in the `comparison_results/` folder:
 
 ### Perturbation Assignment
 *   **perturbation_confusion_matrix.png**: Heatmap showing the overlap of dual same-target guide assignments between the two versions for the top 20 most frequent perturbations.
-*   **summary_report.txt**: Includes guide matrix diagnostics for the reprocessed data, including guide UMI distributions and counts of cells with any, two-or-more, and valid dual same-target guide calls.
+*   **summary_report.txt**: Includes guide matrix diagnostics for the reprocessed data, including guide UMI distributions, explicit non-targeting control calls, valid single-gene/no-control calls, mixed gene/control calls, and multi-gene calls.
 
 ## 4. How the Pipeline Works
 *   **Full Loading**: Datasets are loaded fully into memory for faster processing and more complex analyses.
 *   **Auto-Normalization**: The script detects if datasets are raw counts or log-normalized and applies necessary transformations to ensure they are on a comparable scale.
 *   **Aggressive Alignment**: Gene names are aligned even if they are stored in different `var` columns (e.g., `gene_symbols` vs index).
 *   **Structural Validation**: PCA is used to verify that the reprocessed data preserves the biological structure of the original curated dataset.
+*   **Control Annotation**: `non-targeting_*` guides are recorded separately from gene-targeting guides. A control cell is one with at least one non-targeting guide and zero gene-targeting guides. A valid perturbation cell is one with exactly one gene-targeting gene and zero non-targeting guides.
+*   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names` when a GTF is available through `PERTURB_SEQ_GTF`, `GTF`, or `$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`.
 
 # Raw data from source
 ```
