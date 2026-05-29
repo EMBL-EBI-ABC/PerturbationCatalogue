@@ -9,6 +9,7 @@ It is intended for `nadig_2025_jurkat` and expects:
 - `obs["called_control_probe_count"]`
 - `obs["perturbation_call_type"]`
 - `obs["perturbed_target_symbol"]`
+- symbol-based expression feature names in `var_names`, with `var["gene_symbol"]`
 - raw counts in `X` by default
 
 Re-run `data_sources/perturb-seq/comparison/comparison.py` before this pipeline
@@ -51,14 +52,11 @@ For `nadig_2025_jurkat` on the cluster:
 export DATASET_ID=nadig_2025_jurkat
 export H5AD=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/experiment_final.filtered.h5ad
 export OUTDIR=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/dea_gsea
-export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 export GMT=$HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt
 ```
 
-`--gtf` is strongly recommended because the filtered H5AD currently stores
-Ensembl gene IDs in `var`, while the expected outputs and Hallmark GMT files use
-gene symbols. You can provide `--gene_map` instead of `--gtf`; it must be a TSV
-with gene ID and symbol columns, for example `gene_id` and `gene_symbol`.
+The filtered H5AD should be produced by the updated comparison/QC pipeline,
+which writes gene symbols before this pipeline runs.
 
 ## Run
 
@@ -76,7 +74,6 @@ time srun --mem=16G --time=7-00:00:00 --unbuffered \
     --dataset_id $DATASET_ID \
     --h5ad $H5AD \
     --gmt $GMT \
-    --gtf $GTF \
     --outdir $OUTDIR \
     --batch_size 50 \
     --limit_perturbations 0 \
