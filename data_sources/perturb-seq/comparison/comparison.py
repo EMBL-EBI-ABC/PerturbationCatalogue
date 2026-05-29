@@ -1188,10 +1188,6 @@ log_record(
 adata_cur = filter_unique_barcodes(sc.read_h5ad(CURATED_H5AD_PATH), "Curated")
 adata_rep = filter_unique_barcodes(sc.read_h5ad(REPROCESSED_H5AD_PATH), "Reprocessed")
 
-if adata_rep.var_names.str.contains(r"\.").any():
-    adata_rep.var_names = adata_rep.var_names.str.split(".").str[0]
-    adata_rep.var_names_make_unique()
-
 adata_cur = annotate_expression_gene_symbols(adata_cur, "Curated")
 adata_rep = annotate_expression_gene_symbols(adata_rep, "Reprocessed")
 
