@@ -18,13 +18,13 @@ try:
 except ImportError:
     display = print
 
-# Set these parameters for a particular dataset
+# Set only this parameter for a particular dataset
 DATASET_ID = "nadig_2025_jurkat"
+
+# Parameters below should not need to be modified between datasets
 CURATED_H5AD_PATH = (
     f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
 )
-
-# Parameters below should not need to be modified between datasets
 REPROCESSED_H5AD_PATH = (
     f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
     f"{DATASET_ID}/experiment_final.h5ad"
