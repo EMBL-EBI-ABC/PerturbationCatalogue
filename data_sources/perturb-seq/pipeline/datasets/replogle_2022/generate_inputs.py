@@ -16,6 +16,14 @@ GUIDE_XLSX = (
     / "../../../../../data_exploration/Perturbseq/supplementary/replogle_2022_guide_info.xlsx"
 ).resolve()
 ENA_API_URL = "https://www.ebi.ac.uk/ena/portal/api/filereport"
+DEFAULT_LIBRARY_PATTERN = (
+    r"^(?P<prefix>.+?)_(?P<modality>mRNA|sgRNA)_(?P<sample>.+?)"
+    r"(?:_S\d+)?(?:_L\d+)?$"
+)
+RPE1_ESSENTIAL_LIBRARY_PATTERN = (
+    r"^(?P<prefix>.+?)_(?P<modality>mRNA|sgRNA)_(?P<sample>\d+)_\d+"
+    r"(?:_S\d+)?(?:_L\d+)?$"
+)
 DATASETS = [
     {
         "name": "replogle_2022_k562_essential_normalized",
@@ -26,6 +34,7 @@ DATASETS = [
         "name": "replogle_2022_rpe1_essential_normalized",
         "accession": "SAMN28561244",
         "guide_sheet": "TabC_RPE1_day7_library",
+        "library_pattern": RPE1_ESSENTIAL_LIBRARY_PATTERN,
     },
     {
         "name": "replogle_2022_k562_gw_normalized",
@@ -132,11 +141,10 @@ def fetch_ena_metadata(accession):
     return pd.read_csv(StringIO(text), sep="\t")
 
 
-def parse_replogle_library(library_name):
+def parse_replogle_library(library_name, library_pattern=DEFAULT_LIBRARY_PATTERN):
     name = str(library_name).strip()
     match = re.match(
-        r"^(?P<prefix>.+?)_(?P<modality>mRNA|sgRNA)_(?P<sample>.+?)"
-        r"(?:_S\d+)?(?:_L\d+)?$",
+        library_pattern,
         name,
         flags=re.IGNORECASE,
     )
@@ -150,8 +158,9 @@ def parse_replogle_library(library_name):
 
 def generate_samples_tsv(dataset):
     metadata = fetch_ena_metadata(dataset["accession"])
+    library_pattern = dataset.get("library_pattern", DEFAULT_LIBRARY_PATTERN)
     metadata[["modality", "sample_id"]] = metadata["library_name"].apply(
-        lambda value: pd.Series(parse_replogle_library(value))
+        lambda value: pd.Series(parse_replogle_library(value, library_pattern))
     )
 
     unmatched_with_modality = metadata[
