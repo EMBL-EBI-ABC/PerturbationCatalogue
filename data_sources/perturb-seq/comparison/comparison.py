@@ -18,11 +18,13 @@ try:
 except ImportError:
     display = print
 
-
+# Set these parameters for a particular dataset
 DATASET_ID = "nadig_2025_jurkat"
 CURATED_H5AD_PATH = (
     f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
 )
+
+# Parameters below should not need to be modified between datasets
 REPROCESSED_H5AD_PATH = (
     f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
     f"{DATASET_ID}/experiment_final.h5ad"
@@ -39,7 +41,7 @@ GENE_MIN_CELLS_PCT = 0.01
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 CONTROL_TARGET_SYMBOL = "non-targeting"
 REFERENCE_GTF_PATH = (
-    "/hps/nobackup/mfreeberg/cache/reference/" "Homo_sapiens.GRCh38.115.gtf.gz"
+    "/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz"
 )
 
 
