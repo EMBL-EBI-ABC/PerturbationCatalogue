@@ -19,18 +19,18 @@ except ImportError:
     display = print
 
 
+DATASET_ID = "nadig_2025_jurkat"
 CURATED_H5AD_PATH = (
-    "/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/nadig_2025_jurkat.h5ad"
+    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
 )
 REPROCESSED_H5AD_PATH = (
-    "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    "nadig_2025_jurkat/experiment_final.h5ad"
+    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
+    f"{DATASET_ID}/experiment_final.h5ad"
 )
 FILTERED_REPROCESSED_H5AD_PATH = (
-    "/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    "nadig_2025_jurkat/experiment_final.filtered.h5ad"
+    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
+    f"{DATASET_ID}/experiment_final.filtered.h5ad"
 )
-DATASET_ID = "nadig_2025_jurkat"
 CELL_QC_LOWER_QUANTILE = 0.01
 CELL_MIN_COUNTS_FLOOR = 1000
 CELL_MIN_GENES_FLOOR = 200
@@ -725,7 +725,7 @@ def plot_gene_outcome_matrix(
 ):
     matrix_df = outcome_matrix_dataframe(matrix_dict)
     display_labels = ["0 genes", "1 gene\n1 probe", "1 gene\n2+ probes", ">1 gene"]
-    plot_path = f"comparison_results/perturbation_gene_outcome_matrix_{model_name}.png"
+    plot_path = f"comparison_results/{DATASET_ID}/perturbation_gene_outcome_matrix_{model_name}.png"
 
     fig, ax = plt.subplots(figsize=(8.5, 7))
     sns.heatmap(
@@ -1196,7 +1196,7 @@ def compare_perturbations(adata_cur, adata_rep, common_cells):
 # ==============================================================================
 # 3. MAIN EXECUTION
 # ==============================================================================
-os.makedirs("comparison_results", exist_ok=True)
+os.makedirs(f"comparison_results/{DATASET_ID}", exist_ok=True)
 log_record(
     "input_paths",
     curated_h5ad_path=CURATED_H5AD_PATH,
@@ -1320,7 +1320,7 @@ plt.suptitle(
     "Comparison of Global Distribution Overlaps", fontsize=16, fontweight="bold"
 )
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-plt.savefig("comparison_results/overlap_distributions.png")
+plt.savefig(f"comparison_results/{DATASET_ID}/overlap_distributions.png")
 plt.show()
 plt.close()
 
@@ -1334,7 +1334,7 @@ results_summary["cell_metrics"]["total_counts"] = plot_scatter_comparison(
     "Total UMI Counts",
     "Original",
     "Reprocessed",
-    "comparison_results/counts_comparison.png",
+    f"comparison_results/{DATASET_ID}/counts_comparison.png",
     log_scale=True,
     deviation_on_log=True,
     description="Each point is one shared cell. The x-axis shows the original study total UMI count; the y-axis shows the reprocessed total UMI count. Values are plotted on log-scaled axes after adding 1.",
@@ -1358,7 +1358,7 @@ results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
     "Number of Detected Genes",
     "Original",
     "Reprocessed",
-    "comparison_results/genes_comparison.png",
+    f"comparison_results/{DATASET_ID}/genes_comparison.png",
     description="Each point is one shared cell. The x-axis shows the number of genes detected in the original study; the y-axis shows the number of genes detected in the reprocessed data.",
 )
 log_record(
@@ -1395,7 +1395,7 @@ results_summary["gene_metrics"]["mean_expression"] = plot_scatter_comparison(
     "Mean Gene Expression",
     "Original",
     "Reprocessed",
-    "comparison_results/gene_expression_mean.png",
+    f"comparison_results/{DATASET_ID}/gene_expression_mean.png",
     log_scale=True,
     description="Each point is one shared gene. The x-axis shows mean expression across shared cells in the original study; the y-axis shows mean expression across shared cells in the reprocessed data. Values are plotted on log-scaled axes after adding 1.",
 )
@@ -1413,7 +1413,7 @@ results_summary["gene_metrics"]["dropout_rate"] = plot_scatter_comparison(
     "Gene Dropout Rate (%)",
     "Original",
     "Reprocessed",
-    "comparison_results/sparsity_comparison.png",
+    f"comparison_results/{DATASET_ID}/sparsity_comparison.png",
     description="Each point is one shared gene. The x-axis shows the percentage of shared cells with zero counts in the original study; the y-axis shows the percentage of shared cells with zero counts in the reprocessed data.",
 )
 log_record(
@@ -1452,9 +1452,11 @@ results_summary["perturbation"] = compare_perturbations(
 )
 
 # --- Final Report ---
-with open("comparison_results/summary_report.txt", "w") as f:
+with open(f"comparison_results/{DATASET_ID}/summary_report.txt", "w") as f:
     f.write(json.dumps(results_summary, indent=4, default=json_default))
-log_record("summary_report_written", path="comparison_results/summary_report.txt")
+log_record(
+    "summary_report_written", path=f"comparison_results/{DATASET_ID}/summary_report.txt"
+)
 
 perturbation_summary = results_summary["perturbation"]
 if perturbation_summary and "gaussian_poisson" in perturbation_summary["models"]:
@@ -1507,7 +1509,7 @@ display(
 # It assumes the main execution block above has already run and variables like
 # `cur_sub`, `rep_sub`, and `cell_corrs` are in memory.
 
-os.makedirs("comparison_results/supplementary", exist_ok=True)
+os.makedirs(f"comparison_results/{DATASET_ID}/supplementary", exist_ok=True)
 
 # ------------------------------------------------------------------------------
 # Graph 1: Distribution of Cell-wise Correlations
@@ -1547,7 +1549,7 @@ plt.figtext(
 )
 plt.tight_layout(rect=[0, 0.08, 1, 1])
 plt.savefig(
-    "comparison_results/supplementary/cellwise_correlation_dist.png",
+    f"comparison_results/{DATASET_ID}/supplementary/cellwise_correlation_dist.png",
     bbox_inches="tight",
     dpi=300,
 )
