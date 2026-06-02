@@ -7,6 +7,7 @@ import gzip
 import json
 import textwrap
 from collections import Counter, defaultdict
+import sys
 
 import anndata as ad
 import h5py
@@ -23,7 +24,7 @@ except ImportError:
     display = print
 
 
-DATASET_ID = os.environ.get("PERTURBSEQ_DATASET_ID", "nadig_2025_jurkat")
+DATASET_ID = sys.argv[1]
 CURATED_H5AD_PATH = (
     f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
 )
