@@ -1344,10 +1344,16 @@ def cell_correlations(cur, rep, common_cells, common_genes):
         c_arr = c_block.toarray() if sp.issparse(c_block) else np.asarray(c_block)
         r_arr = r_block.toarray() if sp.issparse(r_block) else np.asarray(r_block)
         for c_row, r_row in zip(c_arr, r_arr):
-            if np.nanstd(c_row) == 0 or np.nanstd(r_row) == 0:
+            mask = np.isfinite(c_row) & np.isfinite(r_row)
+            if mask.sum() < 2:
                 corrs.append(np.nan)
             else:
-                corrs.append(stats.pearsonr(c_row, r_row)[0])
+                c_f = c_row[mask]
+                r_f = r_row[mask]
+                if np.std(c_f) == 0 or np.std(r_f) == 0:
+                    corrs.append(np.nan)
+                else:
+                    corrs.append(stats.pearsonr(c_f, r_f)[0])
     return np.asarray(corrs, dtype=float)
 
 
