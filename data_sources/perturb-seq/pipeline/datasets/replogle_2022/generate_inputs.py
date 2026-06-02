@@ -24,6 +24,10 @@ RPE1_ESSENTIAL_LIBRARY_PATTERN = (
     r"^(?P<prefix>.+?)_(?P<modality>mRNA|sgRNA)_(?P<sample>\d+)_\d+"
     r"(?:_S\d+)?(?:_L\d+)?$"
 )
+K562_GW_LIBRARY_PATTERN = (
+    r"^(?P<prefix>.+?)_(?:seq\d+_p\d+)_?(?P<modality>mRNA|sgRNA)_(?P<sample>.+?)"
+    r"(?:_S\d+)?(?:_L\d+)?$"
+)
 DATASETS = [
     {
         "name": "replogle_2022_k562_essential_normalized",
@@ -40,6 +44,7 @@ DATASETS = [
         "name": "replogle_2022_k562_gw_normalized",
         "accession": "SAMN28561242",
         "guide_sheet": "TabA_K562_day8_library",
+        "library_pattern": K562_GW_LIBRARY_PATTERN,
     },
 ]
 
