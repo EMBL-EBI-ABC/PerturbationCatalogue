@@ -1,8 +1,8 @@
-# Nadig 2025 Jurkat: Curated vs. Reprocessed Comparison
+# Perturb-seq Curated vs. Reprocessed Comparison
 
-This directory contains tools to compare two versions of the Nadig 2025 Jurkat Perturb-seq dataset:
-1.  **Curated:** Author-supplied H5AD (`gs://${LAKE_BUCKET}/perturbseq/curated/nadig_2025_jurkat_curated.h5ad`).
-2.  **Reprocessed:** FASTQ-to-H5AD reprocessed version (`gs://${LAKE_BUCKET}/perturbseq/fastq-reprocess/nadig_2025_jurkat.h5ad`).
+This directory contains tools to compare two versions of a Perturb-seq dataset:
+1.  **Curated:** Author-supplied H5AD (`/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/${DATASET_ID}.h5ad`).
+2.  **Reprocessed:** FASTQ-to-H5AD reprocessed version (`/hps/nobackup/mfreeberg/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.h5ad`).
 
 ## 1. Environment Setup (Google Cloud)
 
@@ -36,8 +36,9 @@ This directory contains tools to compare two versions of the Nadig 2025 Jurkat P
     ```bash
     pip install scanpy pandas numpy matplotlib seaborn scipy
     ```
-3.  Execute the script:
+3.  Execute the script. The default dataset is `nadig_2025_jurkat`; set `PERTURBSEQ_DATASET_ID` for another dataset:
     ```bash
+    PERTURBSEQ_DATASET_ID=replogle_2022_k562_essential_normalized \
     python3 comparison.py
     ```
 
@@ -60,11 +61,12 @@ The script generates the following outputs in the `comparison_results/` folder:
 
 ## 4. How the Pipeline Works
 *   **Full Loading**: Datasets are loaded fully into memory for faster processing and more complex analyses.
-*   **Auto-Normalization**: The script detects if datasets are raw counts or log-normalized and applies necessary transformations to ensure they are on a comparable scale.
+*   **Auto-Normalization**: The script samples expression values to detect raw integer counts versus already transformed expression. Raw counts are total-normalized and log-transformed; signed transformed matrices, such as gemgroup Z-normalized Replogle expression, are used as supplied to avoid invalid `log1p` transformations.
 *   **Aggressive Alignment**: Gene names are aligned even if they are stored in different `var` columns (e.g., `gene_symbols` vs index).
 *   **Structural Validation**: PCA is used to verify that the reprocessed data preserves the biological structure of the original curated dataset.
 *   **Control Annotation**: `non-targeting_*` guides are recorded separately from gene-targeting guides. A control cell is one with at least one non-targeting guide and zero gene-targeting guides. A valid perturbation cell is one with exactly one gene-targeting gene and zero non-targeting guides.
 *   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names`. Author-supplied `var["gene_name"]` is used when present; otherwise symbols are resolved from `/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`. The script fails if that GTF is missing. Gene-ID-only reprocessed features whose GTF records do not contain `gene_name` are removed before QC.
+*   **Metric Sources**: Cell and gene metric columns are detected from metadata when available (`obs["UMI_count"]`, `obs["qc_total_counts"]`, `var["mean"]`, etc.). Metrics that cannot be recovered from a transformed curated matrix, such as detected genes or dropout, are reported as skipped instead of inferred from signed values.
 
 # Raw data from source
 ```

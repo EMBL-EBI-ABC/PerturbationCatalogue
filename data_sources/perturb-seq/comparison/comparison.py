@@ -19,7 +19,7 @@ except ImportError:
     display = print
 
 # Set only this parameter for a particular dataset
-DATASET_ID = "nadig_2025_jurkat"
+DATASET_ID = os.environ.get("PERTURBSEQ_DATASET_ID", "nadig_2025_jurkat")
 
 # Parameters below should not need to be modified between datasets
 CURATED_H5AD_PATH = (
@@ -43,6 +43,42 @@ CONTROL_TARGET_SYMBOL = "non-targeting"
 REFERENCE_GTF_PATH = (
     "/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz"
 )
+CELL_TOTAL_COUNT_COLUMNS = [
+    "UMI_count",
+    "umi_count",
+    "qc_total_counts",
+    "total_counts",
+    "n_counts",
+    "nCount_RNA",
+    "n_umi",
+    "core_adjusted_UMI_count",
+]
+CELL_DETECTED_GENE_COLUMNS = [
+    "n_genes_by_counts",
+    "qc_n_genes_by_counts",
+    "n_genes",
+    "nFeature_RNA",
+    "genes_detected",
+    "detected_genes",
+]
+GENE_MEAN_COLUMNS = ["mean_counts", "mean_expression", "mean"]
+GENE_DETECTED_CELL_COLUMNS = [
+    "n_cells_by_counts",
+    "qc_n_cells_by_counts",
+    "n_cells",
+    "num_cells_expressed",
+]
+PERTURBATION_COLUMN_CANDIDATES = [
+    "sgID_AB",
+    "perturbation",
+    "guide_ids",
+    "guide_id",
+    "sgRNA",
+    "sgRNA_ID",
+    "gRNA",
+    "grna",
+    "probe_label",
+]
 
 
 # ==============================================================================
@@ -97,6 +133,20 @@ def log_record(event, **fields):
             f"Preprocessing input - {fields['dataset']}: "
             f"{fields['cells']} cells, {fields['genes']} genes, raw counts detected: {raw_status}"
         )
+        if fields.get("expression_value_kind"):
+            print(
+                f"  Expression values: {fields['expression_value_kind']}; "
+                f"normalization: {fields.get('normalization_action', 'n/a')}"
+            )
+    elif event == "comparison_metric_source":
+        print(f"Metric sources - {fields['dataset']}")
+        for metric, source in fields["sources"].items():
+            print(f"  {metric}: {source}")
+    elif event == "comparison_metric_skipped":
+        print(
+            f"{fields['metric_group']}.{fields['metric']}: skipped "
+            f"({fields['reason']})"
+        )
     elif event == "overlap_summary":
         print("Overlap")
         print(
@@ -110,11 +160,17 @@ def log_record(event, **fields):
             f"{format_pct(fields['common_genes_pct_of_curated'])} of curated"
         )
     elif event == "comparison_metric":
-        print(
-            f"{fields['metric_group']}.{fields['metric']}: "
-            f"Pearson {fields['pearson']:.4f}, Spearman {fields['spearman']:.4f}, "
-            f"deviant {fields['pct_deviant']:.1f}%"
-        )
+        if fields.get("skipped"):
+            print(
+                f"{fields['metric_group']}.{fields['metric']}: skipped "
+                f"({fields.get('reason', 'not enough comparable values')})"
+            )
+        else:
+            print(
+                f"{fields['metric_group']}.{fields['metric']}: "
+                f"Pearson {fields['pearson']:.4f}, Spearman {fields['spearman']:.4f}, "
+                f"deviant {fields['pct_deviant']:.1f}%"
+            )
     elif event == "cell_wise_correlation":
         print(
             f"Cell-wise expression correlation: median {fields['median']:.4f}, "
@@ -257,6 +313,294 @@ def lower_quantile_threshold(values, floor, quantile):
     if values.size == 0:
         return int(floor)
     return int(max(floor, np.floor(np.quantile(values, quantile))))
+
+
+def normalize_column_name(value):
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def numeric_series_or_none(series):
+    values = pd.to_numeric(series, errors="coerce")
+    if values.notna().sum() == 0:
+        return None
+    return values
+
+
+def find_numeric_column(
+    df, preferred_names, require_nonnegative=True, required_name_terms=None
+):
+    """Find a numeric metadata column by exact/normalized name, then by heuristics."""
+    normalized_to_column = {
+        normalize_column_name(column): column for column in df.columns
+    }
+
+    for name in preferred_names:
+        column = (
+            name
+            if name in df.columns
+            else normalized_to_column.get(normalize_column_name(name))
+        )
+        if column is None:
+            continue
+        values = numeric_series_or_none(df[column])
+        if values is None:
+            continue
+        finite = values[np.isfinite(values)]
+        if finite.empty:
+            continue
+        if require_nonnegative and (finite < 0).any():
+            continue
+        return column, values.astype(float)
+
+    best = None
+    best_score = -np.inf
+    for column in df.columns:
+        values = numeric_series_or_none(df[column])
+        if values is None:
+            continue
+        finite = values[np.isfinite(values)]
+        if finite.empty:
+            continue
+        if require_nonnegative and (finite < 0).any():
+            continue
+
+        name = normalize_column_name(column)
+        if required_name_terms and not any(
+            term in name for term in required_name_terms
+        ):
+            continue
+        score = 0
+        if "total" in name:
+            score += 3
+        if "umi" in name:
+            score += 3
+        if "count" in name:
+            score += 2
+        if "gene" in name or "feature" in name or "detected" in name:
+            score += 2
+        if "percent" in name or "pct" in name or "mito" in name:
+            score -= 5
+        if name.startswith("z") or "zscore" in name or "scalefactor" in name:
+            score -= 5
+
+        if score > best_score:
+            best = (column, values.astype(float))
+            best_score = score
+
+    if best is not None and best_score > 0:
+        return best
+    return None, None
+
+
+def sample_matrix_values(matrix, max_values=200000):
+    """Sample matrix values without assuming dense, sparse, or backed storage."""
+    if sp.issparse(matrix):
+        values = matrix.data
+        if values.size == 0:
+            return np.array([0.0])
+        if values.size <= max_values:
+            return np.asarray(values, dtype=float)
+        sample_idx = np.linspace(0, values.size - 1, max_values, dtype=np.intp)
+        return np.asarray(values[sample_idx], dtype=float)
+
+    values = np.asarray(matrix)
+    if values.size == 0:
+        return np.array([], dtype=float)
+    flat = values.reshape(-1)
+    if flat.size <= max_values:
+        return np.asarray(flat, dtype=float)
+    sample_idx = np.linspace(0, flat.size - 1, max_values, dtype=np.intp)
+    return np.asarray(flat[sample_idx], dtype=float)
+
+
+def profile_expression_matrix(matrix):
+    values = sample_matrix_values(matrix)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return {
+            "value_kind": "unknown",
+            "raw_counts_detected": False,
+            "min": np.nan,
+            "max": np.nan,
+            "integer_fraction": 0.0,
+            "negative_fraction": 0.0,
+            "below_minus_one_fraction": 0.0,
+        }
+
+    integer_fraction = float(np.mean(np.isclose(values, np.round(values))))
+    negative_fraction = float(np.mean(values < 0))
+    below_minus_one_fraction = float(np.mean(values < -1))
+    min_value = float(np.min(values))
+    max_value = float(np.max(values))
+
+    if negative_fraction > 0:
+        value_kind = "signed_transformed"
+    elif integer_fraction > 0.999:
+        value_kind = "raw_counts"
+    else:
+        value_kind = "nonnegative_transformed"
+
+    return {
+        "value_kind": value_kind,
+        "raw_counts_detected": value_kind == "raw_counts",
+        "min": min_value,
+        "max": max_value,
+        "integer_fraction": integer_fraction,
+        "negative_fraction": negative_fraction,
+        "below_minus_one_fraction": below_minus_one_fraction,
+    }
+
+
+def matrix_mean_vector(matrix, axis):
+    return np.asarray(matrix.mean(axis=axis)).ravel()
+
+
+def matrix_variance_vector(matrix, axis=0):
+    if axis != 0:
+        raise NotImplementedError("Only per-gene variance is needed here.")
+    if sp.issparse(matrix):
+        means = matrix_mean_vector(matrix, axis=0)
+        mean_squares = matrix_mean_vector(matrix.power(2), axis=0)
+        variances = mean_squares - means**2
+        variances[variances < 0] = 0
+        return variances
+    return np.nanvar(np.asarray(matrix), axis=0)
+
+
+def set_highly_variable_by_variance(adata, n_top_genes):
+    n_top = int(min(n_top_genes, adata.n_vars))
+    variances = matrix_variance_vector(adata.X, axis=0)
+    order = np.argsort(-np.nan_to_num(variances, nan=-np.inf))
+    highly_variable = np.zeros(adata.n_vars, dtype=bool)
+    highly_variable[order[:n_top]] = True
+
+    adata.var["highly_variable"] = highly_variable
+    adata.var["means"] = matrix_mean_vector(adata.X, axis=0)
+    adata.var["dispersions"] = variances
+    adata.var["dispersions_norm"] = variances
+    adata.uns["hvg"] = {
+        "flavor": "variance",
+        "n_top_genes": n_top,
+        "reason": "matrix values are already transformed or Seurat HVG failed",
+    }
+
+
+def assign_comparison_metric_columns(adata, dataset_name, expression_profile):
+    sources = {}
+
+    total_column, total_values = find_numeric_column(
+        adata.obs, CELL_TOTAL_COUNT_COLUMNS, require_nonnegative=True
+    )
+    if total_values is not None:
+        adata.obs["comparison_total_counts"] = total_values.to_numpy(dtype=float)
+        sources["cell_total_counts"] = f"obs['{total_column}']"
+    elif expression_profile["value_kind"] != "signed_transformed":
+        adata.obs["comparison_total_counts"] = matrix_sum(adata.X, axis=1)
+        sources["cell_total_counts"] = "X row sums"
+    else:
+        adata.obs["comparison_total_counts"] = np.nan
+        sources["cell_total_counts"] = "unavailable"
+
+    n_gene_column, n_gene_values = find_numeric_column(
+        adata.obs,
+        CELL_DETECTED_GENE_COLUMNS,
+        require_nonnegative=True,
+        required_name_terms=["gene", "feature", "detected"],
+    )
+    if n_gene_values is not None:
+        adata.obs["comparison_n_genes_by_counts"] = n_gene_values.to_numpy(dtype=float)
+        sources["cell_detected_genes"] = f"obs['{n_gene_column}']"
+    elif expression_profile["value_kind"] != "signed_transformed":
+        adata.obs["comparison_n_genes_by_counts"] = matrix_nnz(adata.X, axis=1)
+        sources["cell_detected_genes"] = "X > 0 row counts"
+    else:
+        adata.obs["comparison_n_genes_by_counts"] = np.nan
+        sources["cell_detected_genes"] = "unavailable for signed transformed X"
+
+    mean_column, mean_values = find_numeric_column(
+        adata.var, GENE_MEAN_COLUMNS, require_nonnegative=False
+    )
+    if mean_values is not None:
+        adata.var["comparison_mean_expression"] = mean_values.to_numpy(dtype=float)
+        sources["gene_mean_expression"] = f"var['{mean_column}']"
+    else:
+        adata.var["comparison_mean_expression"] = matrix_mean_vector(adata.X, axis=0)
+        sources["gene_mean_expression"] = "X column means"
+
+    n_cell_column, n_cell_values = find_numeric_column(
+        adata.var,
+        GENE_DETECTED_CELL_COLUMNS,
+        require_nonnegative=True,
+        required_name_terms=["cell", "detected", "expressed"],
+    )
+    if n_cell_values is not None:
+        detected_cells = n_cell_values.to_numpy(dtype=float)
+        adata.var["comparison_dropout_pct"] = 100 - (detected_cells / adata.n_obs * 100)
+        sources["gene_dropout_pct"] = f"var['{n_cell_column}']"
+    elif expression_profile["value_kind"] != "signed_transformed":
+        detected_cells = matrix_nnz(adata.X, axis=0)
+        adata.var["comparison_dropout_pct"] = 100 - (detected_cells / adata.n_obs * 100)
+        sources["gene_dropout_pct"] = "X > 0 column counts"
+    else:
+        adata.var["comparison_dropout_pct"] = np.nan
+        sources["gene_dropout_pct"] = "unavailable for signed transformed X"
+
+    adata.uns["comparison_metric_sources"] = sources
+    log_record("comparison_metric_source", dataset=dataset_name, sources=sources)
+    return sources
+
+
+def detect_perturbation_column(obs):
+    normalized_to_column = {
+        normalize_column_name(column): column for column in obs.columns
+    }
+    for name in PERTURBATION_COLUMN_CANDIDATES:
+        column = (
+            name
+            if name in obs.columns
+            else normalized_to_column.get(normalize_column_name(name))
+        )
+        if column is not None:
+            return column
+
+    best_column = None
+    best_score = -np.inf
+    for column in obs.columns:
+        series = obs[column]
+        if pd.api.types.is_numeric_dtype(series):
+            continue
+
+        values = series.astype(str)
+        sample = values[values.str.len() > 0].head(1000)
+        if sample.empty:
+            continue
+
+        name = normalize_column_name(column)
+        score = 0
+        if any(term in name for term in ["perturb", "guide", "grna", "sgrna", "sgid"]):
+            score += 8
+        if any(term in name for term in ["probe", "target"]):
+            score += 4
+        if "geneid" in name or name == "gene":
+            score -= 5
+
+        sample_lower = sample.str.lower()
+        if sample.str.contains(r"\|", regex=True).mean() > 0.05:
+            score += 4
+        if sample.str.contains("_", regex=False).mean() > 0.05:
+            score += 2
+        if sample_lower.str.contains(
+            "non-targeting|control|scramble", regex=True
+        ).any():
+            score += 2
+        if sample.str.startswith("ENSG").mean() > 0.1:
+            score -= 6
+
+        if score > best_score:
+            best_score = score
+            best_column = column
+
+    return best_column if best_score > 0 else None
 
 
 def filter_low_signal_cells_and_genes(adata):
@@ -456,25 +800,48 @@ def annotate_expression_gene_symbols(adata, dataset_name):
 
 
 def preprocess_adata(adata, name, target_sum=1e4, n_top_genes=2000):
-    """Standardized preprocessing: raw counts -> normalized/log counts -> HVGs."""
-    is_raw = get_raw_counts(adata)
+    """Standardized preprocessing with automatic count/transformed matrix handling."""
+    expression_profile = profile_expression_matrix(adata.X)
+    is_raw = expression_profile["raw_counts_detected"]
+    normalization_action = (
+        "normalize_total + log1p" if is_raw else "using transformed X as provided"
+    )
     log_record(
         "preprocess_input",
         dataset=name,
         cells=adata.n_obs,
         genes=adata.n_vars,
         raw_counts_detected=bool(is_raw),
+        expression_value_kind=expression_profile["value_kind"],
+        normalization_action=normalization_action,
         normalization_target_sum=target_sum,
         hvg_n_top_genes=n_top_genes,
     )
 
-    adata.layers["counts"] = adata.X.copy()
-    sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
-    sc.pp.normalize_total(adata, target_sum=target_sum)
-    sc.pp.log1p(adata)
-    sc.pp.highly_variable_genes(
-        adata, n_top_genes=n_top_genes, flavor="seurat", subset=False
-    )
+    adata.uns["comparison_expression_profile"] = expression_profile
+    if is_raw:
+        adata.layers["counts"] = adata.X.copy()
+        sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
+        sc.pp.normalize_total(adata, target_sum=target_sum)
+        sc.pp.log1p(adata)
+        try:
+            sc.pp.highly_variable_genes(
+                adata,
+                n_top_genes=min(n_top_genes, adata.n_vars),
+                flavor="seurat",
+                subset=False,
+            )
+        except ValueError as exc:
+            print(
+                f"HVG selection - {name}: falling back to variance ranking after "
+                f"Seurat HVG failed ({exc})"
+            )
+            set_highly_variable_by_variance(adata, n_top_genes)
+    else:
+        adata.layers["transformed_expression"] = adata.X.copy()
+        set_highly_variable_by_variance(adata, n_top_genes)
+
+    assign_comparison_metric_columns(adata, name, expression_profile)
     return adata
 
 
@@ -498,7 +865,23 @@ def plot_scatter_comparison(
     """
     fig, ax = plt.subplots(figsize=(10, 11))
 
-    plot_df = df.copy().dropna(subset=[x_col, y_col])
+    plot_df = df.copy().replace([np.inf, -np.inf], np.nan).dropna(subset=[x_col, y_col])
+    plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors="coerce")
+    plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors="coerce")
+    plot_df = plot_df.replace([np.inf, -np.inf], np.nan).dropna(subset=[x_col, y_col])
+
+    if log_scale:
+        plot_df = plot_df[(plot_df[x_col] > -1) & (plot_df[y_col] > -1)]
+
+    if len(plot_df) < 2:
+        plt.close(fig)
+        return {
+            "pearson": np.nan,
+            "spearman": np.nan,
+            "pct_deviant": np.nan,
+            "skipped": True,
+            "reason": "fewer than two finite comparable values",
+        }
 
     # Calculate deviation stats (within 10%). For UMI counts, use the log-value so
     # proportional differences at very high depth do not dominate this summary.
@@ -538,8 +921,12 @@ def plot_scatter_comparison(
     ax.plot([min_val, max_val], [min_val, max_val], "r--", alpha=0.8, label="Identity")
 
     # Stats
-    pearson, _ = stats.pearsonr(plot_df[x_col], plot_df[y_col])
-    spearman, _ = stats.spearmanr(plot_df[x_col], plot_df[y_col])
+    if plot_df[x_col].nunique() < 2 or plot_df[y_col].nunique() < 2:
+        pearson = np.nan
+        spearman = np.nan
+    else:
+        pearson, _ = stats.pearsonr(plot_df[x_col], plot_df[y_col])
+        spearman, _ = stats.spearmanr(plot_df[x_col], plot_df[y_col])
 
     # Titling
     ax.set_title(title, fontsize=18, fontweight="bold", pad=35)
@@ -1067,15 +1454,13 @@ def write_filtered_h5ad(adata, path):
 
 def compare_perturbations(adata_cur, adata_rep, common_cells):
     """Compare perturbation assignments at gene level, after probe calling."""
-    cur_pert_col = next(
-        (c for c in ["sgID_AB", "perturbation"] if c in adata_cur.obs.columns), None
-    )
+    cur_pert_col = detect_perturbation_column(adata_cur.obs)
 
     if not cur_pert_col:
         log_record(
             "perturbation_comparison_skipped",
             reason="curated_perturbation_column_missing",
-            candidate_columns=["sgID_AB", "perturbation"],
+            candidate_columns=PERTURBATION_COLUMN_CANDIDATES,
         )
         return None
 
@@ -1246,6 +1631,14 @@ results_summary = {
     "expression_qc": qc_summary,
     "knockout_annotation": knockout_annotation_summary,
     "overlap": overlap_summary,
+    "preprocessing": {
+        "curated": cur_sub.uns.get("comparison_expression_profile", {}),
+        "reprocessed": rep_sub.uns.get("comparison_expression_profile", {}),
+    },
+    "metric_sources": {
+        "curated": cur_sub.uns.get("comparison_metric_sources", {}),
+        "reprocessed": rep_sub.uns.get("comparison_metric_sources", {}),
+    },
     "cell_metrics": {},
     "gene_metrics": {},
 }
@@ -1329,7 +1722,10 @@ plt.close()
 # --- Cell-wise Scatter Plots ---
 results_summary["cell_metrics"]["total_counts"] = plot_scatter_comparison(
     pd.DataFrame(
-        {"cur": cur_sub.obs["total_counts"], "rep": rep_sub.obs["total_counts"]}
+        {
+            "cur": cur_sub.obs["comparison_total_counts"],
+            "rep": rep_sub.obs["comparison_total_counts"],
+        }
     ),
     "cur",
     "rep",
@@ -1351,8 +1747,8 @@ log_record(
 results_summary["cell_metrics"]["n_genes"] = plot_scatter_comparison(
     pd.DataFrame(
         {
-            "cur": cur_sub.obs["n_genes_by_counts"],
-            "rep": rep_sub.obs["n_genes_by_counts"],
+            "cur": cur_sub.obs["comparison_n_genes_by_counts"],
+            "rep": rep_sub.obs["comparison_n_genes_by_counts"],
         }
     ),
     "cur",
@@ -1373,20 +1769,10 @@ log_record(
 # --- Gene-wise Scatter Plots (Restored) ---
 gene_metrics_df = pd.DataFrame(
     {
-        "mean_cur": cur_sub.var["mean_counts"],
-        "mean_rep": rep_sub.var["mean_counts"],
-        "dropout_cur": 100
-        - (
-            np.array((cur_sub.layers["counts"] > 0).sum(axis=0)).flatten()
-            / cur_sub.n_obs
-            * 100
-        ),
-        "dropout_rep": 100
-        - (
-            np.array((rep_sub.layers["counts"] > 0).sum(axis=0)).flatten()
-            / rep_sub.n_obs
-            * 100
-        ),
+        "mean_cur": cur_sub.var["comparison_mean_expression"],
+        "mean_rep": rep_sub.var["comparison_mean_expression"],
+        "dropout_cur": cur_sub.var["comparison_dropout_pct"],
+        "dropout_rep": rep_sub.var["comparison_dropout_pct"],
     }
 )
 
