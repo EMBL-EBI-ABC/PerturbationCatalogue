@@ -1,48 +1,26 @@
 # Perturb-seq Curated vs. Reprocessed Comparison
 
-This directory contains tools to compare two versions of a Perturb-seq dataset:
-1.  **Curated:** Author-supplied H5AD (`/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/${DATASET_ID}.h5ad`).
-2.  **Reprocessed:** FASTQ-to-H5AD reprocessed version (`/hps/nobackup/mfreeberg/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.h5ad`).
+## Running the pipeline
 
-## 1. Environment Setup (Google Cloud)
+### Install required dependencies:
+```bash
+pip install anndata h5py pandas numpy matplotlib seaborn scipy
+```
 
-### Create a Vertex AI Workbench Instance
-1.  **Source your development environment variables:**
-    ```bash
-    dev_secrets
-    ```
+### Run
 
-2.  **Create the instance via CLI:**
-    Run the following command in your terminal to create a Workbench instance. The comparison streams H5AD matrices from disk, but large datasets still benefit from enough RAM for obs/var metadata, QC vectors, guide-call strings, and plotting samples:
+`datasets.txt` should contain list of dataset IDs, one per line.
 
-    ```bash
-    gcloud workbench instances create nadig-comparison-notebook \
-        --project=$GCLOUD_PROJECT \
-        --location=$GCLOUD_ZONE \
-        --machine-type=n1-highmem-32 \
-        --vm-image-project=cloud-notebooks-managed \
-        --vm-image-family=workbench-instances \
-        --data-disk-size=1500
-    ```
+```bash
+mkdir -p logs
+cat datasets.txt | parallel \
+  sbatch --mem=128G --time=12:00:00 \
+    --output="logs/{}.comparison.log" \
+    --error="logs/{}.comparison.err" \
+    --wrap=\"python3 comparison.py {}\"
+```
 
-### Access JupyterLab
-1.  Once the instance is "Active", go to the [Vertex AI Workbench Console](https://console.cloud.google.com/vertex-ai/workbench).
-2.  Click **OPEN JUPYTERLAB** next to your instance name.
-
-## 2. Running the Comparison
-
-1.  Clone the repository or copy the `comparison.py` script to the VM.
-2.  Install required dependencies:
-    ```bash
-    pip install anndata h5py pandas numpy matplotlib seaborn scipy
-    ```
-3.  Execute the script. The default dataset is `nadig_2025_jurkat`; set `PERTURBSEQ_DATASET_ID` for another dataset:
-    ```bash
-    PERTURBSEQ_DATASET_ID=replogle_2022_k562_essential_normalized \
-    python3 comparison.py
-    ```
-
-## 3. Metrics and Visualizations
+## Metrics and Visualizations
 
 The script generates the following outputs in the `comparison_results/` folder:
 
@@ -69,8 +47,3 @@ The script generates the following outputs in the `comparison_results/` folder:
 *   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names`. Author-supplied `var["gene_name"]` is used when present; otherwise symbols are resolved from `/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`. The script fails if that GTF is missing. Gene-ID-only reprocessed features whose GTF records do not contain `gene_name` are removed before QC.
 *   **Metric Sources**: Cell and gene metric columns are detected from metadata when available (`obs["UMI_count"]`, `obs["qc_total_counts"]`, `var["mean"]`, etc.). Metrics that cannot be recovered from a transformed curated matrix, such as detected genes or dropout, are reported as skipped instead of inferred from signed values.
 *   **Sampling Controls**: `PERTURBSEQ_SCATTER_MAX_POINTS`, `PERTURBSEQ_CELL_CORR_SAMPLE_SIZE`, and `PERTURBSEQ_RANDOM_SEED` control deterministic sampling for large cell-level visualizations and correlations.
-
-# Raw data from source
-```
-wget https://ftp.ncbi.nlm.nih.gov/geo/series/GSE264nnn/GSE264667/suppl/GSE264667%5Fjurkat%5Fraw%5Fsinglecell%5F01.h5ad
-```
