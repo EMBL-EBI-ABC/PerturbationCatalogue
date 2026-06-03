@@ -1076,7 +1076,9 @@ def replace_sparse_group(path, key, matrix, row_pos, col_pos=None, dtype=None):
             indices_ds.resize((new_nnz,))
             data_ds[nnz:new_nnz] = block.data.astype(dtype, copy=False)
             indices_ds[nnz:new_nnz] = block.indices.astype(np.int64, copy=False)
-            indptr_ds[out_row + 1 : out_row + len(rows) + 1] = block.indptr[1:] + nnz
+            indptr_ds[out_row + 1 : out_row + len(rows) + 1] = (
+                block.indptr[1:].astype(np.int64) + nnz
+            )
             nnz = new_nnz
             out_row += len(rows)
 
