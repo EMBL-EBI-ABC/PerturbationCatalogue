@@ -337,6 +337,18 @@ process CONCATENATE_SAMPLES {
         uns_merge="same",
         index_unique="-",
     )
+
+    # Workaround: concat_on_disk with uns_merge="same" often results in an empty uns
+    # even when all inputs have the same keys. We manually copy uns from the first sample.
+    import h5py
+    first_sample_path = list(inputs.values())[0]
+    with h5py.File(first_sample_path, "r") as f_src:
+        if "uns" in f_src:
+            print(f"Copying 'uns' from {first_sample_path} to final H5AD...")
+            with h5py.File("experiment_final_uncompressed.h5ad", "a") as f_dst:
+                if "uns" in f_dst:
+                    del f_dst["uns"]
+                f_src.copy("uns", f_dst)
     """
 }
 
