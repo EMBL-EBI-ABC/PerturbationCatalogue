@@ -21,46 +21,36 @@ control rows plus that batch's perturbation rows from the H5AD CSR matrix.
 Build the image locally or in an interactive cluster session with Singularity:
 
 ```bash
-cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
+cd ${HPS_PATH}/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
 singularity build --force dea_gsea.sif Singularity.def
 ```
 
 ## Download Gene Sets
 
 ```bash
-mkdir -p $HPS_PATH/cache/msigdb
-wget -O $HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt \
+mkdir -p ${HPS_PATH}/cache/msigdb
+wget -O ${HPS_PATH}/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt \
   https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2025.1.Hs/h.all.v2025.1.Hs.symbols.gmt
-```
-
-## Inputs
-
-For `nadig_2025_jurkat` on the cluster:
-
-```bash
-export DATASET_ID=nadig_2025_jurkat
-export H5AD=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.filtered.h5ad
-export OUTDIR=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/dea_gsea
-export GMT=$HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt
 ```
 
 ## Run
 
+Set dataset name, for example `DATASET_ID=nadig_2025_jurkat`, then run:
+
 ```bash
-cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
+cd ${HPS_PATH}/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
 module load nextflow/25.04.6
 mkdir -p logs
-
 time srun --mem=16G --time=7-00:00:00 --unbuffered \
   nextflow -log logs/${DATASET_ID}.dea_gsea.nextflow.log \
     run main.nf \
     -profile slurm,singularity \
     -name ${DATASET_ID}_dea_gsea \
     -work-dir work/${DATASET_ID} \
-    --dataset_id $DATASET_ID \
-    --h5ad $H5AD \
-    --gmt $GMT \
-    --outdir $OUTDIR \
+    --dataset_id ${DATASET_ID} \
+    --h5ad ${HPS_PATH}/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.filtered.h5ad \
+    --gmt ${HPS_PATH}/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt \
+    --outdir ${HPS_PATH}/perturb_seq_fastq/results/${DATASET_ID}/dea_gsea \
     --batch_size 50 \
     --limit_perturbations 0 \
     --min_cells_per_perturbation 10 \
