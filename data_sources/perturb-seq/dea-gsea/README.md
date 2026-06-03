@@ -39,7 +39,7 @@ For `nadig_2025_jurkat` on the cluster:
 
 ```bash
 export DATASET_ID=nadig_2025_jurkat
-export H5AD=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/experiment_final.filtered.h5ad
+export H5AD=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.filtered.h5ad
 export OUTDIR=/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/dea_gsea
 export GMT=$HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt
 ```
@@ -107,21 +107,3 @@ geneset_size, leading_edge, cell_type, ingested_at
 ```
 
 `leading_edge` is written as a Parquet list of strings.
-
-## Smoke Test
-
-For a fast Nextflow wiring test without GSEA, use a tiny batch size and skip
-GSEA:
-
-```bash
-nextflow run main.nf \
-  -profile standard \
-  --dataset_id $DATASET_ID \
-  --h5ad ./experiment_final.filtered.h5ad \
-  --outdir /tmp/${DATASET_ID}_dea_gsea_smoke \
-  --batch_size 1 \
-  --limit_perturbations 2 \
-  --skip_gsea true
-```
-
-Do not use `--skip_gsea true` for the production run.

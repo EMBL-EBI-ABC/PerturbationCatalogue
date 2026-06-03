@@ -17,7 +17,6 @@ params.gsea_permutations = 1000
 params.gsea_min_size = 15
 params.gsea_max_size = 500
 params.gsea_seed = 1
-params.skip_gsea = false
 params.tie_correct = false
 params.target_col = "perturbed_target_symbol"
 params.gene_count_col = "called_knockout_gene_count"
@@ -75,7 +74,6 @@ process ANALYZE_BATCH {
     path "*.metrics.json", emit: metrics
 
     script:
-    def skipGseaArg = params.skip_gsea ? "--skip-gsea" : ""
     def tieCorrectArg = params.tie_correct ? "--tie-correct" : ""
     def gmtArg = gmt_path ? "--gmt ${gmt_path}" : ""
     """
@@ -94,7 +92,6 @@ process ANALYZE_BATCH {
       --gsea-max-size ${params.gsea_max_size} \
       --gsea-seed ${params.gsea_seed} \
       ${gmtArg} \
-      ${skipGseaArg} \
       ${tieCorrectArg}
     """
 }
@@ -133,8 +130,8 @@ workflow {
     if (!params.h5ad) {
         error "Please provide --h5ad"
     }
-    if (!params.skip_gsea && !params.gmt) {
-        error "Please provide --gmt, or set --skip_gsea true for DEA-only smoke tests"
+    if (!params.gmt) {
+        error "Please provide --gmt"
     }
 
     gene_map_path = params.gene_map ? file(params.gene_map).toString() : ""

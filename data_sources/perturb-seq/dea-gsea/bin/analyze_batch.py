@@ -346,8 +346,6 @@ def run_gsea(
     ranking_by_perturbation: dict[str, pd.DataFrame],
     args: argparse.Namespace,
 ) -> pd.DataFrame:
-    if args.skip_gsea:
-        return pd.DataFrame(columns=[field.name for field in GSEA_SCHEMA])
     gene_sets = load_gmt(args.gmt)
     frames: list[pd.DataFrame] = []
     for perturbation, ranking in ranking_by_perturbation.items():
@@ -379,16 +377,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--tie-correct", action="store_true")
-    parser.add_argument("--skip-gsea", action="store_true")
     parser.add_argument("--gsea-permutations", type=int, default=1000)
     parser.add_argument("--gsea-min-size", type=int, default=15)
     parser.add_argument("--gsea-max-size", type=int, default=500)
     parser.add_argument("--gsea-seed", type=int, default=1)
     args = parser.parse_args()
 
-    if not args.skip_gsea and not args.gmt:
-        parser.error("--gmt is required unless --skip-gsea is set")
-    if args.gsea_permutations < 1 and not args.skip_gsea:
+    if not args.gmt:
+        parser.error("--gmt is required")
+    if args.gsea_permutations < 1:
         parser.error("--gsea-permutations must be >= 1")
     if args.threads < 1:
         parser.error("--threads must be >= 1")
