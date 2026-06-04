@@ -1,54 +1,79 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="600" viewBox="0 0 1280 600">
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
-    </marker>
     <style>
-      .box { fill: #ffffff; stroke: #374151; stroke-width: 2; rx: 14; ry: 14; }
-      .input { fill: #eef2ff; stroke: #4f46e5; }
-      .process { fill: #ecfeff; stroke: #0891b2; }
-      .merge { fill: #fef3c7; stroke: #d97706; }
-      .output { fill: #ecfdf5; stroke: #059669; }
-      .label { font-family: Arial, Helvetica, sans-serif; font-size: 24px; font-weight: 700; fill: #111827; }
-      .small { font-family: Arial, Helvetica, sans-serif; font-size: 18px; fill: #374151; }
-      .note { font-family: Arial, Helvetica, sans-serif; font-size: 17px; fill: #4b5563; }
-      .arrow { stroke: #374151; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .bg { fill: #ffffff; }
+      .cell-body { fill: #f0f9ff; stroke: #0ea5e9; stroke-width: 2; }
+      .nucleus { fill: #bae6fd; stroke: #0284c7; stroke-width: 1.5; }
+      .guide-rna { stroke: #ef4444; stroke-width: 2; fill: none; }
+      .label-text { font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 20px; font-weight: 600; fill: #1e293b; }
+      .sub-text { font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 16px; fill: #64748b; }
+      .matrix-cell { fill: #f8fafc; stroke: #e2e8f0; }
+      .matrix-val-high { fill: #0ea5e9; opacity: 0.8; }
+      .matrix-val-mid { fill: #0ea5e9; opacity: 0.4; }
+      .divider { stroke: #cbd5e1; stroke-width: 1; stroke-dasharray: 4 4; }
+      .petri { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 3; }
     </style>
   </defs>
 
-  <rect x="20" y="30" width="1240" height="540" rx="22" fill="#f9fafb" stroke="#e5e7eb"/>
+  <!-- Background -->
+  <rect class="bg" width="1280" height="600" rx="20"/>
 
-  <!-- Step 1: Input -->
-  <rect class="box input" x="80" y="200" width="220" height="120"/>
-  <text class="label" x="190" y="250" text-anchor="middle">Single Cell</text>
-  <text class="small" x="190" y="285" text-anchor="middle">mRNA + sgRNA</text>
+  <!-- Section 1: Perturbation (Petri Dish) -->
+  <circle class="petri" cx="250" cy="300" r="180"/>
+  <text class="label-text" x="250" y="100" text-anchor="middle">1. Pooled Perturbation</text>
+  
+  <!-- Cells in Petri Dish -->
+  <g transform="translate(180, 250)">
+    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z"/>
+    <circle class="nucleus" cx="40" cy="20" r="8"/>
+    <path class="guide-rna" d="M35,15 L45,25 M45,15 L35,25"/>
+  </g>
+  <g transform="translate(280, 320) scale(0.8)">
+    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z" style="stroke:#10b981; fill:#ecfdf5;"/>
+    <circle class="nucleus" cx="40" cy="20" r="8" style="stroke:#059669; fill:#a7f3d0;"/>
+  </g>
+  <g transform="translate(220, 380) rotate(45) scale(0.7)">
+    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z" style="stroke:#f59e0b; fill:#fffbeb;"/>
+    <circle class="nucleus" cx="40" cy="20" r="8" style="stroke:#d97706; fill:#fde68a;"/>
+  </g>
 
-  <path class="arrow" d="M300 260 L380 260"/>
+  <text class="sub-text" x="250" y="520" text-anchor="middle">CRISPR library + Multi-plexing</text>
 
-  <!-- Step 2: Process -->
-  <rect class="box process" x="380" y="200" width="220" height="120"/>
-  <text class="label" x="490" y="250" text-anchor="middle">Library Prep</text>
-  <text class="small" x="490" y="285" text-anchor="middle">Reverse Transcription</text>
+  <!-- Divider -->
+  <line class="divider" x1="480" y1="100" x2="480" y2="500"/>
 
-  <path class="arrow" d="M600 260 L680 260"/>
+  <!-- Section 2: Dual Readout -->
+  <text class="label-text" x="880" y="100" text-anchor="middle">2. Single-Cell Dual Readout</text>
 
-  <!-- Step 3: Sequencing -->
-  <rect class="box process" x="680" y="200" width="220" height="120"/>
-  <text class="label" x="790" y="250" text-anchor="middle">Sequencing</text>
-  <text class="small" x="790" y="285" text-anchor="middle">Read Pairs</text>
+  <!-- Expression Matrix -->
+  <g transform="translate(580, 180)">
+    <text class="label-text" x="120" y="-30" text-anchor="middle">Gene Expression</text>
+    <rect class="matrix-cell" x="0" y="0" width="240" height="120" rx="4"/>
+    <!-- Matrix content -->
+    <rect class="matrix-val-high" x="10" y="10" width="30" height="30" rx="2"/>
+    <rect class="matrix-val-mid" x="50" y="10" width="30" height="30" rx="2"/>
+    <rect class="matrix-val-high" x="90" y="50" width="30" height="30" rx="2"/>
+    <rect class="matrix-val-mid" x="170" y="80" width="30" height="30" rx="2"/>
+    <text class="sub-text" x="120" y="145" text-anchor="middle">"The Phenotype"</text>
+  </g>
 
-  <path class="arrow" d="M900 260 C940 260 940 160 980 160"/>
-  <path class="arrow" d="M900 260 C940 260 940 360 980 360"/>
+  <!-- Guide Matrix -->
+  <g transform="translate(580, 380)">
+    <text class="label-text" x="120" y="-30" text-anchor="middle">Guide Identity</text>
+    <rect class="matrix-cell" x="0" y="0" width="240" height="80" rx="4"/>
+    <!-- Binary matrix content -->
+    <rect x="10" y="10" width="220" height="20" rx="2" fill="#ef4444" opacity="0.6"/>
+    <rect x="50" y="40" width="40" height="20" rx="2" fill="#ef4444" opacity="0.2"/>
+    <text class="sub-text" x="120" y="105" text-anchor="middle">"The Perturbation"</text>
+  </g>
 
-  <!-- Two Dimensions -->
-  <rect class="box output" x="980" y="100" width="220" height="120"/>
-  <text class="label" x="1090" y="150" text-anchor="middle">Gene Expression</text>
-  <text class="small" x="1090" y="185" text-anchor="middle">Transcript Counts</text>
+  <!-- Connecting the dots -->
+  <path d="M500,300 L560,300" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
 
-  <rect class="box output" x="980" y="300" width="220" height="120"/>
-  <text class="label" x="1090" y="350" text-anchor="middle">Guide Identity</text>
-  <text class="small" x="1090" y="385" text-anchor="middle">Perturbation Labels</text>
-
-  <text class="note" x="640" y="520" text-anchor="middle">One assay, two measurements: "What changed?" vs "Why did it change?"</text>
-
+  <text class="sub-text" x="880" y="540" text-anchor="middle" style="font-style: italic;">Linking genotype (guide) to phenotype (transcriptome) in every cell</text>
 </svg>
