@@ -2,78 +2,330 @@
   <defs>
     <style>
       .bg { fill: #ffffff; }
-      .cell-body { fill: #f0f9ff; stroke: #0ea5e9; stroke-width: 2; }
-      .nucleus { fill: #bae6fd; stroke: #0284c7; stroke-width: 1.5; }
-      .guide-rna { stroke: #ef4444; stroke-width: 2; fill: none; }
-      .label-text { font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 20px; font-weight: 600; fill: #1e293b; }
-      .sub-text { font-family: 'Segoe UI', Roboto, Arial, sans-serif; font-size: 16px; fill: #64748b; }
-      .matrix-cell { fill: #f8fafc; stroke: #e2e8f0; }
-      .matrix-val-high { fill: #0ea5e9; opacity: 0.8; }
-      .matrix-val-mid { fill: #0ea5e9; opacity: 0.4; }
-      .divider { stroke: #cbd5e1; stroke-width: 1; stroke-dasharray: 4 4; }
-      .petri { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 3; }
+      
+      /* Typography */
+      .title-large { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 20px; font-weight: 700; fill: #0f172a; }
+      .title-sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 500; fill: #64748b; letter-spacing: 0.5px; text-transform: uppercase; }
+      .text-body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; fill: #334155; }
+      .text-tiny { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #94a3b8; }
+      .text-mono { font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: bold; fill: #ffffff; }
+      .text-mono-dark { font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: bold; fill: #1e293b; }
+      
+      /* Structural */
+      .divider { stroke: #f1f5f9; stroke-width: 2; stroke-dasharray: 4 6; }
+      
+      /* Biological */
+      .cell-membrane { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .cell-nucleus { fill: #f1f5f9; stroke: #e2e8f0; stroke-width: 1; }
+      .cas9 { fill: #e2e8f0; stroke: #94a3b8; stroke-width: 1.5; }
+      .virus { fill: #ffffff; stroke: #64748b; stroke-width: 1.5; stroke-linejoin: round; }
+      
+      /* Guides */
+      .guide-red { stroke: #ef4444; fill: none; stroke-width: 2.5; stroke-linecap: round; }
+      .guide-blue { stroke: #3b82f6; fill: none; stroke-width: 2.5; stroke-linecap: round; }
+      .guide-green { stroke: #10b981; fill: none; stroke-width: 2.5; stroke-linecap: round; }
+      
+      /* Fill colors for boxes */
+      .fill-red { fill: #ef4444; }
+      .fill-blue { fill: #3b82f6; }
+      .fill-green { fill: #10b981; }
+      .fill-cbc { fill: #8b5cf6; }
+      .fill-umi { fill: #f59e0b; }
+      .fill-handle { fill: #e2e8f0; }
+
+      /* Microfluidics */
+      .channel { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .droplet { fill: #ffffff; stroke: #bae6fd; stroke-width: 2; }
+      .bead { fill: #e0f2fe; stroke: #7dd3fc; stroke-width: 1.5; }
+      
+      /* Heatmap */
+      .hm-0 { fill: #f1f5f9; }
+      .hm-1 { fill: #cbd5e1; }
+      .hm-2 { fill: #64748b; }
+      .hm-3 { fill: #1e293b; }
     </style>
-  </defs>
-
-  <!-- Background -->
-  <rect class="bg" width="1280" height="600" rx="20"/>
-
-  <!-- Section 1: Perturbation (Petri Dish) -->
-  <circle class="petri" cx="250" cy="300" r="180"/>
-  <text class="label-text" x="250" y="100" text-anchor="middle">1. Pooled Perturbation</text>
-  
-  <!-- Cells in Petri Dish -->
-  <g transform="translate(180, 250)">
-    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z"/>
-    <circle class="nucleus" cx="40" cy="20" r="8"/>
-    <path class="guide-rna" d="M35,15 L45,25 M45,15 L35,25"/>
-  </g>
-  <g transform="translate(280, 320) scale(0.8)">
-    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z" style="stroke:#10b981; fill:#ecfdf5;"/>
-    <circle class="nucleus" cx="40" cy="20" r="8" style="stroke:#059669; fill:#a7f3d0;"/>
-  </g>
-  <g transform="translate(220, 380) rotate(45) scale(0.7)">
-    <path class="cell-body" d="M0,0 Q20,-10 40,0 T80,0 T40,40 T0,40 Z" style="stroke:#f59e0b; fill:#fffbeb;"/>
-    <circle class="nucleus" cx="40" cy="20" r="8" style="stroke:#d97706; fill:#fde68a;"/>
-  </g>
-
-  <text class="sub-text" x="250" y="520" text-anchor="middle">CRISPR library + Multi-plexing</text>
-
-  <!-- Divider -->
-  <line class="divider" x1="480" y1="100" x2="480" y2="500"/>
-
-  <!-- Section 2: Dual Readout -->
-  <text class="label-text" x="880" y="100" text-anchor="middle">2. Single-Cell Dual Readout</text>
-
-  <!-- Expression Matrix -->
-  <g transform="translate(580, 180)">
-    <text class="label-text" x="120" y="-30" text-anchor="middle">Gene Expression</text>
-    <rect class="matrix-cell" x="0" y="0" width="240" height="120" rx="4"/>
-    <!-- Matrix content -->
-    <rect class="matrix-val-high" x="10" y="10" width="30" height="30" rx="2"/>
-    <rect class="matrix-val-mid" x="50" y="10" width="30" height="30" rx="2"/>
-    <rect class="matrix-val-high" x="90" y="50" width="30" height="30" rx="2"/>
-    <rect class="matrix-val-mid" x="170" y="80" width="30" height="30" rx="2"/>
-    <text class="sub-text" x="120" y="145" text-anchor="middle">"The Phenotype"</text>
-  </g>
-
-  <!-- Guide Matrix -->
-  <g transform="translate(580, 380)">
-    <text class="label-text" x="120" y="-30" text-anchor="middle">Guide Identity</text>
-    <rect class="matrix-cell" x="0" y="0" width="240" height="80" rx="4"/>
-    <!-- Binary matrix content -->
-    <rect x="10" y="10" width="220" height="20" rx="2" fill="#ef4444" opacity="0.6"/>
-    <rect x="50" y="40" width="40" height="20" rx="2" fill="#ef4444" opacity="0.2"/>
-    <text class="sub-text" x="120" y="105" text-anchor="middle">"The Perturbation"</text>
-  </g>
-
-  <!-- Connecting the dots -->
-  <path d="M500,300 L560,300" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+    
+    <!-- Arrows -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-down" viewBox="0 0 10 10" refX="5" refY="8" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 1 0 L 5 8 L 9 0 z" fill="#cbd5e1"/>
     </marker>
   </defs>
 
-  <text class="sub-text" x="880" y="540" text-anchor="middle" style="font-style: italic;">Linking genotype (guide) to phenotype (transcriptome) in every cell</text>
+  <!-- Canvas Background -->
+  <rect class="bg" width="1280" height="600"/>
+
+  <!-- Column Dividers -->
+  <line class="divider" x1="280" y1="40" x2="280" y2="560"/>
+  <line class="divider" x1="560" y1="40" x2="560" y2="560"/>
+  <line class="divider" x1="960" y1="40" x2="960" y2="560"/>
+
+  <!-- ==========================================
+       PHASE 1: TRANSDUCTION (0 - 280, Center 140)
+       ========================================== -->
+  <g transform="translate(0, 0)">
+    <text class="title-large" x="140" y="50" text-anchor="middle">1. Transduction</text>
+    <text class="title-sub" x="140" y="75" text-anchor="middle">CRISPR Perturbation Library</text>
+
+    <!-- Cell 1 (Red) -->
+    <g transform="translate(140, 200)">
+      <path class="cell-membrane" d="M-45,-10 C-50,-35 -20,-50 10,-45 C40,-40 50,-15 40,15 C30,45 0,55 -25,40 C-50,25 -40,15 -45,-10 Z"/>
+      <circle class="cell-nucleus" cx="-5" cy="0" r="18"/>
+      <!-- Cas9 + Guide -->
+      <path class="cas9" d="M15,-10 C15,-20 25,-25 30,-15 C35,-5 25,5 15,-10 Z"/>
+      <path class="guide-red" d="M22,-20 Q35,-30 45,-15 Q50,-5 35,0"/>
+    </g>
+
+    <!-- Cell 2 (Blue) -->
+    <g transform="translate(100, 380)">
+      <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
+      <circle class="cell-nucleus" cx="5" cy="5" r="16"/>
+      <path class="cas9" d="M-10,15 C-20,10 -25,20 -15,30 C-5,40 0,20 -10,15 Z"/>
+      <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45"/>
+    </g>
+
+    <!-- Viruses -->
+    <!-- Virus Red -->
+    <g transform="translate(50, 140)">
+      <polygon class="virus" points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6"/>
+      <path class="guide-red" d="M-4,-4 Q0,4 4,-4" stroke-width="1.5"/>
+      <path d="M 12,6 L 60,35" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- Virus Blue -->
+    <g transform="translate(220, 290)">
+      <polygon class="virus" points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6"/>
+      <path class="guide-blue" d="M-4,-4 Q0,4 4,-4" stroke-width="1.5"/>
+      <path d="M -10,10 L -60,40" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+    </g>
+
+    <text class="text-tiny" x="140" y="520" text-anchor="middle">POOL OF SINGLY PERTURBED CELLS</text>
+  </g>
+
+
+  <!-- ==========================================
+       PHASE 2: ENCAPSULATION (280 - 560, Center 420)
+       ========================================== -->
+  <g transform="translate(280, 0)">
+    <text class="title-large" x="140" y="50" text-anchor="middle">2. Encapsulation</text>
+    <text class="title-sub" x="140" y="75" text-anchor="middle">Droplet Microfluidics</text>
+
+    <!-- Microfluidic Junction -->
+    <!-- Aqueous flow (Cells & Beads) -->
+    <path class="channel" d="M 20,260 L 140,260 L 140,320 L 20,320 Z"/>
+    <!-- Oil flow (Top & Bottom) -->
+    <path class="channel" d="M 140,120 L 140,260 L 180,260 L 180,120 Z"/>
+    <path class="channel" d="M 140,460 L 140,320 L 180,320 L 180,460 Z"/>
+    <!-- Output flow -->
+    <path class="channel" d="M 180,260 L 280,260 L 280,320 L 180,320 Z"/>
+    
+    <!-- Central intersection overlay -->
+    <rect x="141" y="261" width="38" height="58" fill="#f8fafc"/>
+
+    <!-- Flow indicators -->
+    <path d="M 160,170 L 160,210" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 160,410 L 160,370" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <!-- Beads and Cells coming in -->
+    <circle class="bead" cx="50" cy="275" r="10"/>
+    <circle class="bead" cx="100" cy="275" r="10"/>
+    
+    <!-- Mini Cell (Blue) -->
+    <g transform="translate(70, 300) scale(0.35)">
+      <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
+      <circle class="cell-nucleus" cx="5" cy="5" r="16"/>
+      <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45" stroke-width="4"/>
+    </g>
+
+    <!-- Droplet Formation -->
+    <circle class="droplet" cx="160" cy="290" r="16"/>
+    
+    <!-- Formed Droplet 1 -->
+    <g transform="translate(220, 290)">
+      <circle class="droplet" cx="0" cy="0" r="22"/>
+      <circle class="bead" cx="-5" cy="-5" r="10"/>
+      <g transform="translate(6, 6) scale(0.3)">
+        <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
+        <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45" stroke-width="5"/>
+      </g>
+    </g>
+
+    <!-- Visual Zoom to Phase 3 -->
+    <path d="M 220,268 L 300,160" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>
+    <path d="M 220,312 L 300,420" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>
+
+    <text class="text-tiny" x="140" y="520" text-anchor="middle">1 CELL + 1 BARCODED BEAD PER DROPLET</text>
+  </g>
+
+
+  <!-- ==========================================
+       PHASE 3: MOLECULAR BARCODING (560 - 960, Center 760)
+       ========================================== -->
+  <g transform="translate(560, 0)">
+    <text class="title-large" x="200" y="50" text-anchor="middle">3. Molecular Barcoding</text>
+    <text class="title-sub" x="200" y="75" text-anchor="middle">In-Droplet Reverse Transcription</text>
+
+    <!-- Large Bead surface -->
+    <path class="bead" d="M -10,160 Q 60,290 -10,420" stroke-width="2"/>
+    
+    <!-- Lysis effect -->
+    <path d="M 80,180 Q 90,160 110,170" stroke="#cbd5e1" stroke-width="1" fill="none" stroke-dasharray="2 2"/>
+    <text class="text-tiny" x="115" y="173" fill="#64748b">CELL LYSIS</text>
+
+    <!-- Bracket for "Same Cell Barcode" -->
+    <path d="M 40,240 L 25,240 L 25,350 L 40,350" stroke="#94a3b8" stroke-width="1.5" fill="none"/>
+    <text class="text-tiny" x="15" y="295" transform="rotate(-90 15 295)" text-anchor="middle">SAME CELL BARCODE</text>
+
+    <!-- OLIGO 1: mRNA -->
+    <g transform="translate(50, 240)">
+      <!-- Line backbone -->
+      <line x1="0" y1="0" x2="200" y2="0" stroke="#64748b" stroke-width="1.5"/>
+      
+      <!-- Blocks with background rects to cover the line -->
+      <rect class="bg" x="8" y="-10" width="44" height="20"/>
+      <rect class="fill-cbc" x="10" y="-8" width="40" height="16" rx="2"/>
+      <text class="text-mono" x="30" y="4" text-anchor="middle">CBC</text>
+      
+      <rect class="bg" x="58" y="-10" width="34" height="20"/>
+      <rect class="fill-umi" x="60" y="-8" width="30" height="16" rx="2"/>
+      <text class="text-mono" x="75" y="4" text-anchor="middle">UMI</text>
+      
+      <rect class="bg" x="98" y="-10" width="64" height="20"/>
+      <rect class="fill-handle" x="100" y="-8" width="60" height="16" rx="2"/>
+      <text class="text-mono-dark" x="130" y="4" text-anchor="middle">Poly(dT)</text>
+
+      <!-- Transcript pairing -->
+      <path d="M 140,-12 Q 170,-25 210,-12 Q 240,0 270,-15" stroke="#cbd5e1" stroke-width="2.5" fill="none"/>
+      <!-- Small pairing lines -->
+      <line x1="145" y1="-2" x2="145" y2="-10" stroke="#94a3b8"/>
+      <line x1="150" y1="-2" x2="150" y2="-11" stroke="#94a3b8"/>
+      <line x1="155" y1="-2" x2="155" y2="-12" stroke="#94a3b8"/>
+      
+      <text class="text-body" x="280" y="-18" fill="#475569">Endogenous mRNA</text>
+    </g>
+
+    <!-- OLIGO 2: sgRNA -->
+    <g transform="translate(50, 350)">
+      <!-- Line backbone -->
+      <line x1="0" y1="0" x2="200" y2="0" stroke="#64748b" stroke-width="1.5"/>
+      
+      <!-- Blocks -->
+      <rect class="bg" x="8" y="-10" width="44" height="20"/>
+      <rect class="fill-cbc" x="10" y="-8" width="40" height="16" rx="2"/>
+      <text class="text-mono" x="30" y="4" text-anchor="middle">CBC</text>
+      
+      <rect class="bg" x="58" y="-10" width="34" height="20"/>
+      <rect class="fill-umi" x="60" y="-8" width="30" height="16" rx="2"/>
+      <text class="text-mono" x="75" y="4" text-anchor="middle">UMI</text>
+      
+      <rect class="bg" x="98" y="-10" width="84" height="20"/>
+      <rect class="fill-handle" x="100" y="-8" width="80" height="16" rx="2"/>
+      <text class="text-mono-dark" x="140" y="4" text-anchor="middle">Capture Seq</text>
+
+      <!-- sgRNA Transcript pairing -->
+      <path class="guide-blue" d="M 160,-10 Q 180,-25 190,-10 Q 200,-5 210,-20 Q 220,-35 240,-15 Q 260,-5 270,-15"/>
+      <!-- Small pairing lines -->
+      <line x1="165" y1="-2" x2="165" y2="-12" stroke="#94a3b8"/>
+      <line x1="170" y1="-2" x2="170" y2="-15" stroke="#94a3b8"/>
+      <line x1="175" y1="-2" x2="175" y2="-18" stroke="#94a3b8"/>
+
+      <text class="text-body" x="280" y="-20" fill="#3b82f6" font-weight="bold">sgRNA Transcript</text>
+    </g>
+
+    <text class="text-tiny" x="200" y="520" text-anchor="middle">SHARED BARCODE LINKS PHENOTYPE AND GENOTYPE</text>
+  </g>
+
+
+  <!-- ==========================================
+       PHASE 4: DUAL READOUT MATRIX (960 - 1280, Center 1120)
+       ========================================== -->
+  <g transform="translate(960, 0)">
+    <text class="title-large" x="160" y="50" text-anchor="middle">4. Readout Matrix</text>
+    <text class="title-sub" x="160" y="75" text-anchor="middle">Genotype-Phenotype Map</text>
+
+    <g transform="translate(20, 180)">
+      <!-- Matrix Headers -->
+      <text class="text-body" font-weight="bold" x="35" y="-15" text-anchor="middle">Cell Barcode</text>
+      <text class="text-body" font-weight="bold" x="120" y="-15" text-anchor="middle">Perturbation</text>
+      <text class="text-body" font-weight="bold" x="230" y="-15" text-anchor="middle">Transcriptome</text>
+
+      <!-- Separator lines -->
+      <line x1="0" y1="-5" x2="70" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
+      <line x1="80" y1="-5" x2="160" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
+      <line x1="170" y1="-5" x2="290" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
+
+      <!-- Matrix rows -->
+      <g transform="translate(0, 10)">
+        <!-- Row 1: Red -->
+        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
+        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_1</text>
+        
+        <rect class="fill-red" x="90" y="0" width="60" height="20" rx="3"/>
+        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Red</text>
+        
+        <rect class="hm-0" x="180" y="2" width="16" height="16"/>
+        <rect class="hm-3" x="200" y="2" width="16" height="16"/>
+        <rect class="hm-1" x="220" y="2" width="16" height="16"/>
+        <rect class="hm-0" x="240" y="2" width="16" height="16"/>
+        <rect class="hm-2" x="260" y="2" width="16" height="16"/>
+      </g>
+
+      <g transform="translate(0, 45)">
+        <!-- Row 2: Blue -->
+        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
+        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_2</text>
+        
+        <rect class="fill-blue" x="90" y="0" width="60" height="20" rx="3"/>
+        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Blue</text>
+        
+        <rect class="hm-2" x="180" y="2" width="16" height="16"/>
+        <rect class="hm-0" x="200" y="2" width="16" height="16"/>
+        <rect class="hm-3" x="220" y="2" width="16" height="16"/>
+        <rect class="hm-1" x="240" y="2" width="16" height="16"/>
+        <rect class="hm-0" x="260" y="2" width="16" height="16"/>
+      </g>
+
+      <g transform="translate(0, 80)">
+        <!-- Row 3: Green -->
+        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
+        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_3</text>
+        
+        <rect class="fill-green" x="90" y="0" width="60" height="20" rx="3"/>
+        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Grn</text>
+        
+        <rect class="hm-1" x="180" y="2" width="16" height="16"/>
+        <rect class="hm-1" x="200" y="2" width="16" height="16"/>
+        <rect class="hm-0" x="220" y="2" width="16" height="16"/>
+        <rect class="hm-3" x="240" y="2" width="16" height="16"/>
+        <rect class="hm-2" x="260" y="2" width="16" height="16"/>
+      </g>
+      
+      <!-- Ellipsis -->
+      <g transform="translate(0, 115)">
+        <text class="text-mono-dark" x="35" y="14" text-anchor="middle">...</text>
+        <text class="text-mono-dark" x="120" y="14" text-anchor="middle">...</text>
+        <text class="text-mono-dark" x="230" y="14" text-anchor="middle">...</text>
+      </g>
+    </g>
+
+    <!-- Connectors pointing down to Genotype / Phenotype concepts -->
+    <!-- From Perturbation -->
+    <path d="M 140,320 L 140,380" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow-down)"/>
+    <!-- From Transcriptome -->
+    <path d="M 250,320 L 250,380" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow-down)"/>
+
+    <!-- Final summary blocks aligned nicely -->
+    <rect x="90" y="400" width="100" height="36" rx="4" fill="#ffffff" stroke="#ef4444" stroke-width="1.5"/>
+    <text class="text-body" font-weight="bold" x="140" y="423" text-anchor="middle" fill="#dc2626">Genotype</text>
+    
+    <text class="title-large" x="195" y="425" text-anchor="middle" fill="#94a3b8">=</text>
+
+    <rect x="200" y="400" width="100" height="36" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
+    <text class="text-body" font-weight="bold" x="250" y="423" text-anchor="middle" fill="#2563eb">Phenotype</text>
+
+    <text class="text-tiny" x="160" y="520" text-anchor="middle">SINGLE-CELL RESOLUTION ANALYSIS</text>
+  </g>
+
 </svg>
