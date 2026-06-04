@@ -203,7 +203,7 @@
       <line x1="150" y1="-2" x2="150" y2="-11" stroke="#94a3b8"/>
       <line x1="155" y1="-2" x2="155" y2="-12" stroke="#94a3b8"/>
       
-      <text class="text-body" x="280" y="-18" fill="#475569">Endogenous mRNA</text>
+      <text class="text-body" x="280" y="25" fill="#475569">Endogenous mRNA</text>
     </g>
 
     <!-- OLIGO 2: sgRNA -->
@@ -231,7 +231,7 @@
       <line x1="170" y1="-2" x2="170" y2="-15" stroke="#94a3b8"/>
       <line x1="175" y1="-2" x2="175" y2="-18" stroke="#94a3b8"/>
 
-      <text class="text-body" x="280" y="-20" fill="#3b82f6" font-weight="bold">sgRNA Transcript</text>
+      <text class="text-body" x="280" y="25" fill="#3b82f6" font-weight="bold">sgRNA Transcript</text>
     </g>
 
     <text class="text-tiny" x="200" y="520" text-anchor="middle">SHARED BARCODE LINKS PHENOTYPE AND GENOTYPE</text>
