@@ -62,11 +62,9 @@
   <path class="arrow" d="M840 412 C890 400 900 315 935 292"/>
 
   <rect class="box output" x="935" y="392" width="220" height="108"/>
-  <text class="label" x="1045" y="434" text-anchor="middle">Unified H5AD</text>
-  <text class="small" x="1045" y="466" text-anchor="middle">sample-suffixed cells</text>
+  <text class="label" x="1045" y="434" text-anchor="middle">Raw H5AD</text>
 
   <path class="arrow" d="M1045 329 L1045 392"/>
 
   <text class="note" x="435" y="360" text-anchor="middle">prevents within-sample mixups</text>
-  <text class="note" x="1045" y="535" text-anchor="middle">prevents barcode collisions across wells</text>
 </svg>
