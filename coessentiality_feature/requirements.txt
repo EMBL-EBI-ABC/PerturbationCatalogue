@@ -1,0 +1,16 @@
+# Pipeline (step1 → step2 → step3)
+numpy
+pandas
+scipy
+statsmodels
+requests
+
+# App (coessentiality_feature_pc.py)
+dash
+dash-cytoscape
+plotly
+networkx
+gseapy
+
+# Cloud deployment (optional — only needed when reading/writing from GCS)
+# google-cloud-storage
