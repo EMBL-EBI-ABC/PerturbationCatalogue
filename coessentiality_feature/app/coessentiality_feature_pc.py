@@ -305,6 +305,10 @@ app.layout = html.Div([
                 style={"color": _MUTED, "fontSize": "20px",
                        "margin": "0 0 16px 0", "lineHeight": "1.7"}),
             html.P([
+                "Genes that are co-essential (perturbation of either gene impairs fitness across many cancer cell lines) "
+                "suggesting that they may operate in the same pathway or complex.",
+                html.Br(),
+                html.Br(),
                 "Co-essentiality is computed by applying Generalised Least Squares (GLS) "
                 "regression to DepMap CRISPR gene effect scores to correct for cell-line "
                 "covariance structure, following ",
@@ -447,10 +451,27 @@ app.layout = html.Div([
                                       "gap": "8px", "flexWrap": "wrap"}),
                         ], style={"marginTop": "24px", "marginBottom": "20px"}),
 
-                        # Summary badge
-                        html.Div(id="summary-text", style={
-                            "marginBottom": "20px", "fontSize": "18px",
-                            "color": _MUTED, "fontStyle": "italic"}),
+                        # Summary badge + download button
+                        html.Div([
+                            html.Div(id="summary-text", style={
+                                "fontSize": "18px", "color": _MUTED,
+                                "fontStyle": "italic", "flex": "1"}),
+                            html.Button(
+                                "Download all partners (CSV)",
+                                id="single-download-btn",
+                                n_clicks=0,
+                                disabled=True,
+                                style={
+                                    "background": _G, "color": "#fff",
+                                    "border": "none", "borderRadius": "4px",
+                                    "padding": "8px 16px", "fontSize": "16px",
+                                    "fontWeight": "600", "cursor": "pointer",
+                                    "whiteSpace": "nowrap",
+                                },
+                            ),
+                            dcc.Download(id="single-download"),
+                        ], style={"display": "flex", "alignItems": "center",
+                                  "gap": "16px", "marginBottom": "20px"}),
 
                         # Chart + table row
                         html.Div([
@@ -602,9 +623,26 @@ app.layout = html.Div([
                         ]),
 
                         # Summary badge
-                        html.Div(id="multi-summary-text", style={
-                            "marginBottom": "20px", "fontSize": "18px",
-                            "color": _MUTED, "fontStyle": "italic"}),
+                        html.Div([
+                            html.Div(id="multi-summary-text", style={
+                                "fontSize": "18px", "color": _MUTED,
+                                "fontStyle": "italic", "flex": "1"}),
+                            html.Button(
+                                "Download pairs (CSV)",
+                                id="multi-download-btn",
+                                n_clicks=0,
+                                disabled=True,
+                                style={
+                                    "background": _G, "color": "#fff",
+                                    "border": "none", "borderRadius": "4px",
+                                    "padding": "8px 16px", "fontSize": "16px",
+                                    "fontWeight": "600", "cursor": "pointer",
+                                    "whiteSpace": "nowrap",
+                                },
+                            ),
+                            dcc.Download(id="multi-download"),
+                        ], style={"display": "flex", "alignItems": "center",
+                                  "gap": "16px", "marginBottom": "20px"}),
 
                         # Network (sticky) + co-essential modules (below)
                         html.Div([
@@ -772,10 +810,11 @@ def update_network_size(fdr):
 
 # --- Single-gene explorer ---
 @app.callback(
-    Output("summary-text",  "children"),
-    Output("partner-bar",   "figure"),
-    Output("partner-table", "data"),
-    Output("cyto-graph",    "elements"),
+    Output("summary-text",          "children"),
+    Output("partner-bar",           "figure"),
+    Output("partner-table",         "data"),
+    Output("cyto-graph",            "elements"),
+    Output("single-download-btn",   "disabled"),
     Input("gene-dropdown",  "value"),
     Input("fdr-filter",     "value"),
 )
@@ -794,7 +833,7 @@ def update_single(gene, fdr):
                            "showarrow": False,
                            "font": {"size": 15, "color": _MUTED}}],
         )
-        return "Select a gene to explore its co-essential partners.", placeholder, [], []
+        return "Select a gene to explore its co-essential partners.", placeholder, [], [], True
 
     mask = (df["source"] == gene) | (df["target"] == gene)
     sub = df[mask].copy()
@@ -846,7 +885,7 @@ def update_single(gene, fdr):
         edges.append({"data": {"source": row["source"], "target": row["target"],
                                 "weight": w}})
 
-    return summary, fig, sub.to_dict("records"), nodes + edges
+    return summary, fig, sub.to_dict("records"), nodes + edges, False
 
 
 # --- Tab 1: example-gene buttons load a gene into the dropdown ---
@@ -877,6 +916,7 @@ _EXAMPLE_GENES = (
     Output("multi-modules-store",      "data"),
     Output("multi-gene-input",         "value"),
     Output("multi-gene-list-version",  "data"),
+    Output("multi-download-btn",       "disabled"),
     Input("multi-gene-input",          "n_blur"),
     Input("multi-example-btn",         "n_clicks"),
     Input("fdr-filter",                "value"),
@@ -896,7 +936,7 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
     # type one symbol per line — all formats work without reformatting first.
     if not text or not text.strip():
         return ("Paste or type gene symbols to see their network.", [], None,
-                new_textarea, new_version)
+                new_textarea, new_version, True)
 
     seen, genes, unknown = set(), [], []
     for token in re.split(r"[\s,;]+", text):
@@ -915,7 +955,7 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
         msg = "Enter at least 2 valid gene symbols."
         if unknown:
             msg += f"  Not found: {', '.join(unknown[:10])}{'…' if len(unknown) > 10 else ''}."
-        return msg, [], None, new_textarea, new_version
+        return msg, [], None, new_textarea, new_version, True
 
     df = df_all[df_all["pvalue_adj"] <= fdr]
     gene_set = set(genes)
@@ -936,7 +976,7 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
     gene_module, modules = _detect_modules(genes, edges_df)
     if modules:
         summary += (f"  {len(modules)} co-essential module(s) detected "
-                    f"(≥ {MULTI_MIN_MODULE_GENES} genes) — see table below.")
+                    f"(≥ {MULTI_MIN_MODULE_GENES} genes)")
 
     # Average correlation per node across all its edges within the selection
     node_corrs: dict[str, list] = {g: [] for g in genes}
@@ -957,7 +997,8 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
         nodes.append({"data": {"id": g, "bg_color": corr_to_color(avg_c),
                                "module": gene_module.get(g, 0)}})
 
-    return summary, nodes + edges, modules, new_textarea, new_version
+    has_pairs = len(edges_df) > 0
+    return summary, nodes + edges, modules, new_textarea, new_version, not has_pairs
 
 
 # --- Multi-gene network: GO:BP annotation of detected modules (on demand) ---
@@ -1081,6 +1122,77 @@ def highlight_module(active_cell, table_data):
         return MULTI_STYLESHEET
     row = table_data[active_cell["row"]]
     return MULTI_STYLESHEET + _module_highlight_rules(row["cluster"])
+
+
+# --- Single-gene: download all co-essential partners as CSV ---
+@app.callback(
+    Output("single-download", "data"),
+    Input("single-download-btn", "n_clicks"),
+    State("gene-dropdown", "value"),
+    State("fdr-filter",    "value"),
+    prevent_initial_call=True,
+)
+def download_single_partners(_n_clicks, gene, fdr):
+    if not gene:
+        return dash.no_update
+    df = df_all[df_all["pvalue_adj"] <= fdr]
+    mask = (df["source"] == gene) | (df["target"] == gene)
+    sub = df[mask].copy()
+    sub["partner"] = sub.apply(
+        lambda r: r["target"] if r["source"] == gene else r["source"], axis=1
+    )
+    sub = (sub[["partner", "pvalue", "pvalue_adj", "corr_genes"]]
+           .sort_values("pvalue_adj")
+           .rename(columns={
+               "partner":    "Partner Gene",
+               "pvalue":     "GLS P-value",
+               "pvalue_adj": "GLS Adj. P-value (FDR)",
+               "corr_genes": "Correlation",
+           }))
+    sub["Correlation Notes"] = sub["Correlation"].apply(
+        lambda c: "co-essential" if c > 0 else "anti-correlated"
+    )
+    pct = int(fdr * 100)
+    return dcc.send_data_frame(sub.to_csv, f"{gene}_coessential_partners_FDR{pct}pct.csv",
+                               index=False)
+
+
+# --- Multi-gene: download co-essential pairs as CSV ---
+@app.callback(
+    Output("multi-download", "data"),
+    Input("multi-download-btn", "n_clicks"),
+    State("multi-gene-input",   "value"),
+    State("fdr-filter",         "value"),
+    prevent_initial_call=True,
+)
+def download_multi_pairs(_n_clicks, text, fdr):
+    if not text or not text.strip():
+        return dash.no_update
+    seen, genes = set(), []
+    for token in re.split(r"[\s,;]+", text):
+        g = token.strip()
+        if g and g not in seen and g in _ALL_GENES_SET:
+            seen.add(g)
+            genes.append(g)
+    if len(genes) < 2:
+        return dash.no_update
+    df = df_all[df_all["pvalue_adj"] <= fdr]
+    gene_set = set(genes)
+    mask = df["source"].isin(gene_set) & df["target"].isin(gene_set)
+    out = (df[mask][["source", "target", "pvalue", "pvalue_adj", "corr_genes"]]
+           .sort_values("pvalue_adj")
+           .rename(columns={
+               "source":     "Gene",
+               "target":     "Partner Gene",
+               "pvalue":     "GLS P-value",
+               "pvalue_adj": "GLS Adj. P-value (FDR)",
+               "corr_genes": "Correlation",
+           }))
+    out["Correlation Notes"] = out["Correlation"].apply(
+        lambda c: "co-essential" if c > 0 else "anti-correlated"
+    )
+    pct = int(fdr * 100)
+    return dcc.send_data_frame(out.to_csv, f"coessential_pairs_FDR{pct}pct.csv", index=False)
 
 
 # =============================================================================
