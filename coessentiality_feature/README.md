@@ -260,7 +260,7 @@ Use it as the contract when modifying any script or when setting up GCS.
 
 **Purpose:** Queries the DepMap portal files API, identifies the latest
 `CRISPRGeneEffect.csv` release, downloads it with MD5 verification, and
-downloads `Model.csv` for cancer subtype metadata.
+downloads `Model.csv` (cancer model metadata, kept for reference).
 
 **Usage:**
 ```bash
@@ -474,7 +474,9 @@ instead of the local `_DATA_DIR` path. See [Integration Guide](#integration-guid
   after writing them locally
 - [ ] **Orchestrator** — a `run_pipeline.sh` or `main.py` that chains
   `step1 → step2 → step3` with correct arguments and exits non-zero on any failure
-- [ ] **`requirements.txt`** for the pipeline container:
+- [ ] **Separate `requirements.txt` for the pipeline container** — the repo-level
+  `requirements.txt` includes app dependencies that are not needed in the pipeline
+  container. Create a minimal `pipeline/requirements.txt` with only:
   `numpy`, `pandas`, `scipy`, `statsmodels`, `requests`, `google-cloud-storage`
 - [ ] **Dockerfile** for the pipeline Cloud Run Job:
   ```dockerfile
@@ -566,6 +568,8 @@ cp coessentiality_feature_pc.py pages/coessentiality.py
 Add to `requirements.txt`:
 ```
 dash-cytoscape
+networkx
+gseapy
 google-cloud-storage
 ```
 

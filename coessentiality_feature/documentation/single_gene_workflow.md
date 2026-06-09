@@ -46,7 +46,7 @@ subgraph CB["Callback — update_single  runs on gene selection or FDR change"]
     D --> E[Summary text\nGENE has N co-essential partners at FDR ≤ X%]:::out
     D --> F[Bar chart\ntop 20 partners ranked by −log₁₀ adj. p-value]:::out
     D --> G[Partner table\nPARTNER GENE · P-VALUE · ADJ. P-VALUE · CORRELATION]:::out
-    D --> H[Build Cytoscape elements\nquery gene node = orange\npartner nodes coloured by corr_genes\nred = positive · green = negative correlation\nedge weight = −log₁₀ adj. p-value]:::fast
+    D --> H[Build Cytoscape elements\nquery gene node = dark orange\npartner nodes coloured by corr_genes\nblue = positive · orange = negative co-essentiality\nedge weight = −log₁₀ adj. p-value]:::fast
     H --> I[/Network graph rendered\ntop 20 partners + cross-edges among them/]:::out
 end
 
