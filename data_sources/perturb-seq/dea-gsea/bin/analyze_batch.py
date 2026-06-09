@@ -211,11 +211,11 @@ def rank_genes_groups_to_dea(
                 "perturbed_target_symbol": perturbation,
                 "gene": genes.astype(str).to_numpy(),
                 "padj": padj,
-                "log2FoldChange": logfc,
+                "log2foldchange": logfc,
                 "score_name": "Wilcoxon Score",
                 "score_value": scores,
                 "cell_type": None,
-                "ingested_at": None,
+                "max_ingested_at": None,
             }
         )
         dea_frames.append(df)
@@ -330,7 +330,7 @@ def run_gsea_for_perturbation(
                 "geneset_size": int(len(matched)),
                 "leading_edge": leading_edge,
                 "cell_type": None,
-                "ingested_at": None,
+                "max_ingested_at": None,
             }
         )
 

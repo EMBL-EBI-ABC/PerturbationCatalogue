@@ -9,32 +9,32 @@ import pyarrow.parquet as pq
 
 DEA_SCHEMA = pa.schema(
     [
-        pa.field("dataset_id", pa.string(), nullable=False),
-        pa.field("perturbed_target_symbol", pa.string(), nullable=False),
-        pa.field("gene", pa.string(), nullable=False),
-        pa.field("padj", pa.float64(), nullable=False),
-        pa.field("log2FoldChange", pa.float64(), nullable=False),
-        pa.field("score_name", pa.string(), nullable=False),
-        pa.field("score_value", pa.float64(), nullable=False),
+        pa.field("dataset_id", pa.string(), nullable=True),
+        pa.field("perturbed_target_symbol", pa.string(), nullable=True),
+        pa.field("gene", pa.string(), nullable=True),
+        pa.field("padj", pa.float64(), nullable=True),
+        pa.field("log2foldchange", pa.float64(), nullable=True),
+        pa.field("score_name", pa.string(), nullable=True),
+        pa.field("score_value", pa.float64(), nullable=True),
         pa.field("cell_type", pa.string(), nullable=True),
-        pa.field("ingested_at", pa.timestamp("us", tz="UTC"), nullable=True),
+        pa.field("max_ingested_at", pa.timestamp("us", tz="UTC"), nullable=True),
     ]
 )
 
 GSEA_SCHEMA = pa.schema(
     [
-        pa.field("dataset_id", pa.string(), nullable=False),
-        pa.field("term", pa.string(), nullable=False),
-        pa.field("perturbed_target_symbol", pa.string(), nullable=False),
-        pa.field("es", pa.float64(), nullable=False),
-        pa.field("nes", pa.float64(), nullable=False),
-        pa.field("pval", pa.float64(), nullable=False),
-        pa.field("sidak", pa.float64(), nullable=False),
-        pa.field("fdr", pa.float64(), nullable=False),
-        pa.field("geneset_size", pa.int64(), nullable=False),
+        pa.field("dataset_id", pa.string(), nullable=True),
+        pa.field("term", pa.string(), nullable=True),
+        pa.field("perturbed_target_symbol", pa.string(), nullable=True),
+        pa.field("es", pa.float64(), nullable=True),
+        pa.field("nes", pa.float64(), nullable=True),
+        pa.field("pval", pa.float64(), nullable=True),
+        pa.field("sidak", pa.float64(), nullable=True),
+        pa.field("fdr", pa.float64(), nullable=True),
+        pa.field("geneset_size", pa.int64(), nullable=True),
         pa.field("leading_edge", pa.list_(pa.string()), nullable=True),
         pa.field("cell_type", pa.string(), nullable=True),
-        pa.field("ingested_at", pa.timestamp("us", tz="UTC"), nullable=True),
+        pa.field("max_ingested_at", pa.timestamp("us", tz="UTC"), nullable=True),
     ]
 )
 

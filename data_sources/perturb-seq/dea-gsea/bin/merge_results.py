@@ -78,11 +78,11 @@ def main() -> None:
 
     dea = read_parquet_many(args.dea_files, DEA_SCHEMA)
     gsea = read_parquet_many(args.gsea_files, GSEA_SCHEMA)
-    ingested_at = pd.Timestamp.now(tz="UTC").floor("s")
+    max_ingested_at = pd.Timestamp.now(tz="UTC").floor("s")
 
     if not dea.empty:
         dea["dataset_id"] = args.dataset_id
-        dea["ingested_at"] = ingested_at
+        dea["max_ingested_at"] = max_ingested_at
         dea = dea.sort_values(["perturbed_target_symbol", "gene"]).reset_index(
             drop=True
         )
@@ -91,7 +91,7 @@ def main() -> None:
 
     if not gsea.empty:
         gsea["dataset_id"] = args.dataset_id
-        gsea["ingested_at"] = ingested_at
+        gsea["max_ingested_at"] = max_ingested_at
         gsea["leading_edge"] = gsea["leading_edge"].apply(normalize_leading_edge)
         gsea = gsea.sort_values(["perturbed_target_symbol", "term"]).reset_index(
             drop=True
@@ -108,7 +108,7 @@ def main() -> None:
     batch_metrics = read_metrics(args.metrics_files)
     summary = {
         "dataset_id": args.dataset_id,
-        "ingested_at": ingested_at.isoformat(),
+        "max_ingested_at": max_ingested_at.isoformat(),
         "dea_output": str(dea_output),
         "gsea_output": str(gsea_output),
         "n_dea_rows": int(len(dea)),
@@ -125,7 +125,7 @@ def main() -> None:
 
     print(f"DEA rows: {summary['n_dea_rows']:,} -> {dea_output}")
     print(f"GSEA rows: {summary['n_gsea_rows']:,} -> {gsea_output}")
-    print(f"Shared ingested_at: {summary['ingested_at']}")
+    print(f"Shared max_ingested_at: {summary['max_ingested_at']}")
 
 
 if __name__ == "__main__":
