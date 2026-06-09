@@ -16,7 +16,7 @@ classDef data  fill:#2E7D52,color:#fff,stroke:none
 
 A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · corr_genes]:::data
 A --> C[CRISPRGeneEffect CSV\n→ number of cancer cell lines]:::data
-A --> D[Model.csv\n→ number of cancer subtypes]:::data
+A --> D[genes.txt\n→ number of genes profiled]:::data
 B --> E[(df_all loaded into memory\nall callbacks filter this at query time)]:::data
 B --> F[all_genes list\npopulates the gene search dropdown]:::data
 ```
@@ -58,21 +58,21 @@ B --> C
 
 ## 3. How node colours are computed
 
-Partner nodes are coloured on a **red → grey → green** gradient based on their `corr_genes` value — the sign of the co-essentiality relationship with the query gene.
+Partner nodes are coloured on a **blue → grey → orange** gradient based on their `corr_genes` value — the sign of the co-essentiality relationship with the query gene.
 
 ```mermaid
 flowchart LR
 
-classDef pos fill:#E45756,color:#fff,stroke:none
+classDef pos fill:#0072B2,color:#fff,stroke:none
 classDef neu fill:#DCDCDC,color:#333,stroke:#aaa
-classDef neg fill:#54A24B,color:#fff,stroke:none
+classDef neg fill:#E69F00,color:#fff,stroke:none
 
-A[corr_genes = +1]:::pos --> B[Red  both genes are\nco-essential together]:::pos
+A[corr_genes = +1]:::pos --> B[Blue  both genes are\nco-essential together]:::pos
 C[corr_genes = 0]:::neu --> D[Grey  no directional\ncorrelation]:::neu
-E[corr_genes = −1]:::neg --> F[Green  genes are\nmutually essential in opposite contexts]:::neg
+E[corr_genes = −1]:::neg --> F[Orange  genes are\nmutually essential in opposite contexts]:::neg
 ```
 
-The query gene itself is always shown in **orange** to distinguish it from its partners.
+The query gene itself is always shown in **dark orange (#D55E00)** to distinguish it from its partners. The palette is from Wong (2011) and is colourblind-safe.
 
 ---
 

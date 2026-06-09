@@ -16,7 +16,7 @@ classDef data  fill:#2E7D52,color:#fff,stroke:none
 
 A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · corr_genes]:::data
 A --> C[CRISPRGeneEffect CSV\n→ number of cancer cell lines]:::data
-A --> D[Model.csv\n→ number of cancer subtypes]:::data
+A --> D[genes.txt\n→ number of genes profiled]:::data
 B --> E[(df_all loaded into memory\nall callbacks filter this at query time)]:::data
 B --> F[all_genes set\nused to validate user input]:::data
 ```
@@ -38,7 +38,7 @@ classDef out      fill:#E8F5EE,color:#212121,stroke:#2E7D52
 
 A([Paste gene list + set FDR]):::user
 
-subgraph CB1["Callback 1 — runs on every keystroke, no external calls"]
+subgraph CB1["Callback 1 — runs when user finishes typing and clicks away (on blur), no external calls"]
     B[Parse & validate gene symbols]:::fast
     C[Filter network at chosen FDR\nkeep pairs where both genes are in the list]:::fast
     D[Find connected components\nnumber by size  1 = largest\ndrop components < 2 genes]:::fast

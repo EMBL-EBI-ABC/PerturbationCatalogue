@@ -11,20 +11,21 @@ feature into an existing GCP-hosted Dash website.
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Directory Layout](#directory-layout)
-4. [Data I/O Schema](#data-io-schema)
-5. [Pipeline](#pipeline)
+2. [Key Concepts](#key-concepts)
+3. [Architecture](#architecture)
+4. [Directory Layout](#directory-layout)
+5. [Data I/O Schema](#data-io-schema)
+6. [Pipeline](#pipeline)
    - [Step 1 — Fetch DepMap data](#step-1--fetch-depmap-data)
    - [Step 2 — GLS co-essentiality](#step-2--gls-co-essentiality)
    - [Step 3 — FDR filtering & network CSV](#step-3--fdr-filtering--network-csv)
-6. [Running Locally (end-to-end)](#running-locally-end-to-end)
-7. [Dash App — Standalone](#dash-app--standalone)
-8. [Cloud Deployment](#cloud-deployment)
-9. [Integration Guide](#integration-guide)
-10. [Known Constraints & Pitfalls](#known-constraints--pitfalls)
-11. [Dependencies](#dependencies)
-12. [Citation](#citation)
+7. [Running Locally (end-to-end)](#running-locally-end-to-end)
+8. [Dash App — Standalone](#dash-app--standalone)
+9. [Cloud Deployment](#cloud-deployment)
+10. [Integration Guide](#integration-guide)
+11. [Known Constraints & Pitfalls](#known-constraints--pitfalls)
+12. [Dependencies](#dependencies)
+13. [Citation](#citation)
 
 ---
 
@@ -42,6 +43,20 @@ for exploring them.
 
 Scientific method: Wainberg et al. (2021), *A genome-wide atlas of co-essential
 modules assigns function to uncharacterized genes*. Nature Genetics.
+
+---
+
+## Key Concepts
+
+> **For readers without a bioinformatics background.** Bioinformaticians can skip this section.
+
+- **CRISPR screen:** An experiment where every gene in a panel of cancer cell lines is systematically knocked out (disabled) one at a time. The resulting *gene effect score* measures how essential that gene is for cell survival: a strongly negative score means the cell depends on that gene to survive.
+
+- **Co-essentiality:** Two genes are co-essential when their essentiality scores move together across many cell lines — cell lines where gene A is critical also tend to need gene B. Co-essential genes usually function in the same biological pathway or complex, so this relationship can reveal the function of poorly characterised genes.
+
+- **GLS (Generalised Least Squares):** A statistical regression method used here to test whether two genes' essentiality profiles are correlated. GLS is used instead of ordinary regression because cancer cell lines from the same tissue type look similar to each other; GLS corrects for this shared structure so the test is not artificially inflated.
+
+- **FDR (False Discovery Rate):** When testing ~144 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee.
 
 ---
 
@@ -91,14 +106,21 @@ for all subsequent requests — there are no per-request file reads.
 
 ```
 coessentiality_feature/
-├── README.md                         this file
+├── README.md                              this file
+├── requirements.txt                       Python dependencies for pipeline + app
+├── setup_env.sh                           one-command environment setup script
 ├── pipeline/
-│   ├── step1_fetch_depmap.py            downloads CRISPR data from DepMap API
-│   ├── step2_gls_coessentiality.py      computes GLS p-values and sign matrix
-│   └── step3_fdr_coessentiality.py      applies BH FDR correction, writes network CSV
+│   ├── step1_fetch_depmap.py              downloads CRISPR data from DepMap API
+│   ├── step2_gls_coessentiality.py        computes GLS p-values and sign matrix
+│   └── step3_fdr_coessentiality.py        applies BH FDR correction, writes network CSV
 ├── app/
-│   └── coessentiality_feature_pc.py  Dash web application
-└── required_data/                    local data directory (not committed to git)
+│   └── coessentiality_feature_pc.py       Dash web application
+├── documentation/
+│   ├── single_gene_workflow.md            callback flow for the single-gene explorer tab
+│   └── gene_list_workflow.md              callback flow for the gene-list network tab
+├── example_data/
+│   └── 594_DoenchJG_A375.txt             example gene list for testing the app
+└── required_data/                         local data directory (not committed to git)
     ├── depmap_version.txt
     ├── CRISPRGeneEffect_<version>.csv
     ├── Model.csv
@@ -155,12 +177,13 @@ Use it as the contract when modifying any script or when setting up GCS.
 | Property | Value |
 |---|---|
 | Format | CSV |
-| Key column | `OncotreeLineage` — used to count cancer subtypes for the UI |
+| Key column | `OncotreeLineage` — cancer tissue/subtype classification per cell line |
 | Produced by | `step1_fetch_depmap.py` (downloaded from DepMap API) |
-| Consumed by | `coessentiality_feature_pc.py` (dataset stats chip) |
+| Consumed by | Not currently used by the Dash app (downloaded for reference only) |
 
-> If `Model.csv` is unavailable at app startup, the cancer subtype count chip
-> is silently omitted from the UI. This is intentional graceful degradation.
+> `Model.csv` is downloaded alongside the CRISPR matrix and kept in `required_data/`
+> for reference. The app currently shows the number of genes profiled (from
+> `<prefix>_genes.txt`) rather than cancer subtype counts.
 
 ---
 
@@ -353,7 +376,7 @@ BH correction across ~144 million pairs is memory-intensive.
 
 ## Running Locally (end-to-end)
 
-Prerequisites: Python 3.10+, pip packages listed in [Dependencies](#dependencies).
+Prerequisites: Python 3.10+. Run `bash setup_env.sh` once to create a virtual environment and install all dependencies (see [Dependencies](#dependencies)). Activate it with `source .venv/bin/activate` before running any script.
 
 ```bash
 cd coessentiality_feature/
@@ -400,8 +423,8 @@ Opens at `http://localhost:8050`.
    network data; loaded once into memory.
 3. `required_data/CRISPRGeneEffect_<version>.csv` — scanned for row count (cell lines).
    Optional: if absent, the cell-line count chip shows `—`.
-4. `required_data/Model.csv` — read for `OncotreeLineage` unique count (cancer subtypes).
-   Optional: if absent, the subtype chip is omitted.
+4. `required_data/depmap_<version>_genes.txt` — line-counted for the number of genes
+   that passed QC and entered the GLS analysis. Optional: if absent, the gene count chip shows `—`.
 
 **Two UI tabs:**
 
@@ -522,14 +545,13 @@ def _load_network_from_gcs():
 df_all = _load_network_from_gcs()
 ```
 
-**e. Add `debounce=True` to the gene-list Textarea:**
-```python
-dcc.Textarea(
-    id="multi-gene-input",
-    debounce=True,   # add this line
-    ...
-)
-```
+**e. The gene-list Textarea fires on blur** (`n_blur`) rather than on every keystroke.
+This is already implemented in the standalone app. No change needed — confirm the
+callback uses `Input("multi-gene-input", "n_blur")` with `State("multi-gene-input", "value")`.
+
+> **Note:** `dcc.Textarea` in Dash 4.x does not support a `debounce` property.
+> The blur-based trigger (`n_blur`) is the correct equivalent — it fires when
+> the user clicks outside the textarea.
 
 **f. Add `server = app.server`** (for gunicorn) and **set `debug=False`** —
 these are handled by the main website's `app.py`; confirm they are present there.
@@ -596,11 +618,13 @@ gcloud run services update <SERVICE_NAME> \
 | Package | Purpose |
 |---|---|
 | `dash` | Web framework |
-| `dash-cytoscape` | Network graph component |
+| `dash-cytoscape` | Interactive network graph component |
 | `plotly` | Bar charts |
-| `numpy` | Colour interpolation |
+| `numpy` | Colour interpolation for node colours |
 | `pandas` | Network CSV querying |
-| `google-cloud-storage` | GCS CSV read (cloud deployment) |
+| `networkx` | Connected-component detection for co-essential module discovery |
+| `gseapy` | GO Biological Process enrichment via the Enrichr API |
+| `google-cloud-storage` | GCS CSV read (cloud deployment only) |
 
 ---
 
