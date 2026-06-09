@@ -138,8 +138,8 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default="./data",
-        help="Directory to save the downloaded file (default: ./data)",
+        default="./required_data",
+        help="Directory to save the downloaded file (default: ./required_data)",
     )
     args = parser.parse_args()
     run(args.output_dir)
