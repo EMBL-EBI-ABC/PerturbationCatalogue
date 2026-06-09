@@ -215,7 +215,6 @@ def rank_genes_groups_to_dea(
                 "score_name": "Wilcoxon Score",
                 "score_value": scores,
                 "cell_type": None,
-                "max_ingested_at": None,
             }
         )
         dea_frames.append(df)
@@ -330,7 +329,6 @@ def run_gsea_for_perturbation(
                 "geneset_size": int(len(matched)),
                 "leading_edge": leading_edge,
                 "cell_type": None,
-                "max_ingested_at": None,
             }
         )
 
@@ -438,6 +436,11 @@ def main() -> None:
         adata, args.dataset_id, perturbations
     )
     gsea = run_gsea(ranking_by_perturbation, args)
+    max_ingested_at = pd.Timestamp.now(tz="UTC").floor("s")
+    if not dea.empty:
+        dea["max_ingested_at"] = max_ingested_at
+    if not gsea.empty:
+        gsea["max_ingested_at"] = max_ingested_at
 
     dea_path = outdir / f"{batch_id}.dea.parquet"
     gsea_path = outdir / f"{batch_id}.gsea.parquet"
@@ -453,6 +456,7 @@ def main() -> None:
         "n_genes": int(adata.n_vars),
         "n_dea_rows": int(len(dea)),
         "n_gsea_rows": int(len(gsea)),
+        "max_ingested_at": max_ingested_at.isoformat(),
     }
     with open(metrics_path, "w") as handle:
         json.dump(metrics, handle, indent=2)
