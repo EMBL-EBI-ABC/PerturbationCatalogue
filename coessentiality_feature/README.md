@@ -47,9 +47,6 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 ---
 
 ## Key Concepts
-
-> **For readers without a bioinformatics background.** Bioinformaticians can skip this section.
-
 - **CRISPR screen:** An experiment where every gene in a panel of cancer cell lines is systematically knocked out (disabled) one at a time. The resulting *gene effect score* measures how essential that gene is for cell survival: a strongly negative score means the cell depends on that gene to survive.
 
 - **Co-essentiality:** Two genes are co-essential when their essentiality scores move together across many cell lines — cell lines where gene A is critical also tend to need gene B. Co-essential genes usually function in the same biological pathway or complex, so this relationship can reveal the function of poorly characterised genes.
