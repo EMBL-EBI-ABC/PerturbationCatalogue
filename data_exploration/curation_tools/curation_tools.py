@@ -2181,7 +2181,7 @@ def create_bq_table(
     partition_range_start=0,
     partition_range_end=25,
     partition_range_interval=1,
-    cluster_columns=["dataset_id", "sample_id", "perturbed_target_symbol"],
+    cluster_columns=["dataset_id", "sample_id", "perturbed_target_id"],
 ):
     """Create a BigQuery table using the provided DDL SQL."""
     client = ibis.bigquery.connect(
