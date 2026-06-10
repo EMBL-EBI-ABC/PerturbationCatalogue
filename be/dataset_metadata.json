@@ -500,6 +500,13 @@
             "es_field": "associated_datasets",
             "is_array": true,
             "description": "Filter by associated datasets"
+        },
+        {
+            "api_name": "dataset_perturb_seq_reprocessed",
+            "es_field": "perturb_seq_reprocessed",
+            "is_array": false,
+            "es_type": "boolean",
+            "description": "Filter by whether the perturb-seq dataset was re-processed from raw data"
         }
     ]
 }

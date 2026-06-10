@@ -13,7 +13,13 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 from components.target_data_table import crispr_table, mave_heatmap, perturb_seq_table
-from utils import BACKEND_URL, COLORS, fetch_dataset, fetch_dataset_rows
+from utils import (
+    BACKEND_URL,
+    COLORS,
+    fetch_dataset,
+    fetch_dataset_rows,
+    reprocessed_badge,
+)
 
 
 dash.register_page(
@@ -155,7 +161,7 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
     """Create display for associated datasets field."""
     if not associated_datasets:
         return _create_field_display("associated_datasets", None)
-    
+
     # Parse JSON strings if needed
     items = []
     if isinstance(associated_datasets, list):
@@ -171,17 +177,17 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
                     continue
             elif isinstance(item, dict):
                 items.append(item)
-    
+
     if not items:
         return _create_field_display("associated_datasets", None)
-    
+
     # Create display for each item
     display_items = []
     for item in items:
         description = item.get("dataset_description", "N/A")
         file_name = item.get("dataset_file_name", "")
         uri = item.get("dataset_uri", "")
-        
+
         if uri and file_name:
             link = html.A(
                 file_name,
@@ -210,7 +216,7 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
                     className="mb-2",
                 )
             )
-    
+
     return html.Div(
         [
             html.Dt(
@@ -417,7 +423,13 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         "data_modalities",
     ]
     PRIMARY_GROUPED = {"perturbation_type"}
-    SKIP_STANDALONE = {"dataset_id", "max_ingested_at", "study_uri"}
+    SKIP_STANDALONE = {
+        "dataset_id",
+        "max_ingested_at",
+        "study_uri",
+        # Rendered as a badge next to the title instead of in the field list.
+        "perturb_seq_reprocessed",
+    }
 
     study_uri = standalone_fields.get("study_uri")
 
@@ -668,7 +680,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                         [
                             html.I(
                                 className="bi bi-info-circle-fill me-2",
-                                style={"fontSize": "1.1rem", "color": COLORS["primary"]},
+                                style={
+                                    "fontSize": "1.1rem",
+                                    "color": COLORS["primary"],
+                                },
                             ),
                             html.Strong("Score Interpretation: ", className="me-1"),
                             html.Span(score_interpretation),
@@ -727,10 +742,19 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             "crispr_perturbation_gene_search": "",
         }
 
-    header_section = html.H1(
-        f"Dataset: {formatted_dataset_id}",
-        className="display-5 fw-bold mb-4 text-center",
-        style={"color": COLORS["primary"]},
+    provenance_badge = reprocessed_badge(dataset_data.get("perturb_seq_reprocessed"))
+    title_children = [
+        html.H1(
+            f"Dataset: {formatted_dataset_id}",
+            className="display-5 fw-bold mb-0",
+            style={"color": COLORS["primary"]},
+        )
+    ]
+    if provenance_badge is not None:
+        title_children.append(provenance_badge)
+    header_section = html.Div(
+        title_children,
+        className="d-flex align-items-center justify-content-center gap-2 mb-4 flex-wrap",
     )
 
     # Hidden inputs for no-modality case (needed for callback)
@@ -759,17 +783,21 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         [
             header_section,
             metadata_section,
-            data_section if modality else html.Div(
-                [
-                    html.Hr(className="my-4"),
-                    # Include hidden inputs when no modality
-                    hidden_search_inputs,
-                    html.Div(
-                        "No data visualization available for this dataset.",
-                        className="text-muted text-center py-4",
-                    ),
-                ],
-                style={"maxWidth": "900px", "margin": "0 auto"},
+            (
+                data_section
+                if modality
+                else html.Div(
+                    [
+                        html.Hr(className="my-4"),
+                        # Include hidden inputs when no modality
+                        hidden_search_inputs,
+                        html.Div(
+                            "No data visualization available for this dataset.",
+                            className="text-muted text-center py-4",
+                        ),
+                    ],
+                    style={"maxWidth": "900px", "margin": "0 auto"},
+                )
             ),
         ]
     )
@@ -1040,7 +1068,10 @@ def render_dataset_data(
     needs_fetch = store_data.get("needs_fetch", False)
 
     # Handle pagination
-    if isinstance(triggered_id, dict) and triggered_id.get("type") == "dataset-paginate":
+    if (
+        isinstance(triggered_id, dict)
+        and triggered_id.get("type") == "dataset-paginate"
+    ):
         direction = triggered_id.get("direction")
         if direction:
             store_data = _paginate_data(store_data, direction)
@@ -1054,8 +1085,10 @@ def render_dataset_data(
         new_effect_search = effect_gene_search or ""
 
         # Check if search terms changed
-        if (new_perturbation_search != old_perturbation_search or
-                new_effect_search != old_effect_search):
+        if (
+            new_perturbation_search != old_perturbation_search
+            or new_effect_search != old_effect_search
+        ):
             store_data["perturbation_gene_search"] = new_perturbation_search
             store_data["effect_gene_search"] = new_effect_search
             # Reset pagination when search changes
@@ -1133,6 +1166,7 @@ def download_dataset_data(n_clicks, store_data):
 
     try:
         import requests
+
         response = requests.get(download_url, params=params, timeout=60)
         response.raise_for_status()
         content = response.text
