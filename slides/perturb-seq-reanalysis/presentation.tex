@@ -1,181 +1,268 @@
 \documentclass[handout,aspectratio=169]{beamer}
+
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
-\usepackage{listings}
+\usepackage{tabularx}
 \usepackage{xcolor}
 
-\definecolor{codegreen}{rgb}{0,0.6,0}
-\definecolor{codegray}{rgb}{0.5,0.5,0.5}
-\definecolor{codepurple}{rgb}{0.58,0,0.82}
-\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{pcgreen}{HTML}{007A5A}
+\definecolor{pcblue}{HTML}{1F4E79}
+\definecolor{ink}{HTML}{1F2937}
+\definecolor{muted}{HTML}{64748B}
+\definecolor{rulegray}{HTML}{D8DEE9}
+\definecolor{softbg}{HTML}{F7FAFC}
 
-\lstset{
-    backgroundcolor=\color{backcolour},
-    commentstyle=\color{codegreen},
-    keywordstyle=\color{magenta},
-    numberstyle=\tiny\color{codegray},
-    stringstyle=\color{codepurple},
-    basicstyle=\ttfamily\scriptsize,
-    breakatwhitespace=false,
-    breaklines=true,
-    captionpos=b,
-    keepspaces=true,
-    numbers=left,
-    numbersep=5pt,
-    showspaces=false,
-    showstringspaces=false,
-    showtabs=false,
-    tabsize=2
-}
-
-\title{Perturb-Seq Reanalysis Pipeline}
-\date{2026-06-04}
-\author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
-
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{title}{fg=pcgreen}
+\setbeamercolor{frametitle}{fg=pcblue}
+\setbeamercolor{item}{fg=pcgreen}
+\setbeamercolor{footline}{fg=muted}
+\setbeamerfont{title}{series=\bfseries,size=\LARGE}
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamerfont{author}{size=\small}
+\setbeamerfont{date}{size=\small}
+\setbeamerfont{itemize/enumerate body}{size=\small}
+\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
 \setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\color{pcgreen}\small\raise0.6pt\hbox{\textbullet}}
+\setbeamertemplate{itemize subitem}{\color{pcgreen}\scriptsize\raise0.5pt\hbox{\textbullet}}
+\setbeamertemplate{frametitle}{%
+  \vspace{0.25em}
+  \insertframetitle
+  \vspace{0.15em}
+  \par{\color{rulegray}\rule{\linewidth}{0.5pt}}
+}
 \setbeamertemplate{footline}{%
-  \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,center]{}
-    \hspace{15pt}\usebeamerfont{author in head/foot}Perturb-Seq Reanalysis Pipeline
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.4ex,dp=1.2ex]{footline}
+    \hspace{14pt}\footnotesize Perturb-Seq reanalysis pipeline
     \hfill
-    \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber
-    \hspace{15pt}
+    \footnotesize \insertframenumber{} / \inserttotalframenumber
+    \hspace{14pt}
   \end{beamercolorbox}%
 }
+\pdfstringdefDisableCommands{%
+  \def\\{ }%
+  \def\texttt#1{#1}%
+}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newenvironment{tightitemize}{\begin{itemize}\setlength{\itemsep}{0.35em}\setlength{\parskip}{0pt}}{\end{itemize}}
+\newcommand{\slidenote}[1]{\par\vspace{0.35em}{\scriptsize\color{muted}\begin{minipage}{0.94\linewidth}#1\end{minipage}}}
+
+\title{Perturb-Seq Reanalysis Pipeline}
+\subtitle{FASTQ-to-H5AD processing for the Perturbation Catalogue}
+\date{2026-06-10}
+\author{Kirill Tsukanov \\ Senior Full Stack Developer \& Data Engineer \\ \texttt{ktsukanov@ebi.ac.uk}}
 
 \begin{document}
 
 \begin{frame}
-    \titlepage
+  \titlepage
 \end{frame}
 
 \begin{frame}{What is Perturb-Seq?}
-    \centering
-    \includegraphics[width=0.98\linewidth,height=0.78\textheight,keepaspectratio]{what_is_perturb_seq.pdf}
+  \centering
+  \includegraphics[width=0.98\linewidth,height=0.79\textheight,keepaspectratio]{what_is_perturb_seq.pdf}
 \end{frame}
 
-\begin{frame}{Why re-process from FASTQ?}
-    \begin{itemize}
-        \item \textbf{Main problem:} scPerturb datasets are usually made available as processed H5AD files, but they come from different pipelines, references, and filtering choices.
-        \item \textbf{Stable schema:} Re-processing gives us a common count matrix layout, common metadata expectations, and a consistent way to attach guide counts. This significantly simplifies downstream analysis.
-        \item \textbf{Quality control:} Raw reads let us apply the same checks across studies instead of inheriting every author-specific decision.
-        \item \textbf{Batch effects:} Reprocessing from scratch using a unified pipeline helps in reducing systematic batch effects between datasets.
-        \item \textbf{Catalogue expectation:} Users expect harmonised data in the Perturbation Catalogue, not only links to heterogeneous processed files.
-    \end{itemize}
+\begin{frame}{The Problem: Author H5ADs Are Not Comparable Enough}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \textbf{What we receive}
+      \begin{tightitemize}
+        \item Processed H5AD files made for individual papers.
+        \item Different references, gene symbols, filtering, normalization, and guide annotations.
+        \item Metadata fields that use study-specific names and assumptions.
+      \end{tightitemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Why it matters}
+      \begin{tightitemize}
+        \item Cross-study comparison inherits author-specific processing choices.
+        \item Aggregating datasets can amplify processing batch effects.
+        \item Catalogue users expect one clear schema, one count definition, and one perturbation label definition.
+      \end{tightitemize}
+    \end{column}
+  \end{columns}
+  \vspace{0.7em}
+  \textbf{Decision:} reprocess from FASTQ with one reference, one expression workflow, one guide workflow, and one QC policy.
 \end{frame}
 
-\begin{frame}{Why Kallisto + Bustools?}
-    \begin{itemize}
-        \item \textbf{Speed:} Kallisto + Bustools is much faster than Cell Ranger while giving very comparable expression quantification.
-        \item \textbf{Resource fit:} We have adequate, but not unlimited, compute and storage. The pipeline must work within those limits.
-        \item \textbf{Full catalogue scale:} We want to process all datasets we have, and be able to reprocess them if the pipeline improves.
-        \item \textbf{Future-proofing:} New Perturb-Seq datasets are expected to be very large, so the pipeline needs to scale well rather than depend on throwing more hardware at each run.
-    \end{itemize}
+\begin{frame}{Constraints and Data Issues}
+  \small
+  \renewcommand{\arraystretch}{1.35}
+  \begin{tabularx}{\linewidth}{>{\bfseries\color{pcblue}}p{0.24\linewidth}Y}
+    \toprule
+    Data volume & The five completed datasets use about 19 TB of FASTQs; the largest single dataset is about 11 TB. \\
+    Compute budget & Storage and cluster time are adequate but not unlimited, so the pipeline must be fast enough to rerun. \\
+    Cell Ranger & Useful, but too slow for repeated catalogue-scale reprocessing of these datasets. \\
+    FASTQ source & ENA FASTQs did not include the required technical barcode/UMI reads for these runs; the current workaround uses SRA downloads. \\
+    ENA metadata & Sample names, lanes, SRRs, and library names are not consistent across studies and need dataset-specific grouping. \\
+    10x details & Expression and guide libraries can use related but non-identical barcodes; the pipeline applies the required KITE barcode correction. \\
+    \bottomrule
+  \end{tabularx}
 \end{frame}
 
-\begin{frame}{Pipeline Architecture}
-    \centering
-    \includegraphics[width=0.98\linewidth,height=0.78\textheight,keepaspectratio]{pipeline_workflow.pdf}
+\begin{frame}{Solution: Fully Automated FASTQ-to-H5AD Pipeline}
+  \centering
+  \includegraphics[width=0.94\linewidth,height=0.54\textheight,keepaspectratio]{pipeline_workflow.pdf}
+  \vspace{0.1em}
+  \footnotesize
+  \begin{tightitemize}
+    \item One Nextflow run builds references, groups FASTQs by physical well, quantifies expression and guides, aligns barcodes, and writes a single H5AD.
+    \item Per-sample guide diagnostics are written before final merge, so failures are visible before downstream analysis.
+  \end{tightitemize}
 \end{frame}
 
-\begin{frame}{Downstream analysis}
-    \centering
-    \includegraphics[width=0.98\linewidth,height=0.78\textheight,keepaspectratio]{downstream_analysis.pdf}
+\begin{frame}{Why kallisto+bustools?}
+  \begin{tightitemize}
+    \item \textbf{Fast enough to rerun:} catalogue processing needs iteration, not a one-off run.
+    \item \textbf{Open and scriptable:} the same workflow can run in Nextflow with containerized dependencies.
+    \item \textbf{Two modalities:} standard count mode handles expression; KITE mode handles guide barcodes.
+    \item \textbf{Works within budget:} lower wall time and storage pressure make full reprocessing practical.
+    \item \textbf{Comparable output:} QC shows high agreement with author baselines where direct comparison is meaningful.
+  \end{tightitemize}
 \end{frame}
 
-\begin{frame}{Challenges}
-    \begin{itemize}
-        \item \textbf{ENA FASTQs missing technical reads:} Historical ENA FASTQs for this dataset do not include the barcode/UMI reads. Current workaround: SRA download with technical reads included. We notified ENA; they are aware and plan to fix it, so future runs may use ENA directly.
-        \item \textbf{Sample grouping:} SRRs and lanes must be grouped by physical well before counting. This is currently parsed from ENA library names; later versions may autodetect this.
-        \item \textbf{Barcode collisions:} Final concatenation adds sample suffixes so identical 10x barcodes from different wells remain distinct.
-        \item \textbf{GEX/KITE matching:} Guide barcodes are not exactly the same as expression barcodes in this dataset. The pipeline applies the required KITE barcode correction before alignment.
-    \end{itemize}
-\end{frame}
-
-\begin{frame}{List of datasets}
-    \centering
-    \scriptsize
-    \begin{tabular}{lrrrrrr}
+\begin{frame}{Guide Calling}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.56\textwidth}
+      \begin{tightitemize}
+        \item KITE produces a guide UMI matrix aligned to expression barcodes.
+        \item A Gaussian-Poisson mixture separates low-count background from true guide signal.
+        \item The decision threshold is the crossover where signal is more likely than background.
+        \item Probe calls are collapsed to gene-level outcomes: control, single gene, multi-gene, mixed gene/control, or unassigned.
+        \item Valid single-gene analysis uses exactly one gene-targeting call and no control guide call.
+      \end{tightitemize}
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \footnotesize
+      \renewcommand{\arraystretch}{1.2}
+      \begin{tabular}{lc}
         \toprule
-        Dataset & Size (TB) & Total cells & Single-gene & Control & Multi-gene & No-guide \\
+        Dataset group & Threshold \\
         \midrule
-        Nadig 2025 Jurkat & 2.0 & 588,498 & 214,092 & 10,629 & 289,965 & 58,565 \\
-        Nadig 2025 HepG2 & 2.6 & 501,121 & 129,909 & 4,835 & 333,994 & 21,803 \\
-        Replogle 2022 K562 Essential & 1.7 & 544,799 & 274,155 & 11,048 & 191,241 & 61,211 \\
-        Replogle 2022 K562 GW & 11.0 & 1,314,345 & 613,755 & 29,463 & 545,514 & 101,360 \\
-        Replogle 2022 RPE1 Essential & 1.9 & 509,962 & 206,740 & 11,855 & 197,064 & 79,695 \\
+        Nadig HepG2 & 8 UMI \\
+        Nadig Jurkat & 8 UMI \\
+        K562 Essential & 8 UMI \\
+        K562 Genome-wide & 8 UMI \\
+        RPE1 Essential & 9 UMI \\
         \bottomrule
-    \end{tabular}
-    \vspace{1em}
-    \begin{itemize}
-        \item Currently, 5 datasets are processed.
-        \item Gaussian-Poisson threshold used for guide calling (8-9 UMI).
-    \end{itemize}
+      \end{tabular}
+      \slidenote{Thresholds come from the fitted mixture model for each dataset.}
+    \end{column}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Cell-Level Expression Agreement}
-    \begin{columns}[T,onlytextwidth]
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{umi.png}
-        \end{column}
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{genes.png}
-        \end{column}
-    \end{columns}
+\begin{frame}{Processed Datasets}
+  \centering
+  \tiny
+  \renewcommand{\arraystretch}{1.16}
+  \begin{tabular}{lrrrrrr}
+    \toprule
+    Dataset & FASTQ TB & Cells & Single-gene & Control & Multi-gene & No guide \\
+    \midrule
+    Nadig 2025 Jurkat & 2.0 & 588,498 & 214,092 & 10,629 & 289,965 & 58,565 \\
+    Nadig 2025 HepG2 & 2.6 & 501,121 & 129,909 & 4,835 & 333,994 & 21,803 \\
+    Replogle 2022 K562 Essential & 1.7 & 544,799 & 274,155 & 11,048 & 191,241 & 61,211 \\
+    Replogle 2022 K562 Genome-wide & 11.0 & 1,314,345 & 613,755 & 29,463 & 545,514 & 101,360 \\
+    Replogle 2022 RPE1 Essential & 1.9 & 509,962 & 206,740 & 11,855 & 197,064 & 79,695 \\
+    \midrule
+    \textbf{Total} & \textbf{19.2} & \textbf{3,458,725} & \textbf{1,438,651} & \textbf{67,830} & \textbf{1,557,778} & \textbf{322,634} \\
+    \bottomrule
+  \end{tabular}
+  \slidenote{Counts are after expression QC and Gaussian-Poisson guide calling. Mixed gene/control cells are kept separately and are not counted as valid single-gene cells.}
 \end{frame}
 
-\begin{frame}{Gene-Level Expression Agreement}
-    \begin{columns}[T,onlytextwidth]
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{expression.png}
-        \end{column}
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth,height=0.78\textheight,keepaspectratio]{dropout.png}
-        \end{column}
-    \end{columns}
+\begin{frame}{Baseline Comparison: Sanity Check, Not a Target}
+  \small
+  \begin{tightitemize}
+    \item The author H5AD is used to catch major processing errors.
+    \item Exact reproduction is not the goal; it would preserve the heterogeneous processing choices we are removing.
+  \end{tightitemize}
+  \vspace{0.35em}
+  \centering
+  \scriptsize
+  \renewcommand{\arraystretch}{1.18}
+  \begin{tabular}{lccccc}
+    \toprule
+    Dataset & Shared cells & Shared genes & UMI $r$ & Mean gene $r$ & Guide match \\
+    \midrule
+    Nadig HepG2 & 122,630 (87.7\%) & 95.7\% & 0.9991 & 0.9804 & 99.92\% \\
+    Nadig Jurkat & 214,268 (87.5\%) & 95.6\% & 0.9992 & 0.9179 & 99.92\% \\
+    K562 Essential & 260,276 (91.1\%) & 95.4\% & 0.9989 & 0.9506 & 99.76\% \\
+    K562 Genome-wide & 596,639 (51.4\%) & 95.7\% & 0.9820 & 0.9583 & 99.87\% \\
+    RPE1 Essential & 210,649 (90.8\%) & 96.4\% & 0.9986 & 0.9021 & 99.91\% \\
+    \bottomrule
+  \end{tabular}
+  \slidenote{Replogle author matrices are signed/transformed, so cell-wise expression-vector and dropout metrics are not used as headline evidence.}
 \end{frame}
 
-\begin{frame}{Expression Vectors Are Preserved}
-    \begin{itemize}
-        \item For each shared cell, we compare the original and reprocessed expression vectors over the same genes.
-        \item The histogram shows the distribution of Pearson correlation values for a sample of 10,000 cells.
-    \end{itemize}
-    \vspace{0.5em}
-    \centering
-    \includegraphics[width=0.7\linewidth,height=0.6\textheight,keepaspectratio]{pearson_per_cell.png}
+\begin{frame}{Expression Check: Major Structure Is Preserved}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.64\textheight,keepaspectratio]{../../data_sources/perturb-seq/comparison/comparison_results/nadig_2025_hepg2/counts_comparison.png}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.64\textheight,keepaspectratio]{../../data_sources/perturb-seq/comparison/comparison_results/nadig_2025_hepg2/gene_expression_mean.png}
+    \end{column}
+  \end{columns}
+  \vspace{0.3em}
+  \small Nadig HepG2 is a raw-count baseline: shared-cell total UMIs correlate at $r=0.9991$ and shared-gene mean expression at $r=0.9804$.
 \end{frame}
 
-\begin{frame}{Guide Recovery: Mixture Model Approach}
-    \begin{itemize}
-        \item We use a \textbf{Gaussian-Poisson mixture model} to separate guide signal from background.
-        \item The background is modeled as a Poisson distribution, while the true signal follows a Gaussian distribution.
-        \item The decision threshold is automatically set at the crossover point where the probability of signal becomes higher than background.
-        \item Cells are assigned a guide if at least one probe targets the gene and passes this threshold.
-        \item $>$95\% overall agreement on call outcomes between original and reprocessed data; for single gene cells, $>$99.8\% agreement.
-    \end{itemize}
+\begin{frame}{Guide Calls Agree With the Author Labels}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.62\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{../../data_sources/perturb-seq/comparison/comparison_results/nadig_2025_hepg2/perturbation_gene_outcome_matrix_gaussian_poisson.png}
+    \end{column}
+    \begin{column}{0.34\textwidth}
+      \begin{tightitemize}
+        \item HepG2: 110,719 / 110,807 shared valid single-gene cells have the same target gene.
+        \item Across all five datasets, valid single-gene match is 99.76--99.92\%.
+        \item Multi-gene and no-guide cells are kept as explicit categories rather than forced into a single target.
+      \end{tightitemize}
+    \end{column}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{What We Have Now}
-    \begin{itemize}
-        \item A working, reproducible FASTQ-to-H5AD pipeline for Perturb-Seq datasets.
-        \item Both expression and guide calling are solved with very good alignment to original data.
-        \item A comparison workflow that checks cell-level expression, gene-level expression, dropout, and perturbation labels.
-        \item DEA and GSEA downstream analysis.
-        \item Full pipeline was successfully ran for 5 datasets in the Catalogue.
-    \end{itemize}
+\begin{frame}{Secondary Analysis}
+  \centering
+  \includegraphics[width=0.94\linewidth,height=0.54\textheight,keepaspectratio]{downstream_analysis.pdf}
+  \vspace{0.1em}
+  \footnotesize
+  \begin{tightitemize}
+    \item Differential expression compares each perturbation with control cells using Scanpy Wilcoxon.
+    \item GSEA uses preranked gene lists and writes DEA/GSEA Parquet outputs for Catalogue ingestion.
+  \end{tightitemize}
+\end{frame}
+
+\begin{frame}{In Production Now}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.72\textwidth}
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{data_production.png}
+    \end{column}
+    \begin{column}{0.26\textwidth}
+      \begin{tightitemize}
+        \item Five reprocessed datasets are visible in the Catalogue.
+        \item The dataset browser exposes a \texttt{Reprocessed} filter.
+        \item Users can download metadata and open the dataset pages now.
+      \end{tightitemize}
+    \end{column}
+  \end{columns}
 \end{frame}
 
 \begin{frame}{Next Steps}
-    \begin{itemize}
-        \item Further exploration and validation of results.
-        \item Updating data in Catalogue and publishing a new release.
-        \item Expand pipeline to deal with more datasets, 10x v2 chemistry, CSP data.
-        \item Eventually: release pipeline as a separate package.
-    \end{itemize}
+  \begin{tightitemize}
+    \item Add more evaluation checks: cross-dataset QC summaries, metadata checks, and downstream-signal checks.
+    \item Package the FASTQ-to-H5AD pipeline as a separate reusable project with versioned containers and a small test dataset.
+    \item Add support for more data types and chemistries, starting with 10x v2 and cell surface protein data.
+    \item Continue ingesting more Perturb-Seq datasets once FASTQ grouping and guide metadata are mapped.
+  \end{tightitemize}
 \end{frame}
 
 \end{document}

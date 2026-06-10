@@ -2,330 +2,194 @@
   <defs>
     <style>
       .bg { fill: #ffffff; }
-      
-      /* Typography */
-      .title-large { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 20px; font-weight: 700; fill: #0f172a; }
-      .title-sub { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 500; fill: #64748b; letter-spacing: 0.5px; text-transform: uppercase; }
-      .text-body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; fill: #334155; }
-      .text-tiny { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; fill: #94a3b8; }
-      .text-mono { font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: bold; fill: #ffffff; }
-      .text-mono-dark { font-family: 'Courier New', Courier, monospace; font-size: 12px; font-weight: bold; fill: #1e293b; }
-      
-      /* Structural */
-      .divider { stroke: #f1f5f9; stroke-width: 2; stroke-dasharray: 4 6; }
-      
-      /* Biological */
-      .cell-membrane { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
-      .cell-nucleus { fill: #f1f5f9; stroke: #e2e8f0; stroke-width: 1; }
-      .cas9 { fill: #e2e8f0; stroke: #94a3b8; stroke-width: 1.5; }
-      .virus { fill: #ffffff; stroke: #64748b; stroke-width: 1.5; stroke-linejoin: round; }
-      
-      /* Guides */
-      .guide-red { stroke: #ef4444; fill: none; stroke-width: 2.5; stroke-linecap: round; }
-      .guide-blue { stroke: #3b82f6; fill: none; stroke-width: 2.5; stroke-linecap: round; }
-      .guide-green { stroke: #10b981; fill: none; stroke-width: 2.5; stroke-linecap: round; }
-      
-      /* Fill colors for boxes */
-      .fill-red { fill: #ef4444; }
-      .fill-blue { fill: #3b82f6; }
-      .fill-green { fill: #10b981; }
-      .fill-cbc { fill: #8b5cf6; }
-      .fill-umi { fill: #f59e0b; }
-      .fill-handle { fill: #e2e8f0; }
-
-      /* Microfluidics */
-      .channel { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
-      .droplet { fill: #ffffff; stroke: #bae6fd; stroke-width: 2; }
-      .bead { fill: #e0f2fe; stroke: #7dd3fc; stroke-width: 1.5; }
-      
-      /* Heatmap */
-      .hm-0 { fill: #f1f5f9; }
-      .hm-1 { fill: #cbd5e1; }
-      .hm-2 { fill: #64748b; }
-      .hm-3 { fill: #1e293b; }
+      .panel { fill: #f8fafc; stroke: #d9e2ec; stroke-width: 1.4; }
+      .panel-soft { fill: #ffffff; stroke: #d9e2ec; stroke-width: 1.2; }
+      .title { font-family: Helvetica, Arial, sans-serif; font-size: 23px; font-weight: 700; fill: #14213d; }
+      .subtitle { font-family: Helvetica, Arial, sans-serif; font-size: 15px; fill: #53657d; }
+      .label { font-family: Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 700; fill: #25364d; }
+      .small { font-family: Helvetica, Arial, sans-serif; font-size: 13px; fill: #53657d; }
+      .tiny { font-family: Helvetica, Arial, sans-serif; font-size: 11px; fill: #6b7c93; }
+      .mono { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; fill: #ffffff; }
+      .mono-dark { font-family: "Courier New", monospace; font-size: 12px; font-weight: 700; fill: #243447; }
+      .badge { fill: #007a5a; }
+      .line { stroke: #8ca0b3; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .thin { stroke: #b8c4d0; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .cell { fill: #ffffff; stroke: #9fb3c8; stroke-width: 2; }
+      .nucleus { fill: #edf2f7; stroke: #d9e2ec; stroke-width: 1.5; }
+      .bead { fill: #dff6ff; stroke: #4fb3d6; stroke-width: 2; }
+      .droplet { fill: #ffffff; stroke: #4fb3d6; stroke-width: 2.4; }
+      .guide-red { stroke: #d94841; fill: none; stroke-width: 3; stroke-linecap: round; }
+      .guide-blue { stroke: #2f80ed; fill: none; stroke-width: 3; stroke-linecap: round; }
+      .guide-green { stroke: #10a66a; fill: none; stroke-width: 3; stroke-linecap: round; }
+      .cbc { fill: #7c3aed; }
+      .umi { fill: #f59f00; }
+      .handle { fill: #d9e2ec; }
+      .gene { fill: #007a5a; }
+      .heat0 { fill: #eef3f8; }
+      .heat1 { fill: #cbd6e2; }
+      .heat2 { fill: #7e91a6; }
+      .heat3 { fill: #26384f; }
     </style>
-    
-    <!-- Arrows -->
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-      <path d="M 0 1 L 8 5 L 0 9 z" fill="#94a3b8"/>
-    </marker>
-    <marker id="arrow-down" viewBox="0 0 10 10" refX="5" refY="8" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-      <path d="M 1 0 L 5 8 L 9 0 z" fill="#cbd5e1"/>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#8ca0b3"/>
     </marker>
   </defs>
 
-  <!-- Canvas Background -->
   <rect class="bg" width="1280" height="600"/>
 
-  <!-- Column Dividers -->
-  <line class="divider" x1="280" y1="40" x2="280" y2="560"/>
-  <line class="divider" x1="560" y1="40" x2="560" y2="560"/>
-  <line class="divider" x1="960" y1="40" x2="960" y2="560"/>
+  <g transform="translate(26,28)">
+    <rect class="panel" x="0" y="0" width="278" height="544" rx="8"/>
+    <circle class="badge" cx="30" cy="31" r="17"/>
+    <text class="mono" x="30" y="36" text-anchor="middle">1</text>
+    <text class="title" x="58" y="38">Perturb cells</text>
+    <text class="subtitle" x="22" y="70">A pooled CRISPR library gives</text>
+    <text class="subtitle" x="22" y="91">each cell a guide RNA.</text>
 
-  <!-- ==========================================
-       PHASE 1: TRANSDUCTION (0 - 280, Center 140)
-       ========================================== -->
-  <g transform="translate(0, 0)">
-    <text class="title-large" x="140" y="50" text-anchor="middle">1. Transduction</text>
-    <text class="title-sub" x="140" y="75" text-anchor="middle">CRISPR Perturbation Library</text>
-
-    <!-- Cell 1 (Red) -->
-    <g transform="translate(140, 200)">
-      <path class="cell-membrane" d="M-45,-10 C-50,-35 -20,-50 10,-45 C40,-40 50,-15 40,15 C30,45 0,55 -25,40 C-50,25 -40,15 -45,-10 Z"/>
-      <circle class="cell-nucleus" cx="-5" cy="0" r="18"/>
-      <!-- Cas9 + Guide -->
-      <path class="cas9" d="M15,-10 C15,-20 25,-25 30,-15 C35,-5 25,5 15,-10 Z"/>
-      <path class="guide-red" d="M22,-20 Q35,-30 45,-15 Q50,-5 35,0"/>
+    <g transform="translate(74,180)">
+      <path class="cell" d="M -42,-18 C -35,-56 15,-58 43,-28 C 69,0 50,48 8,55 C -38,63 -68,23 -42,-18 Z"/>
+      <circle class="nucleus" cx="-3" cy="7" r="21"/>
+      <path class="guide-red" d="M 29,-18 Q 51,-32 60,-8 Q 54,8 35,5"/>
+      <path class="thin" d="M -65,-74 L -14,-38" marker-end="url(#arrow)"/>
     </g>
-
-    <!-- Cell 2 (Blue) -->
-    <g transform="translate(100, 380)">
-      <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
-      <circle class="cell-nucleus" cx="5" cy="5" r="16"/>
-      <path class="cas9" d="M-10,15 C-20,10 -25,20 -15,30 C-5,40 0,20 -10,15 Z"/>
-      <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45"/>
+    <g transform="translate(186,338)">
+      <path class="cell" d="M -48,-12 C -51,-51 -7,-65 32,-43 C 65,-24 69,28 31,50 C -9,73 -62,43 -48,-12 Z"/>
+      <circle class="nucleus" cx="4" cy="3" r="20"/>
+      <path class="guide-blue" d="M -19,26 Q -33,50 -6,58 Q 16,62 26,40"/>
+      <path class="thin" d="M 55,-88 L 14,-50" marker-end="url(#arrow)"/>
     </g>
-
-    <!-- Viruses -->
-    <!-- Virus Red -->
-    <g transform="translate(50, 140)">
-      <polygon class="virus" points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6"/>
-      <path class="guide-red" d="M-4,-4 Q0,4 4,-4" stroke-width="1.5"/>
-      <path d="M 12,6 L 60,35" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <g transform="translate(74,412)">
+      <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
+      <circle class="nucleus" cx="5" cy="5" r="17"/>
+      <path class="guide-green" d="M 27,-21 Q 45,-35 52,-12 Q 48,6 31,4"/>
     </g>
-
-    <!-- Virus Blue -->
-    <g transform="translate(220, 290)">
-      <polygon class="virus" points="0,-12 10.4,-6 10.4,6 0,12 -10.4,6 -10.4,-6"/>
-      <path class="guide-blue" d="M-4,-4 Q0,4 4,-4" stroke-width="1.5"/>
-      <path d="M -10,10 L -60,40" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <g transform="translate(75,106)">
+      <rect class="panel-soft" x="-32" y="-22" width="70" height="36" rx="6"/>
+      <path class="guide-red" d="M -18,-4 Q -9,8 0,-4"/>
+      <path class="guide-blue" d="M 4,-4 Q 13,8 22,-4"/>
+      <text class="tiny" x="3" y="38" text-anchor="middle">Guide library</text>
     </g>
-
-    <text class="text-tiny" x="140" y="520" text-anchor="middle">POOL OF SINGLY PERTURBED CELLS</text>
+    <text class="label" x="139" y="501" text-anchor="middle">Known input</text>
+    <text class="small" x="139" y="524" text-anchor="middle">which guide each cell received</text>
   </g>
 
+  <path class="line" d="M 317,300 L 350,300" marker-end="url(#arrow)"/>
 
-  <!-- ==========================================
-       PHASE 2: ENCAPSULATION (280 - 560, Center 420)
-       ========================================== -->
-  <g transform="translate(280, 0)">
-    <text class="title-large" x="140" y="50" text-anchor="middle">2. Encapsulation</text>
-    <text class="title-sub" x="140" y="75" text-anchor="middle">Droplet Microfluidics</text>
+  <g transform="translate(354,28)">
+    <rect class="panel" x="0" y="0" width="278" height="544" rx="8"/>
+    <circle class="badge" cx="30" cy="31" r="17"/>
+    <text class="mono" x="30" y="36" text-anchor="middle">2</text>
+    <text class="title" x="58" y="38">Capture cells</text>
+    <text class="subtitle" x="22" y="70">Single-cell RNA-seq puts one</text>
+    <text class="subtitle" x="22" y="91">cell and one bead in a droplet.</text>
 
-    <!-- Microfluidic Junction -->
-    <!-- Aqueous flow (Cells & Beads) -->
-    <path class="channel" d="M 20,260 L 140,260 L 140,320 L 20,320 Z"/>
-    <!-- Oil flow (Top & Bottom) -->
-    <path class="channel" d="M 140,120 L 140,260 L 180,260 L 180,120 Z"/>
-    <path class="channel" d="M 140,460 L 140,320 L 180,320 L 180,460 Z"/>
-    <!-- Output flow -->
-    <path class="channel" d="M 180,260 L 280,260 L 280,320 L 180,320 Z"/>
-    
-    <!-- Central intersection overlay -->
-    <rect x="141" y="261" width="38" height="58" fill="#f8fafc"/>
-
-    <!-- Flow indicators -->
-    <path d="M 160,170 L 160,210" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
-    <path d="M 160,410 L 160,370" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)"/>
-
-    <!-- Beads and Cells coming in -->
-    <circle class="bead" cx="50" cy="275" r="10"/>
-    <circle class="bead" cx="100" cy="275" r="10"/>
-    
-    <!-- Mini Cell (Blue) -->
-    <g transform="translate(70, 300) scale(0.35)">
-      <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
-      <circle class="cell-nucleus" cx="5" cy="5" r="16"/>
-      <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45" stroke-width="4"/>
+    <path class="panel-soft" d="M 35,230 L 116,230 L 116,176 L 162,176 L 162,230 L 242,230 L 242,312 L 162,312 L 162,368 L 116,368 L 116,312 L 35,312 Z"/>
+    <path class="thin" d="M 139,196 L 139,224" marker-end="url(#arrow)"/>
+    <path class="thin" d="M 139,348 L 139,320" marker-end="url(#arrow)"/>
+    <circle class="bead" cx="75" cy="258" r="16"/>
+    <g transform="translate(100,294) scale(0.42)">
+      <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
+      <circle class="nucleus" cx="5" cy="5" r="17"/>
+      <path class="guide-blue" d="M -18,28 Q -31,44 -10,51 Q 10,55 21,39" stroke-width="5" fill="none" stroke="#2f80ed"/>
     </g>
-
-    <!-- Droplet Formation -->
-    <circle class="droplet" cx="160" cy="290" r="16"/>
-    
-    <!-- Formed Droplet 1 -->
-    <g transform="translate(220, 290)">
-      <circle class="droplet" cx="0" cy="0" r="22"/>
-      <circle class="bead" cx="-5" cy="-5" r="10"/>
-      <g transform="translate(6, 6) scale(0.3)">
-        <path class="cell-membrane" d="M-30,-20 C-10,-50 30,-40 40,-15 C50,10 35,45 5,45 C-25,45 -50,10 -30,-20 Z"/>
-        <path class="guide-blue" d="M-15,30 Q-30,40 -20,50 Q-10,60 5,45" stroke-width="5"/>
+    <g transform="translate(191,271)">
+      <circle class="droplet" cx="0" cy="0" r="45"/>
+      <circle class="bead" cx="-13" cy="-10" r="16"/>
+      <g transform="translate(18,11) scale(0.42)">
+        <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
+        <circle class="nucleus" cx="5" cy="5" r="17"/>
+        <path class="guide-blue" d="M -18,28 Q -31,44 -10,51 Q 10,55 21,39" stroke-width="5" fill="none" stroke="#2f80ed"/>
       </g>
     </g>
-
-    <!-- Visual Zoom to Phase 3 -->
-    <path d="M 220,268 L 300,160" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>
-    <path d="M 220,312 L 300,420" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="4 4" fill="none"/>
-
-    <text class="text-tiny" x="140" y="520" text-anchor="middle">1 CELL + 1 BARCODED BEAD PER DROPLET</text>
+    <text class="label" x="139" y="501" text-anchor="middle">Shared barcode</text>
+    <text class="small" x="139" y="524" text-anchor="middle">marks all molecules from that cell</text>
   </g>
 
+  <path class="line" d="M 645,300 L 678,300" marker-end="url(#arrow)"/>
 
-  <!-- ==========================================
-       PHASE 3: MOLECULAR BARCODING (560 - 960, Center 760)
-       ========================================== -->
-  <g transform="translate(560, 0)">
-    <text class="title-large" x="200" y="50" text-anchor="middle">3. Molecular Barcoding</text>
-    <text class="title-sub" x="200" y="75" text-anchor="middle">In-Droplet Reverse Transcription</text>
+  <g transform="translate(682,28)">
+    <rect class="panel" x="0" y="0" width="302" height="544" rx="8"/>
+    <circle class="badge" cx="30" cy="31" r="17"/>
+    <text class="mono" x="30" y="36" text-anchor="middle">3</text>
+    <text class="title" x="58" y="38">Read two signals</text>
+    <text class="subtitle" x="22" y="70">The same cell barcode links</text>
+    <text class="subtitle" x="22" y="91">guide identity and expression.</text>
 
-    <!-- Large Bead surface -->
-    <path class="bead" d="M -10,160 Q 60,290 -10,420" stroke-width="2"/>
-    
-    <!-- Lysis effect -->
-    <path d="M 80,180 Q 90,160 110,170" stroke="#cbd5e1" stroke-width="1" fill="none" stroke-dasharray="2 2"/>
-    <text class="text-tiny" x="115" y="173" fill="#64748b">CELL LYSIS</text>
-
-    <!-- Bracket for "Same Cell Barcode" -->
-    <path d="M 40,240 L 25,240 L 25,350 L 40,350" stroke="#94a3b8" stroke-width="1.5" fill="none"/>
-    <text class="text-tiny" x="15" y="295" transform="rotate(-90 15 295)" text-anchor="middle">SAME CELL BARCODE</text>
-
-    <!-- OLIGO 1: mRNA -->
-    <g transform="translate(50, 240)">
-      <!-- Line backbone -->
-      <line x1="0" y1="0" x2="200" y2="0" stroke="#64748b" stroke-width="1.5"/>
-      
-      <!-- Blocks with background rects to cover the line -->
-      <rect class="bg" x="8" y="-10" width="44" height="20"/>
-      <rect class="fill-cbc" x="10" y="-8" width="40" height="16" rx="2"/>
-      <text class="text-mono" x="30" y="4" text-anchor="middle">CBC</text>
-      
-      <rect class="bg" x="58" y="-10" width="34" height="20"/>
-      <rect class="fill-umi" x="60" y="-8" width="30" height="16" rx="2"/>
-      <text class="text-mono" x="75" y="4" text-anchor="middle">UMI</text>
-      
-      <rect class="bg" x="98" y="-10" width="64" height="20"/>
-      <rect class="fill-handle" x="100" y="-8" width="60" height="16" rx="2"/>
-      <text class="text-mono-dark" x="130" y="4" text-anchor="middle">Poly(dT)</text>
-
-      <!-- Transcript pairing -->
-      <path d="M 140,-12 Q 170,-25 210,-12 Q 240,0 270,-15" stroke="#cbd5e1" stroke-width="2.5" fill="none"/>
-      <!-- Small pairing lines -->
-      <line x1="145" y1="-2" x2="145" y2="-10" stroke="#94a3b8"/>
-      <line x1="150" y1="-2" x2="150" y2="-11" stroke="#94a3b8"/>
-      <line x1="155" y1="-2" x2="155" y2="-12" stroke="#94a3b8"/>
-      
-      <text class="text-body" x="280" y="25" fill="#475569">Endogenous mRNA</text>
+    <g transform="translate(30,160)">
+      <rect class="panel-soft" x="0" y="0" width="242" height="114" rx="8"/>
+      <text class="label" x="16" y="28">mRNA read</text>
+      <line x1="22" y1="63" x2="201" y2="63" stroke="#6b7c93" stroke-width="2"/>
+      <rect class="cbc" x="38" y="50" width="46" height="26" rx="4"/>
+      <text class="mono" x="61" y="68" text-anchor="middle">CBC</text>
+      <rect class="umi" x="91" y="50" width="42" height="26" rx="4"/>
+      <text class="mono" x="112" y="68" text-anchor="middle">UMI</text>
+      <rect class="handle" x="140" y="50" width="72" height="26" rx="4"/>
+      <text class="mono-dark" x="176" y="68" text-anchor="middle">Gene</text>
+      <path class="thin" d="M 205,50 Q 230,32 258,48"/>
     </g>
-
-    <!-- OLIGO 2: sgRNA -->
-    <g transform="translate(50, 350)">
-      <!-- Line backbone -->
-      <line x1="0" y1="0" x2="200" y2="0" stroke="#64748b" stroke-width="1.5"/>
-      
-      <!-- Blocks -->
-      <rect class="bg" x="8" y="-10" width="44" height="20"/>
-      <rect class="fill-cbc" x="10" y="-8" width="40" height="16" rx="2"/>
-      <text class="text-mono" x="30" y="4" text-anchor="middle">CBC</text>
-      
-      <rect class="bg" x="58" y="-10" width="34" height="20"/>
-      <rect class="fill-umi" x="60" y="-8" width="30" height="16" rx="2"/>
-      <text class="text-mono" x="75" y="4" text-anchor="middle">UMI</text>
-      
-      <rect class="bg" x="98" y="-10" width="84" height="20"/>
-      <rect class="fill-handle" x="100" y="-8" width="80" height="16" rx="2"/>
-      <text class="text-mono-dark" x="140" y="4" text-anchor="middle">Capture Seq</text>
-
-      <!-- sgRNA Transcript pairing -->
-      <path class="guide-blue" d="M 160,-10 Q 180,-25 190,-10 Q 200,-5 210,-20 Q 220,-35 240,-15 Q 260,-5 270,-15"/>
-      <!-- Small pairing lines -->
-      <line x1="165" y1="-2" x2="165" y2="-12" stroke="#94a3b8"/>
-      <line x1="170" y1="-2" x2="170" y2="-15" stroke="#94a3b8"/>
-      <line x1="175" y1="-2" x2="175" y2="-18" stroke="#94a3b8"/>
-
-      <text class="text-body" x="280" y="25" fill="#3b82f6" font-weight="bold">sgRNA Transcript</text>
+    <g transform="translate(30,314)">
+      <rect class="panel-soft" x="0" y="0" width="242" height="114" rx="8"/>
+      <text class="label" x="16" y="28">Guide read</text>
+      <line x1="22" y1="63" x2="201" y2="63" stroke="#6b7c93" stroke-width="2"/>
+      <rect class="cbc" x="38" y="50" width="46" height="26" rx="4"/>
+      <text class="mono" x="61" y="68" text-anchor="middle">CBC</text>
+      <rect class="umi" x="91" y="50" width="42" height="26" rx="4"/>
+      <text class="mono" x="112" y="68" text-anchor="middle">UMI</text>
+      <rect class="handle" x="140" y="50" width="72" height="26" rx="4"/>
+      <text class="mono-dark" x="176" y="68" text-anchor="middle">Guide</text>
+      <path class="guide-blue" d="M 204,50 Q 222,27 238,50 Q 250,65 266,40"/>
     </g>
-
-    <text class="text-tiny" x="200" y="520" text-anchor="middle">SHARED BARCODE LINKS PHENOTYPE AND GENOTYPE</text>
+    <path class="thin" d="M 91,236 L 91,350"/>
+    <text class="tiny" x="101" y="295">same cell barcode</text>
   </g>
 
+  <path class="line" d="M 997,300 L 1030,300" marker-end="url(#arrow)"/>
 
-  <!-- ==========================================
-       PHASE 4: DUAL READOUT MATRIX (960 - 1280, Center 1120)
-       ========================================== -->
-  <g transform="translate(960, 0)">
-    <text class="title-large" x="160" y="50" text-anchor="middle">4. Readout Matrix</text>
-    <text class="title-sub" x="160" y="75" text-anchor="middle">Genotype-Phenotype Map</text>
+  <g transform="translate(1034,28)">
+    <rect class="panel" x="0" y="0" width="220" height="544" rx="8"/>
+    <circle class="badge" cx="30" cy="31" r="17"/>
+    <text class="mono" x="30" y="36" text-anchor="middle">4</text>
+    <text class="title" x="58" y="38">Build matrix</text>
+    <text class="subtitle" x="22" y="70">Each row is one cell:</text>
+    <text class="subtitle" x="22" y="91">guide plus gene expression.</text>
 
-    <g transform="translate(20, 180)">
-      <!-- Matrix Headers -->
-      <text class="text-body" font-weight="bold" x="35" y="-15" text-anchor="middle">Cell Barcode</text>
-      <text class="text-body" font-weight="bold" x="120" y="-15" text-anchor="middle">Perturbation</text>
-      <text class="text-body" font-weight="bold" x="230" y="-15" text-anchor="middle">Transcriptome</text>
+    <g transform="translate(18,142)">
+      <rect class="panel-soft" x="0" y="0" width="184" height="236" rx="8"/>
+      <text class="label" x="23" y="31" text-anchor="middle">Cell</text>
+      <text class="label" x="89" y="31" text-anchor="middle">Guide</text>
+      <text class="label" x="151" y="31" text-anchor="middle">Genes</text>
+      <line x1="12" y1="45" x2="172" y2="45" stroke="#d9e2ec" stroke-width="2"/>
 
-      <!-- Separator lines -->
-      <line x1="0" y1="-5" x2="70" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
-      <line x1="80" y1="-5" x2="160" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
-      <line x1="170" y1="-5" x2="290" y2="-5" stroke="#cbd5e1" stroke-width="1.5"/>
-
-      <!-- Matrix rows -->
-      <g transform="translate(0, 10)">
-        <!-- Row 1: Red -->
-        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
-        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_1</text>
-        
-        <rect class="fill-red" x="90" y="0" width="60" height="20" rx="3"/>
-        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Red</text>
-        
-        <rect class="hm-0" x="180" y="2" width="16" height="16"/>
-        <rect class="hm-3" x="200" y="2" width="16" height="16"/>
-        <rect class="hm-1" x="220" y="2" width="16" height="16"/>
-        <rect class="hm-0" x="240" y="2" width="16" height="16"/>
-        <rect class="hm-2" x="260" y="2" width="16" height="16"/>
+      <g transform="translate(12,64)">
+        <rect class="cbc" x="0" y="0" width="48" height="24" rx="4"/>
+        <text class="mono" x="24" y="17" text-anchor="middle">C1</text>
+        <rect class="gene" x="67" y="0" width="46" height="24" rx="4"/>
+        <text class="mono" x="90" y="17" text-anchor="middle">A</text>
+        <rect class="heat0" x="126" y="3" width="13" height="18"/>
+        <rect class="heat3" x="143" y="3" width="13" height="18"/>
+        <rect class="heat1" x="160" y="3" width="13" height="18"/>
       </g>
-
-      <g transform="translate(0, 45)">
-        <!-- Row 2: Blue -->
-        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
-        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_2</text>
-        
-        <rect class="fill-blue" x="90" y="0" width="60" height="20" rx="3"/>
-        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Blue</text>
-        
-        <rect class="hm-2" x="180" y="2" width="16" height="16"/>
-        <rect class="hm-0" x="200" y="2" width="16" height="16"/>
-        <rect class="hm-3" x="220" y="2" width="16" height="16"/>
-        <rect class="hm-1" x="240" y="2" width="16" height="16"/>
-        <rect class="hm-0" x="260" y="2" width="16" height="16"/>
+      <g transform="translate(12,110)">
+        <rect class="cbc" x="0" y="0" width="48" height="24" rx="4"/>
+        <text class="mono" x="24" y="17" text-anchor="middle">C2</text>
+        <rect class="gene" x="67" y="0" width="46" height="24" rx="4"/>
+        <text class="mono" x="90" y="17" text-anchor="middle">B</text>
+        <rect class="heat2" x="126" y="3" width="13" height="18"/>
+        <rect class="heat0" x="143" y="3" width="13" height="18"/>
+        <rect class="heat3" x="160" y="3" width="13" height="18"/>
       </g>
-
-      <g transform="translate(0, 80)">
-        <!-- Row 3: Green -->
-        <rect class="fill-cbc" x="10" y="0" width="50" height="20" rx="3"/>
-        <text class="text-mono" x="35" y="14" text-anchor="middle">CBC_3</text>
-        
-        <rect class="fill-green" x="90" y="0" width="60" height="20" rx="3"/>
-        <text class="text-mono" x="120" y="14" text-anchor="middle">sg-Grn</text>
-        
-        <rect class="hm-1" x="180" y="2" width="16" height="16"/>
-        <rect class="hm-1" x="200" y="2" width="16" height="16"/>
-        <rect class="hm-0" x="220" y="2" width="16" height="16"/>
-        <rect class="hm-3" x="240" y="2" width="16" height="16"/>
-        <rect class="hm-2" x="260" y="2" width="16" height="16"/>
+      <g transform="translate(12,156)">
+        <rect class="cbc" x="0" y="0" width="48" height="24" rx="4"/>
+        <text class="mono" x="24" y="17" text-anchor="middle">C3</text>
+        <rect class="gene" x="67" y="0" width="46" height="24" rx="4"/>
+        <text class="mono" x="90" y="17" text-anchor="middle">NT</text>
+        <rect class="heat1" x="126" y="3" width="13" height="18"/>
+        <rect class="heat1" x="143" y="3" width="13" height="18"/>
+        <rect class="heat0" x="160" y="3" width="13" height="18"/>
       </g>
-      
-      <!-- Ellipsis -->
-      <g transform="translate(0, 115)">
-        <text class="text-mono-dark" x="35" y="14" text-anchor="middle">...</text>
-        <text class="text-mono-dark" x="120" y="14" text-anchor="middle">...</text>
-        <text class="text-mono-dark" x="230" y="14" text-anchor="middle">...</text>
-      </g>
+      <text class="small" x="92" y="212" text-anchor="middle">...</text>
     </g>
 
-    <!-- Connectors pointing down to Genotype / Phenotype concepts -->
-    <!-- From Perturbation -->
-    <path d="M 140,320 L 140,380" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow-down)"/>
-    <!-- From Transcriptome -->
-    <path d="M 250,320 L 250,380" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow-down)"/>
-
-    <!-- Final summary blocks aligned nicely -->
-    <rect x="90" y="400" width="100" height="36" rx="4" fill="#ffffff" stroke="#ef4444" stroke-width="1.5"/>
-    <text class="text-body" font-weight="bold" x="140" y="423" text-anchor="middle" fill="#dc2626">Genotype</text>
-    
-    <text class="title-large" x="195" y="425" text-anchor="middle" fill="#94a3b8">=</text>
-
-    <rect x="200" y="400" width="100" height="36" rx="4" fill="#ffffff" stroke="#3b82f6" stroke-width="1.5"/>
-    <text class="text-body" font-weight="bold" x="250" y="423" text-anchor="middle" fill="#2563eb">Phenotype</text>
-
-    <text class="text-tiny" x="160" y="520" text-anchor="middle">SINGLE-CELL RESOLUTION ANALYSIS</text>
+    <text class="label" x="110" y="501" text-anchor="middle">Analysis-ready</text>
+    <text class="small" x="110" y="524" text-anchor="middle">perturbation effect per cell</text>
   </g>
-
 </svg>
