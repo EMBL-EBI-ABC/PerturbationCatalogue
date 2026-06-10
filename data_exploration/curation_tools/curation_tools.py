@@ -1093,10 +1093,12 @@ class CuratedDataset:
 
         if multiple_entries:
             # collapse the DataFrame
-            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index",
+            conv_df = self.collapse_df(
+                conv_df,
+                unique_val_column="positional_index",
                 sep=MULTI_TARGET_SEP,
             )
-            conv_df = conv_df.set_index('positional_index')
+            conv_df = conv_df.set_index("positional_index")
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1121,8 +1123,13 @@ class CuratedDataset:
 
         conv_df = conv_df.rename(columns=new_colnames_map)
         conv_df = conv_df.replace("None", None)
+        if slot == "obs":
+            conv_df = self.add_perturbed_target_id(conv_df)
         # keep only relevant columns
-        conv_df = conv_df[list(new_colnames_map.values()) + ["original_index"]]
+        selected_columns = list(new_colnames_map.values())
+        if slot == "obs":
+            selected_columns.append("perturbed_target_id")
+        conv_df = conv_df[selected_columns + ["original_index"]]
 
         # drop overlapping columns in the original df to avoid conflicts when merging, but keep the "original_index" column
         out_df = df[list(set(df.columns) - set(conv_df.columns))]
@@ -2190,6 +2197,7 @@ def download_file(
             print(f"Unsupported archive format for {output_path}. Skipping unarchive.")
 
     print(f"Downloaded {download_url} to {output_path}")
+
 
 
 def concatenate_parquet_files(
