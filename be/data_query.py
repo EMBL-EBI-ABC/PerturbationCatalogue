@@ -124,6 +124,8 @@ def _build_dataset_metadata_model():
         name = f["api_name"].replace("dataset_", "")
         if name == "id":
             fields[name] = (str, Field(..., alias=f["api_name"]))
+        elif f.get("es_type") == "boolean":
+            fields[name] = (Optional[bool], Field(None, alias=f["api_name"]))
         elif f.get("is_array"):
             fields[name] = (Optional[List[str]], Field(None, alias=f["api_name"]))
         else:
