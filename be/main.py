@@ -111,7 +111,12 @@ DATASET_FACET_FIELDS = [
     "sex_labels",
     "developmental_stage_labels",
     "disease_labels",
+    "perturb_seq_reprocessed",
 ]
+
+# Facet fields backed by an Elasticsearch boolean. Their aggregation buckets carry the
+# value in `key_as_string` ("true"/"false") rather than a string `key`.
+BOOLEAN_FACET_FIELDS = {"perturb_seq_reprocessed"}
 
 # Mapping from canonical (target) field names to dataset index field names
 TARGET_TO_DATASET_FIELD = {
@@ -408,6 +413,7 @@ def parse_filters_from_params(
     sex_labels: Optional[str] = None,
     developmental_stage_labels: Optional[str] = None,
     disease_labels: Optional[str] = None,
+    perturb_seq_reprocessed: Optional[str] = None,
 ) -> Optional[Dict[str, List[str]]]:
     """Parse filters from query parameters"""
     filters = {}
@@ -451,6 +457,10 @@ def parse_filters_from_params(
         ]
     if disease_labels:
         filters["disease_labels"] = [v.strip() for v in disease_labels.split(",")]
+    if perturb_seq_reprocessed:
+        filters["perturb_seq_reprocessed"] = [
+            v.strip() for v in perturb_seq_reprocessed.split(",")
+        ]
 
     return filters if filters else None
 
@@ -539,13 +549,23 @@ async def perform_search(
     for field in facet_fields:
         buckets = aggregations.get(field, {}).get("buckets", [])
         case_map = original_case.get(field, {})
-        facets_dict[field] = [
-            FacetValue(
-                value=case_map.get(bucket["key"], bucket["key"]),
-                count=bucket["doc_count"],
-            )
-            for bucket in buckets
-        ]
+        if field in BOOLEAN_FACET_FIELDS:
+            # Boolean aggregation buckets expose "true"/"false" via key_as_string.
+            facets_dict[field] = [
+                FacetValue(
+                    value=bucket.get("key_as_string", str(bucket["key"])),
+                    count=bucket["doc_count"],
+                )
+                for bucket in buckets
+            ]
+        else:
+            facets_dict[field] = [
+                FacetValue(
+                    value=case_map.get(bucket["key"], bucket["key"]),
+                    count=bucket["doc_count"],
+                )
+                for bucket in buckets
+            ]
 
     # Remap dataset field names to canonical target field names
     if is_dataset_mode:
@@ -687,6 +707,10 @@ async def search_get(
     disease_labels: Optional[str] = Query(
         None, description="Comma-separated list of disease labels (dataset mode)"
     ),
+    perturb_seq_reprocessed: Optional[str] = Query(
+        None,
+        description="Comma-separated 'true'/'false' to filter by perturb-seq re-processing (dataset mode)",
+    ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     size: int = Query(6, ge=1, le=100, description="Number of results per page"),
     search_after: Optional[str] = Query(
@@ -714,6 +738,7 @@ async def search_get(
         sex_labels,
         developmental_stage_labels,
         disease_labels,
+        perturb_seq_reprocessed,
     )
     parsed_search_after = None
     if search_after:

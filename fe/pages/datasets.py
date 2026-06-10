@@ -6,7 +6,7 @@ import dash_bootstrap_components as dbc
 from urllib.parse import parse_qs
 from utils import (
     COLORS,
-    FACET_FIELDS,
+    DATASET_FACET_FIELDS,
     fetch_search_results,
     fetch_all_search_results,
 )
@@ -417,7 +417,11 @@ def _render_server_side(
 
     if not results and total == 0:
         filters_children = build_filter_controls(
-            facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+            facets,
+            selected_filters,
+            DATASET_FACET_FIELDS,
+            "datasets",
+            id_prefix="datasets",
         )
         return (
             dbc.Alert(
@@ -441,7 +445,7 @@ def _render_server_side(
 
     table = render_datasets_table(results)
     filters_children = build_filter_controls(
-        facets, selected_filters, FACET_FIELDS, "datasets", id_prefix="datasets"
+        facets, selected_filters, DATASET_FACET_FIELDS, "datasets", id_prefix="datasets"
     )
 
     pagination_style = {"display": "flex"} if total_pages > 1 else {"display": "none"}
@@ -499,6 +503,7 @@ def download_datasets_metadata(n_clicks, store_data, selected_values, filter_ids
         "study_title",
         "study_year",
         "data_modalities",
+        "perturb_seq_reprocessed",
     ]
 
     csv_lines = [",".join(columns)]
