@@ -832,7 +832,7 @@ class CuratedDataset:
         count_column_name : str
             The name of the column to store the count of entries.
         sep : str
-            The separator used to split the entries in the column. The default is '|'.
+            The separator used to split the entries in the column. The default is '+'.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
