@@ -23,13 +23,13 @@ with
             perturbed_target_symbol,
             count(distinct dataset_id) as n_crispr,
             countif(significant = 'True') as n_sig_crispr
-        from {{ ref("crispr_data") }}
+        from {{ source("crispr", "data") }}
         group by perturbed_target_symbol
     ),
 
     agg_mave as (
         select perturbed_target_symbol, count(distinct dataset_id) as n_mave
-        from {{ ref("mave_data") }}
+        from {{ source("mave", "data") }}
         group by perturbed_target_symbol
     ),
 
@@ -37,9 +37,9 @@ with
         select
             perturbed_target_symbol,
             count(distinct dataset_id) as n_perturb_seq,
-            countif(padj <= 0.05 and log2foldchange > 0) as n_sig_perturb_pairs_up,
-            countif(padj <= 0.05 and log2foldchange < 0) as n_sig_perturb_pairs_down
-        from {{ ref("perturb_seq_dea") }}
+            countif(padj <= 0.05 and log2FoldChange > 0) as n_sig_perturb_pairs_up,
+            countif(padj <= 0.05 and log2FoldChange < 0) as n_sig_perturb_pairs_down
+        from {{ source("perturb_seq", "pertpy_dea") }}
         group by perturbed_target_symbol
     ),
 
@@ -51,7 +51,7 @@ with
             row_number() over (
                 partition by perturbed_target_symbol order by sidak asc
             ) as rn
-        from {{ ref("perturb_seq_gsea") }}
+        from {{ source("perturb_seq", "pertpy_gsea") }}
         where sidak <= 0.05
     ),
 

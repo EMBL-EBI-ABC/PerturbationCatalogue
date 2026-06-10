@@ -184,6 +184,17 @@ with
             array_agg(distinct license_id ignore nulls) as license_ids,
             array_agg(distinct associated_datasets ignore nulls) as associated_datasets,
             any_value(score_interpretation) as score_interpretation,
+            -- Perturb-seq provenance: true if re-processed from raw data, false if
+            -- author-provided. Scoped to perturb-seq; null for other modalities until
+            -- their ingestion is updated later. The FE defaults a missing/null value to
+            -- author-provided, so every dataset still shows a provenance badge.
+            case
+                when 'Perturb-seq' in unnest(
+                    array_agg(distinct data_modality ignore nulls)
+                )
+                then coalesce(logical_or(perturb_seq_reprocessed), false)
+                else null
+            end as perturb_seq_reprocessed,
             max(ingested_at) as max_ingested_at
         from {{ ref("unified_metadata") }}
 

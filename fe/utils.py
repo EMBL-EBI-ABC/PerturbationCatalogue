@@ -28,6 +28,20 @@ FACET_FIELDS = [
     "diseases_tested",
 ]
 
+# Facet fields for the datasets browse page. The backend remaps dataset facets to these
+# canonical names; perturb_seq_reprocessed is a dataset-only facet kept under its own name.
+DATASET_FACET_FIELDS = [
+    "perturb_seq_reprocessed",
+    "license",
+    "data_modalities",
+    "tissues_tested",
+    "cell_types_tested",
+    "cell_lines_tested",
+    "sex_tested",
+    "developmental_stages_tested",
+    "diseases_tested",
+]
+
 # Designer color scheme
 COLORS = {
     "primary": "#007B53",
@@ -44,6 +58,34 @@ DATA_MODALITIES_COLOURS = {
     "CRISPR screen": COLORS["secondary"],
     "MAVE": COLORS["red"],
 }
+
+
+def reprocessed_badge(value: Any, class_name: str = "ms-2"):
+    """Provenance badge for a dataset.
+
+    ``value`` is a dataset's ``perturb_seq_reprocessed`` field. ``True`` (or the
+    string ``"true"``) -> re-processed from raw data. Anything else -- ``False``,
+    ``None``, or a missing field -- defaults to author-provided, so every dataset
+    shows a badge regardless of modality.
+    """
+    is_reprocessed = value is True or (
+        isinstance(value, str) and value.strip().lower() == "true"
+    )
+    if is_reprocessed:
+        return dbc.Badge(
+            [html.I(className="bi bi-stars me-1"), "Reprocessed"],
+            color="success",
+            pill=True,
+            className=class_name,
+        )
+    return dbc.Badge(
+        [html.I(className="bi bi-file-earmark-text me-1"), "Author-provided"],
+        color="light",
+        pill=True,
+        className=class_name,
+        style={"border": "1px solid #ced4da", "color": COLORS["gray"]},
+    )
+
 
 SUMMARY_CACHE_TTL = 60  # seconds
 

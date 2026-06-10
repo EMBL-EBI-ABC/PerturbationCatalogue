@@ -1,5 +1,5 @@
 import pandas as pd
-from pandera import Field, DataFrameModel
+from pandera.pandas import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
@@ -26,6 +26,11 @@ class ObsSchema(DataFrameModel):
         nullable=False, 
         coerce=True,
         description="Unique identifier for the sample."
+    )
+    cell_barcode: Series[String] = Field(
+        nullable=False,
+        coerce=True,
+        description="Unique cell barcode.",
     )
     data_modality: Series[String] = Field(
         nullable=False,
@@ -77,16 +82,6 @@ class ObsSchema(DataFrameModel):
         regex=r"^[ACGTN]+$",
         coerce=True,
         description="Guide RNA sequence in 5' to 3' direction consisting of A, C, G, T, N characters only.",
-    )
-    perturbation_type_label: Series[String] = Field(
-        nullable=False,
-        description="Perturbation type ontology term label of the investigated sample.",
-        isin=["CRISPRn", "CRISPRi", "CRISPRa", "DMS"],
-    )
-    perturbation_type_id: Series[String] = Field(
-        nullable=True,
-        str_contains=":",
-        description="Perturbation type ontology term ID of the investigated sample.",
     )
     perturbation_type_label: Series[String] = Field(
         nullable=False,
@@ -170,7 +165,7 @@ class ObsSchema(DataFrameModel):
     )
     developmental_stage_label: Series[String] = Field(
         nullable=True,
-        description="Developmental stage ontology term label of the investigated sample.",
+        description="Developmental stage ontology term label of the investigated sample. The age groups are defined as follows: embryonic (conception to 8 weeks), fetal (9 weeks to birth), child (0-12 years), adolescent (13-18 years), adult (19-59 years), senior adult (60 years and above).",
         isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
     )
     developmental_stage_id: Series[String] = Field(
@@ -397,7 +392,8 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit"
+            "GEM-X Flex Gene Expression Human n-plex kit",
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
         ],
     )
     sequencing_platform_id: Series[String] = Field(

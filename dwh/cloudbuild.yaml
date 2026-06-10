@@ -1,0 +1,91 @@
+# DWH Pipeline — Cloud Build Configuration
+#
+# Runs the three pipeline stages sequentially:
+#   1. dbt run          (BQ source → BQ final tables)
+#   2. bq_to_postgres   (BQ final tables → Postgres)
+#   3. bq_to_es         (BQ summary tables → Elasticsearch)
+#
+# Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
+#
+# Substitution variables (passed by trigger_pipeline.sh):
+#   _GCLOUD_PROJECT, _GCLOUD_REGION, _BQ_DATASET, _BQ_LOCATION, _GCLOUD_TMP_BUCKET,
+#   _PG_CONN_INTERNAL,
+#   _ES_URL, _ES_USERNAME, _ES_PASSWORD,
+#   _SUPPRESS_DATASETS (optional, comma-separated)
+
+timeout: 43200s  # 12 hours
+
+options:
+  logging: LEGACY
+  pool:
+    name: projects/$PROJECT_ID/locations/$_GCLOUD_REGION/workerPools/dwh-pipeline-pool
+
+steps:
+  # Step 0: Build the pipeline Docker image
+  - name: gcr.io/cloud-builders/docker
+    id: build-image
+    args:
+      - build
+      - -t
+      - gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+      - -f
+      - Dockerfile
+      - .
+
+  # Step 1: dbt run
+  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+    id: dbt-run
+    dir: /app/bq_dbt
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        if [ -n "$_SUPPRESS_DATASETS" ]; then
+          echo "Running dbt with suppressed datasets: $_SUPPRESS_DATASETS"
+          dbt run --profiles-dir . --vars "{\"suppress_datasets\": \"$_SUPPRESS_DATASETS\"}"
+        else
+          echo "Running dbt (no datasets suppressed)"
+          dbt run --profiles-dir .
+        fi
+    env:
+      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
+      - BQ_DATASET=$_BQ_DATASET
+      - BQ_LOCATION=$_BQ_LOCATION
+
+  # Step 2: BigQuery → Postgres
+  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+    id: bq-to-postgres
+    dir: /app/bq_to_postgres
+    entrypoint: python3
+    args:
+      - bq_to_postgres.py
+      - --bq-dataset
+      - $_BQ_DATASET
+      - --bq-location
+      - $_BQ_LOCATION
+      - --pg-conn
+      - $_PG_CONN_INTERNAL
+      - --gcs-bucket
+      - $_GCLOUD_TMP_BUCKET
+      - --drop-and-recreate-indexes
+    env:
+      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
+
+  # Step 3: BigQuery → Elasticsearch
+  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+    id: bq-to-es
+    dir: /app/bq_to_elastic
+    entrypoint: python3
+    args:
+      - bq_to_es_projector.py
+      - --dataset-metadata
+      - /app/be/dataset_metadata.json
+    env:
+      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
+      - BQ_DATASET=$_BQ_DATASET
+      - ES_URL=$_ES_URL
+      - ES_USERNAME=$_ES_USERNAME
+      - ES_PASSWORD=$_ES_PASSWORD
+
+substitutions:
+  _SUPPRESS_DATASETS: ""

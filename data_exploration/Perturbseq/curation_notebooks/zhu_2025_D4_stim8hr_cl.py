@@ -34,7 +34,7 @@ log("=== zhu_2025_D4_stim8hr_cl curation started ===")
 # !aws s3 cp --no-sign-request s3://genome-scale-tcell-perturb-seq/marson2025_data/{name_of_the_file}.h5ad ..aa/non_curated/h5ad/{name_of_the_file}.h5ad
 
 # %% Initialise the dataset object
-noncurated_path = '../non_curated/h5ad/zhu_2025_D4_stim8hr_cl.h5ad'
+noncurated_path = '/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl.h5ad'
 cur_data = CuratedDataset(
     obs_schema=ObsSchema,
     var_schema=VarSchema,
@@ -55,7 +55,7 @@ log(f"Filtering done (after: {cur_data.adata.n_obs} cells)")
 
 # %% Add index as perturbation_name
 log("Adding perturbation_name...")
-cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0]
+cur_data.adata.obs['cell_barcode'] = cur_data.adata.obs.index.str.split('_').str[0] + '_' + 'D4-STIM8HR'
 cur_data.adata.obs['perturbation_name'] = cur_data.adata.obs['cell_barcode'] + '_' + cur_data.adata.obs['lane_id'].astype(str)
 
 # %% Add guide RNA information
@@ -84,8 +84,8 @@ log(f"Merge done. Missing guide sequences: {cur_data.adata.obs['guide_sequence']
 
 # %% Fix perturbed gene id/name types and set control labels
 log("Setting control labels...")
-cur_data.adata.obs['perturbed_gene_id'] = cur_data.adata.obs['perturbed_gene_id'].astype(str)
-cur_data.adata.obs['perturbed_gene_name'] = cur_data.adata.obs['perturbed_gene_name'].astype(str)
+cur_data.adata.obs['perturbed_gene_id'] = cur_data.adata.obs['perturbed_gene_id'].astype("string")
+cur_data.adata.obs['perturbed_gene_name'] = cur_data.adata.obs['perturbed_gene_name'].astype("string")
 
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_id'].isin(['NTC']), 'perturbed_gene_id'] = 'control_nontargeting'
 cur_data.adata.obs.loc[cur_data.adata.obs['perturbed_gene_name'].isin(['NTC']), 'perturbed_gene_name'] = 'control_nontargeting'
@@ -363,15 +363,15 @@ cur_data.save_curated_data_parquet(split_metadata=True, save_metadata_only=True)
 log("Parquet saved.")
 
 # %% Upload to BigQuery (commented out)
-# upload_parquet_to_bq(
-#     parquet_path='../curated/parquet/zhu_2025_D4_stim8hr_cl_curated_metadata.parquet',
-#     bq_dataset_id='prj-ext-dev-pertcat-437314.perturb_seq',
-#     bq_table_name='metadata',
-#     key_columns=['dataset_id', 'sample_id'],
-#     verbose=True
-# )
+upload_parquet_to_bq(
+    parquet_path='/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl_curated_metadata.parquet',
+    bq_dataset_id='prj-ext-dev-pertcat-437314.perturb_seq',
+    bq_table_name='metadata',
+    key_columns=['dataset_id', 'sample_id'],
+    verbose=True
+)
 
 # %% Upload to GC Storage (commented out)
-# !gcloud storage cp ../curated/h5ad/zhu_2025_D4_stim8hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
+# !gcloud storage cp /hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D4_stim8hr_cl_curated.h5ad gs://perturbation-catalogue-lake/perturbseq/curated/
 
 log("=== Curation complete ===")

@@ -11,7 +11,7 @@ import plotly.express as px
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from utils import format_number, COLORS
+from utils import format_number, COLORS, reprocessed_badge
 
 GridControlFactory = Optional[Callable[[str, Dict[str, Any]], Any]]
 
@@ -269,6 +269,16 @@ def _render_dataset_cell(
     title_elements = [
         html.Span(formatted_id, className="h4 fw-semibold text-break"),
     ]
+
+    # Perturb-seq provenance badge, shown just before the [more info] link.
+    # The modality search maps ES fields to their api_name, so this is the api_name
+    # (the /dataset and /search endpoints instead return the raw es_field).
+    provenance_badge = reprocessed_badge(
+        dataset_meta.get("dataset_perturb_seq_reprocessed"),
+        class_name="ms-2 align-self-center",
+    )
+    if provenance_badge is not None:
+        title_elements.append(provenance_badge)
 
     if url_dataset_id:
         title_elements.append(

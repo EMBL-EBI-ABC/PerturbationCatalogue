@@ -38,6 +38,7 @@ class Facets(BaseModel):
     sex_tested: List[FacetValue]
     developmental_stages_tested: List[FacetValue]
     diseases_tested: List[FacetValue]
+    perturb_seq_reprocessed: List[FacetValue] = []
 
 
 class SearchResponse(BaseModel):

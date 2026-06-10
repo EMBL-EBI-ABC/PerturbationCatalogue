@@ -2,7 +2,10 @@ import datetime
 import glob
 import os
 import subprocess
+import tarfile
+import zipfile
 from pathlib import Path
+from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -14,7 +17,7 @@ import logging
 
 from pydantic import ValidationError
 from typing import Literal
-import pandera as pa
+import pandera.pandas as pa
 from pandera.typing import Series, Int64, String
 from tqdm import tqdm
 from thefuzz import process
@@ -33,6 +36,79 @@ from curation_tools.unified_metadata_schema.unified_metadata_schema import Exper
 
 # Module-level logger
 logger = logging.getLogger(__name__)
+
+_ALLOWED_DOWNLOAD_SCHEMES = {"http", "https", "ftp"}
+
+
+def _validate_download_url(url: str) -> str:
+    """Validate a remote download URL."""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("Download URL must be a non-empty string.")
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in _ALLOWED_DOWNLOAD_SCHEMES or not parsed.netloc:
+        raise ValueError(
+            "Download URL must use one of the following schemes: http, https, ftp."
+        )
+
+    return url.strip()
+
+
+def _validate_output_path(path: str) -> Path:
+    """Validate and normalize an output path."""
+    if not isinstance(path, (str, os.PathLike)) or not str(path).strip():
+        raise ValueError("Output path must be a non-empty path string.")
+
+    return Path(path).expanduser()
+
+
+def _resolve_extraction_target(extract_root: Path, member_name: str) -> Path:
+    """Resolve an archive member path and ensure it stays within the extraction root."""
+    if not member_name:
+        raise ValueError("Archive member name cannot be empty.")
+
+    member_path = Path(member_name)
+    if member_path.is_absolute():
+        raise ValueError(f"Unsafe archive member path: {member_name}")
+
+    target_path = (extract_root / member_path).resolve()
+    root_path = extract_root.resolve()
+    if os.path.commonpath([root_path, target_path]) != str(root_path):
+        raise ValueError(f"Archive member escapes extraction directory: {member_name}")
+
+    return target_path
+
+
+def _validate_zip_members(zip_file: zipfile.ZipFile, extract_root: Path) -> None:
+    """Reject unsafe paths in a zip archive before extraction."""
+    for member in zip_file.infolist():
+        _resolve_extraction_target(extract_root, member.filename)
+
+
+def _validate_tar_members(tar_file: tarfile.TarFile, extract_root: Path) -> None:
+    """Reject unsafe paths and links in a tar archive before extraction."""
+    for member in tar_file.getmembers():
+        if member.issym() or member.islnk():
+            raise ValueError(
+                f"Archive member uses an unsupported link type: {member.name}"
+            )
+        _resolve_extraction_target(extract_root, member.name)
+
+
+def _safe_extract_zip(dest_path: Path) -> None:
+    """Extract a zip archive after validating all members."""
+    extract_root = dest_path.parent.resolve()
+    with zipfile.ZipFile(dest_path) as archive:
+        _validate_zip_members(archive, extract_root)
+        archive.extractall(extract_root)
+
+
+def _safe_extract_tar(dest_path: Path) -> None:
+    """Extract a gzip-compressed tar archive after validating all members."""
+    extract_root = dest_path.parent.resolve()
+    with tarfile.open(dest_path, "r:gz") as archive:
+        _validate_tar_members(archive, extract_root)
+        archive.extractall(extract_root, filter="data")
 
 
 # function to add a new synonym to the ontology
@@ -260,12 +336,16 @@ class CuratedDataset:
         """
         Download the data from the specified source.
         """
+        download_url = _validate_download_url(self.data_source_link)
+        output_path = _validate_output_path(self.noncurated_path)
+
         if not os.path.exists(self.noncurated_path):
-            print(
-                f"Downloading data from {self.data_source_link} to {self.noncurated_path}"
+            print(f"Downloading data from {download_url} to {output_path}")
+            os.makedirs(output_path.parent, exist_ok=True)
+            subprocess.run(
+                ["wget", download_url, "-O", str(output_path)],
+                check=True,
             )
-            os.makedirs(os.path.dirname(self.noncurated_path), exist_ok=True)
-            os.system(f"wget {self.data_source_link} -O {self.noncurated_path}")
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
@@ -381,14 +461,16 @@ class CuratedDataset:
 
         # Concatenate the adata.obs and uns_df DataFrames
         full_metadata_df = adata.obs
-        
+
         # replace NaN with with None
-        full_metadata_df = full_metadata_df.astype(object).mask(pd.isna(full_metadata_df), None)
+        full_metadata_df = full_metadata_df.astype(object).mask(
+            pd.isna(full_metadata_df), None
+        )
         # convert to string
         full_metadata_df = full_metadata_df.astype(str)
         # convert "None" to None
         full_metadata_df = full_metadata_df.mask(full_metadata_df.eq("None"), None)
-        
+
         metadata_columns = full_metadata_df.columns.to_list()
         id_columns = metadata_columns[0:2]
 
@@ -448,13 +530,17 @@ class CuratedDataset:
             # if save_metadata_only is True, save only the metadata and skip saving the data
             if save_metadata_only:
                 # Write metadata to parquet
-                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
+                full_metadata_df.to_parquet(
+                    self.curated_parquet_metadata_path, index=False
+                )
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
                 return
 
             else:
                 # Write metadata to parquet
-                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
+                full_metadata_df.to_parquet(
+                    self.curated_parquet_metadata_path, index=False
+                )
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
 
                 print("Processing data...")
@@ -503,7 +589,7 @@ class CuratedDataset:
             **{str(i): i for i in range(1, 23)},
             "X": 23,
             "Y": 24,
-            "MT": 25
+            "MT": 25,
         }
 
         # Apply the mapping to the chromosome column
@@ -760,7 +846,7 @@ class CuratedDataset:
             raise ValueError(f"Column {column} is empty in the df")
 
         df[column] = df[column].str.split(sep).str[0]
-        
+
         print(f"Removed version numbers from {column}")
 
         return df
@@ -824,11 +910,13 @@ class CuratedDataset:
         Returns:
             dict: A dictionary containing the response from ChEBI.
         """
-        
-        r = requests.get(f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1")
-        
+
+        r = requests.get(
+            f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1"
+        )
+
         if r.ok:
-            return r.json().get('results')[0].get('_source')
+            return r.json().get("results")[0].get("_source")
         else:
             print(f"Error: {r.status_code} - {r.text}")
             return None
@@ -873,8 +961,10 @@ class CuratedDataset:
                 continue
             else:
                 # Merge the search results with the original DataFrame
-                chebi_results_df = pd.DataFrame(chebi_results)[['name', 'chebi_accession']]
-                chebi_results_df['original_name'] = compound_name
+                chebi_results_df = pd.DataFrame(chebi_results)[
+                    ["name", "chebi_accession"]
+                ]
+                chebi_results_df["original_name"] = compound_name
                 chebi_results_df = chebi_results_df.rename(
                     columns={
                         "name": "treatment_label",
@@ -900,7 +990,9 @@ class CuratedDataset:
             ).drop(columns=["original_name"])
 
             setattr(self.adata, "obs", df)
-            print(f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}")
+            print(
+                f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}"
+            )
             display(search_results_df)
             if unmapped_compounds:
                 print(f"Failed to map compounds: {unmapped_compounds}")
@@ -944,22 +1036,28 @@ class CuratedDataset:
             raise ValueError(f"Column {input_column} is empty")
 
         # reset index to avoid duplicate gene symbols
-        df.index.name = 'original_index'
+        df.index.name = "original_index"
         df = df.reset_index()
 
         # initialize the converted DataFrame
-        conv_df = df[[input_column, 'original_index']].copy()
-        conv_df['positional_index'] = range(len(conv_df))
+        conv_df = df[[input_column, "original_index"]].copy()
+        conv_df["positional_index"] = range(len(conv_df))
 
         if multiple_entries:
             if multiple_entries_sep is None:
-                raise ValueError("multiple_entries_sep must be provided if multiple_entries is True")
-            conv_df[input_column] = conv_df[input_column].str.split(multiple_entries_sep)
+                raise ValueError(
+                    "multiple_entries_sep must be provided if multiple_entries is True"
+                )
+            conv_df[input_column] = conv_df[input_column].str.split(
+                multiple_entries_sep
+            )
             conv_df = conv_df.explode(input_column)
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            conv_df = self.remove_version_from_genes(df=conv_df, column=input_column, sep=version_sep)
+            conv_df = self.remove_version_from_genes(
+                df=conv_df, column=input_column, sep=version_sep
+            )
 
         # filter out all non-standard chromosome names from gene_ont
         gene_ont = self.gene_ont[
@@ -988,8 +1086,8 @@ class CuratedDataset:
 
         if multiple_entries:
             # collapse the DataFrame
-            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index')
-            conv_df = conv_df.set_index('positional_index')
+            conv_df = self.collapse_df(conv_df, unique_val_column="positional_index")
+            conv_df = conv_df.set_index("positional_index")
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1015,7 +1113,7 @@ class CuratedDataset:
         conv_df = conv_df.rename(columns=new_colnames_map)
         conv_df = conv_df.replace("None", None)
         # keep only relevant columns
-        conv_df = conv_df[list(new_colnames_map.values()) + ['original_index']]
+        conv_df = conv_df[list(new_colnames_map.values()) + ["original_index"]]
 
         # drop overlapping columns in the original df to avoid conflicts when merging, but keep the "original_index" column
         out_df = df[list(set(df.columns) - set(conv_df.columns))]
@@ -1023,7 +1121,7 @@ class CuratedDataset:
         # merge the converted DataFrame to the original DataFrame
         out_df = out_df.merge(conv_df, "left", left_index=True, right_index=True)
 
-        out_df.index.name = 'index'
+        out_df.index.name = "index"
 
         setattr(self.adata, slot, out_df)
 
@@ -1445,7 +1543,9 @@ class CuratedDataset:
                         validated_obs.head(5).to_string(),
                     )
                 except Exception:
-                    logger.debug("Validated adata.%s (shape=%s)", slot, validated_obs.shape)
+                    logger.debug(
+                        "Validated adata.%s (shape=%s)", slot, validated_obs.shape
+                    )
                 # Keep notebook-friendly display for interactive use, if available
                 try:
                     display(validated_obs)
@@ -1614,10 +1714,12 @@ class CuratedDataset:
 
         exploded_cols = [c for c in df.columns if c != unique_val_column]
 
-        pdf_collapsed = pdf.group_by(unique_val_column).agg([
-            pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
-            for c in exploded_cols
-        ])
+        pdf_collapsed = pdf.group_by(unique_val_column).agg(
+            [
+                pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
+                for c in exploded_cols
+            ]
+        )
 
         pdf_collapsed = pdf_collapsed.to_pandas()
 
@@ -1711,11 +1813,20 @@ class CuratedDataset:
         gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
 
         # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive",
-                         "control_guideonly", "control_casonly"]
+        control_terms = [
+            "control_nontargeting",
+            "control_gsh",
+            "control_genedesert",
+            "control_intergenic",
+            "control_positive",
+            "control_guideonly",
+            "control_casonly",
+        ]
         for term in control_terms:
             control_row = {col: term for col in gene_ont_subset.columns}
-            gene_ont_subset = pd.concat([gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True)
+            gene_ont_subset = pd.concat(
+                [gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True
+            )
 
         # --- Main mapping ---
         # Initialize mapped DataFrame
@@ -1732,7 +1843,7 @@ class CuratedDataset:
         missing_ensg = list(
             set(conv_list) - set(gene_ont_subset["ensembl_gene_id"].unique())
         )
-        missing_ensg = [e for e in missing_ensg if e!='nan']
+        missing_ensg = [e for e in missing_ensg if e != "nan"]
 
         # --- Fetch latest Ensembl IDs for missing ones ---
         if missing_ensg:
@@ -1751,21 +1862,30 @@ class CuratedDataset:
                 gene_ont_subset, how="left", on="ensembl_gene_id"
             )
             # add unmapped original entries back as is
-            unmapped_list = list(set(missing_ensg) - set(missing_ensg_df["original_input"]))
-            unmapped_df = pd.DataFrame(
-                {"original_input": list(unmapped_list), "ensembl_gene_id": list(unmapped_list)}
+            unmapped_list = list(
+                set(missing_ensg) - set(missing_ensg_df["original_input"])
             )
-            missing_ensg_df = pd.concat([missing_ensg_df, unmapped_df], ignore_index=True)
+            unmapped_df = pd.DataFrame(
+                {
+                    "original_input": list(unmapped_list),
+                    "ensembl_gene_id": list(unmapped_list),
+                }
+            )
+            missing_ensg_df = pd.concat(
+                [missing_ensg_df, unmapped_df], ignore_index=True
+            )
 
             # Fill in missing mappings with fetched latest Ensembl IDs
             mapped_df = mapped_df.set_index("original_input")
             missing_ensg_df = missing_ensg_df.set_index("original_input")
-            mapped_df.update(missing_ensg_df, errors='raise')
+            mapped_df.update(missing_ensg_df, errors="raise")
             # add the original_input column back
-            mapped_df['original_input'] = mapped_df.index
+            mapped_df["original_input"] = mapped_df.index
 
             # Fill the remaining nans in ensembl_gene_id with original_input
-            mapped_df['ensembl_gene_id'] = mapped_df['ensembl_gene_id'].fillna(mapped_df['original_input'])
+            mapped_df["ensembl_gene_id"] = mapped_df["ensembl_gene_id"].fillna(
+                mapped_df["original_input"]
+            )
 
             mapped_df = mapped_df.reset_index(drop=True)
 
@@ -1796,8 +1916,15 @@ class CuratedDataset:
         gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
 
         # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive",
-                         "control_guideonly", "control_casonly"]
+        control_terms = [
+            "control_nontargeting",
+            "control_gsh",
+            "control_genedesert",
+            "control_intergenic",
+            "control_positive",
+            "control_guideonly",
+            "control_casonly",
+        ]
 
         # --- Split symbol and synonym dataframes ---
         gene_ont_symbol_df = gene_ont.query("synonym_type == 'symbol_syn'")
@@ -2048,7 +2175,7 @@ def upload_parquet_to_bq(
     client = bigquery.Client()
     target_table_base = f"{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
-    
+
     # get the target table schema
     target_table = client.get_table(target_table_base)
     # define the staging table schema (all STRING except ingested_at - it's added later)
@@ -2058,17 +2185,16 @@ def upload_parquet_to_bq(
         if col.name != "ingested_at"
     ]
 
-
     if verbose:
         print(
             f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
         )
-    
+
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        schema=target_schema
-        )
+        schema=target_schema,
+    )
 
     # create the staging table
     with open(parquet_path, "rb") as parquet_file:
@@ -2121,7 +2247,9 @@ def merge_staging_to_target(
     """
 
     # Fetch target table schema from BigQuery
-    target_schema = {field.name.lower(): field for field in client.get_table(target_table_id).schema}
+    target_schema = {
+        field.name.lower(): field for field in client.get_table(target_table_id).schema
+    }
 
     def cast_expression(col):
         """Return CAST(S.col AS <typename>) based on target schema."""
@@ -2160,8 +2288,6 @@ def merge_staging_to_target(
     print(f"Merge completed: staging → {target_table_id} with type-safe casting.")
 
 
-
-
 def download_file(
     url: str = None, dest_path: str = None, overwrite=False, unarchive: bool = False
 ) -> None:
@@ -2178,36 +2304,41 @@ def download_file(
         unarchive: bool
             Whether to unarchive the file if it's an archive (zip/tar.gz/tgz)
     """
+    download_url = _validate_download_url(url)
+    output_path = _validate_output_path(dest_path)
+
     # check if the file already exists
-    if os.path.exists(dest_path):
+    if output_path.exists():
         if not overwrite:
-            print(f"File {dest_path} already exists. Skipping download.")
+            print(f"File {output_path} already exists. Skipping download.")
             return
         else:
-            print(f"File {dest_path} already exists. Overwriting...")
-    response = requests.get(url, stream=True)
+            print(f"File {output_path} already exists. Overwriting...")
+    response = requests.get(download_url, stream=True)
     response.raise_for_status()  # Raise an error for bad responses
     # if the destination directory does not exist, create it
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    os.makedirs(output_path.parent, exist_ok=True)
     # write the content to the destination file
-    with open(dest_path, "wb") as f:
+    with open(output_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     if unarchive:
-        if dest_path.endswith(".zip"):
-            subprocess.run(["unzip", "-o", dest_path, "-d", os.path.dirname(dest_path)])
-        elif dest_path.endswith((".tar.gz", ".tgz")):
-            subprocess.run(["tar", "-xzf", dest_path, "-C", os.path.dirname(dest_path)])
+        output_name = output_path.name.lower()
+        if output_name.endswith(".zip"):
+            _safe_extract_zip(output_path)
+        elif output_name.endswith((".tar.gz", ".tgz")):
+            _safe_extract_tar(output_path)
         else:
-            print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
+            print(f"Unsupported archive format for {output_path}. Skipping unarchive.")
 
-    print(f"Downloaded {url} to {dest_path}")
+    print(f"Downloaded {download_url} to {output_path}")
+
 
 def concatenate_parquet_files(
     parquet_dir: str,
     output_path: str,
     pattern: str = "*_curated_metadata.parquet",
-    verbose: bool = True
+    verbose: bool = True,
 ) -> None:
     """
     Stream-concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`
@@ -2226,7 +2357,9 @@ def concatenate_parquet_files(
     """
     parquet_files = sorted(glob.glob(f"{parquet_dir}/{pattern}"))
     if not parquet_files:
-        raise ValueError(f"No parquet files found with pattern {pattern} in {parquet_dir}")
+        raise ValueError(
+            f"No parquet files found with pattern {pattern} in {parquet_dir}"
+        )
 
     if verbose:
         print(f"Found {len(parquet_files)} files. Initializing writer...")
@@ -2241,16 +2374,21 @@ def concatenate_parquet_files(
         for idx, fpath in enumerate(parquet_files, start=1):
             pf = pq.ParquetFile(fpath)
             if pf.schema_arrow != base_schema:
-                raise ValueError(f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output.")
+                raise ValueError(
+                    f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output."
+                )
             for batch in pf.iter_batches():
                 writer.write_batch(batch)
                 total_rows += batch.num_rows
             if verbose:
-                print(f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})")
+                print(
+                    f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})"
+                )
     finally:
         writer.close()
         if verbose:
             print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")
+
 
 def fetch_latest_ensg_id(ensg_list: list = None):
     """
@@ -2275,18 +2413,20 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     server = "https://rest.ensembl.org"
     ext = "/archive/id"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    
+
     # if more than 500 ids, split into chunks of 500
     chunk_size = 500
     if len(ensg_list) > chunk_size:
         df_list = []
-        print(f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}.")
+        print(
+            f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}."
+        )
         for i in range(0, len(ensg_list), chunk_size):
             chunk = ensg_list[i : i + chunk_size]
             print(f"Processing IDs {i+1} to {min(i + chunk_size, len(ensg_list))}...")
-            
+
             data = {"id": chunk}
-            
+
             r = requests.post(server + ext, headers=headers, json=data)
             if not r.ok:
                 r.raise_for_status()
@@ -2301,7 +2441,7 @@ def fetch_latest_ensg_id(ensg_list: list = None):
             r.raise_for_status()
             sys.exit()
         df = pd.DataFrame.from_dict(r.json())
-        
+
     df = df.explode("possible_replacement")
     df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
         columns=["possible_replacement"]
@@ -2425,12 +2565,22 @@ def generate_gene_ont(
     # make symbols and synonyms upper case
     main_df_long["synonym"] = main_df_long["synonym"].str.upper()
     main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
-    
+
     # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-    control_terms = ["control_nontargeting", "control_gsh", "control_genedesert", "control_intergenic", "control_positive", "control_guideonly", "control_casonly"]
+    control_terms = [
+        "control_nontargeting",
+        "control_gsh",
+        "control_genedesert",
+        "control_intergenic",
+        "control_positive",
+        "control_guideonly",
+        "control_casonly",
+    ]
     for term in control_terms:
         control_row = {col: term for col in main_df_long.columns}
-        main_df_long = pd.concat([main_df_long, pd.DataFrame([control_row])], ignore_index=True)
+        main_df_long = pd.concat(
+            [main_df_long, pd.DataFrame([control_row])], ignore_index=True
+        )
 
     # save as parquet
     if save_parquet_path:
