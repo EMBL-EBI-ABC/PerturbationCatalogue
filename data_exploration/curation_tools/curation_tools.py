@@ -36,6 +36,9 @@ from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
 # Module-level logger
 logger = logging.getLogger(__name__)
 
+TARGET_PAIR_SEP = "|"
+MULTI_TARGET_SEP = "+"
+
 _ALLOWED_DOWNLOAD_SCHEMES = {"http", "https", "ftp"}
 
 
@@ -816,7 +819,7 @@ class CuratedDataset:
         slot=Literal["var", "obs"],
         input_column=None,
         count_column_name=None,
-        sep="|",
+        sep=MULTI_TARGET_SEP,
     ):
         """
         Count the number of entries (e.g. number of perturbations in a cell) in a column of the named slot of the adata object.
@@ -860,6 +863,50 @@ class CuratedDataset:
         print(
             f"Counted entries in column {input_column} of adata.{slot} and stored in {count_column_name}"
         )
+
+    @staticmethod
+    def _split_target_list(value, sep=MULTI_TARGET_SEP):
+        """Split a target-list value into string tokens, preserving empty tokens."""
+        if pd.isna(value):
+            return [""]
+        value = str(value)
+        if value == "":
+            return [""]
+        return [part.strip() for part in value.split(sep)]
+
+    @classmethod
+    def build_perturbed_target_id(cls, symbols, ensgs):
+        """Build the canonical perturbed target ID from paired symbol/Ensembl lists."""
+        symbol_parts = cls._split_target_list(symbols)
+        ensg_parts = cls._split_target_list(ensgs)
+
+        if len(symbol_parts) != len(ensg_parts):
+            raise ValueError(
+                "perturbed_target_symbol and perturbed_target_ensg contain different numbers of targets"
+            )
+
+        return MULTI_TARGET_SEP.join(
+            f"{symbol}{TARGET_PAIR_SEP}{ensg}"
+            for symbol, ensg in zip(symbol_parts, ensg_parts)
+        )
+
+    @classmethod
+    def add_perturbed_target_id(cls, df):
+        """Add perturbed_target_id to a dataframe containing target symbol and ENSG columns."""
+        required_columns = {"perturbed_target_symbol", "perturbed_target_ensg"}
+        missing_columns = required_columns - set(df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Cannot build perturbed_target_id; missing columns: {sorted(missing_columns)}"
+            )
+
+        df["perturbed_target_id"] = [
+            cls.build_perturbed_target_id(symbols, ensgs)
+            for symbols, ensgs in zip(
+                df["perturbed_target_symbol"], df["perturbed_target_ensg"]
+            )
+        ]
+        return df
 
     @staticmethod
     def get_chebi_compound(compound_name):
@@ -1046,8 +1093,10 @@ class CuratedDataset:
 
         if multiple_entries:
             # collapse the DataFrame
-            conv_df = self.collapse_df(conv_df, unique_val_column="positional_index")
-            conv_df = conv_df.set_index("positional_index")
+            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index",
+                sep=MULTI_TARGET_SEP,
+            )
+            conv_df = conv_df.set_index('positional_index')
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
