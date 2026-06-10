@@ -49,24 +49,16 @@
       <path class="cell" d="M -42,-18 C -35,-56 15,-58 43,-28 C 69,0 50,48 8,55 C -38,63 -68,23 -42,-18 Z"/>
       <circle class="nucleus" cx="-3" cy="7" r="21"/>
       <path class="guide-red" d="M 29,-18 Q 51,-32 60,-8 Q 54,8 35,5"/>
-      <path class="thin" d="M -65,-74 L -14,-38" marker-end="url(#arrow)"/>
     </g>
     <g transform="translate(186,338)">
       <path class="cell" d="M -48,-12 C -51,-51 -7,-65 32,-43 C 65,-24 69,28 31,50 C -9,73 -62,43 -48,-12 Z"/>
       <circle class="nucleus" cx="4" cy="3" r="20"/>
       <path class="guide-blue" d="M -19,26 Q -33,50 -6,58 Q 16,62 26,40"/>
-      <path class="thin" d="M 55,-88 L 14,-50" marker-end="url(#arrow)"/>
     </g>
     <g transform="translate(74,412)">
       <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
       <circle class="nucleus" cx="5" cy="5" r="17"/>
       <path class="guide-green" d="M 27,-21 Q 45,-35 52,-12 Q 48,6 31,4"/>
-    </g>
-    <g transform="translate(75,106)">
-      <rect class="panel-soft" x="-32" y="-22" width="70" height="36" rx="6"/>
-      <path class="guide-red" d="M -18,-4 Q -9,8 0,-4"/>
-      <path class="guide-blue" d="M 4,-4 Q 13,8 22,-4"/>
-      <text class="tiny" x="3" y="38" text-anchor="middle">Guide library</text>
     </g>
     <text class="label" x="139" y="501" text-anchor="middle">Known input</text>
     <text class="small" x="139" y="524" text-anchor="middle">which guide each cell received</text>
@@ -86,15 +78,15 @@
     <path class="thin" d="M 139,196 L 139,224" marker-end="url(#arrow)"/>
     <path class="thin" d="M 139,348 L 139,320" marker-end="url(#arrow)"/>
     <circle class="bead" cx="75" cy="258" r="16"/>
-    <g transform="translate(100,294) scale(0.42)">
+    <g transform="translate(101,284) scale(0.35)">
       <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
       <circle class="nucleus" cx="5" cy="5" r="17"/>
       <path class="guide-blue" d="M -18,28 Q -31,44 -10,51 Q 10,55 21,39" stroke-width="5" fill="none" stroke="#2f80ed"/>
     </g>
     <g transform="translate(191,271)">
-      <circle class="droplet" cx="0" cy="0" r="45"/>
+      <circle class="droplet" cx="0" cy="0" r="40"/>
       <circle class="bead" cx="-13" cy="-10" r="16"/>
-      <g transform="translate(18,11) scale(0.42)">
+      <g transform="translate(17,10) scale(0.35)">
         <path class="cell" d="M -32,-14 C -18,-51 30,-49 45,-17 C 62,21 30,55 -8,49 C -47,43 -59,7 -32,-14 Z"/>
         <circle class="nucleus" cx="5" cy="5" r="17"/>
         <path class="guide-blue" d="M -18,28 Q -31,44 -10,51 Q 10,55 21,39" stroke-width="5" fill="none" stroke="#2f80ed"/>

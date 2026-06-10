@@ -24,21 +24,21 @@
 \setbeamerfont{date}{size=\small}
 \setbeamerfont{itemize/enumerate body}{size=\small}
 \setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
+\setbeamersize{text margin left=0.55cm,text margin right=0.55cm}
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{itemize item}{\color{pcgreen}\small\raise0.6pt\hbox{\textbullet}}
 \setbeamertemplate{itemize subitem}{\color{pcgreen}\scriptsize\raise0.5pt\hbox{\textbullet}}
 \setbeamertemplate{frametitle}{%
-  \vspace{0.25em}
+  \vspace{0.45em}
   \insertframetitle
-  \vspace{0.15em}
-  \par{\color{rulegray}\rule{\linewidth}{0.5pt}}
+  \vspace{0.45em}
 }
 \setbeamertemplate{footline}{%
-  \begin{beamercolorbox}[wd=\paperwidth,ht=2.4ex,dp=1.2ex]{footline}
-    \hspace{14pt}\footnotesize Perturb-Seq reanalysis pipeline
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.1ex,dp=1.0ex]{footline}
+    \hspace{0.55cm}\scriptsize Perturb-Seq reanalysis pipeline
     \hfill
-    \footnotesize \insertframenumber{} / \inserttotalframenumber
-    \hspace{14pt}
+    \scriptsize \insertframenumber{} / \inserttotalframenumber
+    \hspace{0.55cm}
   \end{beamercolorbox}%
 }
 \pdfstringdefDisableCommands{%
@@ -46,7 +46,8 @@
   \def\texttt#1{#1}%
 }
 
-\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{Y}{>{\vspace{0pt}\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\vspace{0pt}\raggedright\arraybackslash\bfseries\color{pcblue}}p{#1}}
 \newenvironment{tightitemize}{\begin{itemize}\setlength{\itemsep}{0.35em}\setlength{\parskip}{0pt}}{\end{itemize}}
 \newcommand{\slidenote}[1]{\par\vspace{0.35em}{\scriptsize\color{muted}\begin{minipage}{0.94\linewidth}#1\end{minipage}}}
 
@@ -90,17 +91,15 @@
 \end{frame}
 
 \begin{frame}{Constraints and Data Issues}
-  \small
-  \renewcommand{\arraystretch}{1.35}
-  \begin{tabularx}{\linewidth}{>{\bfseries\color{pcblue}}p{0.24\linewidth}Y}
-    \toprule
+  \footnotesize
+  \renewcommand{\arraystretch}{1.22}
+  \begin{tabularx}{\linewidth}{L{0.22\linewidth}Y}
     Data volume & The five completed datasets use about 19 TB of FASTQs; the largest single dataset is about 11 TB. \\
     Compute budget & Storage and cluster time are adequate but not unlimited, so the pipeline must be fast enough to rerun. \\
     Cell Ranger & Useful, but too slow for repeated catalogue-scale reprocessing of these datasets. \\
     FASTQ source & ENA FASTQs did not include the required technical barcode/UMI reads for these runs; the current workaround uses SRA downloads. \\
     ENA metadata & Sample names, lanes, SRRs, and library names are not consistent across studies and need dataset-specific grouping. \\
     10x details & Expression and guide libraries can use related but non-identical barcodes; the pipeline applies the required KITE barcode correction. \\
-    \bottomrule
   \end{tabularx}
 \end{frame}
 
