@@ -208,7 +208,9 @@ def build_elasticsearch_query(
 
             # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
             searchable_fields = [
+                "perturbed_target_id",
                 "perturbed_target_symbol",
+                "perturbed_target_ensg",
                 "license",
                 "data_modalities",
                 "tissues_tested",
