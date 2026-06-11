@@ -307,8 +307,11 @@ class CommonDatasetSearchParams:
 class MaveParams:
     def __init__(
         self,
+        perturbed_target: Optional[str] = Query(
+            None, description="Filter by perturbed target ID, symbol, or Ensembl ID"
+        ),
         perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+            None, description="Legacy alias for perturbed_target"
         ),
         perturbation_name: Optional[str] = Query(
             None, description="Filter by perturbation name"
@@ -330,6 +333,7 @@ class MaveParams:
             None, description="Filter by target amino acid"
         ),
     ):
+        self.perturbed_target = perturbed_target
         self.perturbation_gene_name = perturbation_gene_name
         self.perturbation_name = perturbation_name
         self.effect_score_name = effect_score_name
@@ -345,8 +349,11 @@ class MaveParams:
 class CrisprScreenParams:
     def __init__(
         self,
+        perturbed_target: Optional[str] = Query(
+            None, description="Filter by perturbed target ID, symbol, or Ensembl ID"
+        ),
         perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+            None, description="Legacy alias for perturbed_target"
         ),
         effect_score_name: Optional[str] = Query(
             None, description="Filter by effect score name"
@@ -361,6 +368,7 @@ class CrisprScreenParams:
             None, description="Filter by effect significance criteria"
         ),
     ):
+        self.perturbed_target = perturbed_target
         self.perturbation_gene_name = perturbation_gene_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
@@ -374,8 +382,11 @@ class CrisprScreenParams:
 class PerturbSeqParams:
     def __init__(
         self,
+        perturbed_target: Optional[str] = Query(
+            None, description="Filter by perturbed target ID, symbol, or Ensembl ID"
+        ),
         perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+            None, description="Legacy alias for perturbed_target"
         ),
         effect_gene_name: Optional[str] = Query(
             None, description="Filter by effect gene name"
@@ -400,6 +411,7 @@ class PerturbSeqParams:
             None, description="Filter GSEA by sidak (supports ranges)"
         ),
     ):
+        self.perturbed_target = perturbed_target
         self.perturbation_gene_name = perturbation_gene_name
         self.effect_gene_name = effect_gene_name
         self.effect_log2fc = effect_log2fc
