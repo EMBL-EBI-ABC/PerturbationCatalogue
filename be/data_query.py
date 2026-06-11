@@ -84,6 +84,7 @@ PG_MAPPINGS = {
     "crispr-screen": CRISPR_PG_MAPPING,
     "mave": MAVE_PG_MAPPING,
 }
+TARGET_FILTER_PARAMS = {"perturbed_target", "perturbation_gene_name"}
 
 # Numeric field mappings: "int" for integer fields, "float" for float fields
 NUMERIC_FIELDS = {
