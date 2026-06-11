@@ -49,18 +49,20 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 sample_id,
+                perturbed_target_id,
                 perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 significant,
                 significance_criteria,
                 ingested_at as max_ingested_at
-            FROM `{project}.crispr.data`
+            FROM `{project}.{source_dataset}.data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.crispr.data`
+            FROM `{project}.{source_dataset}.data`
             GROUP BY dataset_id
         """,
     },
@@ -69,7 +71,9 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 sample_id,
+                perturbed_target_id,
                 perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 perturbation_name,
@@ -81,12 +85,12 @@ SYNC_QUERIES = {
                     perturbation_name, r'p\.[a-zA-Z]+\d+([a-zA-Z=]+)'
                 ) as perturbation_aa_change,
                 ingested_at as max_ingested_at
-            FROM `{project}.mavedb.data`
+            FROM `{project}.{source_dataset}.data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.mavedb.data`
+            FROM `{project}.{source_dataset}.data`
             GROUP BY dataset_id
         """,
     },
@@ -94,7 +98,9 @@ SYNC_QUERIES = {
         "export_query": r"""
             SELECT
                 dataset_id,
+                perturbed_target_id,
                 perturbed_target_symbol,
+                perturbed_target_ensg,
                 gene,
                 padj,
                 log2FoldChange as log2foldchange,
@@ -102,12 +108,12 @@ SYNC_QUERIES = {
                 score_value,
                 cell_type,
                 ingested_at as max_ingested_at
-            FROM `{project}.perturb_seq.pertpy_dea`
+            FROM `{project}.{source_dataset}.pertpy_dea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.perturb_seq.pertpy_dea`
+            FROM `{project}.{source_dataset}.pertpy_dea`
             GROUP BY dataset_id
         """,
     },
@@ -116,7 +122,9 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 term,
+                perturbed_target_id,
                 perturbed_target_symbol,
+                perturbed_target_ensg,
                 es,
                 nes,
                 pval,
@@ -126,12 +134,12 @@ SYNC_QUERIES = {
                 leading_edge,
                 cell_type,
                 ingested_at as max_ingested_at
-            FROM `{project}.perturb_seq.pertpy_gsea`
+            FROM `{project}.{source_dataset}.pertpy_gsea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.perturb_seq.pertpy_gsea`
+            FROM `{project}.{source_dataset}.pertpy_gsea`
             GROUP BY dataset_id
         """,
     },
@@ -143,7 +151,7 @@ INDEX_DEFINITIONS = {
     "perturb_seq_dea": [
         (
             "idx_perturbation_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_id, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_phenotype_dea",
@@ -151,17 +159,33 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_perturbation_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_id, gene, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturb_seq_dea_dataset_id_padj",
             "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE gene IS NOT NULL",
         ),
+        (
+            "idx_perturbation_dea_symbol",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+        ),
+        (
+            "idx_perturbation_dea_ensg",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
+        ),
     ],
     "perturb_seq_gsea": [
         (
             "idx_perturbation_gsea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, fdr, nes)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_id, dataset_id, fdr, nes)",
+        ),
+        (
+            "idx_perturbation_gsea_symbol",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+        ),
+        (
+            "idx_perturbation_gsea_ensg",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
     "crispr_data": [
@@ -171,7 +195,15 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_crispr_data_target",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_id)",
+        ),
+        (
+            "idx_crispr_data_target_symbol",
             "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+        ),
+        (
+            "idx_crispr_data_target_ensg",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
     "mave_data": [
@@ -181,7 +213,15 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_mave_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_id, dataset_id)",
+        ),
+        (
+            "idx_mave_data_target_symbol",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+        ),
+        (
+            "idx_mave_data_target_ensg",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
 }
