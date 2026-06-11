@@ -3,9 +3,6 @@
 A self-contained pipeline and Dash web application for computing and exploring
 gene co-essentiality networks from DepMap CRISPR screen data.
 
-**Intended audience:** Software engineers and bioinformaticians integrating this
-feature into an existing GCP-hosted Dash website.
-
 ---
 
 ## Table of Contents

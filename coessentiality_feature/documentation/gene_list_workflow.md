@@ -36,13 +36,13 @@ classDef problem  fill:#C0392B,color:#fff,stroke:#7B241C,stroke-width:3px
 classDef store    fill:#6C757D,color:#fff,stroke:none
 classDef out      fill:#E8F5EE,color:#212121,stroke:#2E7D52
 
-A([Paste gene list, set FDR / degree slider,\nor click "Load example gene list"]):::user
+A([Paste gene list, set FDR / degree slider,\nor click 'Load example gene list']):::user
 
 subgraph CB1["Callback 1 — update_multi\nruns on blur, FDR change, degree-slider change, or example-button click"]
     B[Parse & validate gene symbols]:::fast
     C[Degree-of-interaction expansion\nBFS out from input genes, N hops\ncapped at 300 genes]:::fast
     D[Filter network at chosen FDR\nkeep pairs where both genes are in the expanded set]:::fast
-    E[Find connected components\nnumber by size  1 = largest\ndrop components < 2 genes]:::fast
+    E[Find connected components\nnumber by size  1 = largest\ndrop components with fewer than 2 genes]:::fast
     F[Tag each node & edge\nwith module ID + degree-of-interaction hop]:::fast
     B --> C --> D --> E --> F
 end
@@ -61,10 +61,10 @@ J([Click  Find modules & annotate with GO:BP]):::user
 H --> J
 
 subgraph CB2["Callback 2 — annotate_multi_modules\nruns on button click, one Enrichr call per module"]
-    K{Module\n> 3 genes?}
+    K{Module size\nmore than 3 genes?}
     L[Not annotated — too small\nor skipped — too large]:::out
     M[gseapy.enrichr\nHTTP call to Enrichr API\n~1-2 s per module]:::problem
-    N[Keep terms at adj. p <= 5%,\nde-duplicate with Weighted Set Cover]:::fast
+    N[Keep terms at adj. p ≤ 5%,\nde-duplicate with Weighted Set Cover]:::fast
     K -- No --> L
     K -- Yes --> M --> N
 end
@@ -189,7 +189,7 @@ subgraph BOOT["At app startup — runs once per instance"]
 end
 
 subgraph LIVE["At annotation time — replaces the Enrichr API call"]
-    E[For each module > 3 genes]:::live
+    E[For each module with more than 3 genes]:::live
     F[Hypergeometric test against each GO term\nscipy.stats.hypergeom]:::live
     G[BH correction across all tested terms\nstatsmodels.multipletests]:::live
     H[Weighted Set Cover\nsame as today, unchanged]:::live
