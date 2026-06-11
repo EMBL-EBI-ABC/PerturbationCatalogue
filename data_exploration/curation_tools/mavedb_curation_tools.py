@@ -113,6 +113,7 @@ def edit_mavedb_metadata_df_columns(metadata_df: pd.DataFrame = None) -> pd.Data
         "perturbed_target_chromosome_encoding",
         "perturbed_target_number",
         "perturbed_target_ensg",
+        "perturbed_target_id",
         "guide_sequence",
     ]
 
