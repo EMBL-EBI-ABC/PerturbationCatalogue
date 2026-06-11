@@ -151,7 +151,9 @@ DatasetMetadata = _build_dataset_metadata_model()
 
 # Perturbation Models
 class PerturbationBase(BaseModel):
-    gene_name: str = Field(..., alias="perturbation_gene_name")
+    target_id: Optional[str] = None
+    target_symbol: Optional[str] = None
+    target_ensg: Optional[str] = None
 
 
 class MavePerturbation(PerturbationBase):
