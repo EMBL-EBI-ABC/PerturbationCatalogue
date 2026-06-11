@@ -29,6 +29,7 @@ from utils import (
     fetch_dataset_rows,
     fetch_modality_datasets,
     fetch_perturb_seq_gsea,
+    format_target_label,
     format_number,
 )
 
@@ -111,7 +112,11 @@ def layout(target_name: Optional[str] = None, **kwargs):
         for config in SECTION_CONFIGS
     )
 
-    heading = target_name or "Target"
+    heading = (
+        format_target_label({"perturbed_target_id": target_name})
+        if target_name
+        else "Target"
+    )
 
     sections = []
     for config in SECTION_CONFIGS:
