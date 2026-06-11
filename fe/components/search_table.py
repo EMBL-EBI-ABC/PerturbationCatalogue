@@ -9,6 +9,7 @@ from utils import (
     DATA_MODALITIES_COLOURS,
     FACET_FIELDS,
     results_store,
+    format_target_label,
     format_value,
     reprocessed_badge,
 )
@@ -104,8 +105,9 @@ def render_targets_table(results):
 
     rows = []
     for record in results:
-        symbol = record.get("perturbed_target_symbol", "N/A")
-        results_store[symbol] = record
+        target_id = record.get("perturbed_target_id", "N/A")
+        target_label = format_target_label(record)
+        results_store[target_id] = record
 
         n_sc_perturb_seq = format_count(record.get("n_perturb_seq"))
         n_sc_perturb_seq_up = format_count(record.get("n_sig_perturb_pairs_up"))
@@ -173,8 +175,8 @@ def render_targets_table(results):
                 [
                     html.Td(
                         dcc.Link(
-                            symbol,
-                            href=f"/perturbation-catalogue/target/{quote(symbol, safe='')}",
+                            target_label,
+                            href=f"/perturbation-catalogue/target/{quote(target_id, safe='')}",
                             className="text-decoration-none fw-semibold",
                             style={"color": COLORS["primary"]},
                         )
