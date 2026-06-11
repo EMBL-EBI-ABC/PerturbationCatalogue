@@ -4,7 +4,7 @@ sources:
   - name: crispr
     description: "Crispr metadata and data"
     database: prj-ext-dev-pertcat-437314   # GCP project id
-    schema: crispr                   # BigQuery dataset
+    schema: "{{ 'crispr' ~ env_var('BQ_SOURCE_SUFFIX', '') }}"                   # BigQuery dataset
     tables:
       - name: metadata
         description: "Sample-level metadata"
@@ -13,7 +13,7 @@ sources:
   - name: mave
     description: "MAVE metadata and data"
     database: prj-ext-dev-pertcat-437314   # GCP project id
-    schema: mavedb                   # BigQuery dataset
+    schema: "{{ 'mavedb' ~ env_var('BQ_SOURCE_SUFFIX', '') }}"                   # BigQuery dataset
     tables:
       - name: metadata
         description: "Sample-level metadata"
@@ -22,7 +22,7 @@ sources:
   - name: perturb_seq
     description: "Perturb-seq metadata and data"
     database: prj-ext-dev-pertcat-437314   # GCP project id
-    schema: perturb_seq                   # BigQuery dataset
+    schema: "{{ 'perturb_seq' ~ env_var('BQ_SOURCE_SUFFIX', '') }}"                   # BigQuery dataset
     tables:
       - name: metadata
         description: "Sample-level metadata"
