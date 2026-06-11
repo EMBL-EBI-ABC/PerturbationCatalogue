@@ -484,6 +484,7 @@ def validate_query_params(
     # Add all filterable perturbation and effect fields to valid_params
     pg_mapping = get_api_to_db_mapping(modality)
     valid_params.update(pg_mapping.keys())
+    valid_params.update(TARGET_FILTER_PARAMS)
     if modality == "perturb-seq":
         valid_params.update(PERTURB_SEQ_GSEA_PG_MAPPING.keys())
 
@@ -532,9 +533,9 @@ async def enrich_perturb_seq_rows(
         effect_dataset_ids = [k[0] for k in effect_keys]
         effect_genes = [k[1] for k in effect_keys]
         effect_task = conn.fetch(
-            """
+            f"""
             SELECT t.dataset_id, t.gene, t.n_total, t.n_up, t.n_down
-            FROM perturb_seq_summary_effect AS t
+            FROM {PERTURB_SEQ_SUMMARY_EFFECT_TABLE} AS t
             JOIN unnest($1::text[], $2::text[]) AS keys(did, g)
             ON t.dataset_id = keys.did AND t.gene = keys.g
             """,
@@ -615,7 +616,7 @@ async def _fetch_perturb_seq_gsea(
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
         SELECT *
-        FROM perturb_seq_gsea
+        FROM {PERTURB_SEQ_GSEA_TABLE}
         {where_clause}
         ORDER BY sidak ASC
         LIMIT 50
@@ -986,10 +987,12 @@ async def _search_dataset_impl(
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
 
     # 1. Count Rows
-    no_user_filters = not any(k in api_to_db for k in query_params)
+    no_user_filters = not any(
+        k in api_to_db or k in TARGET_FILTER_PARAMS for k in query_params
+    )
     if modality == "perturb-seq" and no_user_filters:
         count_query = (
-            "SELECT n_total FROM perturb_seq_summary_dataset WHERE dataset_id = $1"
+            f"SELECT n_total FROM {PERTURB_SEQ_SUMMARY_DATASET_TABLE} WHERE dataset_id = $1"
         )
         count_params = [dataset_id]
     else:
