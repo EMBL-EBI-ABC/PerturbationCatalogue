@@ -36,6 +36,12 @@ PG_TABLES = {
     "crispr-screen": f"crispr_data{PG_TABLE_SUFFIX}",
     "mave": f"mave_data{PG_TABLE_SUFFIX}",
 }
+PERTURB_SEQ_GSEA_TABLE = f"perturb_seq_gsea{PG_TABLE_SUFFIX}"
+PERTURB_SEQ_SUMMARY_PERTURBATION_TABLE = (
+    f"perturb_seq_summary_perturbation{PG_TABLE_SUFFIX}"
+)
+PERTURB_SEQ_SUMMARY_EFFECT_TABLE = f"perturb_seq_summary_effect{PG_TABLE_SUFFIX}"
+PERTURB_SEQ_SUMMARY_DATASET_TABLE = f"perturb_seq_summary_dataset{PG_TABLE_SUFFIX}"
 
 # Field mappings from API to database
 PERTURB_SEQ_PG_MAPPING = {
