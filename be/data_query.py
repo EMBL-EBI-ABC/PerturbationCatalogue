@@ -446,6 +446,15 @@ def parse_numeric_filter(param_name: str, value: str) -> Tuple[str, List[Any]]:
         return f"{param_name} = $... ", [float(value)]
 
 
+def build_target_filter(value: str, param_index: int) -> str:
+    """Build SQL for flexible perturbed target matching."""
+    if "|" in value:
+        return f"perturbed_target_id = ${param_index}"
+    if value.upper().startswith("ENSG"):
+        return f"${param_index} = ANY(string_to_array(perturbed_target_ensg, '|'))"
+    return f"${param_index} = ANY(string_to_array(perturbed_target_symbol, '|'))"
+
+
 def get_api_to_db_mapping(modality: MODALITIES) -> Dict[str, str]:
     """Returns the combined API to DB field mapping for a modality."""
     return PG_MAPPINGS.get(modality, {})
@@ -580,10 +589,13 @@ async def _fetch_perturb_seq_gsea(
     pg_filters = ["dataset_id = $1"]
     pg_params = [dataset_id]
 
-    # Re-use perturbation_gene_name filter if present
-    if "perturbation_gene_name" in query_params:
-        pg_filters.append(f"perturbed_target_symbol = ${len(pg_params) + 1}")
-        pg_params.append(query_params["perturbation_gene_name"])
+    # Re-use perturbed target filter if present
+    target_value = query_params.get("perturbed_target") or query_params.get(
+        "perturbation_gene_name"
+    )
+    if target_value:
+        pg_filters.append(build_target_filter(target_value, len(pg_params) + 1))
+        pg_params.append(target_value)
 
     # GSEA specific filters
     if "gsea_term" in query_params:
@@ -655,7 +667,10 @@ async def _search_modality_impl(
     numeric_fields = NUMERIC_FIELDS.get(modality, {})
 
     for key, value in query_params.items():
-        if key in api_to_db:
+        if key in TARGET_FILTER_PARAMS and isinstance(value, str):
+            pg_filters.append(build_target_filter(value, len(pg_params) + 1))
+            pg_params.append(value)
+        elif key in api_to_db:
             db_field = api_to_db[key]
             field_type = numeric_fields.get(key)
 
@@ -920,7 +935,10 @@ async def _search_dataset_impl(
     numeric_fields = NUMERIC_FIELDS.get(modality, {})
 
     for key, value in query_params.items():
-        if key in api_to_db:
+        if key in TARGET_FILTER_PARAMS and isinstance(value, str):
+            pg_filters.append(build_target_filter(value, len(pg_params) + 1))
+            pg_params.append(value)
+        elif key in api_to_db:
             db_field = api_to_db[key]
             field_type = numeric_fields.get(key)
 
@@ -1144,8 +1162,11 @@ async def search_perturb_seq_dataset(
 )
 async def get_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_gene_name: str = Query(
-        ..., description="Mandatory perturbed gene symbol"
+    perturbed_target: Optional[str] = Query(
+        None, description="Perturbed target ID, symbol, or Ensembl ID"
+    ),
+    perturbed_gene_name: Optional[str] = Query(
+        None, description="Legacy perturbed gene symbol"
     ),
 ):
     """Retrieve GSEA results for a specific gene in a dataset."""
@@ -1155,9 +1176,9 @@ async def get_perturb_seq_gsea(
     async with pg_pool.acquire() as conn:
         # Fetch rows for this gene (no default filtering, return all)
         rows = await conn.fetch(
-            """
-            SELECT * FROM perturb_seq_gsea 
-            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            f"""
+            SELECT * FROM {PERTURB_SEQ_GSEA_TABLE}
+            WHERE dataset_id = $1 AND {build_target_filter(target_value, 2)}
             ORDER BY sidak ASC
             """,
             dataset_id,
@@ -1442,9 +1463,9 @@ async def download_perturb_seq_gsea(
 
     async with pg_pool.acquire() as conn:
         rows = await conn.fetch(
-            """
-            SELECT * FROM perturb_seq_gsea
-            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            f"""
+            SELECT * FROM {PERTURB_SEQ_GSEA_TABLE}
+            WHERE dataset_id = $1 AND {build_target_filter(target_value, 2)}
             ORDER BY sidak ASC
             """,
             dataset_id,
