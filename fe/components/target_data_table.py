@@ -11,7 +11,7 @@ import plotly.express as px
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from utils import format_number, COLORS, reprocessed_badge
+from utils import COLORS, format_number, format_target_label
 
 GridControlFactory = Optional[Callable[[str, Dict[str, Any]], Any]]
 
@@ -64,6 +64,17 @@ DATASET_FIELD_FALLBACKS = {
 GREEN = "#2acc06"
 RED = "#ff4824"
 MINUS = "−"
+
+
+def _format_target(perturbation: Dict[str, Any]) -> str:
+    """Format a perturbation target, falling back to target ID."""
+    return format_target_label(
+        perturbation,
+        symbol_key="target_symbol",
+        ensg_key="target_ensg",
+        id_key="target_id",
+    )
+
 
 # Color mapping for metadata field badges
 METADATA_FIELD_COLORS = {
@@ -356,7 +367,7 @@ def _perturb_seq_effect(
     section_id: Optional[str] = None,
 ) -> html.Div:
     """Render a single Perturb-Seq result row (legacy card format for non-table sections)."""
-    perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+    perturbation_gene_name = _format_target(perturbation)
     effect_gene_name = effect.get("gene_name") or "N/A"
 
     log2fc_value = effect.get("log2fc")
@@ -472,7 +483,7 @@ def _perturb_seq_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+        perturbation_gene_name = _format_target(perturbation)
         effect_gene_name = effect.get("gene_name") or "N/A"
 
         log2fc_value = effect.get("log2fc")
@@ -670,7 +681,7 @@ def _crispr_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+        perturbation_gene_name = _format_target(perturbation)
         score_name = effect.get("score_name") or "N/A"
         score_value = _format_numeric(effect.get("score_value"))
         significant = effect.get("significant")
@@ -758,7 +769,7 @@ def _crispr_table(
 def _score_effect(
     perturbation: Dict[str, Any], effect: Dict[str, Any], modality: str
 ) -> html.Div:
-    pert_gene = perturbation.get("gene_name") or "N/A"
+    pert_gene = _format_target(perturbation)
     variant = perturbation.get("name")
     score_name = effect.get("score_name")
     score_value = _format_numeric(effect.get("score_value"))
