@@ -27,6 +27,6 @@ sources:
       - name: metadata
         description: "Sample-level metadata"
       - name: pertpy_dea
-        description: "DEA per (dataset_id, perturbed_target_symbol)"
+        description: "DEA per (dataset_id, perturbed_target_id)"
       - name: pertpy_gsea
-        description: "GSEA results per (dataset_id, perturbed_target_symbol)"
+        description: "GSEA results per (dataset_id, perturbed_target_id)"
