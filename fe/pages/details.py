@@ -1146,7 +1146,17 @@ def _paginate_dataset_rows(
         response = fetch_dataset_rows(
             modality,
             dataset_id,
-            filters={filter_field: target_symbol} if target_symbol else {},
+            filters=(
+                {
+                    filter_field: (
+                        _symbol_from_target_value(target_symbol)
+                        if section_id == "perturb_seq_affected"
+                        else target_symbol
+                    )
+                }
+                if target_symbol
+                else {}
+            ),
             offset=new_offset,
             limit=DATASET_LOAD_MORE_SIZE,  # Always 5 rows per page
         )
