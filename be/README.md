@@ -19,6 +19,15 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
+For development purposes, point the backend at the suffixed dev
+Postgres tables and Elasticsearch aliases, e.g.:
+
+```bash
+PG_TABLE_SUFFIX=_gene_id_migration \
+ES_INDEX_SUFFIX=_gene_id_migration \
+uvicorn main:app --reload
+```
+
 ## Docker deployment
 
 ```bash
@@ -28,6 +37,7 @@ docker run \
   -e ES_URL=${ES_URL} \
   -e ES_USERNAME=${ES_USERNAME} \
   -e ES_PASSWORD=${ES_PASSWORD} \
+  -e ES_INDEX_SUFFIX=${ES_INDEX_SUFFIX} \
   -e PS_HOST=${PS_HOST} \
   -e PS_PORT=${PS_PORT} \
   -e PS_USER=${PS_USER} \
