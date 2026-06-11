@@ -123,7 +123,7 @@ Additional dbt commands:
 - Specific model + dependencies: `dbt run --profiles-dir . --select +dataset_summary`
 - Full refresh (non-incremental): `dbt run --profiles-dir . --full-refresh`
 
-To regenerate the gene-ID migration summary tables from cloned source datasets:
+To generate additional summary tables from cloned source datasets (e.g. for the gene-ID migration dev tables), set the `BQ_SOURCE_SUFFIX` and `BQ_DATASET` environment variables:
 
 ```bash
 cd dwh/bq_dbt
@@ -175,8 +175,7 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
-To index migrated gene-ID summaries into separate development Elasticsearch
-aliases without touching production aliases:
+For development purposes, to avoid overwriting production ES indices, you can add a suffix to the index names:
 
 ```bash
 cd dwh
