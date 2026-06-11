@@ -151,7 +151,6 @@ def curate_biogrid_screen(
         slot="obs",
         input_column="perturbed_target_symbol",
         count_column_name="perturbed_target_number",
-        sep="|",
     )
 
     # add chromosome encoding
