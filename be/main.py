@@ -177,8 +177,12 @@ def build_elasticsearch_query(
                     "multi_match": {
                         "query": cleaned_query,
                         "fields": [
+                            "perturbed_target_id^2.0",
+                            "perturbed_target_id.text^1.2",
                             "perturbed_target_symbol^1.5",
                             "perturbed_target_symbol.text^1.0",
+                            "perturbed_target_ensg^1.5",
+                            "perturbed_target_ensg.text^1.0",
                             "license^1.5",
                             "license.text^1.0",
                             "data_modalities^1.5",
