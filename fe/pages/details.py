@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from typing import Any, Dict, List, Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlencode
 
 import dash
 from dash import (
@@ -548,8 +548,8 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         download_params = []
         for key, value in filters.items():
             if value:
-                download_params.append(f"{key}={value}")
-        query_string = "&".join(download_params)
+                download_params.append((key, value))
+        query_string = urlencode(download_params)
         download_url_base = f"{BACKEND_URL}/v1/{modality}/download"
         if query_string:
             download_url_base = f"{download_url_base}?{query_string}"
