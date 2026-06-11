@@ -45,7 +45,6 @@ PERTURB_SEQ_SUMMARY_DATASET_TABLE = f"perturb_seq_summary_dataset{PG_TABLE_SUFFI
 
 # Field mappings from API to database
 PERTURB_SEQ_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
     "effect_gene_name": "gene",
     "effect_log2fc": "log2foldchange",
     "effect_padj": "padj",
@@ -54,7 +53,6 @@ PERTURB_SEQ_PG_MAPPING = {
     "effect_cell_type": "cell_type",
 }
 PERTURB_SEQ_GSEA_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
     "gsea_term": "term",
     "gsea_sidak": "sidak",
     "effect_term": "term",
@@ -68,14 +66,12 @@ PERTURB_SEQ_GSEA_PG_MAPPING = {
     "effect_cell_type": "cell_type",
 }
 CRISPR_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
     "effect_score_name": "score_name",
     "effect_score_value": "score_value",
     "effect_significant": "significant",
     "effect_significance_criteria": "significance_criteria",
 }
 MAVE_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
     "perturbation_name": "perturbation_name",
     "perturbation_position": "perturbation_position",
     "perturbation_aa_wt": "perturbation_aa_wt",
