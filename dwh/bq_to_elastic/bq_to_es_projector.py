@@ -7,6 +7,9 @@ Reads rows from:
 
 Writes to ES index:
   <dataset-summary|target-summary|landing-page-summary>
+
+Use --es-index-suffix / ES_INDEX_SUFFIX to write to isolated dev aliases,
+for example target-summary_gene_id_migration.
 """
 
 import os
@@ -50,6 +53,7 @@ ES_URL = (os.getenv("ES_URL") or "").rstrip("/")
 
 ES_USER = os.getenv("ES_USERNAME")
 ES_PASS = os.getenv("ES_PASSWORD")
+ES_INDEX_SUFFIX = os.getenv("ES_INDEX_SUFFIX", "")
 
 BULK_CHUNK_SIZE = int(os.getenv("BULK_CHUNK_SIZE", "2000"))
 BULK_MAX_RETRIES = int(os.getenv("BULK_MAX_RETRIES", "5"))
@@ -65,6 +69,19 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 # ------------- ES client ----------------
+def validate_es_index_suffix(suffix: str) -> str:
+    """Validate optional ES index suffix used for dev/migration aliases."""
+    if suffix and not re.fullmatch(r"[A-Za-z0-9_-]+", suffix):
+        raise ValueError(
+            "ES index suffix may only contain letters, numbers, underscores, and hyphens"
+        )
+    return suffix
+
+
+def apply_index_suffix(index_base: str, suffix: str = "") -> str:
+    return f"{index_base}{suffix}"
+
+
 def make_es_client() -> Elasticsearch:
     if not ES_URL or not ES_USER or not ES_PASS:
         raise RuntimeError("ES credentials are not set")
@@ -268,13 +285,12 @@ def actions_generator(
             pass
 
 
-def prune_old_indexes(es: Elasticsearch) -> None:
+def prune_old_indexes(es: Elasticsearch, index_bases: list[str]) -> None:
     """
     Prune indexes for the summary families.
     Keep live version (pointed by alias) + up to 2 older versions.
     """
     logging.info("Starting index pruning...")
-    index_bases = [cfg["index_base"] for cfg in TABLE_CONFIG.values()]
 
     for base in index_bases:
         pattern = f"*-{base}"
@@ -336,7 +352,18 @@ def main() -> int:
         required=True,
         help="Path to dataset_metadata.json (required for dataset summary mapping)",
     )
+    parser.add_argument(
+        "--es-index-suffix",
+        default=ES_INDEX_SUFFIX,
+        help="Suffix for ES index aliases, e.g. _gene_id_migration (env: ES_INDEX_SUFFIX)",
+    )
     args = parser.parse_args()
+
+    try:
+        es_index_suffix = validate_es_index_suffix(args.es_index_suffix)
+    except ValueError as e:
+        logging.error(str(e))
+        return 2
 
     if not ES_URL:
         logging.error("ES_URL is not set")
@@ -351,9 +378,13 @@ def main() -> int:
     bq_client = bigquery.Client(project=BQ_PROJECT)
 
     sync_results = {}  # index_base -> new_index
+    effective_index_bases = [
+        apply_index_suffix(cfg["index_base"], es_index_suffix)
+        for cfg in TABLE_CONFIG.values()
+    ]
 
     for table, cfg in TABLE_CONFIG.items():
-        base = cfg["index_base"]
+        base = apply_index_suffix(cfg["index_base"], es_index_suffix)
         prefix = cfg["prefix"]
         key_field = cfg["key_field"]
         id_strategy = cfg.get("id_strategy", "raw")
@@ -446,7 +477,7 @@ def main() -> int:
             logging.info("Aliases updated successfully.")
 
         # Prune old indexes
-        prune_old_indexes(es)
+        prune_old_indexes(es, effective_index_bases)
 
     return 0
 
