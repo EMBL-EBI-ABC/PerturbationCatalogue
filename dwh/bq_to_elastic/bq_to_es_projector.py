@@ -16,6 +16,7 @@ import logging
 import datetime
 import re
 import argparse
+import hashlib
 from typing import Any, Dict, Iterable, Tuple, List
 
 from google.cloud import bigquery
@@ -34,7 +35,8 @@ TABLE_CONFIG = {
     },
     "target_summary": {
         "index_base": "target-summary",
-        "key_field": "perturbed_target_symbol",
+        "key_field": "perturbed_target_id",
+        "id_strategy": "sha256",
         "prefix": "target",
     },
     "landing_page_summary": {
@@ -196,8 +198,16 @@ def _coerce_num(v, to_float=False):
         return v
 
 
+def make_document_id(value: str, id_strategy: str = "raw") -> str:
+    if id_strategy == "sha256":
+        return f"target:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+    if id_strategy == "raw":
+        return value
+    raise ValueError(f"Unsupported Elasticsearch document ID strategy: {id_strategy}")
+
+
 def transform_row(
-    row: Dict[str, Any], key_field: str, typed_fields: tuple
+    row: Dict[str, Any], key_field: str, typed_fields: tuple, id_strategy: str = "raw"
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Convert a BQ row to ES document.
@@ -206,11 +216,11 @@ def transform_row(
     doc: Dict[str, Any] = {}
 
     if key_field != "summary":
-        symbol = row.get(key_field)
-        if not symbol:
+        key_value = row.get(key_field)
+        if not key_value:
             raise ValueError(f"Row missing '{key_field}'")
     else:
-        symbol = "summary"
+        key_value = "summary"
 
     numeric_int_fields, numeric_float_fields, nested_fields = typed_fields
     for k, v in row.items():
@@ -240,7 +250,7 @@ def transform_row(
         else:
             doc[k] = v
 
-    return symbol, doc
+    return make_document_id(str(key_value), id_strategy), doc
 
 
 def actions_generator(
@@ -248,10 +258,11 @@ def actions_generator(
     es_index: str,
     key_field: str,
     typed_fields: tuple,
+    id_strategy: str = "raw",
 ) -> Iterable[Dict[str, Any]]:
     for row in rows_iter:
         try:
-            _id, doc = transform_row(row, key_field, typed_fields)
+            _id, doc = transform_row(row, key_field, typed_fields, id_strategy)
             yield {"_op_type": "index", "_index": es_index, "_id": _id, "_source": doc}
         except ValueError:
             pass
@@ -345,6 +356,7 @@ def main() -> int:
         base = cfg["index_base"]
         prefix = cfg["prefix"]
         key_field = cfg["key_field"]
+        id_strategy = cfg.get("id_strategy", "raw")
 
         es_index = f"{date_str}-{base}"
 
@@ -382,7 +394,7 @@ def main() -> int:
 
             def actions_with_progress():
                 for action in actions_generator(
-                    rows_iter, es_index, key_field, typed_fields
+                    rows_iter, es_index, key_field, typed_fields, id_strategy
                 ):
                     pbar.update(1)
                     yield action
