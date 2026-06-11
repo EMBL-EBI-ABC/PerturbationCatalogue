@@ -64,18 +64,35 @@ steps:
   - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
     id: bq-to-postgres
     dir: /app/bq_to_postgres
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - bq_to_postgres.py
-      - --bq-dataset
-      - $_BQ_DATASET
-      - --bq-location
-      - $_BQ_LOCATION
-      - --pg-conn
-      - $_PG_CONN_INTERNAL
-      - --gcs-bucket
-      - $_GCLOUD_TMP_BUCKET
-      - --drop-and-recreate-indexes
+      - -c
+      - |
+        if [ "$_RUN_POSTGRES" != "true" ]; then
+          echo "Skipping BigQuery to Postgres sync"
+          exit 0
+        fi
+
+        args=(
+          bq_to_postgres.py
+          --bq-dataset "$_BQ_DATASET"
+          --bq-location "$_BQ_LOCATION"
+          --pg-conn "$_PG_CONN_INTERNAL"
+          --gcs-bucket "$_GCLOUD_TMP_BUCKET"
+          --drop-and-recreate-indexes
+        )
+
+        if [ -n "$_BQ_SOURCE_SUFFIX" ]; then
+          args+=(--bq-source-suffix "$_BQ_SOURCE_SUFFIX")
+        fi
+        if [ -n "$_PG_TABLE_SUFFIX" ]; then
+          args+=(--pg-table-suffix "$_PG_TABLE_SUFFIX")
+        fi
+        if [ "$_SKIP_MATERIALIZED_VIEWS" = "true" ]; then
+          args+=(--skip-materialized-views)
+        fi
+
+        python3 "${args[@]}"
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
 
@@ -83,11 +100,15 @@ steps:
   - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
     id: bq-to-es
     dir: /app/bq_to_elastic
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - bq_to_es_projector.py
-      - --dataset-metadata
-      - /app/be/dataset_metadata.json
+      - -c
+      - |
+        if [ "$_RUN_ES" != "true" ]; then
+          echo "Skipping BigQuery to Elasticsearch sync"
+          exit 0
+        fi
+        python3 bq_to_es_projector.py --dataset-metadata /app/be/dataset_metadata.json
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - BQ_DATASET=$_BQ_DATASET
@@ -97,3 +118,9 @@ steps:
 
 substitutions:
   _SUPPRESS_DATASETS: ""
+  _RUN_DBT: "true"
+  _RUN_POSTGRES: "true"
+  _RUN_ES: "true"
+  _BQ_SOURCE_SUFFIX: ""
+  _PG_TABLE_SUFFIX: ""
+  _SKIP_MATERIALIZED_VIEWS: "false"
