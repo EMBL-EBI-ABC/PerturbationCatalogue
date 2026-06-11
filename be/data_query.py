@@ -11,6 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
 
+try:
+    from .es_indexes import ES_DATASET_SUMMARY  # type: ignore
+except ImportError:  # pragma: no cover - fallback for running as a script
+    from es_indexes import ES_DATASET_SUMMARY  # type: ignore
 
 # --- Database Connection Management ---
 db_pools: Dict[str, Any] = {}
@@ -19,8 +23,6 @@ db_pools: Dict[str, Any] = {}
 router = APIRouter()
 
 # --- Constants and Mappings ---
-ES_DATASET_SUMMARY = "dataset-summary"
-
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
 PG_TABLES = {
