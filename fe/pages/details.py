@@ -47,19 +47,19 @@ SECTION_CONFIGS = [
         "id": "crispr",
         "title": "CRISPR screen data",
         "modality": "crispr-screen",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target",
     },
     {
         "id": "mave",
         "title": "MAVE data",
         "modality": "mave",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target",
     },
     {
         "id": "perturb_seq_perturbed",
         "title": "Perturb-Seq (Perturbed)",
         "modality": "perturb-seq",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target",
     },
     {
         "id": "perturb_seq_affected",
@@ -940,11 +940,11 @@ def _fetch_section_payload(
         cleaned_gene = gene_search.strip()
         if cleaned_gene:
             filters["effect_gene_name"] = cleaned_gene
-    # Add perturbation_gene_name filter for Perturb-Seq (Affected) section
+    # Add perturbed target filter for Perturb-Seq (Affected) section
     if config["id"] == "perturb_seq_affected" and perturbed_gene_search:
         cleaned_perturbed_gene = perturbed_gene_search.strip()
         if cleaned_perturbed_gene:
-            filters["perturbation_gene_name"] = cleaned_perturbed_gene
+            filters["perturbed_target"] = cleaned_perturbed_gene
     # For MAVE, add effect_score_name and perturbation_position
     if config["modality"] == "mave":
         filters["effect_score_name"] = "score"
@@ -1101,7 +1101,7 @@ def _paginate_dataset_rows(
         # Build filters for MAVE
         filters = (
             {
-                config.get("filter_field", "perturbation_gene_name"): target_symbol,
+                config.get("filter_field", "perturbed_target"): target_symbol,
                 "effect_score_name": "score",
                 "perturbation_position": new_position_range,
             }
@@ -1142,9 +1142,9 @@ def _paginate_dataset_rows(
             return updated_store
 
         filter_field = (
-            config.get("filter_field", "perturbation_gene_name")
+            config.get("filter_field", "perturbed_target")
             if config
-            else "perturbation_gene_name"
+            else "perturbed_target"
         )
 
         # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_symbol}&limit=5&offset=X
