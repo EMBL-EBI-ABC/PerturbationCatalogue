@@ -84,6 +84,16 @@ ROWS_PER_DATASET_LIMIT = 5
 DATASET_LOAD_MORE_SIZE = 5
 
 
+def _symbol_from_target_value(target_value: Optional[str]) -> str:
+    """Return the symbol side of a target ID route value when available."""
+    if not target_value:
+        return ""
+    first_target = str(target_value).split("+", 1)[0]
+    if "|" in first_target:
+        return first_target.split("|", 1)[0]
+    return str(target_value)
+
+
 def layout(target_name: Optional[str] = None, **kwargs):
     """Page layout with data stores and section shells."""
     if target_name:
@@ -930,7 +940,12 @@ def _fetch_section_payload(
     perturbed_gene_search: Optional[str] = None,
     dataset_offset: int = 0,
 ) -> Dict[str, Any]:
-    filters = {config["filter_field"]: target_name}
+    base_filter_value = (
+        _symbol_from_target_value(target_name)
+        if config["id"] == "perturb_seq_affected"
+        else target_name
+    )
+    filters = {config["filter_field"]: base_filter_value}
     if dataset_search:
         cleaned = dataset_search.strip()
         if cleaned:
