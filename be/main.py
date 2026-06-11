@@ -12,6 +12,11 @@ from contextlib import asynccontextmanager
 from pydantic_settings import BaseSettings
 
 try:
+    from .es_indexes import (  # type: ignore
+        ES_DATASET_SUMMARY,
+        ES_LANDING_PAGE_SUMMARY,
+        ES_TARGET_SUMMARY,
+    )
     from .models import (  # type: ignore
         SearchRequest,
         SearchResponse,
@@ -20,6 +25,11 @@ try:
         LandingPageSummary,
     )
 except ImportError:  # pragma: no cover - fallback for running as a script
+    from es_indexes import (  # type: ignore
+        ES_DATASET_SUMMARY,
+        ES_LANDING_PAGE_SUMMARY,
+        ES_TARGET_SUMMARY,
+    )
     from models import (  # type: ignore
         SearchRequest,
         SearchResponse,
@@ -32,12 +42,6 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 from data_query import router as data_query_router, db_pools
 
 load_dotenv()
-
-
-# Elastic indexes to use.
-ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
-ES_TARGET_SUMMARY = "target-summary"
-ES_DATASET_SUMMARY = "dataset-summary"
 
 
 # Configuration
