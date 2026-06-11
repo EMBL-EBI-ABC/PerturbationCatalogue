@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
+#   ./trigger_pipeline.sh --postgres-only --bq-source-suffix _gene_id_migration --pg-table-suffix _gene_id_migration
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
@@ -18,6 +19,12 @@ set -euo pipefail
 # Parse arguments
 # ---------------------------------------------------------------------------
 SUPPRESS_DATASETS=""
+RUN_DBT="true"
+RUN_POSTGRES="true"
+RUN_ES="true"
+BQ_SOURCE_SUFFIX="${BQ_SOURCE_SUFFIX:-}"
+PG_TABLE_SUFFIX="${PG_TABLE_SUFFIX:-}"
+SKIP_MATERIALIZED_VIEWS="${SKIP_MATERIALIZED_VIEWS:-false}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,13 +32,36 @@ while [[ $# -gt 0 ]]; do
             SUPPRESS_DATASETS="$2"
             shift 2
             ;;
+        --postgres-only)
+            RUN_DBT="false"
+            RUN_POSTGRES="true"
+            RUN_ES="false"
+            shift
+            ;;
+        --bq-source-suffix)
+            BQ_SOURCE_SUFFIX="$2"
+            shift 2
+            ;;
+        --pg-table-suffix)
+            PG_TABLE_SUFFIX="$2"
+            shift 2
+            ;;
+        --skip-materialized-views)
+            SKIP_MATERIALIZED_VIEWS="true"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--suppress-datasets id1,id2,...]"
+            echo "Usage: $0 [--suppress-datasets id1,id2,...] [--postgres-only] [--bq-source-suffix suffix] [--pg-table-suffix suffix] [--skip-materialized-views]"
             exit 1
             ;;
     esac
 done
+
+if [[ -n "$PG_TABLE_SUFFIX" ]]; then
+    # Dev/suffixed Postgres syncs must not refresh production materialized views.
+    SKIP_MATERIALIZED_VIEWS="true"
+fi
 
 # ---------------------------------------------------------------------------
 # Validate environment
@@ -43,10 +73,15 @@ REQUIRED_VARS=(
     BQ_LOCATION
     GCLOUD_TMP_BUCKET
     PG_CONN_INTERNAL
+)
+
+if [[ "$RUN_ES" == "true" ]]; then
+    REQUIRED_VARS+=(
     ES_URL
     ES_USERNAME
     ES_PASSWORD
 )
+fi
 
 missing=()
 for var in "${REQUIRED_VARS[@]}"; do
@@ -85,9 +120,15 @@ echo "============================================"
 echo "  Project:            $GCLOUD_PROJECT"
 echo "  Region:             $GCLOUD_REGION"
 echo "  BQ Dataset:         $BQ_DATASET"
+echo "  BQ Source Suffix:   ${BQ_SOURCE_SUFFIX:-<none>}"
+echo "  PG Table Suffix:    ${PG_TABLE_SUFFIX:-<none>}"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
+echo "  Run dbt:            $RUN_DBT"
+echo "  Run Postgres:       $RUN_POSTGRES"
+echo "  Run Elasticsearch:  $RUN_ES"
+echo "  Skip MVs:           $SKIP_MATERIALIZED_VIEWS"
 echo "============================================"
 echo ""
 
@@ -103,10 +144,16 @@ _BQ_DATASET=$BQ_DATASET,\
 _BQ_LOCATION=$BQ_LOCATION,\
 _GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET,\
 _PG_CONN_INTERNAL=$PG_CONN_INTERNAL,\
-_ES_URL=$ES_URL,\
-_ES_USERNAME=$ES_USERNAME,\
-_ES_PASSWORD=$ES_PASSWORD,\
-_SUPPRESS_DATASETS=$SUPPRESS_DATASETS" \
+_ES_URL=${ES_URL:-},\
+_ES_USERNAME=${ES_USERNAME:-},\
+_ES_PASSWORD=${ES_PASSWORD:-},\
+_SUPPRESS_DATASETS=$SUPPRESS_DATASETS,\
+_RUN_DBT=$RUN_DBT,\
+_RUN_POSTGRES=$RUN_POSTGRES,\
+_RUN_ES=$RUN_ES,\
+_BQ_SOURCE_SUFFIX=$BQ_SOURCE_SUFFIX,\
+_PG_TABLE_SUFFIX=$PG_TABLE_SUFFIX,\
+_SKIP_MATERIALIZED_VIEWS=$SKIP_MATERIALIZED_VIEWS" \
     --async \
     --format='value(id)')
 
