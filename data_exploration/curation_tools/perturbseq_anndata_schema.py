@@ -23,9 +23,7 @@ class ObsSchema(DataFrameModel):
         description="Unique identifier for the dataset, follows the format <firstauthor_year>",
     )
     sample_id: Series[String] = Field(
-        nullable=False, 
-        coerce=True,
-        description="Unique identifier for the sample."
+        nullable=False, coerce=True, description="Unique identifier for the sample."
     )
     cell_barcode: Series[String] = Field(
         nullable=False,
@@ -38,12 +36,14 @@ class ObsSchema(DataFrameModel):
         isin=["Perturb-seq", "CRISPR screen", "MAVE"],
     )
     significant: Series[String] = Field(
-        nullable=True, description="Indicates whether the perturbation had a significant effect.",
+        nullable=True,
+        description="Indicates whether the perturbation had a significant effect.",
         coerce=True,
-        isin=["True", "False"]
+        isin=["True", "False"],
     )
     significance_criteria: Series[String] = Field(
-        nullable=True, description="Criteria used to determine significance, e.g., FDR < 0.05."
+        nullable=True,
+        description="Criteria used to determine significance, e.g., FDR < 0.05.",
     )
     perturbation_name: Series[String] = Field(
         nullable=False,
@@ -63,13 +63,14 @@ class ObsSchema(DataFrameModel):
         description="Numeric encoding of the chromosome of the perturbed target. Required for data partitioning in BigQuery.",
     )
     perturbed_target_number: Series[Int64] = Field(
-        nullable=False, 
-        ge=0, 
+        nullable=False,
+        ge=0,
         coerce=True,
-        description="Number of perturbed targets in the samples."
+        description="Number of perturbed targets in the samples.",
     )
     perturbed_target_ensg: Series[String] = Field(
-        nullable=True, description="Ensembl gene ID(s) of the perturbed target."
+        nullable=True,
+        description="Ensembl gene ID(s) of the perturbed target. Multi-target values are separated with '+'.",
     )
     perturbed_target_symbol: Series[String] = Field(
         nullable=True,
@@ -122,7 +123,7 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[String] = Field(
         nullable=False,
         description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid", 'yeast'],
+        isin=["cell_line", "primary_cell", "organoid", "yeast"],
     )
     model_system_id: Series[String] = Field(
         nullable=True,
@@ -161,7 +162,7 @@ class ObsSchema(DataFrameModel):
     sex_label: Series[String] = Field(
         nullable=True,
         description="Sex ontology term label of the investigated sample.",
-        isin=["female", "male", "mixed", "unknown"]
+        isin=["female", "male", "mixed", "unknown"],
     )
     sex_id: Series[String] = Field(
         nullable=True,
@@ -171,7 +172,15 @@ class ObsSchema(DataFrameModel):
     developmental_stage_label: Series[String] = Field(
         nullable=True,
         description="Developmental stage ontology term label of the investigated sample. The age groups are defined as follows: embryonic (conception to 8 weeks), fetal (9 weeks to birth), child (0-12 years), adolescent (13-18 years), adult (19-59 years), senior adult (60 years and above).",
-        isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
+        isin=[
+            "embryonic",
+            "fetal",
+            "neonatal",
+            "child",
+            "adolescent",
+            "adult",
+            "senior adult",
+        ],
     )
     developmental_stage_id: Series[String] = Field(
         nullable=True,
@@ -247,7 +256,14 @@ class ObsSchema(DataFrameModel):
     enzyme_delivery_method_label: Series[String] = Field(
         nullable=True,
         description="Enzyme delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
+        isin=[
+            "lipofection",
+            "nucleofection",
+            "retrovirus transduction",
+            "lentivirus transduction",
+            "transformation",
+            "nanoparticle-mediated transfection",
+        ],
     )
     library_delivery_method_id: Series[String] = Field(
         nullable=True, description="Library delivery method ontology term ID."
@@ -255,7 +271,14 @@ class ObsSchema(DataFrameModel):
     library_delivery_method_label: Series[String] = Field(
         nullable=True,
         description="Library delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
+        isin=[
+            "lipofection",
+            "nucleofection",
+            "retrovirus transduction",
+            "lentivirus transduction",
+            "transformation",
+            "nanoparticle-mediated transfection",
+        ],
     )
     enzyme_integration_state_id: Series[String] = Field(
         nullable=True, description="Enzyme integration state ontology term ID."
@@ -263,7 +286,12 @@ class ObsSchema(DataFrameModel):
     enzyme_integration_state_label: Series[String] = Field(
         nullable=True,
         description="Enzyme integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
+        isin=[
+            "random locus integration",
+            "targeted locus integration",
+            "native locus replacement",
+            "non-integrative transgene expression",
+        ],
     )
     library_integration_state_id: Series[String] = Field(
         nullable=True, description="Library integration state ontology term ID."
@@ -271,7 +299,12 @@ class ObsSchema(DataFrameModel):
     library_integration_state_label: Series[String] = Field(
         nullable=True,
         description="Library integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
+        isin=[
+            "random locus integration",
+            "targeted locus integration",
+            "native locus replacement",
+            "non-integrative transgene expression",
+        ],
     )
     enzyme_expression_control_id: Series[String] = Field(
         nullable=True, description="Enzyme expression control ontology term ID."
@@ -279,7 +312,12 @@ class ObsSchema(DataFrameModel):
     enzyme_expression_control_label: Series[String] = Field(
         nullable=True,
         description="Enzyme expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
+        isin=[
+            "constitutive transgene expression",
+            "inducible transgene expression",
+            "native promoter-driven transgene expression",
+            "degradation domain-based transgene control",
+        ],
     )
     # library details
     library_expression_control_id: Series[String] = Field(
@@ -288,7 +326,12 @@ class ObsSchema(DataFrameModel):
     library_expression_control_label: Series[String] = Field(
         nullable=True,
         description="Library expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
+        isin=[
+            "constitutive transgene expression",
+            "inducible transgene expression",
+            "native promoter-driven transgene expression",
+            "degradation domain-based transgene control",
+        ],
     )
     library_name: Series[String] = Field(
         nullable=True,
@@ -319,7 +362,14 @@ class ObsSchema(DataFrameModel):
     library_perturbation_type_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the library perturbation type.",
-        isin=["knockout", "inhibition", "activation", "base editing", "prime editing", "mutagenesis"],
+        isin=[
+            "knockout",
+            "inhibition",
+            "activation",
+            "base editing",
+            "prime editing",
+            "mutagenesis",
+        ],
     )
     library_manufacturer: Series[String] = Field(
         nullable=True,
@@ -377,7 +427,16 @@ class ObsSchema(DataFrameModel):
     method_name_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the method name used in the readout assay.",
-        isin=["Perturb-seq", "Perturb-CITE-seq", "scRNA-seq", "proliferation CRISPR screen", "DMS-TileSeq", "DMS-BarSeq", "Joined and refined DMS-BarSeq and DMS-TileSeq", "Combined DMS-BarSeq and DMS-TileSeq"],
+        isin=[
+            "Perturb-seq",
+            "Perturb-CITE-seq",
+            "scRNA-seq",
+            "proliferation CRISPR screen",
+            "DMS-TileSeq",
+            "DMS-BarSeq",
+            "Joined and refined DMS-BarSeq and DMS-TileSeq",
+            "Combined DMS-BarSeq and DMS-TileSeq",
+        ],
     )
     method_uri: Series[String] = Field(
         nullable=True,
@@ -398,7 +457,7 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
             "GEM-X Flex Gene Expression Human n-plex kit",
-            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
         ],
     )
     sequencing_platform_id: Series[String] = Field(
@@ -426,7 +485,11 @@ class ObsSchema(DataFrameModel):
     sequencing_strategy_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing strategy.",
-        isin=["barcode sequencing", "direct sequencing", "barcode sequencing|direct sequencing"],
+        isin=[
+            "barcode sequencing",
+            "direct sequencing",
+            "barcode sequencing|direct sequencing",
+        ],
     )
     software_counts_id: Series[String] = Field(
         nullable=True,
@@ -447,8 +510,7 @@ class ObsSchema(DataFrameModel):
         isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST", "scanpy"],
     )
     score_interpretation: Series[String] = Field(
-        nullable=True,
-        description="Interpretation of the perturbation effect score."
+        nullable=True, description="Interpretation of the perturbation effect score."
     )
     reference_genome_id: Series[String] = Field(
         nullable=True, description="Ontology term ID for the reference genome."
@@ -485,17 +547,15 @@ class VarSchema(DataFrameModel):
         nullable=False,
         unique=True,
         check_name=True,
-        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with"
+        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with",
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
         str_matches=r"^(ENSG|control)",  # starts with either ENSG or control
-        description="Ensembl gene ID"
+        description="Ensembl gene ID",
     )
     gene_symbol: Series[str] = Field(
-        nullable=True,
-        coerce=True,
-        description="Gene symbol"
+        nullable=True, coerce=True, description="Gene symbol"
     )
 
     class Config:
