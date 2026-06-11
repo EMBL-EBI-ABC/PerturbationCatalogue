@@ -13,7 +13,23 @@
   "mappings": {
     "dynamic": false,
     "properties": {
+      "perturbed_target_id": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
       "perturbed_target_symbol": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
+      "perturbed_target_ensg": {
         "type": "keyword",
         "normalizer": "lc_ascii",
         "ignore_above": 256,
