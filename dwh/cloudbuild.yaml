@@ -6,12 +6,15 @@
 #   3. bq_to_es         (BQ summary tables → Elasticsearch)
 #
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
+#   or: ./trigger_pipeline.sh --postgres-only --bq-source-suffix _gene_id_migration --pg-table-suffix _gene_id_migration
 #
 # Substitution variables (passed by trigger_pipeline.sh):
 #   _GCLOUD_PROJECT, _GCLOUD_REGION, _BQ_DATASET, _BQ_LOCATION, _GCLOUD_TMP_BUCKET,
 #   _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
+#   _RUN_DBT, _RUN_POSTGRES, _RUN_ES
+#   _BQ_SOURCE_SUFFIX, _PG_TABLE_SUFFIX, _SKIP_MATERIALIZED_VIEWS
 
 timeout: 43200s  # 12 hours
 
