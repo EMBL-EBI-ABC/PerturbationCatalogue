@@ -54,6 +54,8 @@ A --> C
 B --> C
 ```
 
+A small separate callback (`set_example_gene`) wires the **TP53 / BRCA1 / KRAS** quick-search buttons next to the dropdown — clicking one just sets the gene-dropdown value, which then triggers the callback above as normal.
+
 ---
 
 ## 3. How node colours are computed
@@ -81,4 +83,5 @@ The query gene itself is always shown in **dark orange (#D55E00)** to distinguis
 - All computation is **local and instantaneous** — no external API calls are made in the single-gene view.
 - The FDR dropdown is shared across both tabs; changing it updates the single-gene view and the gene-list view simultaneously.
 - The bar chart and table both show all partners at the chosen FDR; the Cytoscape graph is capped at the **top 20** to keep the layout readable.
+- The **"Download all partners (CSV)"** button (enabled once a gene is selected) exports the *full* partner list at the current FDR — not just the top 20 shown in the chart/graph — with a plain-English "co-essential / anti-correlated" note per row.
 - For the gene-list view (Tab 2) and its GO:BP annotation workflow, see `gene_list_workflow.md`.

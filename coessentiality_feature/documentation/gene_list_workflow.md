@@ -1,6 +1,6 @@
 # Gene-List Network View — Workflow & GO:BP Annotation
 
-The gene-list view lets users paste a set of gene symbols and explore how they are co-essentially connected. It groups connected genes into **co-essential modules**, then annotates each module with its most enriched GO Biological Process term.
+The gene-list view lets users paste a set of gene symbols and explore how they are co-essentially connected. It can expand the network outward to nearby genes, groups connected genes into **co-essential modules**, and annotates each module with its significant, non-redundant GO Biological Process terms.
 
 ---
 
@@ -25,7 +25,7 @@ B --> F[all_genes set\nused to validate user input]:::data
 
 ## 2. Gene-list view — full workflow
 
-The view is driven by **three callbacks** that fire at different points.
+The view is driven by **four callbacks**.
 
 ```mermaid
 flowchart TD
@@ -36,70 +36,138 @@ classDef problem  fill:#C0392B,color:#fff,stroke:#7B241C,stroke-width:3px
 classDef store    fill:#6C757D,color:#fff,stroke:none
 classDef out      fill:#E8F5EE,color:#212121,stroke:#2E7D52
 
-A([Paste gene list + set FDR]):::user
+A([Paste gene list, set FDR / degree slider,\nor click "Load example gene list"]):::user
 
-subgraph CB1["Callback 1 — runs when user finishes typing and clicks away (on blur), no external calls"]
+subgraph CB1["Callback 1 — update_multi\nruns on blur, FDR change, degree-slider change, or example-button click"]
     B[Parse & validate gene symbols]:::fast
-    C[Filter network at chosen FDR\nkeep pairs where both genes are in the list]:::fast
-    D[Find connected components\nnumber by size  1 = largest\ndrop components < 2 genes]:::fast
-    E[Tag each node & edge\nwith its module ID]:::fast
-    B --> C --> D --> E
+    C[Degree-of-interaction expansion\nBFS out from input genes, N hops\ncapped at 300 genes]:::fast
+    D[Filter network at chosen FDR\nkeep pairs where both genes are in the expanded set]:::fast
+    E[Find connected components\nnumber by size  1 = largest\ndrop components < 2 genes]:::fast
+    F[Tag each node & edge\nwith module ID + degree-of-interaction hop]:::fast
+    B --> C --> D --> E --> F
 end
 
 A --> B
 
-F[/Cytoscape network rendered/]:::out
-G[(Module list stored\ncluster · size · genes)]:::store
+G[/Cytoscape network rendered/]:::out
+H[(Module list stored\ncluster · size · genes)]:::store
+I[(Generation counter incremented\ninvalidates stale GO results & highlights)]:::store
 
-E --> F
-E --> G
+F --> G
+F --> H
+F --> I
 
-H([Click  Find modules & annotate]):::user
-G --> H
+J([Click  Find modules & annotate with GO:BP]):::user
+H --> J
 
-subgraph CB2["Callback 2 — runs on button click, one API call per module"]
-    I{Module\n> 3 genes?}
-    J[Not annotated\ntoo small]:::out
-    K[gseapy.enrichr\nHTTP call to Enrichr API\n~1–2 s per module]:::problem
-    L[Top GO:BP term\nby adjusted p-value]:::fast
-    I -- No --> J
-    I -- Yes --> K --> L
+subgraph CB2["Callback 2 — annotate_multi_modules\nruns on button click, one Enrichr call per module"]
+    K{Module\n> 3 genes?}
+    L[Not annotated — too small\nor skipped — too large]:::out
+    M[gseapy.enrichr\nHTTP call to Enrichr API\n~1-2 s per module]:::problem
+    N[Keep terms at adj. p <= 5%,\nde-duplicate with Weighted Set Cover]:::fast
+    K -- No --> L
+    K -- Yes --> M --> N
 end
 
-H --> I
+J --> K
+I -.->|generation counter change resets table & cluster filter| K
 
-M[/Modules table\ncluster · size · GO term · p-value · adj. p-value/]:::out
-J --> M
-L --> M
+O[(All significant GO:BP rows stored)]:::store
+N --> O
+L --> O
 
-N([Click a row in the table]):::user
-M --> N
-
-subgraph CB3["Callback 3 — runs on row click, no external calls"]
-    O[Add highlight rules to Cytoscape\nselected module → orange border & edges]:::fast
+subgraph CB2b["Callback 2b — filter_go_table\nruns when results or cluster filter change"]
+    P[Filter stored rows by\nselected cluster, or show all]:::fast
 end
 
-N --> O --> F
+O --> P
+Cl([Select cluster from dropdown]):::user --> P
+
+Q[/Modules table\ncluster · size · GO term · p-value · adj. p-value/]:::out
+P --> Q
+
+R([Click a row in the table]):::user
+Q --> R
+
+subgraph CB3["Callback 3 — highlight_module\nruns on row click, no external calls"]
+    S[Add highlight rules to Cytoscape\nselected module gets an orange border & edges]:::fast
+end
+
+R --> S --> G
+I -.->|generation counter change clears highlight| S
 ```
 
 ---
 
-## 3. The GO:BP annotation problem
+## 3. Degree-of-interaction expansion
 
-The red box in Callback 2 is a **live HTTP call to the Enrichr web API**. This is fine for local development but causes serious problems when the app is deployed to Google Cloud Platform.
+By default the network shows only pairs **between** the genes the user typed in. The **"Degree of interaction (N)" slider** (0–2) expands outward along co-essential edges:
+
+- **0** (default): only the input genes and pairs among them.
+- **1**: also include genes that are directly co-essential with at least one input gene.
+- **2**: also include genes one further hop out from those.
+
+Expansion is a breadth-first search over the FDR-filtered network, capped at 300 total genes (`MULTI_MAX_EXPANDED_GENES`) so the layout stays readable and the callback stays fast.
+
+**Node colours:**
+
+| Colour | Meaning |
+|---|---|
+| Near-black (`#222222`) | Input gene with at least one co-essential pair to another input gene |
+| Light grey (`#D9D9D9`) | Input gene with no pair to another input gene (at the current FDR) |
+| Light purple (`#D8BFD8`) | Gene added by degree-of-interaction expansion |
+
+**Edge colours:** same blue/orange convention as the single-gene view — blue (`#0072B2`) for positive co-essentiality, orange (`#E69F00`) for negative — based on the sign of `corr_genes`.
+
+A **"Load example gene list"** button pre-fills the textarea with a curated set of DNA-damage-response genes (BRCA1, BRCA2, PALB2, RAD51, ATM, CHEK2, TP53, PTEN, RB1, FANCL, FANCA, FANCD2, FANCG, FANCI, MDM2, MDM4) so the network and module table can be explored without typing anything.
+
+---
+
+## 4. Co-essential modules & GO:BP annotation
+
+Genes connected within the (possibly expanded) network are grouped into **co-essential modules** — connected components, numbered by size (1 = largest, ≥ 2 genes).
+
+Clicking **"Find modules & annotate with GO:BP"**:
+
+1. Skips modules with ≤ 3 genes (too small for a meaningful enrichment test) — shown in the table as "not annotated".
+2. Skips modules larger than 200 genes (likely a giant-component artefact from a high degree-of-interaction setting) — shown as "skipped".
+3. For all remaining modules (up to 10 per click, `MULTI_MAX_MODULES_TO_ANNOTATE`), queries the Enrichr API (`GO_Biological_Process_2025`) and keeps **every** term at adj. p ≤ 5%.
+4. Removes redundant terms with a **greedy Weighted Set Cover**: terms are processed from most to least significant, and a term is dropped if ≥ 50% of its genes are already covered by a previously kept term — the same redundancy-reduction strategy WebGestalt uses by default. The result is a non-redundant set of representative GO:BP terms, one row per term per module.
+
+A **cluster filter dropdown** ("All modules" or a specific module) narrows the table to one module's terms. Clicking a row in the table highlights that module's nodes/edges in the network above with an orange border.
+
+> If the gene list, FDR, or degree-of-interaction slider changes after annotation, the module numbering may no longer match the table. The app detects this via an internal generation counter and automatically clears the GO:BP results, cluster filter, and any highlight — the user must click "Find modules & annotate" again.
+
+---
+
+## 5. CSV downloads
+
+| Button | Tab | Contents |
+|---|---|---|
+| Download all partners (CSV) | Single-gene | Every co-essential partner of the selected gene at the chosen FDR — partner gene, p-value, adj. p-value, correlation, and a plain-English "co-essential / anti-correlated" note |
+| Download pairs (CSV) | Gene-list | Every displayed pair, including any added by degree-of-interaction expansion, with each gene's hop distance and an "Original input pair" / "Degree-of-interaction pair" label |
+| Download GO:BP terms (CSV) | Gene-list | The GO:BP terms currently shown in the modules table (respects the cluster filter), with each module's full gene list |
+
+All three are generated on demand from the in-memory DataFrame — no extra file I/O.
+
+---
+
+## 6. The GO:BP annotation problem
+
+The red box in Callback 2 is a **live HTTP call to the Enrichr web API**, made once per module that needs annotating. This is fine for local development but causes serious problems when the app is deployed to Google Cloud Platform.
 
 | Problem | Impact |
 |---|---|
-| **One API call per module, sequential** | 5 modules × ~2 s = ~10 s blocking. Cloud Run has per-request timeouts — users with larger gene lists will hit them. |
+| **One API call per module, sequential** | Up to 10 modules × ~2 s = ~20 s blocking. Cloud Run has per-request timeouts — users with larger gene lists or higher degree-of-interaction settings will hit them. |
 | **Rate limits** | Enrichr limits queries per IP. Multiple concurrent users share one GCP outbound IP and will get throttled or 429 errors. |
 | **External dependency** | If Enrichr is unavailable (maintenance, outage), GO annotation silently fails for all users. |
 | **No caching** | The same GO:BP library is re-downloaded from Enrichr on every button click, even though it never changes between requests. |
 
 ---
 
-## 4. The fix — local enrichment (planned for GCP deployment)
+## 7. The fix — local enrichment (planned for GCP deployment)
 
-The GO:BP gene-set library is **static** — it only changes when Enrichr releases a new version. The enrichment test is just a **hypergeometric test + Benjamini–Hochberg correction**, which runs in milliseconds. There is no reason to call an external API at all.
+The GO:BP gene-set library is **static** — it only changes when Enrichr releases a new version. The enrichment test itself is just a **hypergeometric test + Benjamini–Hochberg correction**, which runs in milliseconds. There is no reason to call an external API at all. The Weighted Set Cover redundancy filter (Section 4) is pure pandas/Python and needs no changes either way.
 
 ```mermaid
 flowchart LR
@@ -124,7 +192,7 @@ subgraph LIVE["At annotation time — replaces the Enrichr API call"]
     E[For each module > 3 genes]:::live
     F[Hypergeometric test against each GO term\nscipy.stats.hypergeom]:::live
     G[BH correction across all tested terms\nstatsmodels.multipletests]:::live
-    H[Top term by adj. p-value\n< 10 ms per module  no network call]:::live
+    H[Weighted Set Cover\nsame as today, unchanged]:::live
     E --> F --> G --> H
 end
 
@@ -134,11 +202,12 @@ BOOT --> LIVE
 
 ### What changes in the code
 
-Only the `annotate_multi_modules` callback in `coessentiality_feature_pc.py` needs updating — roughly a 10-line swap:
+Only the `annotate_multi_modules` callback in `coessentiality_feature_pc.py` needs updating:
 
 - **Remove:** `gp.enrichr(gene_list=..., gene_sets=..., organism=..., outdir=None)`
-- **Replace with:** `_local_enrichr(gene_list, _GO_SETS, _GO_BACKGROUND)` using `scipy.stats.hypergeom` + `statsmodels` BH correction
+- **Replace with:** `_local_enrichr(gene_list, _GO_SETS, _GO_BACKGROUND)` using `scipy.stats.hypergeom` + `statsmodels` BH correction, returning a DataFrame with the same `Term` / `P-value` / `Adjusted P-value` / `Genes` columns Enrichr returns today
 - **Add at startup:** `_GO_SETS = _load_go_sets()` — loads `go_bp_2025.pkl` once, reused for every request
+- `_weighted_set_cover()` and `_split_go_term()` are unchanged — they only operate on the resulting DataFrame
 
 ### Prototype vs production at a glance
 
@@ -146,6 +215,7 @@ Only the `annotate_multi_modules` callback in `coessentiality_feature_pc.py` nee
 |---|---|---|
 | GO library source | Enrichr API, live per click | `.pkl` file, loaded at startup |
 | Enrichment test | Remote (Enrichr server) | Local hypergeometric + BH |
+| Redundancy filtering | Weighted Set Cover (already local) | Unchanged |
 | Speed | ~1–2 s per module | < 10 ms per module |
 | Fails if Enrichr is down | Yes | No |
 | Rate-limit risk on GCP | Yes | None |
