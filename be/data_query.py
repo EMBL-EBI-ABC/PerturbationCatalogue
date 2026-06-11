@@ -32,9 +32,9 @@ if PG_TABLE_SUFFIX and not PG_TABLE_SUFFIX.replace("_", "").isalnum():
     )
 
 PG_TABLES = {
-    "perturb-seq": "perturb_seq_dea",
-    "crispr-screen": "crispr_data",
-    "mave": "mave_data",
+    "perturb-seq": f"perturb_seq_dea{PG_TABLE_SUFFIX}",
+    "crispr-screen": f"crispr_data{PG_TABLE_SUFFIX}",
+    "mave": f"mave_data{PG_TABLE_SUFFIX}",
 }
 
 # Field mappings from API to database
