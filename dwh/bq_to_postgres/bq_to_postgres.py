@@ -36,6 +36,13 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+SOURCE_DATASETS = {
+    "crispr_data": "crispr",
+    "mave_data": "mavedb",
+    "perturb_seq_dea": "perturb_seq",
+    "perturb_seq_gsea": "perturb_seq",
+}
+
 SYNC_QUERIES = {
     "crispr_data": {
         "export_query": r"""
@@ -237,18 +244,33 @@ def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
     return states
 
 
+def get_source_dataset(table_name: str, bq_source_suffix: str = "") -> str:
+    """Returns the BigQuery source dataset for a logical table."""
+    return f"{SOURCE_DATASETS[table_name]}{bq_source_suffix}"
+
+
 def get_bq_latest_timestamps_and_counts(
-    bq_client, table_name, bq_location
+    bq_client, table_name, bq_location, bq_source_suffix=""
 ) -> Dict[str, Tuple[Any, int]]:
     """Gets the latest max_ingested_at and row count for every dataset_id in a BQ table."""
-    query = SYNC_QUERIES[table_name]["ts_query"].format(project=bq_client.project)
+    query = SYNC_QUERIES[table_name]["ts_query"].format(
+        project=bq_client.project,
+        source_dataset=get_source_dataset(table_name, bq_source_suffix),
+    )
     query_job = bq_client.query(query, location=bq_location)
     results = query_job.result()
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
 
 
 def export_dataset_to_gcs(
-    bq_client, bq_dataset, table_name, bq_location, gcs_bucket, gcs_prefix, dataset_id
+    bq_client,
+    bq_dataset,
+    table_name,
+    bq_location,
+    gcs_bucket,
+    gcs_prefix,
+    dataset_id,
+    bq_source_suffix="",
 ) -> str:
     """Exports a specific dataset from BigQuery to GCS as Parquet via a temp table."""
     destination_uri = f"gs://{gcs_bucket}/{gcs_prefix}-*.parquet"
@@ -261,7 +283,9 @@ def export_dataset_to_gcs(
     temp_table_ref = dataset_ref.table(temp_table_id)
 
     query = SYNC_QUERIES[table_name]["export_query"].format(
-        project=bq_client.project, dataset_id=dataset_id
+        project=bq_client.project,
+        source_dataset=get_source_dataset(table_name, bq_source_suffix),
+        dataset_id=dataset_id,
     )
     job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
@@ -510,29 +534,41 @@ class TableSynchronizer:
         bq_dataset: str,
         bq_location: str,
         gcs_bucket: str,
+        bq_source_suffix: str = "",
+        pg_table_suffix: str = "",
+        skip_materialized_views: bool = False,
     ):
         self.drop_and_recreate_indexes = drop_and_recreate_indexes
         self.pg_conn_str = pg_conn_str
         self.bq_dataset = bq_dataset
         self.bq_location = bq_location
         self.gcs_bucket = gcs_bucket
+        self.bq_source_suffix = bq_source_suffix
+        self.pg_table_suffix = pg_table_suffix
+        self.skip_materialized_views = skip_materialized_views
         self.bq_client = bigquery.Client()
         self.gcs_client = storage.Client()
 
     def sync_table(self, table_name: str, plan: Dict[str, Any]):
-        logging.info(f"Syncing table {table_name}...")
+        pg_table = self.get_pg_table(table_name)
+        logging.info(f"Syncing table {table_name} -> {pg_table}...")
         try:
             self._sync_unified(table_name, plan)
-            logging.info(f"Successfully synced {table_name}.")
+            logging.info(f"Successfully synced {table_name} -> {pg_table}.")
 
         except BaseException as e:
             logging.error(f"Error syncing {table_name}: {e}.")
             raise e
 
+    def get_pg_table(self, table_name: str) -> str:
+        return f"{table_name}{self.pg_table_suffix}"
+
     def _get_bq_schema(self, table_name):
         query = (
             SYNC_QUERIES[table_name]["export_query"].format(
-                project=self.bq_client.project, dataset_id="_dummy_limit_0_"
+                project=self.bq_client.project,
+                source_dataset=get_source_dataset(table_name, self.bq_source_suffix),
+                dataset_id="_dummy_limit_0_",
             )
             + " LIMIT 0"
         )
@@ -542,7 +578,7 @@ class TableSynchronizer:
 
     def _ingest_dataset_logic(self, cursor, pg_table, table_name, ds_id, bq_schema):
         """Standard ingestion: export, delete, copy."""
-        gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+        gcs_prefix = f"tmp/{pg_table}/{ds_id}/{uuid.uuid4().hex}"
         logging.info(f"    Processing {ds_id}...")
         try:
             export_dataset_to_gcs(
@@ -553,6 +589,7 @@ class TableSynchronizer:
                 self.gcs_bucket,
                 gcs_prefix,
                 ds_id,
+                self.bq_source_suffix,
             )
             delete_dataset_from_pg(cursor, pg_table, ds_id)
             load_parquet_from_gcs_to_pg(
@@ -578,11 +615,12 @@ class TableSynchronizer:
         """
         bq_schema = self._get_bq_schema(table_name)
         datasets = sorted(plan["to_update"] + plan["to_insert"])
+        pg_table = self.get_pg_table(table_name)
 
         # 1. Main Transaction Block
         with psycopg2.connect(self.pg_conn_str) as conn:
             with conn.cursor() as cursor:
-                ensure_pg_table_exists(cursor, table_name, bq_schema)
+                ensure_pg_table_exists(cursor, pg_table, bq_schema)
 
                 logging.info(
                     f"    Starting transaction for {len(datasets)} datasets..."
@@ -590,26 +628,30 @@ class TableSynchronizer:
 
                 # A. Drop Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    drop_indexes(cursor, table_name)
+                    drop_indexes(cursor, table_name, self.pg_table_suffix)
 
                 # B. Ingest Loop
                 for ds_id in tqdm(
-                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
+                    datasets, desc=f"    Syncing {pg_table}", unit="dataset"
                 ):
                     # Data Ingestion
                     self._ingest_dataset_logic(
-                        cursor, table_name, table_name, ds_id, bq_schema
+                        cursor, pg_table, table_name, ds_id, bq_schema
                     )
 
                     # Update sync state
                     bq_ts = plan["bq_info"][ds_id][0]
-                    update_sync_state(cursor, table_name, ds_id, bq_ts)
+                    update_sync_state(cursor, pg_table, ds_id, bq_ts)
 
                 # C. Recreate Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    create_indexes(cursor, table_name)
+                    create_indexes(cursor, table_name, self.pg_table_suffix)
 
-        # 2. Materialized View Refresh (concurrently, separate connection)
+        if self.skip_materialized_views:
+            logging.info("    Skipping materialized view refresh.")
+            return
+
+        # 2. Materialized View Refresh (concurrently, separate connection).
         # Only if we successfully committed the transaction above.
         with psycopg2.connect(self.pg_conn_str) as conn:
             conn.autocommit = (
@@ -651,6 +693,21 @@ def main():
         action="store_true",
         help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
     )
+    parser.add_argument(
+        "--bq-source-suffix",
+        default=os.getenv("BQ_SOURCE_SUFFIX", ""),
+        help="Suffix for source BigQuery datasets, e.g. _gene_id_migration (env: BQ_SOURCE_SUFFIX)",
+    )
+    parser.add_argument(
+        "--pg-table-suffix",
+        default=os.getenv("PG_TABLE_SUFFIX", ""),
+        help="Suffix for target Postgres tables, e.g. _gene_id_migration (env: PG_TABLE_SUFFIX)",
+    )
+    parser.add_argument(
+        "--skip-materialized-views",
+        action="store_true",
+        help="Skip materialized view refresh after table sync.",
+    )
 
     args = parser.parse_args()
 
@@ -666,6 +723,11 @@ def main():
         missing.append("--gcs-bucket / GCLOUD_TMP_BUCKET")
     if missing:
         parser.error("The following arguments are required: " + ", ".join(missing))
+    if args.pg_table_suffix and not args.skip_materialized_views:
+        parser.error(
+            "--skip-materialized-views is required when --pg-table-suffix is set "
+            "to avoid refreshing production materialized views during a dev sync."
+        )
 
     # Initialize synchronizer
     synchronizer = TableSynchronizer(
@@ -674,6 +736,9 @@ def main():
         bq_dataset=args.bq_dataset,
         bq_location=args.bq_location,
         gcs_bucket=args.gcs_bucket,
+        bq_source_suffix=args.bq_source_suffix,
+        pg_table_suffix=args.pg_table_suffix,
+        skip_materialized_views=args.skip_materialized_views,
     )
 
     # Database connection for planning
@@ -687,12 +752,16 @@ def main():
             bq_client = synchronizer.bq_client
 
             for table_name in TABLES_TO_SYNC:
-                logging.info(f"Checking {table_name}...")
+                pg_table = synchronizer.get_pg_table(table_name)
+                logging.info(f"Checking {table_name} -> {pg_table}...")
 
                 # 1. Get BQ state
                 try:
                     bq_info = get_bq_latest_timestamps_and_counts(
-                        bq_client, table_name, args.bq_location
+                        bq_client,
+                        table_name,
+                        args.bq_location,
+                        args.bq_source_suffix,
                     )
                 except Exception as e:
                     logging.warning(
@@ -701,7 +770,7 @@ def main():
                     continue
 
                 # 2. Compare with PG state
-                pg_info = pg_states.get(table_name, {})
+                pg_info = pg_states.get(pg_table, {})
                 to_insert = []
                 to_update = []
 
@@ -716,7 +785,7 @@ def main():
                             to_update.append(ds_id)
 
                 if not to_insert and not to_update:
-                    logging.info(f"  {table_name} is up to date.")
+                    logging.info(f"  {pg_table} is up to date.")
                     continue
 
                 # 3. Create plan
