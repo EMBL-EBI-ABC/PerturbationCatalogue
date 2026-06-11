@@ -57,37 +57,37 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                         BATCH PIPELINE (monthly)                     │
-│                                                                      │
-│  DepMap Portal API                                                   │
-│        │                                                             │
-│        ▼                                                             │
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        BATCH PIPELINE (monthly)                         │
+│                                                                         │
+│  DepMap Portal API                                                      │
+│        │                                                                │
+│        ▼                                                                │
 │  step1_fetch_depmap.py ──► CRISPRGeneEffect_<version>.csv               │
-│                    ──► Model.csv                                     │
-│                    ──► depmap_version.txt                            │
-│        │                                                             │
-│        ▼                                                             │
-│  step2_gls_coessentiality.py ──► <prefix>_GLS_p.npy                    │
-│                           ──► <prefix>_GLS_sign.npy                 │
-│                           ──► <prefix>_genes.txt                    │
-│        │                                                             │
-│        ▼                                                             │
+│                    ──► Model.csv                                        │
+│                    ──► depmap_version.txt                               │
+│        │                                                                │
+│        ▼                                                                │
+│  step2_gls_coessentiality.py ──► <prefix>_GLS_p.npy                     │
+│                           ──► <prefix>_GLS_sign.npy                     │
+│                           ──► <prefix>_genes.txt                        │
+│        │                                                                │
+│        ▼                                                                │
 │  step3_fdr_coessentiality.py ──► depmap_<version>_gls_whole_            │
-│                               coessential_network_FDR_10.csv        │
-│        │                                                             │
-│        ▼                                                             │
-│   GCS Bucket  ◄──────────────────── upload (see Cloud Deployment)   │
-└──────────────────────────────────────────────────────────────────────┘
+│                               coessential_network_FDR_10.csv            │
+│        │                                                                │
+│        ▼                                                                │
+│   GCS Bucket  ◄──────────────────── upload (see Cloud Deployment)       │
+└─────────────────────────────────────────────────────────────────────────┘
                                 │
                                 │ reads CSV at startup
                                 ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                    ALWAYS-ON WEB APP (GCP Cloud Run)                 │
-│                                                                      │
-│   coessentiality_feature_pc.py  (Dash multi-page page)              │
-│        └─ serves /coessentiality route on the main website          │
-└──────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    ALWAYS-ON WEB APP (GCP Cloud Run)                    │
+│                                                                         │
+│   coessentiality_feature_pc.py  (registered as a Dash page)             │
+│        └─ serves /coessentiality route on the main website              │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 The pipeline runs once per DepMap release (approximately quarterly).  
@@ -529,7 +529,16 @@ layout = html.Div([...])
 
 **d. Replace local file reads with GCS reads:**
 
-Replace the `_DATA_DIR`-based `_resolve_data_path()` with a GCS read. Install
+`_DATA_DIR` (and the local `required_data/` folder it points to) is read in
+**three** places — all of them need to be handled, not just the network CSV:
+
+| Reads from `_DATA_DIR` | What for | Size |
+|---|---|---|
+| `_resolve_data_path()` → `df_all` | The network CSV — primary app data | ~1.7 MB |
+| `_DEPMAP_VERSION` (module-level) | Version badge text, e.g. "DepMap Public 26Q1" | a few bytes |
+| `_load_dataset_stats()` | `n_cell_lines` (row count of `CRISPRGeneEffect_<version>.csv`) and `n_genes_profiled` (line count of `depmap_<version>_genes.txt`) for the stat chips | CRISPR CSV is **~436 MB**, genes.txt is small |
+
+Replace `_resolve_data_path()` with a GCS read for the network CSV. Install
 `google-cloud-storage` and add:
 ```python
 import io
@@ -544,6 +553,16 @@ def _load_network_from_gcs():
 
 df_all = _load_network_from_gcs()
 ```
+
+For `_DEPMAP_VERSION` and `depmap_<version>_genes.txt`, do the same small-file
+GCS read (both are tiny, fine to fetch on every startup).
+
+> **Don't** fetch the 436 MB `CRISPRGeneEffect_<version>.csv` from GCS just to
+> compute `n_cell_lines` — that's a lot of bandwidth for one integer. Either
+> precompute `n_cell_lines` once (e.g. write it alongside `depmap_version.txt`
+> as part of the pipeline) and read that small value from GCS instead, or drop
+> the cell-line stat chip in the cloud version — `_load_dataset_stats()`
+> already returns `None` gracefully (chip shows `—`) if the file is missing.
 
 **e. The gene-list Textarea fires on blur** (`n_blur`) rather than on every keystroke.
 This is already implemented in the standalone app. No change needed — confirm the
@@ -599,6 +618,7 @@ gcloud run services update <SERVICE_NAME> \
 | No per-request file I/O | The network CSV is loaded once at startup. Restarting the Cloud Run service is the mechanism for picking up newly uploaded data; there is no hot-reload. |
 | FDR file must be 10% | The app expects the FDR 10% superset file. If only a 5% file is available, the 10% dropdown option will produce incorrect results (showing fewer pairs than expected). |
 | `_ensure_deps()` in step 2 and step 3 | These functions call `pip install` at runtime — they work locally but should be removed before containerising. Dependencies must be in `requirements.txt` and baked into the Docker image. |
+| GO:BP annotation calls Enrichr live | "Find modules & annotate with GO:BP" makes a live HTTP call per module (up to 10 per click) to the Enrichr API. Fine for local use; risks Cloud Run timeouts and cross-user rate-limiting in production. A local-enrichment replacement is designed but not yet implemented — see `documentation/gene_list_workflow.md`. |
 
 ---
 
