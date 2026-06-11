@@ -496,7 +496,7 @@ async def perform_search(
         es_query = build_elasticsearch_query(query, filters)
         facet_fields = FACET_FIELDS
         es_index = ES_TARGET_SUMMARY
-        sort_field = "perturbed_target_symbol"
+        sort_field = "perturbed_target_id"
 
     aggs = build_aggregations(facet_fields)
 
