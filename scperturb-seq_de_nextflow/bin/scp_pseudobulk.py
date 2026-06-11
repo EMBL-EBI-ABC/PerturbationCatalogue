@@ -75,13 +75,13 @@ except Exception as e:
 
 obs = A.obs.copy()
 if "perturbation" not in obs.columns:
-    for alt in ("perturbed_target_symbol",):
+    for alt in ("perturbed_target_id", "perturbed_target_symbol"):
         if alt in obs.columns:
             obs["perturbation"] = obs[alt].astype(str)
             break
 if "perturbation" not in obs.columns:
     raise SystemExit(
-        "Missing obs['perturbation']; tried perturbed_target_symbol as fallbacks."
+        "Missing obs['perturbation']; tried perturbed_target_id and perturbed_target_symbol as fallbacks."
     )
 
 obs["perturbation"] = obs["perturbation"].str.replace(

@@ -13,10 +13,15 @@ args = p.parse_args()
 A = ad.read_h5ad(args.input, backed="r")
 
 obs = A.obs
-obs["perturbed_target_symbol"] = obs["perturbed_target_symbol"].str.replace(
+perturbation_column = (
+    "perturbed_target_id"
+    if "perturbed_target_id" in obs.columns
+    else "perturbed_target_symbol"
+)
+obs[perturbation_column] = obs[perturbation_column].str.replace(
     r"^control.*", "control", regex=True
 )
-labels = obs["perturbed_target_symbol"].astype(str)
+labels = obs[perturbation_column].astype(str)
 
 counts = labels.value_counts()
 non_ctrl = counts.drop(index="control", errors="ignore")
