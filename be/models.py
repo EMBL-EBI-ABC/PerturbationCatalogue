@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 
 class SearchRequest(BaseModel):
     query: Optional[str] = Field(
-        None, description="Search query for perturbed_target_symbol"
+        None,
+        description="Search query for perturbed target ID, gene symbol, or Ensembl ID",
     )
     filters: Optional[Dict[str, List[str]]] = Field(
         None,
