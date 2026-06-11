@@ -77,7 +77,7 @@ with
             count(distinct experiment_title) as n_experiments,
             min(study_year) as min_year,
             max(study_year) as max_year,
-            count(distinct perturbed_target_symbol) as n_targets,
+            count(distinct perturbed_target_id) as n_targets,
             count(distinct tissue_label) as n_tissues,
             count(distinct cell_type_label) as n_cell_types,
             count(distinct cell_line_label) as n_cell_lines,
