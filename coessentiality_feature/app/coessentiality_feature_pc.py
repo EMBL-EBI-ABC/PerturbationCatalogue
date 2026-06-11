@@ -29,7 +29,7 @@ def _resolve_data_path():
     if not os.path.isfile(version_file):
         raise FileNotFoundError(
             f"depmap_version.txt not found at {version_file}.\n"
-            f"Run the pipeline (00 → 01 → 02) to generate the data files."
+            f"Run the pipeline (step1 → step2 → step3) to generate the data files."
         )
     release = open(version_file).read().strip()
     match = re.search(r"(\d+Q\d+)", release, re.IGNORECASE)
