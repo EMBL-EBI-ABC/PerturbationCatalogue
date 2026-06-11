@@ -25,6 +25,12 @@ router = APIRouter()
 # --- Constants and Mappings ---
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
+PG_TABLE_SUFFIX = os.getenv("PG_TABLE_SUFFIX", "")
+if PG_TABLE_SUFFIX and not PG_TABLE_SUFFIX.replace("_", "").isalnum():
+    raise ValueError(
+        "PG_TABLE_SUFFIX may only contain letters, numbers, and underscores"
+    )
+
 PG_TABLES = {
     "perturb-seq": "perturb_seq_dea",
     "crispr-screen": "crispr_data",
