@@ -406,7 +406,9 @@ def make_adata_biogrid(
         print("⚠️Provide biogrid_screen_id to process the screen")
         return
     if data_modality is None:
-        print("⚠️Provide data_modality to be assigned in the adata.obs['data_modality']")
+        print(
+            "⚠️Provide data_modality to be assigned in the adata.obs['data_modality']"
+        )
         return
     if gemini_id is None:
         print("⚠️Provide gemini_id to cross-reference metadata")
