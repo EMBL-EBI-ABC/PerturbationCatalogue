@@ -427,11 +427,15 @@ Opens at `http://localhost:8050`.
 
 | Tab | Purpose |
 |---|---|
-| Single-gene explorer | Search one gene; shows bar chart, partner table, and Cytoscape network (top 20 partners) |
-| Gene-list network | Paste a list of genes; shows Cytoscape network of all significant pairs among them |
+| Single-gene explorer | Search one gene (or click a TP53/BRCA1/KRAS quick-search button); shows bar chart, partner table, Cytoscape network (top 20 partners), and a "Download all partners (CSV)" button for the full partner list |
+| Gene-list network | Paste a list of genes (or click "Load example gene list"); shows a Cytoscape network of significant pairs, with a degree-of-interaction slider to expand to nearby genes, a co-essential modules table with on-demand GO:BP annotation, and CSV downloads for both the network pairs and the GO:BP terms |
 
 **FDR filter** (top dropdown): applies globally to both tabs; filters the
 in-memory DataFrame at query time — no file re-read.
+
+For the full callback-by-callback breakdown of each tab, see
+[`documentation/single_gene_workflow.md`](documentation/single_gene_workflow.md) and
+[`documentation/gene_list_workflow.md`](documentation/gene_list_workflow.md).
 
 ---
 
