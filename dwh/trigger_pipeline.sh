@@ -77,10 +77,10 @@ REQUIRED_VARS=(
 
 if [[ "$RUN_ES" == "true" ]]; then
     REQUIRED_VARS+=(
-    ES_URL
-    ES_USERNAME
-    ES_PASSWORD
-)
+        ES_URL
+        ES_USERNAME
+        ES_PASSWORD
+    )
 fi
 
 missing=()
