@@ -60,6 +60,50 @@ DATA_MODALITIES_COLOURS = {
 }
 
 
+def _split_multi_value(value: Any) -> List[str]:
+    """Split target symbol/ENSG display values while preserving target order."""
+    if value in (None, ""):
+        return []
+    value_str = str(value)
+    separator = "+" if "+" in value_str else "|"
+    return [part for part in value_str.split(separator) if part]
+
+
+def format_target_label(
+    target: Dict[str, Any],
+    *,
+    symbol_key: str = "perturbed_target_symbol",
+    ensg_key: str = "perturbed_target_ensg",
+    id_key: str = "perturbed_target_id",
+) -> str:
+    """Format targets as SYMBOL|SYMBOL (ENSG|ENSG), falling back to target ID."""
+    symbol_value = target.get(symbol_key) or ""
+    ensg_value = target.get(ensg_key) or ""
+    target_id = target.get(id_key) or ""
+
+    if target_id and ("|" in str(target_id) or "+" in str(target_id)):
+        pairs = []
+        for part in str(target_id).split("+"):
+            symbol, separator, ensg = part.partition("|")
+            if separator:
+                pairs.append((symbol, ensg))
+        if pairs:
+            symbols = "|".join(symbol for symbol, _ in pairs if symbol)
+            ensgs = "|".join(ensg for _, ensg in pairs if ensg)
+            if symbols and ensgs:
+                return f"{symbols} ({ensgs})"
+            return symbols or ensgs
+
+    symbols = _split_multi_value(symbol_value)
+    ensgs = _split_multi_value(ensg_value)
+
+    if symbols and len(symbols) == len(ensgs):
+        return f"{'|'.join(symbols)} ({'|'.join(ensgs)})"
+    if symbol_value and ensg_value:
+        return f"{symbol_value} ({ensg_value})"
+    return symbol_value or ensg_value or target_id or "N/A"
+
+
 def reprocessed_badge(value: Any, class_name: str = "ms-2"):
     """Provenance badge for a dataset.
 
