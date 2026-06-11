@@ -108,6 +108,23 @@ def corr_to_color(c):
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
+# Flat (non-gradient) colours for the multi-gene network:
+#  - input genes with at least one displayed pair are a bright, near-black
+#    grey — the most prominent nodes
+#  - input genes with no displayed pair are a light, dull grey
+#  - genes added via degree-of-interaction expansion are a light, dull
+#    purple — distinct in hue from the light grey above
+#  - edges are coloured by the sign of the underlying correlation, using the
+#    same Positive/Negative colours as the single-gene view
+# Grey/purple shades are distinguished by lightness/hue independent of the
+# blue/orange edge colours, so the palette stays colour-blind friendly.
+_MULTI_NODE_COLOR         = "#222222"   # near-black — input gene with a pair (bright/prominent)
+_MULTI_NODE_NEUTRAL_COLOR = "#D9D9D9"   # light grey — input gene with no pair (dull)
+_MULTI_POSITIVE_COLOR     = "#0072B2"   # blue   — positive correlation edges
+_MULTI_NEGATIVE_COLOR     = "#E69F00"   # orange — negative correlation edges
+_MULTI_EXTENDED_COLOR     = "#D8BFD8"   # light purple — added by degree of interaction (dull)
+
+
 # =============================================================================
 # CYTOSCAPE STYLESHEETS
 # Nodes use data(bg_color) — a hex string computed per-node in the callback —
@@ -148,11 +165,14 @@ SINGLE_STYLESHEET = [
     }},
 ]
 
+# Node fill is set per-node via data(bg_color); edge colour reflects the
+# sign of the underlying correlation via data(edge_color) — both computed
+# in the callback.
 MULTI_STYLESHEET = [
     {"selector": "node", "style": _NODE_BASE},
     {"selector": "edge", "style": {
         "width":      "mapData(weight, 0, 10, 1, 8)",
-        "line-color": "#aaa",
+        "line-color": "data(edge_color)",
         "opacity":    0.65,
     }},
 ]
@@ -181,6 +201,9 @@ def _module_highlight_rules(cluster_id):
 # API per module, so it is gated behind an explicit button to avoid firing a
 # query on every keystroke.
 # =============================================================================
+MULTI_MAX_DEGREE              = 2     # max degree-of-interaction slider value — beyond this the
+                                       # network grows too large to interpret
+MULTI_MAX_EXPANDED_GENES      = 300   # safety cap on total network size after degree-of-interaction expansion
 MULTI_MIN_MODULE_GENES        = 2      # smallest connected component counted as a "module"
 MULTI_MIN_GENES_FOR_GO        = 4      # only modules with MORE than 3 genes are GO:BP-annotated
                                        # (a 2-3 gene module is too small for a meaningful enrichment test)
@@ -231,6 +254,40 @@ def _weighted_set_cover(sig_df):
             covered |= genes
 
     return pd.DataFrame(kept) if kept else pd.DataFrame(columns=sig_df.columns)
+
+
+def _expand_by_degree(seed_genes, df, max_degree):
+    """BFS-expand a gene set along co-essential edges, up to max_degree hops.
+
+    seed_genes: the user's input genes (degree 0).
+    df:         FDR-filtered network to search for neighbours (full df_all,
+                not just the induced sub-network).
+
+    Returns (all_genes, gene_degree) where gene_degree maps gene -> hop
+    distance from the seed set (0 for seed genes). Expansion stops early if
+    MULTI_MAX_EXPANDED_GENES is reached.
+    """
+    gene_degree = {g: 0 for g in seed_genes}
+    all_genes = set(seed_genes)
+    frontier = set(seed_genes)
+
+    for d in range(1, max_degree + 1):
+        if not frontier or len(all_genes) >= MULTI_MAX_EXPANDED_GENES:
+            break
+        mask = df["source"].isin(frontier) | df["target"].isin(frontier)
+        neighbours = set(df.loc[mask, "source"]) | set(df.loc[mask, "target"])
+        new_genes = neighbours - all_genes
+        if not new_genes:
+            break
+        room = MULTI_MAX_EXPANDED_GENES - len(all_genes)
+        if len(new_genes) > room:
+            new_genes = set(list(new_genes)[:room])
+        for g in new_genes:
+            gene_degree[g] = d
+        all_genes |= new_genes
+        frontier = new_genes
+
+    return all_genes, gene_degree
 
 
 def _detect_modules(genes, edges_df):
@@ -306,7 +363,7 @@ app.layout = html.Div([
                        "margin": "0 0 16px 0", "lineHeight": "1.7"}),
             html.P([
                 "Genes that are co-essential (perturbation of either gene impairs fitness across many cancer cell lines) "
-                "suggesting that they may operate in the same pathway or complex.",
+                "are likely to be functionally related and operate in the same pathway or complex.",
                 html.Br(),
                 html.Br(),
                 "Co-essentiality is computed by applying Generalised Least Squares (GLS) "
@@ -651,34 +708,76 @@ app.layout = html.Div([
                             # the user scrolls down to interact with the modules table
                             html.Div(_panel("Co-essential genetic interaction network", [
                                 html.P(
-                                    "Nodes coloured by average correlation with other selected "
-                                    "genes. Edges = significant co-essential pairs at the "
-                                    "chosen FDR (thickness = −log₁₀(adj. p-value)).",
+                                    "Edges coloured by the sign of the correlation "
+                                    "(thickness = −log₁₀(adj. p-value)). "
+                                    "Nodes coloured by gene group (see legend).",
                                     style={"color": _MUTED, "fontSize": "20px",
                                            "margin": "0 0 10px 0"}),
                                 html.Div([
-                                    html.Span("■ Positive", style={
-                                        "fontSize": "18px", "color": "#0072B2",
-                                        "fontWeight": "700", "marginRight": "4px"}),
-                                    html.Span("(co-essential pair)", style={
-                                        "fontSize": "18px", "color": _MUTED,
-                                        "marginRight": "20px"}),
-                                    html.Span("■ Neutral", style={
-                                        "fontSize": "18px", "color": "#b0b0b0",
-                                        "fontWeight": "700", "marginRight": "24px"}),
-                                    html.Span("■ Negative", style={
-                                        "fontSize": "18px", "color": "#E69F00",
-                                        "fontWeight": "700", "marginRight": "4px"}),
-                                    html.Span("(anti-correlated pair)", style={
-                                        "fontSize": "18px", "color": _MUTED}),
-                                ], style={"display": "flex", "alignItems": "center",
-                                          "flexWrap": "wrap", "marginBottom": "12px",
+                                    html.Label("Degree of interaction (N) from input genes", style={
+                                        "fontWeight": "600", "fontSize": "18px",
+                                        "color": _TEXT, "marginBottom": "6px",
+                                        "display": "block"}),
+                                    html.P(
+                                        "Expand the network to include genes that are "
+                                        "co-essential with your input genes within N step(s). "
+                                        "Added genes are shown in purple (see legend).",
+                                        style={"color": _MUTED, "fontSize": "16px",
+                                               "margin": "0 0 10px 0", "lineHeight": "1.5"}),
+                                    dcc.Slider(
+                                        id="multi-degree-slider",
+                                        min=0, max=MULTI_MAX_DEGREE, step=1, value=0,
+                                        marks={i: str(i) for i in range(MULTI_MAX_DEGREE + 1)},
+                                    ),
+                                ], style={"marginBottom": "16px", "maxWidth": "420px"}),
+                                html.Div([
+                                    html.Div([
+                                        html.Span("Nodes:", style={
+                                            "fontSize": "18px", "fontWeight": "700",
+                                            "color": _TEXT, "marginRight": "10px"}),
+                                        html.Span("■ Input gene", style={
+                                            "fontSize": "18px", "color": _MULTI_NODE_COLOR,
+                                            "fontWeight": "700", "marginRight": "4px"}),
+                                        html.Span("(has a pair)", style={
+                                            "fontSize": "18px", "color": _MUTED,
+                                            "marginRight": "20px"}),
+                                        html.Span("■ Input gene", style={
+                                            "fontSize": "18px", "color": _MULTI_NODE_NEUTRAL_COLOR,
+                                            "fontWeight": "700", "marginRight": "4px"}),
+                                        html.Span("(no pair)", style={
+                                            "fontSize": "18px", "color": _MUTED,
+                                            "marginRight": "20px"}),
+                                        html.Span("■ Extended", style={
+                                            "fontSize": "18px", "color": _MULTI_EXTENDED_COLOR,
+                                            "fontWeight": "700", "marginRight": "4px"}),
+                                        html.Span("(added by degree of interaction)", style={
+                                            "fontSize": "18px", "color": _MUTED}),
+                                    ], style={"display": "flex", "alignItems": "center",
+                                              "flexWrap": "wrap", "marginBottom": "6px"}),
+                                    html.Div([
+                                        html.Span("Edges:", style={
+                                            "fontSize": "18px", "fontWeight": "700",
+                                            "color": _TEXT, "marginRight": "10px"}),
+                                        html.Span("━ Positive", style={
+                                            "fontSize": "18px", "color": _MULTI_POSITIVE_COLOR,
+                                            "fontWeight": "700", "marginRight": "4px"}),
+                                        html.Span("(co-essential pair)", style={
+                                            "fontSize": "18px", "color": _MUTED,
+                                            "marginRight": "20px"}),
+                                        html.Span("━ Negative", style={
+                                            "fontSize": "18px", "color": _MULTI_NEGATIVE_COLOR,
+                                            "fontWeight": "700", "marginRight": "4px"}),
+                                        html.Span("(anti-correlated pair)", style={
+                                            "fontSize": "18px", "color": _MUTED}),
+                                    ], style={"display": "flex", "alignItems": "center",
+                                              "flexWrap": "wrap"}),
+                                ], style={"marginBottom": "12px",
                                           "padding": "6px 10px", "background": _G_LITE,
                                           "borderRadius": "4px"}),
                                 cyto.Cytoscape(
                                     id="multi-cyto-graph",
                                     layout={"name": "cose"},
-                                    style={"width": "100%", "height": "480px",
+                                    style={"width": "100%", "height": "750px",
                                            "border": f"1px solid {_BORDER}",
                                            "borderRadius": "4px"},
                                     stylesheet=MULTI_STYLESHEET,
@@ -728,6 +827,20 @@ app.layout = html.Div([
                                         disabled=True,
                                         style={"width": "240px", "fontSize": "18px"},
                                     ),
+                                    html.Button(
+                                        "Download GO:BP terms (CSV)",
+                                        id="multi-go-download-btn",
+                                        n_clicks=0,
+                                        disabled=True,
+                                        style={
+                                            "background": _G, "color": "#fff",
+                                            "border": "none", "borderRadius": "4px",
+                                            "padding": "10px 18px", "fontSize": "18px",
+                                            "fontWeight": "600", "cursor": "pointer",
+                                            "whiteSpace": "nowrap",
+                                        },
+                                    ),
+                                    dcc.Download(id="multi-go-download"),
                                 ], style={"display": "flex", "alignItems": "center",
                                           "gap": "16px", "marginBottom": "16px"}),
                                 html.Div(id="multi-module-status", style={
@@ -907,7 +1020,7 @@ _ALL_GENES_SET = set(all_genes)
 
 _EXAMPLE_GENES = (
     "BRCA1\nBRCA2\nPALB2\nRAD51\nATM\nCHEK2\nTP53\nPTEN\nRB1\n"
-    "FANCL\nFANCA\nFANCD2\nFANCG\nFANCI"
+    "FANCL\nFANCA\nFANCD2\nFANCG\nFANCI\nMDM2\nMDM4"
 )
 
 @app.callback(
@@ -920,10 +1033,11 @@ _EXAMPLE_GENES = (
     Input("multi-gene-input",          "n_blur"),
     Input("multi-example-btn",         "n_clicks"),
     Input("fdr-filter",                "value"),
+    Input("multi-degree-slider",       "value"),
     State("multi-gene-input",          "value"),
     State("multi-gene-list-version",   "data"),
 )
-def update_multi(_n_blur, _example_btn, fdr, text, version):
+def update_multi(_n_blur, _example_btn, fdr, degree, text, version):
     new_textarea = dash.no_update
     if ctx.triggered_id == "multi-example-btn":
         text = _EXAMPLE_GENES
@@ -959,12 +1073,27 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
 
     df = df_all[df_all["pvalue_adj"] <= fdr]
     gene_set = set(genes)
+    degree = int(degree or 0)
 
-    mask = df["source"].isin(gene_set) & df["target"].isin(gene_set)
+    # Degree-of-interaction expansion — BFS out from the input genes along
+    # the FDR-filtered network. Expanded genes are tagged with their hop
+    # distance so they can be coloured separately from the input genes.
+    if degree > 0:
+        all_genes, gene_degree = _expand_by_degree(gene_set, df, degree)
+    else:
+        all_genes, gene_degree = gene_set, {g: 0 for g in gene_set}
+    all_genes_sorted = sorted(all_genes)
+
+    mask = df["source"].isin(all_genes) & df["target"].isin(all_genes)
     edges_df = df[mask]
 
-    summary = (f"{len(genes)} genes — "
-               f"{len(edges_df):,} co-essential pair(s) among them at FDR ≤ {pct}%.")
+    summary = f"{len(genes)} input gene(s)"
+    n_added = len(all_genes) - len(gene_set)
+    if n_added:
+        summary += f" + {n_added} gene(s) within {degree} degree(s) of interaction"
+        if len(all_genes) >= MULTI_MAX_EXPANDED_GENES:
+            summary += f" (capped at {MULTI_MAX_EXPANDED_GENES})"
+    summary += f" — {len(edges_df):,} co-essential pair(s) at FDR ≤ {pct}%."
     if unknown:
         summary += (f"  Not found in network: "
                     f"{', '.join(unknown[:10])}{'…' if len(unknown) > 10 else ''}.")
@@ -973,29 +1102,42 @@ def update_multi(_n_blur, _example_btn, fdr, text, version):
     # numbered by size (1 = largest). Cheap (no API calls), so it's safe to
     # recompute live on every keystroke; nodes/edges are tagged data(module)
     # so the highlight callback can select a module via Cytoscape selectors.
-    gene_module, modules = _detect_modules(genes, edges_df)
+    gene_module, modules = _detect_modules(all_genes_sorted, edges_df)
     if modules:
         summary += (f"  {len(modules)} co-essential module(s) detected "
                     f"(≥ {MULTI_MIN_MODULE_GENES} genes)")
 
-    # Average correlation per node across all its edges within the selection
-    node_corrs: dict[str, list] = {g: [] for g in genes}
+    # Edges are coloured by the sign of the underlying correlation.
     edges = []
     for _, row in edges_df.iterrows():
         w = min(-np.log10(max(row["pvalue_adj"], 1e-300)), 10)
         src_mod = gene_module.get(row["source"], 0)
         tgt_mod = gene_module.get(row["target"], 0)
         edge_mod = src_mod if src_mod == tgt_mod else 0
+        edge_color = _MULTI_POSITIVE_COLOR if row["corr_genes"] >= 0 else _MULTI_NEGATIVE_COLOR
         edges.append({"data": {"source": row["source"], "target": row["target"],
-                                "weight": w, "module": edge_mod}})
-        node_corrs[row["source"]].append(row["corr_genes"])
-        node_corrs[row["target"]].append(row["corr_genes"])
+                                "weight": w, "module": edge_mod,
+                                "edge_color": edge_color}})
 
+    # Input genes with at least one pair to ANOTHER INPUT GENE are dark
+    # grey; input genes with no such pair are light grey — this stays fixed
+    # regardless of the degree-of-interaction slider, even if expansion adds
+    # edges from that gene to extended genes. Genes added via
+    # degree-of-interaction expansion are purple.
+    seed_mask = edges_df["source"].isin(gene_set) & edges_df["target"].isin(gene_set)
+    seed_genes_with_pairs = (set(edges_df.loc[seed_mask, "source"])
+                             | set(edges_df.loc[seed_mask, "target"]))
     nodes = []
-    for g in genes:
-        avg_c = float(np.mean(node_corrs[g])) if node_corrs[g] else 0.0
-        nodes.append({"data": {"id": g, "bg_color": corr_to_color(avg_c),
-                               "module": gene_module.get(g, 0)}})
+    for g in all_genes_sorted:
+        if gene_degree.get(g, 0) > 0:
+            bg_color = _MULTI_EXTENDED_COLOR
+        elif g in seed_genes_with_pairs:
+            bg_color = _MULTI_NODE_COLOR
+        else:
+            bg_color = _MULTI_NODE_NEUTRAL_COLOR
+        nodes.append({"data": {"id": g, "bg_color": bg_color,
+                               "module": gene_module.get(g, 0),
+                               "degree": gene_degree.get(g, 0)}})
 
     has_pairs = len(edges_df) > 0
     return summary, nodes + edges, modules, new_textarea, new_version, not has_pairs
@@ -1098,26 +1240,34 @@ def annotate_multi_modules(n_clicks, _version, modules):
 
 # --- Multi-gene network: filter GO:BP table by selected cluster ---
 @app.callback(
-    Output("multi-module-table",    "data"),
-    Input("multi-go-rows-store",    "data"),
-    Input("module-cluster-filter",  "value"),
+    Output("multi-module-table",     "data"),
+    Output("multi-go-download-btn",  "disabled"),
+    Input("multi-go-rows-store",     "data"),
+    Input("module-cluster-filter",   "value"),
 )
 def filter_go_table(rows, cluster_value):
     if not rows:
-        return []
+        return [], True
     if not cluster_value or cluster_value == "all":
-        return rows
-    return [r for r in rows if r["cluster"] == cluster_value]
+        return rows, False
+    filtered = [r for r in rows if r["cluster"] == cluster_value]
+    return filtered, not bool(filtered)
 
 
 # --- Multi-gene network: highlight a module on row click ---
 @app.callback(
-    Output("multi-cyto-graph",   "stylesheet"),
-    Input("multi-module-table",  "active_cell"),
-    State("multi-module-table",  "data"),
+    Output("multi-cyto-graph",         "stylesheet"),
+    Input("multi-module-table",        "active_cell"),
+    Input("multi-gene-list-version",   "data"),
+    State("multi-module-table",        "data"),
     prevent_initial_call=True,
 )
-def highlight_module(active_cell, table_data):
+def highlight_module(active_cell, _version, table_data):
+    # Gene list, FDR, or degree-of-interaction changed — module numbering is
+    # stale, so drop any highlight; the user must re-run GO:BP annotation
+    # before highlighting a (new) module again.
+    if ctx.triggered_id == "multi-gene-list-version":
+        return MULTI_STYLESHEET
     if not active_cell or not table_data:
         return MULTI_STYLESHEET
     row = table_data[active_cell["row"]]
@@ -1158,14 +1308,18 @@ def download_single_partners(_n_clicks, gene, fdr):
 
 
 # --- Multi-gene: download co-essential pairs as CSV ---
+# Mirrors the network shown on screen, including any genes added via the
+# degree-of-interaction slider. "Pair Type" + the two degree columns let
+# users tell input-gene pairs apart from pairs involving expanded genes.
 @app.callback(
     Output("multi-download", "data"),
-    Input("multi-download-btn", "n_clicks"),
-    State("multi-gene-input",   "value"),
-    State("fdr-filter",         "value"),
+    Input("multi-download-btn",  "n_clicks"),
+    State("multi-gene-input",    "value"),
+    State("fdr-filter",          "value"),
+    State("multi-degree-slider", "value"),
     prevent_initial_call=True,
 )
-def download_multi_pairs(_n_clicks, text, fdr):
+def download_multi_pairs(_n_clicks, text, fdr, degree):
     if not text or not text.strip():
         return dash.no_update
     seen, genes = set(), []
@@ -1176,11 +1330,24 @@ def download_multi_pairs(_n_clicks, text, fdr):
             genes.append(g)
     if len(genes) < 2:
         return dash.no_update
+
     df = df_all[df_all["pvalue_adj"] <= fdr]
     gene_set = set(genes)
-    mask = df["source"].isin(gene_set) & df["target"].isin(gene_set)
-    out = (df[mask][["source", "target", "pvalue", "pvalue_adj", "corr_genes"]]
-           .sort_values("pvalue_adj")
+    degree = int(degree or 0)
+    if degree > 0:
+        all_genes, gene_degree = _expand_by_degree(gene_set, df, degree)
+    else:
+        all_genes, gene_degree = gene_set, {g: 0 for g in gene_set}
+
+    mask = df["source"].isin(all_genes) & df["target"].isin(all_genes)
+    out = df[mask][["source", "target", "pvalue", "pvalue_adj", "corr_genes"]].copy()
+    out["Gene Degree of Interaction"] = out["source"].map(gene_degree)
+    out["Partner Gene Degree of Interaction"] = out["target"].map(gene_degree)
+    out["Pair Type"] = np.where(
+        (out["Gene Degree of Interaction"] == 0) & (out["Partner Gene Degree of Interaction"] == 0),
+        "Original input pair", "Degree-of-interaction pair",
+    )
+    out = (out.sort_values("pvalue_adj")
            .rename(columns={
                "source":     "Gene",
                "target":     "Partner Gene",
@@ -1191,8 +1358,39 @@ def download_multi_pairs(_n_clicks, text, fdr):
     out["Correlation Notes"] = out["Correlation"].apply(
         lambda c: "co-essential" if c > 0 else "anti-correlated"
     )
+    out = out[["Gene", "Partner Gene", "GLS P-value", "GLS Adj. P-value (FDR)",
+               "Correlation", "Correlation Notes",
+               "Gene Degree of Interaction", "Partner Gene Degree of Interaction", "Pair Type"]]
     pct = int(fdr * 100)
     return dcc.send_data_frame(out.to_csv, f"coessential_pairs_FDR{pct}pct.csv", index=False)
+
+
+# --- Multi-gene: download GO:BP enrichment results as CSV ---
+# Mirrors the table currently shown (respects the cluster filter dropdown
+# beside this button) and adds each module's gene list for context.
+@app.callback(
+    Output("multi-go-download", "data"),
+    Input("multi-go-download-btn", "n_clicks"),
+    State("multi-module-table",    "data"),
+    State("multi-modules-store",   "data"),
+    prevent_initial_call=True,
+)
+def download_multi_go_terms(_n_clicks, rows, modules):
+    if not rows:
+        return dash.no_update
+    gene_lists = {m["cluster"]: "; ".join(m["genes"]) for m in (modules or [])}
+    out = pd.DataFrame(rows)
+    out["genes"] = out["cluster"].map(gene_lists)
+    out = out.rename(columns={
+        "cluster":      "Cluster",
+        "cluster_size": "Module Size",
+        "genes":        "Genes",
+        "go_term":      "GO:BP Term",
+        "p_value":      "P-value",
+        "p_value_adj":  "Adj. P-value (FDR)",
+    })
+    out = out[["Cluster", "Module Size", "Genes", "GO:BP Term", "P-value", "Adj. P-value (FDR)"]]
+    return dcc.send_data_frame(out.to_csv, "coessential_modules_GO_BP.csv", index=False)
 
 
 # =============================================================================
