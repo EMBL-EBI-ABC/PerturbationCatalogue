@@ -225,16 +225,14 @@ def get_pg_type(field):
 
 def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
     """Gets the current sync state for all tables and datasets from Postgres."""
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS sync_state (
             table_name TEXT NOT NULL,
             dataset_id TEXT NOT NULL,
             last_synced_at TIMESTAMP WITHOUT TIME ZONE,
             PRIMARY KEY (table_name, dataset_id)
         );
-    """
-    )
+    """)
     states = {}
     cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
