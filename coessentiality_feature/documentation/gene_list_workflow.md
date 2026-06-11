@@ -40,11 +40,12 @@ A([Paste gene list, set FDR / degree slider,\nor click 'Load example gene list']
 
 subgraph CB1["Callback 1 — update_multi\nruns on blur, FDR change, degree-slider change, or example-button click"]
     B[Parse & validate gene symbols]:::fast
-    C[Degree-of-interaction expansion\nBFS out from input genes, N hops\ncapped at 300 genes]:::fast
-    D[Filter network at chosen FDR\nkeep pairs where both genes are in the expanded set]:::fast
-    E[Find connected components\nnumber by size  1 = largest\ndrop components with fewer than 2 genes]:::fast
-    F[Tag each node & edge\nwith module ID + degree-of-interaction hop]:::fast
-    B --> C --> D --> E --> F
+    C[Filter network at chosen FDR\nkeep pairs at adj. p ≤ FDR]:::fast
+    D[Degree-of-interaction expansion\nBFS out from input genes over the\nFDR-filtered network, N hops, capped at 300 genes]:::fast
+    E[Build induced sub-network\nkeep pairs where both genes are in the expanded set]:::fast
+    F[Find connected components\nnumber by size  1 = largest\ndrop components with fewer than 2 genes]:::fast
+    T[Tag each node & edge\nwith module ID + degree-of-interaction hop]:::fast
+    B --> C --> D --> E --> F --> T
 end
 
 A --> B
@@ -53,9 +54,9 @@ G[/Cytoscape network rendered/]:::out
 H[(Module list stored\ncluster · size · genes)]:::store
 I[(Generation counter incremented\ninvalidates stale GO results & highlights)]:::store
 
-F --> G
-F --> H
-F --> I
+T --> G
+T --> H
+T --> I
 
 J([Click  Find modules & annotate with GO:BP]):::user
 H --> J
