@@ -123,6 +123,20 @@ Additional dbt commands:
 - Specific model + dependencies: `dbt run --profiles-dir . --select +dataset_summary`
 - Full refresh (non-incremental): `dbt run --profiles-dir . --full-refresh`
 
+To regenerate the gene-ID migration summary tables from cloned source datasets:
+
+```bash
+cd dwh/bq_dbt
+BQ_DATASET=unified_data_gene_id_migration \
+BQ_SOURCE_SUFFIX=_gene_id_migration \
+dbt run --profiles-dir .
+```
+
+This reads source tables from `crispr_gene_id_migration`,
+`mavedb_gene_id_migration`, and `perturb_seq_gene_id_migration`, then writes
+`dataset_summary`, `target_summary`, and `landing_page_summary` into
+`unified_data_gene_id_migration`.
+
 ### BQ → Postgres
 
 ```bash
@@ -137,6 +151,21 @@ python3 bq_to_postgres/bq_to_postgres.py \
     --drop-and-recreate-indexes
 ```
 
+To run only the BigQuery to Postgres stage in Cloud Build for the gene-ID
+migration dev tables:
+
+```bash
+BQ_DATASET=unified_data_gene_id_migration \
+./dwh/trigger_pipeline.sh \
+    --postgres-only \
+    --bq-source-suffix _gene_id_migration \
+    --pg-table-suffix _gene_id_migration
+```
+
+This skips dbt and Elasticsearch, reads source data from cloned datasets such as
+`crispr_gene_id_migration`, and writes suffixed Postgres tables such as
+`crispr_data_gene_id_migration`.
+
 ### BQ → Elasticsearch
 
 ```bash
@@ -145,6 +174,21 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
+
+To index migrated gene-ID summaries into separate development Elasticsearch
+aliases without touching production aliases:
+
+```bash
+cd dwh
+ES_INDEX_SUFFIX=_gene_id_migration \
+BQ_DATASET=unified_data_gene_id_migration \
+python3 bq_to_elastic/bq_to_es_projector.py \
+    --dataset-metadata ../be/dataset_metadata.json
+```
+
+This creates and points suffixed aliases such as
+`target-summary_gene_id_migration` at dated backing indices such as
+`YYYY-MM-DD-target-summary_gene_id_migration`.
 
 ## Creating the PostgreSQL instance
 
@@ -172,15 +216,15 @@ The script expects these materialized views to exist for `perturb_seq_dea`. Crea
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
     dataset_id,
-    perturbed_target_symbol,
+    perturbed_target_id,
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
 FROM perturb_seq_dea
 WHERE padj <= 0.05
-GROUP BY dataset_id, perturbed_target_symbol;
+GROUP BY dataset_id, perturbed_target_id;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_id);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
 SELECT
