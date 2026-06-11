@@ -16,7 +16,7 @@
 #   _RUN_DBT, _RUN_POSTGRES, _RUN_ES
 #   _BQ_SOURCE_SUFFIX, _PG_TABLE_SUFFIX, _SKIP_MATERIALIZED_VIEWS
 
-timeout: 43200s  # 12 hours
+timeout: 86400s  # 24 hours
 
 options:
   logging: LEGACY
