@@ -848,6 +848,13 @@ async def _search_modality_impl(
                 for k, v in api_to_db.items()
                 if k.startswith("perturbation_")
             }
+            perturbation.update(
+                {
+                    "target_id": row.get("perturbed_target_id"),
+                    "target_symbol": row.get("perturbed_target_symbol"),
+                    "target_ensg": row.get("perturbed_target_ensg"),
+                }
+            )
             effect = {
                 k.replace("effect_", ""): row.get(v)
                 for k, v in api_to_db.items()
@@ -1027,6 +1034,13 @@ async def _search_dataset_impl(
             for k, v in api_to_db.items()
             if k.startswith("perturbation_")
         }
+        perturbation.update(
+            {
+                "target_id": row.get("perturbed_target_id"),
+                "target_symbol": row.get("perturbed_target_symbol"),
+                "target_ensg": row.get("perturbed_target_ensg"),
+            }
+        )
         effect = {
             k.replace("effect_", ""): row.get(v)
             for k, v in api_to_db.items()
