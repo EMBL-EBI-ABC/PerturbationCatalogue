@@ -57,6 +57,7 @@ steps:
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - BQ_DATASET=$_BQ_DATASET
+      - BQ_SOURCE_SUFFIX=$_BQ_SOURCE_SUFFIX
       - BQ_LOCATION=$_BQ_LOCATION
 
   # Step 2: BigQuery → Postgres
