@@ -43,6 +43,10 @@ steps:
     args:
       - -c
       - |
+        if [ "$_RUN_DBT" != "true" ]; then
+          echo "Skipping dbt run"
+          exit 0
+        fi
         if [ -n "$_SUPPRESS_DATASETS" ]; then
           echo "Running dbt with suppressed datasets: $_SUPPRESS_DATASETS"
           dbt run --profiles-dir . --vars "{\"suppress_datasets\": \"$_SUPPRESS_DATASETS\"}"
