@@ -495,7 +495,9 @@ def download_targets_metadata(n_clicks, store_data, selected_values, filter_ids)
         return dash.no_update
 
     columns = [
+        "perturbed_target_id",
         "perturbed_target_symbol",
+        "perturbed_target_ensg",
         "n_experiments",
         "n_sig_perturb_pairs_up",
         "n_sig_perturb_pairs_down",
