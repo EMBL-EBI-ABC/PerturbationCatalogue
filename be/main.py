@@ -631,7 +631,11 @@ async def health_check():
     overall_status = "healthy" if es_status == "connected" else "unhealthy"
 
     return {
-        "status": overall_status + ". Check the logs" if overall_status == "unhealthy" else overall_status,
+        "status": (
+            overall_status + ". Check the logs"
+            if overall_status == "unhealthy"
+            else overall_status
+        ),
         "elasticsearch": {
             "status": es_status,
             "error": es_error,
@@ -661,7 +665,8 @@ async def get_landing_page_summary():
 @app.get("/search", response_model=SearchResponse)
 async def search_get(
     query: Optional[str] = Query(
-        None, description="Search query for perturbed_target_symbol"
+        None,
+        description="Search query for perturbed target ID, gene symbol, or Ensembl ID",
     ),
     search_mode: str = Query(
         "targets", description="Search mode: 'targets' or 'datasets'"
