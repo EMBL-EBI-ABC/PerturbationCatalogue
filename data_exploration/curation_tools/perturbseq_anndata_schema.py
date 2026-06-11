@@ -72,7 +72,12 @@ class ObsSchema(DataFrameModel):
         nullable=True, description="Ensembl gene ID(s) of the perturbed target."
     )
     perturbed_target_symbol: Series[String] = Field(
-        nullable=True, description="Gene symbol(s) of the perturbed target."
+        nullable=True,
+        description="Gene symbol(s) of the perturbed target. Multi-target values are separated with '+'.",
+    )
+    perturbed_target_id: Series[String] = Field(
+        nullable=True,
+        description="Canonical perturbed target ID as symbol|Ensembl. Multi-target values are separated with '+'.",
     )
     perturbed_target_biotype: Series[String] = Field(
         nullable=True, description="Biotype(s) of the perturbed target."
