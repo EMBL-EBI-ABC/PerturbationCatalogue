@@ -21,7 +21,6 @@ from utils import (
     reprocessed_badge,
 )
 
-
 dash.register_page(
     __name__,
     path_template="/dataset/<dataset_id>",
