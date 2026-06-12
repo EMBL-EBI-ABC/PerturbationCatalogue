@@ -32,7 +32,6 @@ from google.cloud import bigquery
 from IPython.display import display  # type: ignore
 
 from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
-from curation_tools.unified_metadata_schema.unified_metadata_schema import Experiment
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -200,7 +199,6 @@ class CuratedDataset:
         self,
         obs_schema,
         var_schema,
-        exp_metadata_schema,
         data_source_link=None,
         noncurated_path=None,
         curated_path=None,
@@ -212,8 +210,6 @@ class CuratedDataset:
             The schema for the obs data.
         var_schema : VarSchema
             The schema for the var data.
-        exp_metadata_schema : Experiment
-            The schema for the experimental metadata.
         data_source_link : str, optional
             The link to the data source. The default is None.
         noncurated_path : str, optional
@@ -224,26 +220,6 @@ class CuratedDataset:
 
         self.obs_schema = obs_schema
         self.var_schema = var_schema
-
-        # Initialise the experiment metadata schema and its sub-schemas
-        self.exp_metadata_schema = exp_metadata_schema
-        self.study_schema = exp_metadata_schema.model_fields["study"].annotation
-        self.experiment_schema = exp_metadata_schema.model_fields[
-            "experiment"
-        ].annotation
-        self.perturbation_schema = exp_metadata_schema.model_fields[
-            "perturbation"
-        ].annotation
-        self.assay_schema = exp_metadata_schema.model_fields["assay"].annotation
-        self.model_system_schema = exp_metadata_schema.model_fields[
-            "model_system"
-        ].annotation
-        self.associated_datasets_schema = exp_metadata_schema.model_fields[
-            "associated_datasets"
-        ].annotation
-        self.associated_diseases_schema = exp_metadata_schema.model_fields[
-            "associated_diseases"
-        ].annotation
 
         self.data_source_link = data_source_link
         self.noncurated_path = noncurated_path
@@ -267,10 +243,7 @@ class CuratedDataset:
 
         # Initialise adata object
         self.adata = None
-        # Initialise a template for experiment metadata
-        self.exp_metadata = {
-            k: {} for k in self.exp_metadata_schema.model_fields.keys()
-        }
+
         # Initialise a dataset ID
         if self.noncurated_path:
             self.dataset_id = self.noncurated_path.split("/")[-1].replace(".h5ad", "")
@@ -377,19 +350,6 @@ class CuratedDataset:
                     self.adata.obs[col] = self.adata.obs[col].astype(
                         "str"
                     )  # .astype("category")
-
-    def add_exp_metadata_as_uns(self):
-        """
-        Add the experiment metadata to the adata.uns dictionary.
-        """
-        if self.adata is None:
-            raise ValueError("adata is not loaded. Please load the data first.")
-
-        # Add the experiment metadata to the adata.uns dictionary
-
-        self.adata.uns["experiment_metadata"] = json.dumps(self.exp_metadata)
-
-        print("Experiment metadata added to adata.uns")
 
     def save_curated_data_h5ad(self):
         """Save the curated data to an .h5ad file."""
@@ -1397,157 +1357,6 @@ class CuratedDataset:
         setattr(self.adata, slot, df)
 
         print(f"Matched columns of adata.{slot} to the {slot+'_schema'}.")
-
-    def populate_exp_metadata(self):
-        """
-        Populate the available experiment metadata fields with values from the adata obs DataFrame.
-        """
-        if self.adata is None:
-            raise ValueError("adata is not loaded. Please load the data first.")
-
-        exp_metadata = self.exp_metadata
-
-        # these can be automatically populated from adata.obs
-        auto_populated_fields = {
-            "experiment": {
-                "treatments": self._get_dict_vals("treatment_id", "treatment_label"),
-                "timepoints": self._get_vals("timepoint"),
-                "perturbation_type": self._get_dict_vals(
-                    "perturbation_type_id", "perturbation_type_label"
-                ),
-                "perturbed_target_biotype": self._get_vals("perturbed_target_biotype"),
-                "number_of_perturbed_targets": len(
-                    self._get_vals("perturbed_target_coord")
-                ),
-                "perturbed_targets": self._get_vals("perturbed_target_ensg"),
-                "number_of_perturbed_entities": self.adata.obs.shape[0],
-            },
-            "model_system": {
-                "model_system": self._get_dict_vals(
-                    "model_system_id", "model_system_label"
-                ),
-                "tissue": self._get_dict_vals("tissue_id", "tissue_label"),
-                "cell_type": self._get_dict_vals("cell_type_id", "cell_type_label"),
-                "cell_line": self._get_dict_vals("cell_line_id", "cell_line_label"),
-                "sex": self._get_dict_vals("sex_id", "sex_label"),
-                "developmental_stage": self._get_dict_vals(
-                    "developmental_stage_id", "developmental_stage_label"
-                ),
-            },
-            "associated_diseases": self._get_dict_vals("disease_id", "disease_label"),
-        }
-
-        exp_metadata.update(auto_populated_fields)
-
-        print("Experiment metadata populated with available fields from adata.obs:")
-        self.print_data(auto_populated_fields)
-
-    def add_exp_metadata(
-        self,
-        metadata_slot=Literal[
-            "study",
-            "experiment",
-            "perturbation",
-            "assay",
-            "model_system",
-            "associated_datasets",
-        ],
-        metadata: dict | list = None,
-    ):
-        """
-        Add metadata to the experiment metadata schema.
-        Parameters
-        ----------
-        metadata_slot : str
-            The slot to add the metadata to. Can be either "study", "experiment", "perturbation", "assay", "model_system", or "associated_datasets".
-        metadata : dict | list
-            The metadata to add. It can be a dictionary or a list of dictionaries corresponding to the fields in the metadata schema.
-        """
-
-        if metadata_slot not in self.exp_metadata_schema.model_fields.keys():
-            raise ValueError(
-                f"metadata_slot must be one of {list(self.exp_metadata.keys())}"
-            )
-        if metadata is None:
-            raise ValueError("Please provide metadata to add.")
-
-        if not isinstance(metadata, dict) and not isinstance(metadata, list):
-            raise ValueError("metadata must be a dictionary or a list of dictionaries.")
-
-        # retrieve the relevant schema
-        schema = getattr(self, f"{metadata_slot}_schema", None)
-
-        # treat 'associated_datasets' and 'associated_diseases' differently, because they are lists of dictionaries
-        if metadata_slot not in ["associated_datasets", "associated_diseases"]:
-
-            # if metadata is partially automatically populated, combine it with the submitted metadata
-            if metadata_slot in ["experiment", "model_system"]:
-                metadata.update(self.exp_metadata[metadata_slot])
-
-            # validate the metadata chunk against the sub-schema
-            try:
-                validated = schema.model_validate(metadata)
-
-                # update the exp_metadata with the chunk
-                self.exp_metadata[metadata_slot].update(validated.model_dump())
-
-                print(f"Metadata for '{metadata_slot}' successfully validated:")
-                self.print_data(validated.model_dump())
-
-            except ValidationError as e:
-                print(e)
-
-        else:
-
-            if metadata_slot == "associated_datasets":
-
-                subschema = schema.__args__[0]
-
-            elif metadata_slot == "associated_diseases":
-                subschema = schema.__args__[0].__args__[0]
-                metadata = self.exp_metadata[metadata_slot]
-
-            if not isinstance(subschema, type):
-                raise ValueError(
-                    f"There is something wrong with the schema for {metadata_slot}."
-                )
-
-            # since 'associated_datasets' and 'associated_diseases' are lists of dictionaries, we need to validate each dictionary in the list
-            validated_list = []
-            for entry in metadata:
-                if not isinstance(entry, dict):
-                    raise ValueError(
-                        f"Each element in {metadata_slot} must be a dictionary."
-                    )
-
-                try:
-                    # validate the entry against the sub-schema
-                    validated = subschema.model_validate(entry)
-                    validated_list.append(validated.model_dump())
-
-                except ValidationError as e:
-                    print(f"Validation error for entry {entry}: {e}")
-
-            # update the exp_metadata with the validated list
-            self.exp_metadata[metadata_slot] = validated_list
-            print(f"Metadata for '{metadata_slot}' successfully validated:")
-            self.print_data(validated_list)
-
-    def validate_exp_metadata(self):
-        """
-        Validate the experiment metadata against the schema.
-        """
-        if self.exp_metadata is None:
-            raise ValueError(
-                "Experiment metadata is not populated. Please populate it first by calling populate_exp_metadata() and add_exp_metadata() methods."
-            )
-
-        try:
-            validated = self.exp_metadata_schema.model_validate(self.exp_metadata)
-            print("Experiment metadata successfully validated:")
-            self.print_data(validated.model_dump())
-        except ValidationError as e:
-            print(f"Validation error: {e}")
 
     def validate_data(self, slot=Literal["var", "obs"], verbose=True):
         """
