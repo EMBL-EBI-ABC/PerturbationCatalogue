@@ -1,32 +1,4 @@
-"""
-catalogue_api.py
 
-Python client for the EMBL-EBI Perturbation Catalogue REST API.
-
-This module handles the gap between raw API responses and clean
-training records. Three things make this non-trivial:
-
-1. Score heterogeneity — different datasets use different score names
-   (CRISPR Score, Log2FC, Gamma, Rho, MAGeCK neg score). The pipeline
-   identifies the primary effect score per dataset and normalises
-   within-dataset before any cross-dataset comparison.
-
-2. Record pivoting — the API returns one row per (gene, score_type)
-   pair. A gene with CS score and FDR score appears as two separate
-   rows. We pivot these into one clean record per gene.
-
-3. Significance criteria — each dataset defines its own significance
-   threshold. We respect the dataset's own criteria (significant=True)
-   rather than imposing a universal cutoff.
-
-BASE URL:
-    https://perturbation-catalogue-be-328296435987.europe-west2.run.app
-
-PROJECT CONNECTION:
-    This file is the bridge between the Perturbation Catalogue and
-    the training pipeline. It directly addresses the mentor's request
-    to "ground the pipeline in actual Catalogue data."
-"""
 
 import requests
 import pandas as pd
@@ -43,8 +15,7 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://perturbation-catalogue-be-328296435987.europe-west2.run.app"
 
 # These are the score names we recognise as primary effect scores
-# across all datasets in the Catalogue. FDR is always secondary.
-# Order matters — we prefer the first match found.
+# Order matters — we prefer the first match found
 EFFECT_SCORE_NAMES = [
     "CRISPR Score (CS)",
     "Log2FC",
@@ -126,7 +97,6 @@ def query_crispr_screen(dataset_id=None, limit=100, max_records=5000):
             log.info(f"Reached max_records limit ({max_records})")
             break
 
-        # Be polite to the API server
         time.sleep(0.1)
 
     log.info(f"Retrieved {len(all_results)} raw records")
@@ -458,10 +428,6 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     """
     Convert harmonised Catalogue records into training record format.
 
-    The output format matches exactly what preprocess_crispr.py produces
-    so the training pipeline handles both local files and API data
-    without any changes.
-
     Parameters
     ----------
     df : pd.DataFrame
@@ -577,21 +543,8 @@ def get_dataset_metadata(dataset_id):
     }
 
 
-# ── FULL PIPELINE ─────────────────────────────────────────────────────────────
-#
-# Chains everything together.
-# Query → pivot → normalise → classify → convert to training records
-#
-# One function call goes from API to training-ready JSONL.
-
-
 def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
     """
-    Full pipeline: Catalogue API → harmonised training records.
-
-    This is the function you call in practice.
-    Give it a dataset ID, get back training records.
-
     Parameters
     ----------
     dataset_id : str
@@ -610,36 +563,33 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
 
     log.info(f"Fetching dataset {dataset_id} from Perturbation Catalogue...")
 
-    # Step 1: Query the API
     raw = query_crispr_screen(dataset_id=dataset_id, max_records=max_records)
 
     if not raw:
         log.warning(f"No data returned for {dataset_id}")
         return []
 
-    # Step 1b: Fetch dataset metadata separately
-    # The gene-level API response doesn't include dataset context
-    # so we make a second call to get cell line, disease, etc.
+    # Fetch dataset metadata separately
     metadata = get_dataset_metadata(dataset_id)
     log.info(f"Dataset metadata: {metadata}")
 
-    # Step 2: Pivot multi-row records into one row per gene
+    # Pivot multi-row records into one row per gene
     df = pivot_gene_records(raw)
 
     # Attach metadata to every row
     for key, value in metadata.items():
         df[key] = value
 
-    # Step 3: Normalise scores within dataset
+    # Normalise scores within dataset
     df = normalise_within_dataset(df)
 
-    # Step 4: Classify fitness effects
+    # Classify fitness effects
     df = classify_from_catalogue(df)
 
-    # Step 5: Convert to training record format
+    # Convert to training record format
     records = catalogue_records_to_training(df, dataset_id)
 
-    # Step 6: Save if output path provided
+    # Save if output path provided
     if output_path:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
@@ -684,18 +634,18 @@ def fetch_and_process_perturb_seq(
 
     log.info(f"Fetching perturb-seq DEA data for {dataset_id}...")
 
-    # Step 1: Query DEA endpoint
+    # Query DEA endpoint
     raw = query_perturb_seq(dataset_id=dataset_id, max_records=max_records)
 
     if not raw:
         log.warning(f"No data returned for {dataset_id}")
         return [], pd.DataFrame()
 
-    # Step 2: Fetch dataset metadata
+    # Fetch dataset metadata
     metadata = get_dataset_metadata(dataset_id)
     log.info(f"Dataset metadata: {metadata}")
 
-    # Step 3: Group by perturbed gene and collect affected genes
+    # Group by perturbed gene and collect affected genes
     # The API returns one row per (perturbed_gene, affected_gene) pair
     # We need to group these into one record per perturbed gene
     perturbation_effects = {}
@@ -733,7 +683,7 @@ def fetch_and_process_perturb_seq(
 
     log.info(f"Grouped into {len(perturbation_effects)} unique perturbations")
 
-    # Step 4: Build training records
+    # Build training records
     records = []
     rows = []
 
@@ -806,7 +756,7 @@ def fetch_and_process_perturb_seq(
             "n_total": effects["n_total"],
         })
 
-    # Step 5: Save if output path provided
+    # Save if output path provided
     if output_path and records:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
@@ -817,7 +767,6 @@ def fetch_and_process_perturb_seq(
     df = pd.DataFrame(rows)
     log.info(f"Built {len(records)} training records from {dataset_id}")
     return records, df
-
 
 
 
@@ -832,8 +781,7 @@ def fetch_and_process_perturb_seq_gsea(
     Full pipeline: Perturbation Catalogue GSEA API → pathway-level training records.
     
     Queries the perturb-seq GSEA endpoint for each perturbed gene and
-    builds pathway-level training records. This is Strategy C from the
-    proposal — pathway summarisation instead of individual gene lists.
+    builds pathway-level training records. 
     
     Unlike DEA, GSEA requires one API call per gene. This function
     iterates over a list of gene names and aggregates the results.
@@ -860,7 +808,7 @@ def fetch_and_process_perturb_seq_gsea(
 
     log.info(f"Fetching GSEA data for {len(gene_names)} genes in {dataset_id}...")
 
-    # Step 1: Fetch dataset metadata
+    # Fetch dataset metadata
     metadata = get_dataset_metadata(dataset_id)
     cell_line = metadata.get("cell_line", "unknown")
     disease = metadata.get("disease", "unknown")
@@ -870,7 +818,7 @@ def fetch_and_process_perturb_seq_gsea(
     rows = []
     failed = []
 
-    # Step 2: Query GSEA endpoint once per gene
+    # Query GSEA endpoint once per gene
     # This endpoint requires both dataset_id and perturbed_gene_name
     for i, gene in enumerate(gene_names):
         endpoint = f"{BASE_URL}/v1/perturb-seq-gsea"
@@ -892,15 +840,15 @@ def fetch_and_process_perturb_seq_gsea(
             log.warning(f"No GSEA data for {gene}")
             continue
 
-        # Step 3: Extract pathway effects from response
-        # Response is a list — take the first item (one perturbed gene)
+        # Extract pathway effects from response
+        # Response is a list so take the first item which is one perturbed gene
         item = data[0] if isinstance(data, list) else data
         effects = item.get("effects", [])
 
         if not effects:
             continue
 
-        # Step 4: Filter by FDR threshold and separate into activated/suppressed
+        # Filter by FDR threshold and separate into activated/suppressed
         activated = []   # NES > 0 — pathway genes upregulated
         suppressed = []  # NES < 0 — pathway genes downregulated
 
@@ -927,7 +875,7 @@ def fetch_and_process_perturb_seq_gsea(
         if not activated and not suppressed:
             continue
 
-        # Step 5: Build natural language output
+        # Build natural language output
         act_str = ", ".join(
             [f"{term} (NES: {nes:+.2f})" for term, nes, _ in activated]
         ) if activated else "none detected"
@@ -941,7 +889,7 @@ def fetch_and_process_perturb_seq_gsea(
             f"Suppressed pathways: {sup_str}."
         )
 
-        # Step 6: Build training record
+        # Build training record
         record = {
             "instruction": (
                 f"What biological pathways are affected by CRISPR knockout "
@@ -989,7 +937,7 @@ def fetch_and_process_perturb_seq_gsea(
     if failed:
         log.warning(f"Failed to retrieve GSEA data for {len(failed)} genes: {failed[:5]}...")
 
-    # Step 7: Save if output path provided
+    # Save if output path provided
     if output_path and records:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
@@ -1002,16 +950,8 @@ def fetch_and_process_perturb_seq_gsea(
 
 
 
-# ── DEMO ──────────────────────────────────────────────────────────────────────
-
 def demo():
-    """
-    Fetch real data from the Perturbation Catalogue and process it.
-
-    Uses biogrid_5 — the famous 2014 Gilbert/Weissman CRISPRi screen
-    in K562 cells. One of the most cited CRISPR screens ever published.
-    This is real data, not synthetic.
-    """
+    
     log.info("Fetching real data from Perturbation Catalogue API...")
     log.info("Dataset: biogrid_5 — Gilbert/Weissman 2014 CRISPRi screen")
 
@@ -1063,7 +1003,6 @@ def demo():
 
 
 
-# ── ENTRY POINT ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
