@@ -852,6 +852,7 @@ app.layout = html.Div([
                                         columns=[
                                             {"name": "CLUSTER",        "id": "cluster"},
                                             {"name": "MODULE SIZE",    "id": "cluster_size"},
+                                            {"name": "GO:ID",          "id": "go_id"},
                                             {"name": "GO:BP TERM",     "id": "go_term"},
                                             {"name": "P-VALUE",        "id": "p_value",
                                              "type": "numeric",
@@ -1178,7 +1179,7 @@ def annotate_multi_modules(n_clicks, _version, modules):
     for mod in to_annotate:
         cluster_id, gene_list = mod["cluster"], mod["genes"]
         base = {"cluster": cluster_id, "cluster_size": mod["cluster_size"],
-                "p_value": None, "p_value_adj": None}
+                "go_id": "", "p_value": None, "p_value_adj": None}
 
         if mod["cluster_size"] < MULTI_MIN_GENES_FOR_GO:
             n_too_small += 1
@@ -1210,9 +1211,10 @@ def annotate_multi_modules(n_clicks, _version, modules):
             nr = _weighted_set_cover(sig)
             n_removed = len(sig) - len(nr)
             for _, t in nr.iterrows():
-                name, _ = _split_go_term(t["Term"])
+                name, go_id = _split_go_term(t["Term"])
                 rows.append({**base,
                               "go_term":     name,
+                              "go_id":       go_id,
                               "p_value":     float(t["P-value"]),
                               "p_value_adj": float(t["Adjusted P-value"]),
                               "n_removed":   n_removed})
@@ -1385,11 +1387,12 @@ def download_multi_go_terms(_n_clicks, rows, modules):
         "cluster":      "Cluster",
         "cluster_size": "Module Size",
         "genes":        "Genes",
+        "go_id":        "GO:ID",
         "go_term":      "GO:BP Term",
         "p_value":      "P-value",
         "p_value_adj":  "Adj. P-value (FDR)",
     })
-    out = out[["Cluster", "Module Size", "Genes", "GO:BP Term", "P-value", "Adj. P-value (FDR)"]]
+    out = out[["Cluster", "Module Size", "Genes", "GO:ID", "GO:BP Term", "P-value", "Adj. P-value (FDR)"]]
     return dcc.send_data_frame(out.to_csv, "coessential_modules_GO_BP.csv", index=False)
 
 
