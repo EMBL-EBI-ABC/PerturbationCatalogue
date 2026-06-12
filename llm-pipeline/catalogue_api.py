@@ -441,6 +441,8 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     -------
     list of training record dicts
     """
+
+    # will fix this during module split 
     from preprocess_crispr import fitness_class_to_text
 
     records = []
@@ -477,9 +479,6 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
                 f"Gene: {gene}. "
                 f"Cell line: {cell_line}. "
                 f"Condition: {condition}. "
-                f"Dataset: {dataset_id}. "
-                f"Modality: {modality}. "
-                f"Source: EMBL-EBI Perturbation Catalogue."
             ),
             "output": output_text,
             "metadata": {
@@ -728,9 +727,6 @@ def fetch_and_process_perturb_seq(
                 f"Gene: {perturbed_gene}. "
                 f"Cell line: {cell_line}. "
                 f"Condition: {condition}. "
-                f"Dataset: {dataset_id}. "
-                f"Modality: scPerturb-seq. "
-                f"Source: EMBL-EBI Perturbation Catalogue."
             ),
             "output": output_text,
             "metadata": {
@@ -782,7 +778,7 @@ def fetch_and_process_perturb_seq_gsea(
     
     Queries the perturb-seq GSEA endpoint for each perturbed gene and
     builds pathway-level training records. 
-    
+
     Unlike DEA, GSEA requires one API call per gene. This function
     iterates over a list of gene names and aggregates the results.
     
@@ -900,9 +896,6 @@ def fetch_and_process_perturb_seq_gsea(
                 f"Gene: {gene}. "
                 f"Cell line: {cell_line}. "
                 f"Condition: {condition}. "
-                f"Dataset: {dataset_id}. "
-                f"Modality: scPerturb-seq GSEA. "
-                f"Source: EMBL-EBI Perturbation Catalogue."
             ),
             "output": output_text,
             "metadata": {
