@@ -31,6 +31,51 @@ FDR_SCORE_NAMES = [
 ]
 
 
+def fitness_class_to_text(gene, fitness_class, lfc, cell_line, condition):
+    """
+    Convert CRISPR fitness classification to natural language.
+
+    Parameters
+    ----------
+    gene : str
+        Gene name.
+    fitness_class : str
+        One of: essential, anti_essential, neutral.
+    lfc : float
+        Effect score (z-score normalised).
+    cell_line : str
+        Cell line name.
+    condition : str
+        Experimental condition.
+
+    Returns
+    -------
+    str — natural language description of the fitness effect.
+    """
+    descriptions = {
+        "essential": (
+            f"{gene} is essential for survival of {cell_line} "
+            f"under {condition} conditions (LFC: {lfc:.2f}). "
+            f"Knockout causes significant cell depletion, indicating "
+            f"this gene is required for cell fitness under these "
+            f"experimental conditions."
+        ),
+        "anti_essential": (
+            f"{gene} acts as a fitness suppressor in {cell_line} "
+            f"under {condition} conditions (LFC: {lfc:.2f}). "
+            f"Knockout causes cell enrichment, meaning cells without "
+            f"this gene grow faster under these experimental conditions."
+        ),
+        "neutral": (
+            f"{gene} shows no significant fitness effect in {cell_line} "
+            f"under {condition} conditions (LFC: {lfc:.2f}). "
+            f"Knockout does not substantially alter cell survival or "
+            f"proliferation under these specific conditions."
+        ),
+    }
+    return descriptions.get(fitness_class, "Fitness effect unknown.")
+
+
 def query_crispr_screen(dataset_id=None, limit=100, max_records=5000):
     """
     Query CRISPR screen data from the Perturbation Catalogue API.
@@ -442,9 +487,6 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     -------
     list of training record dicts
     """
-
-    # will fix this during module split
-    from preprocess_crispr import fitness_class_to_text
 
     records = []
 
