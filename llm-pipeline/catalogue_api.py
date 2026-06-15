@@ -1,5 +1,3 @@
-
-
 import requests
 import pandas as pd
 import numpy as np
@@ -31,7 +29,6 @@ FDR_SCORE_NAMES = [
     "q-value",
     "adjusted p-value",
 ]
-
 
 
 def query_crispr_screen(dataset_id=None, limit=100, max_records=5000):
@@ -210,7 +207,6 @@ def query_mave(dataset_id=None, limit=100, max_records=5000):
     return all_results
 
 
-
 def identify_primary_score(score_names_in_dataset):
     """
     Identify which score name is the primary effect score for a dataset.
@@ -272,6 +268,15 @@ def pivot_gene_records(raw_results):
         effect = r.get("effect", {})
         dataset_meta = r.get("_dataset_meta", {})
 
+        cell_lines = dataset_meta.get("dataset_cell_lines", [])
+        if not cell_lines:
+            log.warning(
+                "No cell line label found in dataset metadata — using 'unknown'"
+            )
+            cell_line_value = "unknown"
+        else:
+            cell_line_value = cell_lines[0]
+
         rows.append(
             {
                 "gene": perturbation.get("gene_name", "unknown"),
@@ -280,21 +285,17 @@ def pivot_gene_records(raw_results):
                 "significant": effect.get("significant", "False") == "True",
                 "significance_criteria": effect.get("significance_criteria", ""),
                 "dataset_id": dataset_meta.get("dataset_id", "unknown"),
-                "cell_line": (
-                    dataset_meta.get("dataset_cell_lines", ["unknown"])[0]
-                    if dataset_meta.get("dataset_cell_lines")
-                    else dataset_meta.get("dataset_cell_line_ids", ["unknown"])[0]
-                    if dataset_meta.get("dataset_cell_line_ids")
+                "cell_line": cell_line_value,
+                "disease": (
+                    dataset_meta.get("dataset_diseases", ["unknown"])[0]
+                    if dataset_meta.get("dataset_diseases")
                     else "unknown"
                 ),
-                "disease": dataset_meta.get("dataset_diseases", ["unknown"])[0]
-                if dataset_meta.get("dataset_diseases")
-                else "unknown",
-                "perturbation_type": dataset_meta.get(
-                    "dataset_perturbation_types", ["unknown"]
-                )[0]
-                if dataset_meta.get("dataset_perturbation_types")
-                else "unknown",
+                "perturbation_type": (
+                    dataset_meta.get("dataset_perturbation_types", ["unknown"])[0]
+                    if dataset_meta.get("dataset_perturbation_types")
+                    else "unknown"
+                ),
             }
         )
 
@@ -423,7 +424,7 @@ def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_thresho
     log.info(f"Classification: {counts.to_dict()}")
     return df
 
-  
+
 def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     """
     Convert harmonised Catalogue records into training record format.
@@ -442,7 +443,7 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     list of training record dicts
     """
 
-    # will fix this during module split 
+    # will fix this during module split
     from preprocess_crispr import fitness_class_to_text
 
     records = []
@@ -599,22 +600,16 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
     return records, df
 
 
-
-
-def fetch_and_process_perturb_seq(
-    dataset_id,
-    output_path=None,
-    max_records=5000
-):
+def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000):
     """
     Full pipeline: Perturbation Catalogue DEA API → training records.
-    
+
     Queries the perturb-seq DEA endpoint which returns processed
     differential expression results — no raw count processing needed.
-    
+
     Each record represents one perturbed gene and its transcriptional
     response: which genes went up, which went down, by how much.
-    
+
     Parameters
     ----------
     dataset_id : str
@@ -623,7 +618,7 @@ def fetch_and_process_perturb_seq(
         If provided, save records as JSONL to this path.
     max_records : int
         Maximum records to retrieve from API.
-    
+
     Returns
     -------
     tuple of (list of training records, pd.DataFrame)
@@ -648,11 +643,11 @@ def fetch_and_process_perturb_seq(
     # The API returns one row per (perturbed_gene, affected_gene) pair
     # We need to group these into one record per perturbed gene
     perturbation_effects = {}
-    
+
     for r in raw:
         perturbed_gene = r.get("perturbation", {}).get("gene_name", "unknown")
         effect = r.get("effect", {})
-        
+
         if perturbed_gene not in perturbation_effects:
             perturbation_effects[perturbed_gene] = {
                 "up_genes": [],
@@ -662,13 +657,13 @@ def fetch_and_process_perturb_seq(
                 "n_up": r.get("perturbation", {}).get("n_up", 0),
                 "n_down": r.get("perturbation", {}).get("n_down", 0),
             }
-        
+
         # Sort into up and down based on direction
         direction = effect.get("direction", "")
         log2fc = effect.get("log2fc", 0.0)
         affected_gene = effect.get("gene_name", "unknown")
         padj = effect.get("padj", 1.0)
-        
+
         # Only include significant genes
         if padj < 0.05:
             if direction == "increased":
@@ -691,24 +686,27 @@ def fetch_and_process_perturb_seq(
     condition = disease if disease != "unknown" else "standard growth"
 
     for perturbed_gene, effects in perturbation_effects.items():
-        
+
         # Sort by absolute log2fc, take top 10 for display
-        up_genes = sorted(
-            effects["up_genes"], key=lambda x: abs(x[1]), reverse=True
-        )[:10]
+        up_genes = sorted(effects["up_genes"], key=lambda x: abs(x[1]), reverse=True)[
+            :10
+        ]
         down_genes = sorted(
             effects["down_genes"], key=lambda x: abs(x[1]), reverse=True
         )[:10]
 
         # Build natural language output
-        up_str = ", ".join(
-            [f"{g} ({fc:+.2f})" for g, fc in up_genes]
-        ) if up_genes else "none detected"
-        
-        down_str = ", ".join(
-            [f"{g} ({fc:+.2f})" for g, fc in down_genes]
-        ) if down_genes else "none detected"
+        up_str = (
+            ", ".join([f"{g} ({fc:+.2f})" for g, fc in up_genes])
+            if up_genes
+            else "none detected"
+        )
 
+        down_str = (
+            ", ".join([f"{g} ({fc:+.2f})" for g, fc in down_genes])
+            if down_genes
+            else "none detected"
+        )
 
         n_shown_up = len(up_genes)
         n_shown_down = len(down_genes)
@@ -721,7 +719,6 @@ def fetch_and_process_perturb_seq(
             f"{n_shown_up} upregulated, {n_shown_down} downregulated "
             f"(filtered by padj < 0.05, ranked by absolute log2fc)."
         )
-        
 
         record = {
             "instruction": (
@@ -749,16 +746,18 @@ def fetch_and_process_perturb_seq(
                 "n_down_api": effects["n_down"],
                 "modality": "scPerturb-seq",
                 "source": "perturbation_catalogue_api",
-            }
+            },
         }
         records.append(record)
-        rows.append({
-            "gene": perturbed_gene,
-            "cell_line": cell_line,
-            "n_up": effects["n_up"],
-            "n_down": effects["n_down"],
-            "n_total": effects["n_total"],
-        })
+        rows.append(
+            {
+                "gene": perturbed_gene,
+                "cell_line": cell_line,
+                "n_up": effects["n_up"],
+                "n_down": effects["n_down"],
+                "n_total": effects["n_total"],
+            }
+        )
 
     # Save if output path provided
     if output_path and records:
@@ -773,23 +772,18 @@ def fetch_and_process_perturb_seq(
     return records, df
 
 
-
 def fetch_and_process_perturb_seq_gsea(
-    dataset_id,
-    gene_names,
-    output_path=None,
-    fdr_threshold=0.05,
-    top_n_pathways=5
+    dataset_id, gene_names, output_path=None, fdr_threshold=0.05, top_n_pathways=5
 ):
     """
     Full pipeline: Perturbation Catalogue GSEA API → pathway-level training records.
-    
+
     Queries the perturb-seq GSEA endpoint for each perturbed gene and
-    builds pathway-level training records. 
+    builds pathway-level training records.
 
     Unlike DEA, GSEA requires one API call per gene. This function
     iterates over a list of gene names and aggregates the results.
-    
+
     Parameters
     ----------
     dataset_id : str
@@ -802,7 +796,7 @@ def fetch_and_process_perturb_seq_gsea(
         Maximum FDR to consider a pathway significant. Default 0.05.
     top_n_pathways : int
         Maximum pathways to include per direction. Default 5.
-    
+
     Returns
     -------
     tuple of (list of training records, pd.DataFrame)
@@ -826,10 +820,7 @@ def fetch_and_process_perturb_seq_gsea(
     # This endpoint requires both dataset_id and perturbed_gene_name
     for i, gene in enumerate(gene_names):
         endpoint = f"{BASE_URL}/v1/perturb-seq-gsea"
-        params = {
-            "dataset_id": dataset_id,
-            "perturbed_gene_name": gene
-        }
+        params = {"dataset_id": dataset_id, "perturbed_gene_name": gene}
 
         try:
             response = requests.get(endpoint, params=params, timeout=30)
@@ -853,7 +844,7 @@ def fetch_and_process_perturb_seq_gsea(
             continue
 
         # Filter by FDR threshold and separate into activated/suppressed
-        activated = []   # NES > 0 — pathway genes upregulated
+        activated = []  # NES > 0 — pathway genes upregulated
         suppressed = []  # NES < 0 — pathway genes downregulated
 
         for pathway in effects:
@@ -872,21 +863,29 @@ def fetch_and_process_perturb_seq_gsea(
                     suppressed.append((clean_term, round(nes, 3), fdr))
 
         # Sort by absolute NES — strongest enrichment first
-        activated = sorted(activated, key=lambda x: abs(x[1]), reverse=True)[:top_n_pathways]
-        suppressed = sorted(suppressed, key=lambda x: abs(x[1]), reverse=True)[:top_n_pathways]
+        activated = sorted(activated, key=lambda x: abs(x[1]), reverse=True)[
+            :top_n_pathways
+        ]
+        suppressed = sorted(suppressed, key=lambda x: abs(x[1]), reverse=True)[
+            :top_n_pathways
+        ]
 
         # Skip genes with no significant pathways
         if not activated and not suppressed:
             continue
 
         # Build natural language output
-        act_str = ", ".join(
-            [f"{term} (NES: {nes:+.2f})" for term, nes, _ in activated]
-        ) if activated else "none detected"
+        act_str = (
+            ", ".join([f"{term} (NES: {nes:+.2f})" for term, nes, _ in activated])
+            if activated
+            else "none detected"
+        )
 
-        sup_str = ", ".join(
-            [f"{term} (NES: {nes:+.2f})" for term, nes, _ in suppressed]
-        ) if suppressed else "none detected"
+        sup_str = (
+            ", ".join([f"{term} (NES: {nes:+.2f})" for term, nes, _ in suppressed])
+            if suppressed
+            else "none detected"
+        )
 
         output_text = (
             f"Knockout of {gene} in {cell_line} activates pathways: {act_str}. "
@@ -917,26 +916,29 @@ def fetch_and_process_perturb_seq_gsea(
                 "n_suppressed": len(suppressed),
                 "modality": "scPerturb-seq_GSEA",
                 "source": "perturbation_catalogue_api",
-            }
+            },
         }
         records.append(record)
-        rows.append({
-            "gene": gene,
-            "cell_line": cell_line,
-            "n_activated": len(activated),
-            "n_suppressed": len(suppressed),
-        })
+        rows.append(
+            {
+                "gene": gene,
+                "cell_line": cell_line,
+                "n_activated": len(activated),
+                "n_suppressed": len(suppressed),
+            }
+        )
 
         # Progress update every 10 genes
         if (i + 1) % 10 == 0:
             log.info(f"Processed {i + 1}/{len(gene_names)} genes")
 
-
         time.sleep(0.2)
 
     log.info(f"Built {len(records)} GSEA training records from {dataset_id}")
     if failed:
-        log.warning(f"Failed to retrieve GSEA data for {len(failed)} genes: {failed[:5]}...")
+        log.warning(
+            f"Failed to retrieve GSEA data for {len(failed)} genes: {failed[:5]}..."
+        )
 
     # Save if output path provided
     if output_path and records:
@@ -950,9 +952,8 @@ def fetch_and_process_perturb_seq_gsea(
     return records, df
 
 
-
 def demo():
-    
+
     log.info("Fetching real data from Perturbation Catalogue API...")
     log.info("Dataset: biogrid_5 — Gilbert/Weissman 2014 CRISPRi screen")
 
@@ -1001,8 +1002,6 @@ def demo():
     print(f"\nINPUT:\n{r['input']}")
     print(f"\nOUTPUT:\n{r['output']}")
     print("=" * 60)
-
-
 
 
 if __name__ == "__main__":
