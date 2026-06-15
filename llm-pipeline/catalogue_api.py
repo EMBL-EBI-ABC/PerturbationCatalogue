@@ -125,6 +125,7 @@ def query_crispr_screen(dataset_id=None, limit=100, max_records=5000):
                 for r in results:
                     r["_dataset_meta"] = dataset_meta
                 all_results.extend(results)
+            break
         elif isinstance(data, dict):
             results = data.get("results", [])
             all_results.extend(results)
@@ -179,6 +180,7 @@ def query_perturb_seq(dataset_id=None, limit=100, max_records=5000):
                 for r in results:
                     r["_dataset_meta"] = dataset_meta
                 all_results.extend(results)
+            break
         elif isinstance(data, dict):
             results = data.get("results", [])
             all_results.extend(results)
@@ -233,6 +235,7 @@ def query_mave(dataset_id=None, limit=100, max_records=5000):
                 for r in results:
                     r["_dataset_meta"] = dataset_meta
                 all_results.extend(results)
+            break
         elif isinstance(data, dict):
             results = data.get("results", [])
             all_results.extend(results)
@@ -582,6 +585,8 @@ def get_dataset_metadata(dataset_id):
         "cell_type": first(data.get("cell_type_labels", [])),
         "perturbation_type": first(data.get("perturbation_type_labels", [])),
         "treatment": first(data.get("treatment_labels", [])),
+        "score_interpretation": data.get("score_interpretation", ""),
+        "experiment_summary": data.get("experiment_summary", ""),
     }
 
 
