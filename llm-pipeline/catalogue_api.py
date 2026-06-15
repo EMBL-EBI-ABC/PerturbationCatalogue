@@ -709,13 +709,19 @@ def fetch_and_process_perturb_seq(
             [f"{g} ({fc:+.2f})" for g, fc in down_genes]
         ) if down_genes else "none detected"
 
+
+        n_shown_up = len(up_genes)
+        n_shown_down = len(down_genes)
+
         output_text = (
             f"Knockout of {perturbed_gene} in {cell_line} causes "
             f"upregulation of: {up_str}; "
             f"and downregulation of: {down_str}. "
-            f"Total significantly affected genes: {effects['n_total']} "
-            f"({effects['n_up']} up, {effects['n_down']} down)."
+            f"Top differentially expressed genes shown: "
+            f"{n_shown_up} upregulated, {n_shown_down} downregulated "
+            f"(filtered by padj < 0.05, ranked by absolute log2fc)."
         )
+        
 
         record = {
             "instruction": (
@@ -736,9 +742,11 @@ def fetch_and_process_perturb_seq(
                 "disease": disease,
                 "top_up_genes": [g for g, _ in up_genes],
                 "top_down_genes": [g for g, _ in down_genes],
-                "n_total": effects["n_total"],
-                "n_up": effects["n_up"],
-                "n_down": effects["n_down"],
+                "n_shown_up": n_shown_up,
+                "n_shown_down": n_shown_down,
+                "n_total_api": effects["n_total"],
+                "n_up_api": effects["n_up"],
+                "n_down_api": effects["n_down"],
                 "modality": "scPerturb-seq",
                 "source": "perturbation_catalogue_api",
             }
