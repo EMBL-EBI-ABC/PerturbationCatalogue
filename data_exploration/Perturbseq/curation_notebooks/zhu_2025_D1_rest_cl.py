@@ -38,7 +38,6 @@ noncurated_path = '/hps/nobackup/mfreeberg/marson_downloads/zhu_2025_D1_rest_cl.
 cur_data = CuratedDataset(
     obs_schema=ObsSchema,
     var_schema=VarSchema,
-    exp_metadata_schema=Experiment,
     noncurated_path=noncurated_path
 )
 
