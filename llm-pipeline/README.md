@@ -6,10 +6,23 @@ GSoC 2026 project: Building a Perturbation-Aware LLM for Multimodal In Silico Pe
 
 This pipeline connects to the EMBL-EBI Perturbation Catalogue REST API and converts perturbation experiment data into instruction-tuning training records for fine-tuning a biomedical language model (BioMedLM).
 
-Three data modalities are supported:
-- CRISPR screens — gene fitness effects
-- scPerturb-seq DEA — differential expression responses
-- scPerturb-seq GSEA — pathway-level enrichment responses
+## Prediction Tasks
+
+For each modality, the model is trained to answer natural language queries given only information available at inference time:
+
+**CRISPR screen**
+- Input: perturbed gene, cell line
+- Output: fitness class (essential / anti-essential / neutral) and effect summary
+
+**scPerturb-seq DEA**
+- Input: perturbed gene, cell line
+- Output: top-k upregulated and downregulated genes with log2fc values
+
+**scPerturb-seq GSEA**
+- Input: perturbed gene, cell line
+- Output: top-k activated and suppressed biological pathways with NES scores
+
+Note: dataset identifiers are not provided to the model at inference time. The model is expected to generalise across datasets given only the biological context.
 
 ## Setup
 
@@ -17,68 +30,91 @@ Three data modalities are supported:
 pip install requests pandas numpy scipy
 ```
 
-## How to get training data
-
-```python
-from catalogue_api import fetch_and_process_crispr
-from catalogue_api import fetch_and_process_perturb_seq
-from catalogue_api import fetch_and_process_perturb_seq_gsea
-
-# CRISPR screen
-records, df = fetch_and_process_crispr(
-    dataset_id="biogrid_5",
-    output_path="output/crispr_biogrid5.jsonl"
-)
-
-# scPerturb-seq DEA
-records, df = fetch_and_process_perturb_seq(
-    dataset_id="orion_2025_hct116",
-    output_path="output/perturb_seq_dea.jsonl"
-)
-
-# scPerturb-seq GSEA
-gsea_records, gsea_df = fetch_and_process_perturb_seq_gsea(
-    dataset_id="orion_2025_hct116",
-    gene_names=df["gene"].tolist(),
-    output_path="output/perturb_seq_gsea.jsonl"
-)
+For fine-tuning:
+```bash
+pip install torch transformers peft trl bitsandbytes wandb accelerate
 ```
 
-## How to run scripts
+## Pipeline
+
+The pipeline consists of three steps:
+
+### Step 1 — Fetch training data
 
 ```bash
-# Run CRISPR demo
-python catalogue_api.py --demo
+# CRISPR screen
+python prepare_training_data.py --modality crispr --dataset_id biogrid_5 --output data/crispr_biogrid5.jsonl
 
-# Run on specific dataset
-python catalogue_api.py --dataset_id biogrid_5 --output output/records.jsonl
+# scPerturb-seq DEA
+python prepare_training_data.py --modality perturb_seq --dataset_id nadig_2025_hepg2 --output data/dea_nadig.jsonl
+
+# scPerturb-seq GSEA (requires gene list from DEA step)
+python prepare_training_data.py --modality gsea --dataset_id nadig_2025_hepg2 --genes_file data/genes.txt --output data/gsea_nadig.jsonl
 ```
 
-## Training record format
+### Step 2 — Run pipeline and create splits
+
+```bash
+python pipeline.py --split --corpus data/corpus.jsonl --output_dir data/splits/
+```
+
+### Step 3 — Fine-tune
+
+```bash
+# Standard LoRA on BioMedLM (runs locally for small batches)
+python finetune.py \
+    --splits_dir data/splits/ \
+    --output_dir runs/exp_001/ \
+    --model_name stanford-crfm/BioMedLM
+
+# QLoRA for memory-constrained environments
+python finetune.py \
+    --splits_dir data/splits/ \
+    --output_dir runs/exp_001/ \
+    --use_qlora
+```
+
+Fine-tuning is designed to run locally for small batches. Large-scale training will use the Codon HPC cluster.
+
+## Training Record Format
 
 Each record follows instruction-tuning format:
 
 ```json
 {
-  "instruction": "What is the fitness effect of knocking out gene X?",
-  "input": "Gene: X. Cell line: Y. Condition: Z.",
-  "output": "Gene X is essential for survival...",
+  "instruction": "What is the fitness effect of knocking out gene ATF5 in K562?",
+  "input": "Gene: ATF5. Cell line: K562.",
+  "output": "ATF5 is essential for survival of K562 under chronic myelogenous leukemia conditions...",
   "metadata": {}
 }
 ```
 
-## Verified datasets
+The metadata field is excluded from model training and used only for evaluation.
 
-| Dataset | Modality | Records | Cell line |
+## Datasets
+
+### CRISPR screens
+
+| Dataset | Cell line | Disease | Perturbed targets |
 |---|---|---|---|
-| biogrid_5 | CRISPR | 4,256 | K562 (CML) |
-| biogrid_2373 | CRISPR | 1,649 | SK-N-DZ (neuroblastoma) |
-| orion_2025_hct116 | scPerturb-seq DEA | 427 | HCT116 (colon carcinoma) |
+| biogrid_5 | K562 | CML | 15,350 |
+| biogrid_2373 | SK-N-DZ | neuroblastoma | unknown |
 
-## Project structure
+### scPerturb-seq (recommended)
 
-- `catalogue_api.py` — Perturbation Catalogue API client and full pipelines
-- `preprocess_crispr.py` — CRISPR screen preprocessing from local MAGeCK files
-- `preprocess_scrna.py` — scPerturb-seq preprocessing from local h5ad files
-- `benchmark.py` — Evaluation framework with gene-level splits
-- `finetune.py` — LoRA fine-tuning scaffold (requires Codon cluster)
+| Dataset | Cell line | Disease | Perturbed targets |
+|---|---|---|---|
+| nadig_2025_hepg2 | HepG2 | hepatoblastoma | 2,392 |
+| nadig_2025_jurkat | Jurkat | unknown | unknown |
+| replogle_2022_k562_gw_normalized | K562 | CML | 9,862 |
+| replogle_2022_k562_essential_normalized | K562 | CML | unknown |
+| replogle_2022_rpe1_essential_normalized | RPE1 | unknown | unknown |
+| arce_2025 | primary CD4+ T cells | healthy donor | 29 |
+
+## Project Structure
+
+- `catalogue_api.py` — Perturbation Catalogue API client (query functions only)
+- `prepare_training_data.py` — fetch data from API and save as JSONL training records
+- `pipeline.py` — load saved data, create gene-level splits, orchestrate analysis
+- `finetune.py` — LoRA and QLoRA fine-tuning pipeline for BioMedLM
+- `benchmark.py` — evaluation framework with gene-level splits and biological metrics
