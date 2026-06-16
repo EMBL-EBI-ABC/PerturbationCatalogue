@@ -164,9 +164,7 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
                 f"Describe the phenotype and its biological interpretation."
             ),
             "input": (
-                f"Gene: {gene}. "
-                f"Cell line: {cell_line}. "
-                f"Condition: {condition}."
+                f"Gene: {gene}. " f"Cell line: {cell_line}. " f"Condition: {condition}."
             ),
             "output": output_text,
             "metadata": {
@@ -212,6 +210,9 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
     log.info(f"Dataset metadata: {metadata}")
 
     df = pivot_gene_records(raw)
+    df["dataset_id"] = (
+        dataset_id  # ensure correct dataset_id for normalisation grouping
+    )
     for key, value in metadata.items():
         df[key] = value
 
@@ -293,20 +294,22 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
     condition = disease if disease != "unknown" else "standard growth"
 
     for perturbed_gene, effects in perturbation_effects.items():
-        up_genes = sorted(
-            effects["up_genes"], key=lambda x: abs(x[1]), reverse=True
-        )[:10]
+        up_genes = sorted(effects["up_genes"], key=lambda x: abs(x[1]), reverse=True)[
+            :10
+        ]
         down_genes = sorted(
             effects["down_genes"], key=lambda x: abs(x[1]), reverse=True
         )[:10]
 
         up_str = (
             ", ".join([f"{g} ({fc:+.2f})" for g, fc in up_genes])
-            if up_genes else "none detected"
+            if up_genes
+            else "none detected"
         )
         down_str = (
             ", ".join([f"{g} ({fc:+.2f})" for g, fc in down_genes])
-            if down_genes else "none detected"
+            if down_genes
+            else "none detected"
         )
 
         n_shown_up = len(up_genes)
@@ -350,13 +353,15 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
             },
         }
         records.append(record)
-        rows.append({
-            "gene": perturbed_gene,
-            "cell_line": cell_line,
-            "n_up": effects["n_up"],
-            "n_down": effects["n_down"],
-            "n_total": effects["n_total"],
-        })
+        rows.append(
+            {
+                "gene": perturbed_gene,
+                "cell_line": cell_line,
+                "n_up": effects["n_up"],
+                "n_down": effects["n_down"],
+                "n_total": effects["n_total"],
+            }
+        )
 
     if output_path and records:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -390,6 +395,7 @@ def fetch_and_process_perturb_seq_gsea(
     """
     import requests
     import time
+
     BASE_URL = "https://perturbation-catalogue-be-328296435987.europe-west2.run.app"
 
     log.info(f"Fetching GSEA data for {len(gene_names)} genes in {dataset_id}...")
@@ -439,19 +445,25 @@ def fetch_and_process_perturb_seq_gsea(
                 else:
                     suppressed.append((clean_term, round(nes, 3), fdr))
 
-        activated = sorted(activated, key=lambda x: abs(x[1]), reverse=True)[:top_n_pathways]
-        suppressed = sorted(suppressed, key=lambda x: abs(x[1]), reverse=True)[:top_n_pathways]
+        activated = sorted(activated, key=lambda x: abs(x[1]), reverse=True)[
+            :top_n_pathways
+        ]
+        suppressed = sorted(suppressed, key=lambda x: abs(x[1]), reverse=True)[
+            :top_n_pathways
+        ]
 
         if not activated and not suppressed:
             continue
 
         act_str = (
             ", ".join([f"{term} (NES: {nes:+.2f})" for term, nes, _ in activated])
-            if activated else "none detected"
+            if activated
+            else "none detected"
         )
         sup_str = (
             ", ".join([f"{term} (NES: {nes:+.2f})" for term, nes, _ in suppressed])
-            if suppressed else "none detected"
+            if suppressed
+            else "none detected"
         )
 
         output_text = (
@@ -466,9 +478,7 @@ def fetch_and_process_perturb_seq_gsea(
                 f"Describe the activated and suppressed pathways."
             ),
             "input": (
-                f"Gene: {gene}. "
-                f"Cell line: {cell_line}. "
-                f"Condition: {condition}."
+                f"Gene: {gene}. " f"Cell line: {cell_line}. " f"Condition: {condition}."
             ),
             "output": output_text,
             "metadata": {
@@ -485,12 +495,14 @@ def fetch_and_process_perturb_seq_gsea(
             },
         }
         records.append(record)
-        rows.append({
-            "gene": gene,
-            "cell_line": cell_line,
-            "n_activated": len(activated),
-            "n_suppressed": len(suppressed),
-        })
+        rows.append(
+            {
+                "gene": gene,
+                "cell_line": cell_line,
+                "n_activated": len(activated),
+                "n_suppressed": len(suppressed),
+            }
+        )
 
         if (i + 1) % 10 == 0:
             log.info(f"Processed {i + 1}/{len(gene_names)} genes")
@@ -520,31 +532,25 @@ def main():
         "--modality",
         choices=["crispr", "perturb_seq", "gsea"],
         required=True,
-        help="Data modality to fetch"
+        help="Data modality to fetch",
     )
     parser.add_argument(
-        "--dataset_id",
-        type=str,
-        required=True,
-        help="Catalogue dataset ID"
+        "--dataset_id", type=str, required=True, help="Catalogue dataset ID"
     )
     parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Output JSONL file path"
+        "--output", type=str, required=True, help="Output JSONL file path"
     )
     parser.add_argument(
         "--max_records",
         type=int,
         default=5000,
-        help="Maximum records to fetch (CRISPR and DEA only)"
+        help="Maximum records to fetch (CRISPR and DEA only)",
     )
     parser.add_argument(
         "--genes_file",
         type=str,
         default=None,
-        help="Text file with gene names one per line (GSEA only)"
+        help="Text file with gene names one per line (GSEA only)",
     )
     args = parser.parse_args()
 
