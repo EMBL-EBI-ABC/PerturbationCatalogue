@@ -1,17 +1,3 @@
-"""
-pipeline.py
-===========
-Loads previously saved training data and runs the analysis pipeline.
-
-This script assumes training data has already been fetched and saved
-using prepare_training_data.py.
-
-Usage
------
-# Run demo to verify the data pipeline works end to end
-python pipeline.py --demo --dataset_id biogrid_5 --output data/demo_output.jsonl
-"""
-
 import json
 import logging
 import argparse
