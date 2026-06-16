@@ -1,21 +1,3 @@
-"""
-prepare_training_data.py
-========================
-Runnable script to fetch perturbation data from the EMBL-EBI
-Perturbation Catalogue API and save as JSONL training records.
-
-Usage
------
-# Fetch CRISPR screen data
-python prepare_training_data.py --modality crispr --dataset_id biogrid_5 --output data/crispr_biogrid5.jsonl
-
-# Fetch scPerturb-seq DEA data
-python prepare_training_data.py --modality perturb_seq --dataset_id nadig_2025_hepg2 --output data/dea_nadig.jsonl
-
-# Fetch scPerturb-seq GSEA data (requires gene list from DEA first)
-python prepare_training_data.py --modality gsea --dataset_id nadig_2025_hepg2 --genes_file data/genes.txt --output data/gsea_nadig.jsonl
-"""
-
 import json
 import logging
 import argparse
