@@ -36,7 +36,7 @@ load_dotenv()
 
 # Elastic indexes to use.
 ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
-ES_TARGET_SUMMARY = "target-summary"
+ES_TARGET_SUMMARY = "target-summary-ensg"
 ES_DATASET_SUMMARY = "dataset-summary"
 
 
