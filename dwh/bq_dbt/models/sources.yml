@@ -30,3 +30,10 @@ sources:
         description: "DEA per (dataset_id, perturbed_target_symbol)"
       - name: pertpy_gsea
         description: "GSEA results per (dataset_id, perturbed_target_symbol)"
+  - name: reference
+    description: "Reference data loaded from external canonical resources"
+    database: prj-ext-dev-pertcat-437314   # GCP project id
+    schema: reference                   # BigQuery dataset
+    tables:
+      - name: opentargets_targets
+        description: "Open Targets Platform target table keyed by Ensembl gene ID"
