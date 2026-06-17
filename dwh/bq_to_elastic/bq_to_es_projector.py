@@ -3,10 +3,10 @@
 Projector: BigQuery -> Elasticsearch (Python client).
 
 Reads rows from:
-  <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary|landing_page_summary>
+  <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary_ensg|landing_page_summary>
 
 Writes to ES index:
-  <dataset-summary|target-summary|landing-page-summary>
+  <dataset-summary|target-summary-ensg|landing-page-summary>
 """
 
 import os
@@ -32,10 +32,10 @@ TABLE_CONFIG = {
         "key_field": "dataset_id",
         "prefix": "dataset",
     },
-    "target_summary": {
-        "index_base": "target-summary",
-        "key_field": "perturbed_target_symbol",
-        "prefix": "target",
+    "target_summary_ensg": {
+        "index_base": "target-summary-ensg",
+        "key_field": "ensembl_gene_id",
+        "prefix": "target-ensg",
     },
     "landing_page_summary": {
         "index_base": "landing-page-summary",
@@ -338,7 +338,6 @@ def main() -> int:
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     es = make_es_client()
     bq_client = bigquery.Client(project=BQ_PROJECT)
-
     sync_results = {}  # index_base -> new_index
 
     for table, cfg in TABLE_CONFIG.items():

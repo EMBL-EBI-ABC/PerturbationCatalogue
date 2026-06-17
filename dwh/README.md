@@ -146,6 +146,9 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
+The target summary projection reads `target_summary_ensg` and writes to the
+separate `target-summary-ensg` Elasticsearch alias.
+
 ## Creating the PostgreSQL instance
 
 Create the database at: https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_PLUS_DATA_CACHE_ENABLED_DEV_TEMPLATE
