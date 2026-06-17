@@ -42,7 +42,7 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 sample_id,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 significant,
@@ -62,7 +62,7 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 sample_id,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 perturbation_name,
@@ -87,8 +87,8 @@ SYNC_QUERIES = {
         "export_query": r"""
             SELECT
                 dataset_id,
-                perturbed_target_symbol,
-                gene,
+                perturbed_target_ensg,
+                effect_gene_ensg,
                 padj,
                 log2FoldChange as log2foldchange,
                 score_name,
@@ -109,7 +109,7 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 term,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 es,
                 nes,
                 pval,
@@ -136,25 +136,25 @@ INDEX_DEFINITIONS = {
     "perturb_seq_dea": [
         (
             "idx_perturbation_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturbation_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturb_seq_dea_dataset_id_padj",
-            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE gene IS NOT NULL",
+            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE effect_gene_ensg IS NOT NULL",
         ),
     ],
     "perturb_seq_gsea": [
         (
             "idx_perturbation_gsea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, fdr, nes)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, fdr, nes)",
         ),
     ],
     "crispr_data": [
@@ -164,7 +164,7 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_crispr_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
     "mave_data": [
@@ -174,7 +174,7 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_mave_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id)",
         ),
     ],
 }
