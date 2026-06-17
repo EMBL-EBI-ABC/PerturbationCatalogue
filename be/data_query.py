@@ -31,8 +31,8 @@ PG_TABLES = {
 
 # Field mappings from API to database
 PERTURB_SEQ_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
-    "effect_gene_name": "gene",
+    "perturbed_target_ensg": "perturbed_target_ensg",
+    "effect_gene_ensg": "effect_gene_ensg",
     "effect_log2fc": "log2foldchange",
     "effect_padj": "padj",
     "effect_score_name": "score_name",
@@ -40,7 +40,7 @@ PERTURB_SEQ_PG_MAPPING = {
     "effect_cell_type": "cell_type",
 }
 PERTURB_SEQ_GSEA_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
+    "perturbed_target_ensg": "perturbed_target_ensg",
     "gsea_term": "term",
     "gsea_sidak": "sidak",
     "effect_term": "term",
@@ -54,14 +54,14 @@ PERTURB_SEQ_GSEA_PG_MAPPING = {
     "effect_cell_type": "cell_type",
 }
 CRISPR_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
+    "perturbed_target_ensg": "perturbed_target_ensg",
     "effect_score_name": "score_name",
     "effect_score_value": "score_value",
     "effect_significant": "significant",
     "effect_significance_criteria": "significance_criteria",
 }
 MAVE_PG_MAPPING = {
-    "perturbation_gene_name": "perturbed_target_symbol",
+    "perturbed_target_ensg": "perturbed_target_ensg",
     "perturbation_name": "perturbation_name",
     "perturbation_position": "perturbation_position",
     "perturbation_aa_wt": "perturbation_aa_wt",
@@ -140,7 +140,7 @@ DatasetMetadata = _build_dataset_metadata_model()
 
 # Perturbation Models
 class PerturbationBase(BaseModel):
-    gene_name: str = Field(..., alias="perturbation_gene_name")
+    perturbed_target_ensg: str = Field(..., alias="perturbed_target_ensg")
 
 
 class MavePerturbation(PerturbationBase):
@@ -162,7 +162,7 @@ class EffectBase(BaseModel):
 
 
 class PerturbSeqEffect(EffectBase):
-    gene_name: str = Field(..., alias="effect_gene_name")
+    effect_gene_ensg: str = Field(..., alias="effect_gene_ensg")
     direction: str = Field(..., alias="effect_direction")
     log2fc: float = Field(..., alias="effect_log2fc")
     padj: float = Field(..., alias="effect_padj")
@@ -296,8 +296,8 @@ class CommonDatasetSearchParams:
 class MaveParams:
     def __init__(
         self,
-        perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+        perturbed_target_ensg: Optional[str] = Query(
+            None, description="Filter by perturbed target Ensembl gene ID"
         ),
         perturbation_name: Optional[str] = Query(
             None, description="Filter by perturbation name"
@@ -319,7 +319,7 @@ class MaveParams:
             None, description="Filter by target amino acid"
         ),
     ):
-        self.perturbation_gene_name = perturbation_gene_name
+        self.perturbed_target_ensg = perturbed_target_ensg
         self.perturbation_name = perturbation_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
@@ -334,8 +334,8 @@ class MaveParams:
 class CrisprScreenParams:
     def __init__(
         self,
-        perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+        perturbed_target_ensg: Optional[str] = Query(
+            None, description="Filter by perturbed target Ensembl gene ID"
         ),
         effect_score_name: Optional[str] = Query(
             None, description="Filter by effect score name"
@@ -350,7 +350,7 @@ class CrisprScreenParams:
             None, description="Filter by effect significance criteria"
         ),
     ):
-        self.perturbation_gene_name = perturbation_gene_name
+        self.perturbed_target_ensg = perturbed_target_ensg
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
         self.effect_significant = effect_significant
@@ -363,11 +363,11 @@ class CrisprScreenParams:
 class PerturbSeqParams:
     def __init__(
         self,
-        perturbation_gene_name: Optional[str] = Query(
-            None, description="Filter by perturbation gene name"
+        perturbed_target_ensg: Optional[str] = Query(
+            None, description="Filter by perturbed target Ensembl gene ID"
         ),
-        effect_gene_name: Optional[str] = Query(
-            None, description="Filter by effect gene name"
+        effect_gene_ensg: Optional[str] = Query(
+            None, description="Filter by effect Ensembl gene ID"
         ),
         effect_log2fc: Optional[str] = Query(
             None, description="Filter by effect log2fc (supports ranges)"
@@ -389,8 +389,8 @@ class PerturbSeqParams:
             None, description="Filter GSEA by sidak (supports ranges)"
         ),
     ):
-        self.perturbation_gene_name = perturbation_gene_name
-        self.effect_gene_name = effect_gene_name
+        self.perturbed_target_ensg = perturbed_target_ensg
+        self.effect_gene_ensg = effect_gene_ensg
         self.effect_log2fc = effect_log2fc
         self.effect_padj = effect_padj
         self.effect_score_name = effect_score_name
@@ -460,6 +460,23 @@ def validate_query_params(
             )
 
 
+def _result_field_name(api_field: str) -> str:
+    """Map API filter fields to nested response keys."""
+    if api_field in {"perturbed_target_ensg", "effect_gene_ensg"}:
+        return api_field
+    if api_field.startswith("perturbation_"):
+        return api_field.replace("perturbation_", "", 1)
+    if api_field.startswith("effect_"):
+        return api_field.replace("effect_", "", 1)
+    return api_field
+
+
+def _is_perturbation_field(api_field: str) -> bool:
+    return api_field == "perturbed_target_ensg" or api_field.startswith(
+        "perturbation_"
+    )
+
+
 async def enrich_perturb_seq_rows(
     conn: asyncpg.Connection, dataset_id: str, rows: List[Dict]
 ) -> List[Dict]:
@@ -469,11 +486,13 @@ async def enrich_perturb_seq_rows(
 
     # Fetch perturbation summaries
     pert_keys = list(
-        set((row["dataset_id"], row["perturbed_target_symbol"]) for row in rows)
+        set((row["dataset_id"], row["perturbed_target_ensg"]) for row in rows)
     )
     pert_summary_map = {}
     # Fetch effect summaries keys
-    effect_keys = list(set((row["dataset_id"], row["gene"]) for row in rows))
+    effect_keys = list(
+        set((row["dataset_id"], row["effect_gene_ensg"]) for row in rows)
+    )
     effect_summary_map = {}
 
     # Fetch summaries in parallel
@@ -483,10 +502,10 @@ async def enrich_perturb_seq_rows(
         pert_symbols = [k[1] for k in pert_keys]
         pert_task = conn.fetch(
             """
-            SELECT t.dataset_id, t.perturbed_target_symbol, t.n_total, t.n_up, t.n_down
+            SELECT t.dataset_id, t.perturbed_target_ensg, t.n_total, t.n_up, t.n_down
             FROM perturb_seq_summary_perturbation AS t
             JOIN unnest($1::text[], $2::text[]) AS keys(did, pts)
-            ON t.dataset_id = keys.did AND t.perturbed_target_symbol = keys.pts
+            ON t.dataset_id = keys.did AND t.perturbed_target_ensg = keys.pts
             """,
             pert_dataset_ids,
             pert_symbols,
@@ -499,10 +518,10 @@ async def enrich_perturb_seq_rows(
         effect_genes = [k[1] for k in effect_keys]
         effect_task = conn.fetch(
             """
-            SELECT t.dataset_id, t.gene, t.n_total, t.n_up, t.n_down
+            SELECT t.dataset_id, t.effect_gene_ensg, t.n_total, t.n_up, t.n_down
             FROM perturb_seq_summary_effect AS t
             JOIN unnest($1::text[], $2::text[]) AS keys(did, g)
-            ON t.dataset_id = keys.did AND t.gene = keys.g
+            ON t.dataset_id = keys.did AND t.effect_gene_ensg = keys.g
             """,
             effect_dataset_ids,
             effect_genes,
@@ -524,23 +543,25 @@ async def enrich_perturb_seq_rows(
             pert_summary_rows = results[res_idx]
             res_idx += 1
             for r in pert_summary_rows:
-                pert_summary_map[(r["dataset_id"], r["perturbed_target_symbol"])] = r
+                pert_summary_map[(r["dataset_id"], r["perturbed_target_ensg"])] = r
 
         if effect_task:
             effect_summary_rows = results[res_idx]
             for r in effect_summary_rows:
-                effect_summary_map[(r["dataset_id"], r["gene"])] = r
+                effect_summary_map[(r["dataset_id"], r["effect_gene_ensg"])] = r
 
     # Enrich rows
     for row in rows:
         pert_summary = pert_summary_map.get(
-            (row["dataset_id"], row["perturbed_target_symbol"]), {}
+            (row["dataset_id"], row["perturbed_target_ensg"]), {}
         )
         row["perturbation_n_total"] = pert_summary.get("n_total")
         row["perturbation_n_up"] = pert_summary.get("n_up")
         row["perturbation_n_down"] = pert_summary.get("n_down")
 
-        effect_summary = effect_summary_map.get((row["dataset_id"], row["gene"]), {})
+        effect_summary = effect_summary_map.get(
+            (row["dataset_id"], row["effect_gene_ensg"]), {}
+        )
         row["effect_n_total"] = effect_summary.get("n_total")
         row["effect_n_up"] = effect_summary.get("n_up")
         row["effect_n_down"] = effect_summary.get("n_down")
@@ -557,10 +578,10 @@ async def _fetch_perturb_seq_gsea(
     pg_filters = ["dataset_id = $1"]
     pg_params = [dataset_id]
 
-    # Re-use perturbation_gene_name filter if present
-    if "perturbation_gene_name" in query_params:
-        pg_filters.append(f"perturbed_target_symbol = ${len(pg_params) + 1}")
-        pg_params.append(query_params["perturbation_gene_name"])
+    # Re-use perturbed target filter if present
+    if "perturbed_target_ensg" in query_params:
+        pg_filters.append(f"perturbed_target_ensg = ${len(pg_params) + 1}")
+        pg_params.append(query_params["perturbed_target_ensg"])
 
     # GSEA specific filters
     if "gsea_term" in query_params:
@@ -621,7 +642,7 @@ async def _search_modality_impl(
 
     # Exclude "null" rows
     essential_columns = {
-        "perturb-seq": "gene",
+        "perturb-seq": "effect_gene_ensg",
         "crispr-screen": "score_name",
         "mave": "score_name",
     }
@@ -804,12 +825,12 @@ async def _search_modality_impl(
         results = []
         for row in pg_rows_dict:
             perturbation = {
-                k.replace("perturbation_", ""): row.get(v)
+                _result_field_name(k): row.get(v)
                 for k, v in api_to_db.items()
-                if k.startswith("perturbation_")
+                if _is_perturbation_field(k)
             }
             effect = {
-                k.replace("effect_", ""): row.get(v)
+                _result_field_name(k): row.get(v)
                 for k, v in api_to_db.items()
                 if k.startswith("effect_")
             }
@@ -886,7 +907,7 @@ async def _search_dataset_impl(
 
     # Exclude "null" rows
     essential_columns = {
-        "perturb-seq": "gene",
+        "perturb-seq": "effect_gene_ensg",
         "crispr-screen": "score_name",
         "mave": "score_name",
     }
@@ -980,12 +1001,12 @@ async def _search_dataset_impl(
     results = []
     for row in pg_rows_dict:
         perturbation = {
-            k.replace("perturbation_", ""): row.get(v)
+            _result_field_name(k): row.get(v)
             for k, v in api_to_db.items()
-            if k.startswith("perturbation_")
+            if _is_perturbation_field(k)
         }
         effect = {
-            k.replace("effect_", ""): row.get(v)
+            _result_field_name(k): row.get(v)
             for k, v in api_to_db.items()
             if k.startswith("effect_")
         }
@@ -1121,24 +1142,24 @@ async def search_perturb_seq_dataset(
 )
 async def get_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_gene_name: str = Query(
-        ..., description="Mandatory perturbed gene symbol"
+    perturbed_target_ensg: str = Query(
+        ..., description="Mandatory perturbed target Ensembl gene ID"
     ),
 ):
-    """Retrieve GSEA results for a specific gene in a dataset."""
+    """Retrieve GSEA results for a specific perturbed target in a dataset."""
     pg_pool = db_pools.get("pg")
     if not pg_pool:
         raise HTTPException(status_code=500, detail="Database pool not initialized")
     async with pg_pool.acquire() as conn:
-        # Fetch rows for this gene (no default filtering, return all)
+        # Fetch rows for this perturbed target (no default filtering, return all)
         rows = await conn.fetch(
             """
             SELECT * FROM perturb_seq_gsea 
-            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
             ORDER BY sidak ASC
             """,
             dataset_id,
-            perturbed_gene_name,
+            perturbed_target_ensg,
         )
         if not rows:
             return []
@@ -1151,26 +1172,26 @@ async def get_perturb_seq_gsea(
                 for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                 if k.startswith("effect_")
             }
-            gsea_by_pert[r["perturbed_target_symbol"]].append(effect)
+            gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
 
         # Enrich perturbation
         pert_summary = await conn.fetchrow(
             """
             SELECT n_total, n_up, n_down
             FROM perturb_seq_summary_perturbation
-            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
             """,
             dataset_id,
-            perturbed_gene_name,
+            perturbed_target_ensg,
         )
         pert_summary = dict(pert_summary) if pert_summary else {}
 
         results = []
-        for pert_symbol, effects in gsea_by_pert.items():
+        for pert_target_ensg, effects in gsea_by_pert.items():
             results.append(
                 {
                     "perturbation": {
-                        "gene_name": pert_symbol,
+                        "perturbed_target_ensg": pert_target_ensg,
                         "n_total": pert_summary.get("n_total"),
                         "n_up": pert_summary.get("n_up"),
                         "n_down": pert_summary.get("n_down"),
@@ -1184,8 +1205,8 @@ async def get_perturb_seq_gsea(
 # CSV column definitions for each modality
 CSV_COLUMNS = {
     "perturb-seq": [
-        ("perturbation_gene_name", "Perturbation Gene"),
-        ("effect_gene_name", "Effect Gene"),
+        ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("effect_gene_ensg", "Effect Gene ENSG"),
         ("effect_log2fc", "Log2FC"),
         ("effect_padj", "Padj"),
         ("effect_score_name", "Score Name"),
@@ -1193,14 +1214,14 @@ CSV_COLUMNS = {
         ("effect_cell_type", "Cell Type"),
     ],
     "crispr-screen": [
-        ("perturbation_gene_name", "Perturbation Gene"),
+        ("perturbed_target_ensg", "Perturbed Target ENSG"),
         ("effect_score_name", "Score Name"),
         ("effect_score_value", "Score Value"),
         ("effect_significant", "Significant"),
         ("effect_significance_criteria", "Significance Criteria"),
     ],
     "mave": [
-        ("perturbation_gene_name", "Perturbation Gene"),
+        ("perturbed_target_ensg", "Perturbed Target ENSG"),
         ("perturbation_name", "Perturbation Name"),
         ("perturbation_position", "Position"),
         ("perturbation_aa_wt", "AA WT"),
@@ -1227,7 +1248,11 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
 
         row = []
         for field_key, _ in columns:
-            if field_key.startswith("perturbation_"):
+            if field_key == "perturbed_target_ensg":
+                value = perturbation.get(field_key, "")
+            elif field_key == "effect_gene_ensg":
+                value = effect.get(field_key, "")
+            elif field_key.startswith("perturbation_"):
                 key = field_key.replace("perturbation_", "")
                 value = perturbation.get(key, "")
             elif field_key.startswith("effect_"):
@@ -1245,8 +1270,8 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
 async def download_modality_data(
     modality: MODALITIES,
     common: CommonModalitySearchParams = Depends(),
-    perturbation_gene_name: Optional[str] = Query(None),
-    effect_gene_name: Optional[str] = Query(None),
+    perturbed_target_ensg: Optional[str] = Query(None),
+    effect_gene_ensg: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1265,8 +1290,8 @@ async def download_modality_data(
 
     # Add modality-specific params
     modality_params = {
-        "perturbation_gene_name": perturbation_gene_name,
-        "effect_gene_name": effect_gene_name,
+        "perturbed_target_ensg": perturbed_target_ensg,
+        "effect_gene_ensg": effect_gene_ensg,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1295,8 +1320,8 @@ async def download_modality_data(
     csv_content = _results_to_csv(all_results, modality)
 
     # Generate filename
-    gene_name = perturbation_gene_name or effect_gene_name or "all"
-    filename = f"{modality}_{gene_name}_data.csv"
+    gene_id = perturbed_target_ensg or effect_gene_ensg or "all"
+    filename = f"{modality}_{gene_id}_data.csv"
 
     return StreamingResponse(
         iter([csv_content]),
@@ -1348,8 +1373,8 @@ async def download_dataset_data(
     offset: int = Query(0, description="Offset for rows"),
     sort: Optional[str] = Query(None, description="Sort order"),
     # Perturb-seq params
-    perturbation_gene_name: Optional[str] = Query(None),
-    effect_gene_name: Optional[str] = Query(None),
+    perturbed_target_ensg: Optional[str] = Query(None),
+    effect_gene_ensg: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1375,8 +1400,8 @@ async def download_dataset_data(
 
     # Add modality-specific params
     modality_params = {
-        "perturbation_gene_name": perturbation_gene_name,
-        "effect_gene_name": effect_gene_name,
+        "perturbed_target_ensg": perturbed_target_ensg,
+        "effect_gene_ensg": effect_gene_ensg,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1407,11 +1432,11 @@ async def download_dataset_data(
 @router.get("/v1/perturb-seq-gsea/download")
 async def download_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_gene_name: str = Query(
-        ..., description="Mandatory perturbed gene symbol"
+    perturbed_target_ensg: str = Query(
+        ..., description="Mandatory perturbed target Ensembl gene ID"
     ),
 ):
-    """Download GSEA data for a specific gene in a dataset as CSV."""
+    """Download GSEA data for a specific perturbed target in a dataset as CSV."""
     # Reuse the existing GSEA endpoint logic
     pg_pool = db_pools.get("pg")
     if not pg_pool:
@@ -1421,11 +1446,11 @@ async def download_perturb_seq_gsea(
         rows = await conn.fetch(
             """
             SELECT * FROM perturb_seq_gsea
-            WHERE dataset_id = $1 AND perturbed_target_symbol = $2
+            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
             ORDER BY sidak ASC
             """,
             dataset_id,
-            perturbed_gene_name,
+            perturbed_target_ensg,
         )
 
         if not rows:
@@ -1439,15 +1464,18 @@ async def download_perturb_seq_gsea(
                     for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
                     if k.startswith("effect_")
                 }
-                gsea_by_pert[r["perturbed_target_symbol"]].append(effect)
+                gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
 
             results = [
-                {"perturbation": {"gene_name": pert_symbol}, "effects": effects}
-                for pert_symbol, effects in gsea_by_pert.items()
+                {
+                    "perturbation": {"perturbed_target_ensg": pert_target_ensg},
+                    "effects": effects,
+                }
+                for pert_target_ensg, effects in gsea_by_pert.items()
             ]
             csv_content = _gsea_results_to_csv(results)
 
-    filename = f"gsea_{perturbed_gene_name}_{dataset_id}_data.csv"
+    filename = f"gsea_{perturbed_target_ensg}_{dataset_id}_data.csv"
 
     return StreamingResponse(
         iter([csv_content]),
