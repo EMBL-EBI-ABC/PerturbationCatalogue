@@ -30,14 +30,14 @@ layout = html.Div(
                     [
                         html.H2("Browse Targets", className="mb-3 mt-4"),
                         html.P(
-                            "Explore all gene targets across perturbation experiments. Use the search bar to filter by gene name or metadata, and the facets to narrow down results.",
+                            "Explore all gene targets across perturbation experiments. Use the search bar to find genes by symbol, synonym, name, or Ensembl ID, and the facets to narrow down results.",
                             className="text-muted mb-3",
                         ),
                         dbc.InputGroup(
                             [
                                 dbc.Input(
                                     id="targets-search-input",
-                                    placeholder="Search targets by gene name, tissue, disease...",
+                                    placeholder="Search targets by gene symbol, synonym, name, or Ensembl ID...",
                                     type="text",
                                     value="",
                                     debounce=True,
@@ -495,7 +495,10 @@ def download_targets_metadata(n_clicks, store_data, selected_values, filter_ids)
         return dash.no_update
 
     columns = [
-        "perturbed_target_symbol",
+        "ensembl_gene_id",
+        "approved_symbol",
+        "approved_name",
+        "exact_aliases",
         "n_experiments",
         "n_sig_perturb_pairs_up",
         "n_sig_perturb_pairs_down",
