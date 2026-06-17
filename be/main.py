@@ -149,6 +149,33 @@ DATASET_SEARCHABLE_FIELDS = [
     "library_perturbation_type_labels",
 ]
 
+TARGET_EXACT_SEARCH_FIELDS = {
+    "ensembl_gene_id": 10.0,
+    "approved_symbol": 8.0,
+    "exact_aliases": 6.0,
+}
+
+TARGET_TEXT_SEARCH_FIELDS = [
+    "ensembl_gene_id^10.0",
+    "ensembl_gene_id.text^4.0",
+    "approved_symbol^8.0",
+    "approved_symbol.text^4.0",
+    "exact_aliases^6.0",
+    "exact_aliases.text^3.0",
+    "approved_name^3.0",
+    "approved_name.text^2.0",
+    "search_keywords^2.0",
+    "search_keywords.text^1.5",
+]
+
+TARGET_SEARCHABLE_FIELDS = [
+    "ensembl_gene_id",
+    "approved_symbol",
+    "exact_aliases",
+    "approved_name",
+    "search_keywords",
+]
+
 
 # Elasticsearch helper functions
 def _escape_wildcard(value: str) -> str:
@@ -167,31 +194,25 @@ def build_elasticsearch_query(
     if query:
         cleaned_query = query.strip()
         if cleaned_query:
-            # Exact/fuzzy matches with equal boost across all fields
+            for field, boost in TARGET_EXACT_SEARCH_FIELDS.items():
+                should_clauses.append(
+                    {
+                        "term": {
+                            field: {
+                                "value": cleaned_query,
+                                "case_insensitive": True,
+                                "boost": boost,
+                            }
+                        }
+                    }
+                )
+
+            # Exact/fuzzy matches with higher boosts for canonical target fields.
             should_clauses.append(
                 {
                     "multi_match": {
                         "query": cleaned_query,
-                        "fields": [
-                            "perturbed_target_symbol^1.5",
-                            "perturbed_target_symbol.text^1.0",
-                            "license^1.5",
-                            "license.text^1.0",
-                            "data_modalities^1.5",
-                            "data_modalities.text^1.0",
-                            "tissues_tested^1.5",
-                            "tissues_tested.text^1.0",
-                            "cell_types_tested^1.5",
-                            "cell_types_tested.text^1.0",
-                            "cell_lines_tested^1.5",
-                            "cell_lines_tested.text^1.0",
-                            "sex_tested^1.5",
-                            "sex_tested.text^1.0",
-                            "developmental_stages_tested^1.5",
-                            "developmental_stages_tested.text^1.0",
-                            "diseases_tested^1.5",
-                            "diseases_tested.text^1.0",
-                        ],
+                        "fields": TARGET_TEXT_SEARCH_FIELDS,
                         "type": "best_fields",
                         "fuzziness": "AUTO:5,8",
                     }
@@ -199,18 +220,7 @@ def build_elasticsearch_query(
             )
 
             # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
-            searchable_fields = [
-                "perturbed_target_symbol",
-                "license",
-                "data_modalities",
-                "tissues_tested",
-                "cell_types_tested",
-                "cell_lines_tested",
-                "sex_tested",
-                "developmental_stages_tested",
-                "diseases_tested",
-            ]
-            for field in searchable_fields:
+            for field in TARGET_SEARCHABLE_FIELDS:
                 should_clauses.append(
                     {
                         "match_phrase_prefix": {
@@ -237,18 +247,7 @@ def build_elasticsearch_query(
                     wildcard_terms.append(f"*{safe_term}*")
 
             for wildcard_value in wildcard_terms:
-                for field in searchable_fields:
-                    should_clauses.append(
-                        {
-                            "wildcard": {
-                                f"{field}.keyword": {
-                                    "value": wildcard_value,
-                                    "case_insensitive": True,
-                                    "boost": 0.4,
-                                }
-                            }
-                        }
-                    )
+                for field in TARGET_SEARCHABLE_FIELDS:
                     should_clauses.append(
                         {
                             "wildcard": {
@@ -486,7 +485,7 @@ async def perform_search(
         es_query = build_elasticsearch_query(query, filters)
         facet_fields = FACET_FIELDS
         es_index = ES_TARGET_SUMMARY
-        sort_field = "perturbed_target_symbol"
+        sort_field = "approved_symbol"
 
     aggs = build_aggregations(facet_fields)
 
@@ -651,7 +650,7 @@ async def get_landing_page_summary():
 @app.get("/search", response_model=SearchResponse)
 async def search_get(
     query: Optional[str] = Query(
-        None, description="Search query for perturbed_target_symbol"
+        None, description="Search query for target symbol, synonym, name, or Ensembl ID"
     ),
     search_mode: str = Query(
         "targets", description="Search mode: 'targets' or 'datasets'"
