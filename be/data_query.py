@@ -3,6 +3,7 @@ import csv
 import io
 import os
 import json
+import re
 from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -20,6 +21,8 @@ router = APIRouter()
 
 # --- Constants and Mappings ---
 ES_DATASET_SUMMARY = "dataset-summary"
+ES_TARGET_SUMMARY = "target-summary-ensg"
+TARGET_QUERY_RESOLUTION_LIMIT = 25
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
@@ -74,6 +77,44 @@ PG_MAPPINGS = {
     "crispr-screen": CRISPR_PG_MAPPING,
     "mave": MAVE_PG_MAPPING,
 }
+
+TARGET_QUERY_FIELDS = {
+    "perturbed_target_query": "perturbed_target_ensg",
+    "effect_gene_query": "effect_gene_ensg",
+}
+
+MODALITY_TARGET_QUERY_FIELDS = {
+    "perturb-seq": set(TARGET_QUERY_FIELDS.keys()),
+    "crispr-screen": {"perturbed_target_query"},
+    "mave": {"perturbed_target_query"},
+}
+
+TARGET_EXACT_SEARCH_FIELDS = {
+    "ensembl_gene_id": 10.0,
+    "approved_symbol": 8.0,
+    "exact_aliases": 6.0,
+}
+
+TARGET_TEXT_SEARCH_FIELDS = [
+    "ensembl_gene_id^10.0",
+    "ensembl_gene_id.text^4.0",
+    "approved_symbol^8.0",
+    "approved_symbol.text^4.0",
+    "exact_aliases^6.0",
+    "exact_aliases.text^3.0",
+    "approved_name^3.0",
+    "approved_name.text^2.0",
+    "search_keywords^2.0",
+    "search_keywords.text^1.5",
+]
+
+TARGET_SEARCHABLE_FIELDS = [
+    "ensembl_gene_id",
+    "approved_symbol",
+    "exact_aliases",
+    "approved_name",
+    "search_keywords",
+]
 
 # Numeric field mappings: "int" for integer fields, "float" for float fields
 NUMERIC_FIELDS = {
@@ -299,6 +340,10 @@ class MaveParams:
         perturbed_target_ensg: Optional[str] = Query(
             None, description="Filter by perturbed target Ensembl gene ID"
         ),
+        perturbed_target_query: Optional[str] = Query(
+            None,
+            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+        ),
         perturbation_name: Optional[str] = Query(
             None, description="Filter by perturbation name"
         ),
@@ -320,6 +365,7 @@ class MaveParams:
         ),
     ):
         self.perturbed_target_ensg = perturbed_target_ensg
+        self.perturbed_target_query = perturbed_target_query
         self.perturbation_name = perturbation_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
@@ -337,6 +383,10 @@ class CrisprScreenParams:
         perturbed_target_ensg: Optional[str] = Query(
             None, description="Filter by perturbed target Ensembl gene ID"
         ),
+        perturbed_target_query: Optional[str] = Query(
+            None,
+            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+        ),
         effect_score_name: Optional[str] = Query(
             None, description="Filter by effect score name"
         ),
@@ -351,6 +401,7 @@ class CrisprScreenParams:
         ),
     ):
         self.perturbed_target_ensg = perturbed_target_ensg
+        self.perturbed_target_query = perturbed_target_query
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
         self.effect_significant = effect_significant
@@ -366,8 +417,16 @@ class PerturbSeqParams:
         perturbed_target_ensg: Optional[str] = Query(
             None, description="Filter by perturbed target Ensembl gene ID"
         ),
+        perturbed_target_query: Optional[str] = Query(
+            None,
+            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+        ),
         effect_gene_ensg: Optional[str] = Query(
             None, description="Filter by effect Ensembl gene ID"
+        ),
+        effect_gene_query: Optional[str] = Query(
+            None,
+            description="Search effect gene by Ensembl ID, symbol, synonym, or name",
         ),
         effect_log2fc: Optional[str] = Query(
             None, description="Filter by effect log2fc (supports ranges)"
@@ -390,7 +449,9 @@ class PerturbSeqParams:
         ),
     ):
         self.perturbed_target_ensg = perturbed_target_ensg
+        self.perturbed_target_query = perturbed_target_query
         self.effect_gene_ensg = effect_gene_ensg
+        self.effect_gene_query = effect_gene_query
         self.effect_log2fc = effect_log2fc
         self.effect_padj = effect_padj
         self.effect_score_name = effect_score_name
@@ -423,6 +484,116 @@ def parse_numeric_filter(param_name: str, value: str) -> Tuple[str, List[Any]]:
         return f"{param_name} = $... ", [float(value)]
 
 
+def _escape_wildcard(value: str) -> str:
+    """Escape characters that have special meaning in wildcard queries."""
+    return re.sub(r"([\\*?])", r"\\\1", value)
+
+
+def build_target_resolution_query(query: str) -> Dict[str, Any]:
+    """Build the target ES query used to resolve user gene queries to ENSGs."""
+    cleaned_query = query.strip()
+    should_clauses = []
+
+    for field, boost in TARGET_EXACT_SEARCH_FIELDS.items():
+        should_clauses.append(
+            {
+                "term": {
+                    field: {
+                        "value": cleaned_query,
+                        "case_insensitive": True,
+                        "boost": boost,
+                    }
+                }
+            }
+        )
+
+    should_clauses.append(
+        {
+            "multi_match": {
+                "query": cleaned_query,
+                "fields": TARGET_TEXT_SEARCH_FIELDS,
+                "type": "best_fields",
+                "fuzziness": "AUTO:5,8",
+            }
+        }
+    )
+
+    for field in TARGET_SEARCHABLE_FIELDS:
+        should_clauses.append(
+            {
+                "match_phrase_prefix": {
+                    f"{field}.text": {
+                        "query": cleaned_query,
+                        "slop": 1,
+                        "boost": 1.2,
+                    }
+                }
+            }
+        )
+
+    wildcard_terms = []
+    for term in cleaned_query.split():
+        safe_term = _escape_wildcard(term.lower())
+        if safe_term:
+            wildcard_terms.append(f"*{safe_term}*")
+
+    if not wildcard_terms:
+        safe_term = _escape_wildcard(cleaned_query.lower())
+        if safe_term:
+            wildcard_terms.append(f"*{safe_term}*")
+
+    for wildcard_value in wildcard_terms:
+        for field in TARGET_SEARCHABLE_FIELDS:
+            should_clauses.append(
+                {
+                    "wildcard": {
+                        field: {
+                            "value": wildcard_value,
+                            "case_insensitive": True,
+                            "boost": 0.3,
+                        }
+                    }
+                }
+            )
+
+    return {
+        "bool": {
+            "should": should_clauses,
+            "minimum_should_match": 1,
+        }
+    }
+
+
+async def resolve_target_query_to_ensg(query: str) -> List[str]:
+    """Resolve a user target query to ordered unique Ensembl gene IDs."""
+    cleaned_query = query.strip()
+    if not cleaned_query:
+        return []
+
+    es_client = db_pools.get("es")
+    if not es_client:
+        raise HTTPException(status_code=500, detail="Elasticsearch pool not initialized")
+
+    response = await es_client.search(
+        index=ES_TARGET_SUMMARY,
+        body={
+            "query": build_target_resolution_query(cleaned_query),
+            "_source": ["ensembl_gene_id"],
+            "size": TARGET_QUERY_RESOLUTION_LIMIT,
+            "sort": [{"_score": "desc"}, {"approved_symbol": "asc"}],
+        },
+    )
+
+    ensg_ids = []
+    seen = set()
+    for hit in response.get("hits", {}).get("hits", []):
+        ensg_id = hit.get("_source", {}).get("ensembl_gene_id")
+        if ensg_id and ensg_id not in seen:
+            seen.add(ensg_id)
+            ensg_ids.append(ensg_id)
+    return ensg_ids
+
+
 def get_api_to_db_mapping(modality: MODALITIES) -> Dict[str, str]:
     """Returns the combined API to DB field mapping for a modality."""
     return PG_MAPPINGS.get(modality, {})
@@ -450,6 +621,7 @@ def validate_query_params(
     # Add all filterable perturbation and effect fields to valid_params
     pg_mapping = get_api_to_db_mapping(modality)
     valid_params.update(pg_mapping.keys())
+    valid_params.update(MODALITY_TARGET_QUERY_FIELDS.get(modality, set()))
     if modality == "perturb-seq":
         valid_params.update(PERTURB_SEQ_GSEA_PG_MAPPING.keys())
 
@@ -475,6 +647,74 @@ def _is_perturbation_field(api_field: str) -> bool:
     return api_field == "perturbed_target_ensg" or api_field.startswith(
         "perturbation_"
     )
+
+
+async def build_pg_filters(
+    query_params: Dict[str, Any],
+    api_to_db: Dict[str, str],
+    numeric_fields: Dict[str, str],
+    modality: MODALITIES,
+    pg_params: Optional[List[Any]] = None,
+) -> Tuple[List[str], List[Any], bool]:
+    """Build Postgres filters, resolving user-facing target queries via ES."""
+    filters = []
+    params = list(pg_params or [])
+    has_empty_target_resolution = False
+
+    for key, value in query_params.items():
+        if key not in MODALITY_TARGET_QUERY_FIELDS.get(modality, set()):
+            continue
+        if not isinstance(value, str) or not value.strip():
+            continue
+
+        db_field = TARGET_QUERY_FIELDS[key]
+        ensg_ids = await resolve_target_query_to_ensg(value)
+        if not ensg_ids:
+            has_empty_target_resolution = True
+            filters.append("FALSE")
+            continue
+
+        params.append(ensg_ids)
+        filters.append(f"{db_field} = ANY(${len(params)}::text[])")
+
+    for key, value in query_params.items():
+        if key not in api_to_db:
+            continue
+
+        db_field = api_to_db[key]
+        field_type = numeric_fields.get(key)
+
+        # Numeric field handling
+        if field_type and isinstance(value, str):
+            # Numeric range filter (contains "_")
+            if "_" in value:
+                condition, condition_params = parse_numeric_filter(db_field, value)
+                condition = condition.replace("$...", f"${len(params) + 1}", 1)
+                if " AND " in condition:
+                    condition = condition.replace("$...", f"${len(params) + 2}", 1)
+                filters.append(condition)
+                params.extend(condition_params)
+            # Simple numeric filter (no "_")
+            else:
+                filters.append(f"{db_field} = ${len(params) + 1}")
+                if field_type == "int":
+                    params.append(int(value))
+                else:  # float
+                    params.append(float(value))
+        # Simple string filter
+        elif isinstance(value, str) and "_" not in value:
+            filters.append(f"{db_field} = ${len(params) + 1}")
+            params.append(value)
+        # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
+        elif isinstance(value, str):
+            condition, condition_params = parse_numeric_filter(db_field, value)
+            condition = condition.replace("$...", f"${len(params) + 1}", 1)
+            if " AND " in condition:
+                condition = condition.replace("$...", f"${len(params) + 2}", 1)
+            filters.append(condition)
+            params.extend(condition_params)
+
+    return filters, params, has_empty_target_resolution
 
 
 async def enrich_perturb_seq_rows(
@@ -575,26 +815,14 @@ async def _fetch_perturb_seq_gsea(
     query_params: Dict[str, Any],
 ) -> List[Dict]:
     """Fetches GSEA data for a perturb-seq dataset."""
-    pg_filters = ["dataset_id = $1"]
-    pg_params = [dataset_id]
-
-    # Re-use perturbed target filter if present
-    if "perturbed_target_ensg" in query_params:
-        pg_filters.append(f"perturbed_target_ensg = ${len(pg_params) + 1}")
-        pg_params.append(query_params["perturbed_target_ensg"])
-
-    # GSEA specific filters
-    if "gsea_term" in query_params:
-        pg_filters.append(f"term = ${len(pg_params) + 1}")
-        pg_params.append(query_params["gsea_term"])
-
-    if "gsea_sidak" in query_params:
-        condition, params = parse_numeric_filter("sidak", query_params["gsea_sidak"])
-        condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
-        if " AND " in condition:
-            condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
-        pg_filters.append(condition)
-        pg_params.extend(params)
+    pg_filters, pg_params, _ = await build_pg_filters(
+        query_params,
+        PERTURB_SEQ_GSEA_PG_MAPPING,
+        NUMERIC_FIELDS.get("perturb-seq", {}),
+        "perturb-seq",
+        [dataset_id],
+    )
+    pg_filters.insert(0, "dataset_id = $1")
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
@@ -649,47 +877,14 @@ async def _search_modality_impl(
     if modality in essential_columns:
         pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
 
-    pg_params: List[Any] = []
     numeric_fields = NUMERIC_FIELDS.get(modality, {})
-
-    for key, value in query_params.items():
-        if key in api_to_db:
-            db_field = api_to_db[key]
-            field_type = numeric_fields.get(key)
-
-            # Numeric field handling
-            if field_type and isinstance(value, str):
-                # Numeric range filter (contains "_")
-                if "_" in value:
-                    condition, params = parse_numeric_filter(db_field, value)
-                    # This is a bit tricky because parse_numeric_filter doesn't know the param index
-                    condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
-                    if " AND " in condition:
-                        condition = condition.replace(
-                            "$...", f"${len(pg_params) + 2}", 1
-                        )
-                    pg_filters.append(condition)
-                    pg_params.extend(params)
-                # Simple numeric filter (no "_")
-                else:
-                    pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
-                    if field_type == "int":
-                        pg_params.append(int(value))
-                    else:  # float
-                        pg_params.append(float(value))
-            # Simple string filter
-            elif isinstance(value, str) and "_" not in value:
-                pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
-                pg_params.append(value)
-            # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
-            elif isinstance(value, str):
-                condition, params = parse_numeric_filter(db_field, value)
-                # This is a bit tricky because parse_numeric_filter doesn't know the param index
-                condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
-                if " AND " in condition:
-                    condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
-                pg_filters.append(condition)
-                pg_params.extend(params)
+    user_filters, pg_params, _ = await build_pg_filters(
+        query_params,
+        api_to_db,
+        numeric_fields,
+        modality,
+    )
+    pg_filters.extend(user_filters)
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}" if pg_filters else ""
 
@@ -914,50 +1109,23 @@ async def _search_dataset_impl(
     if modality in essential_columns:
         pg_filters.append(f"{essential_columns[modality]} IS NOT NULL")
 
-    pg_params: List[Any] = [dataset_id]
     numeric_fields = NUMERIC_FIELDS.get(modality, {})
-
-    for key, value in query_params.items():
-        if key in api_to_db:
-            db_field = api_to_db[key]
-            field_type = numeric_fields.get(key)
-
-            # Numeric field handling
-            if field_type and isinstance(value, str):
-                # Numeric range filter (contains "_")
-                if "_" in value:
-                    condition, params = parse_numeric_filter(db_field, value)
-                    condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
-                    if " AND " in condition:
-                        condition = condition.replace(
-                            "$...", f"${len(pg_params) + 2}", 1
-                        )
-                    pg_filters.append(condition)
-                    pg_params.extend(params)
-                # Simple numeric filter (no "_")
-                else:
-                    pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
-                    if field_type == "int":
-                        pg_params.append(int(value))
-                    else:  # float
-                        pg_params.append(float(value))
-            # Simple string filter
-            elif isinstance(value, str) and "_" not in value:
-                pg_filters.append(f"{db_field} = ${len(pg_params) + 1}")
-                pg_params.append(value)
-            # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
-            elif isinstance(value, str):
-                condition, params = parse_numeric_filter(db_field, value)
-                condition = condition.replace("$...", f"${len(pg_params) + 1}", 1)
-                if " AND " in condition:
-                    condition = condition.replace("$...", f"${len(pg_params) + 2}", 1)
-                pg_filters.append(condition)
-                pg_params.extend(params)
+    user_filters, pg_params, _ = await build_pg_filters(
+        query_params,
+        api_to_db,
+        numeric_fields,
+        modality,
+        [dataset_id],
+    )
+    pg_filters.extend(user_filters)
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
 
     # 1. Count Rows
-    no_user_filters = not any(k in api_to_db for k in query_params)
+    no_user_filters = not any(
+        k in api_to_db or k in MODALITY_TARGET_QUERY_FIELDS.get(modality, set())
+        for k in query_params
+    )
     if modality == "perturb-seq" and no_user_filters:
         count_query = (
             "SELECT n_total FROM perturb_seq_summary_dataset WHERE dataset_id = $1"
@@ -1142,24 +1310,32 @@ async def search_perturb_seq_dataset(
 )
 async def get_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_target_ensg: str = Query(
-        ..., description="Mandatory perturbed target Ensembl gene ID"
+    perturbed_target_ensg: Optional[str] = Query(
+        None, description="Perturbed target Ensembl gene ID"
+    ),
+    perturbed_target_query: Optional[str] = Query(
+        None,
+        description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
     ),
 ):
     """Retrieve GSEA results for a specific perturbed target in a dataset."""
+    if not perturbed_target_ensg and not perturbed_target_query:
+        raise HTTPException(
+            status_code=400,
+            detail="Either perturbed_target_ensg or perturbed_target_query is required",
+        )
+
     pg_pool = db_pools.get("pg")
     if not pg_pool:
         raise HTTPException(status_code=500, detail="Database pool not initialized")
     async with pg_pool.acquire() as conn:
-        # Fetch rows for this perturbed target (no default filtering, return all)
-        rows = await conn.fetch(
-            """
-            SELECT * FROM perturb_seq_gsea 
-            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
-            ORDER BY sidak ASC
-            """,
+        rows = await _fetch_perturb_seq_gsea(
+            conn,
             dataset_id,
-            perturbed_target_ensg,
+            {
+                "perturbed_target_ensg": perturbed_target_ensg,
+                "perturbed_target_query": perturbed_target_query,
+            },
         )
         if not rows:
             return []
@@ -1174,20 +1350,24 @@ async def get_perturb_seq_gsea(
             }
             gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
 
-        # Enrich perturbation
-        pert_summary = await conn.fetchrow(
+        # Enrich perturbations
+        pert_summary_rows = await conn.fetch(
             """
-            SELECT n_total, n_up, n_down
+            SELECT perturbed_target_ensg, n_total, n_up, n_down
             FROM perturb_seq_summary_perturbation
-            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
+            WHERE dataset_id = $1
+            AND perturbed_target_ensg = ANY($2::text[])
             """,
             dataset_id,
-            perturbed_target_ensg,
+            list(gsea_by_pert.keys()),
         )
-        pert_summary = dict(pert_summary) if pert_summary else {}
+        pert_summary_by_target = {
+            row["perturbed_target_ensg"]: dict(row) for row in pert_summary_rows
+        }
 
         results = []
         for pert_target_ensg, effects in gsea_by_pert.items():
+            pert_summary = pert_summary_by_target.get(pert_target_ensg, {})
             results.append(
                 {
                     "perturbation": {
@@ -1271,7 +1451,9 @@ async def download_modality_data(
     modality: MODALITIES,
     common: CommonModalitySearchParams = Depends(),
     perturbed_target_ensg: Optional[str] = Query(None),
+    perturbed_target_query: Optional[str] = Query(None),
     effect_gene_ensg: Optional[str] = Query(None),
+    effect_gene_query: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1291,7 +1473,9 @@ async def download_modality_data(
     # Add modality-specific params
     modality_params = {
         "perturbed_target_ensg": perturbed_target_ensg,
+        "perturbed_target_query": perturbed_target_query,
         "effect_gene_ensg": effect_gene_ensg,
+        "effect_gene_query": effect_gene_query,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1320,7 +1504,13 @@ async def download_modality_data(
     csv_content = _results_to_csv(all_results, modality)
 
     # Generate filename
-    gene_id = perturbed_target_ensg or effect_gene_ensg or "all"
+    gene_id = (
+        perturbed_target_ensg
+        or perturbed_target_query
+        or effect_gene_ensg
+        or effect_gene_query
+        or "all"
+    )
     filename = f"{modality}_{gene_id}_data.csv"
 
     return StreamingResponse(
@@ -1374,7 +1564,9 @@ async def download_dataset_data(
     sort: Optional[str] = Query(None, description="Sort order"),
     # Perturb-seq params
     perturbed_target_ensg: Optional[str] = Query(None),
+    perturbed_target_query: Optional[str] = Query(None),
     effect_gene_ensg: Optional[str] = Query(None),
+    effect_gene_query: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1401,7 +1593,9 @@ async def download_dataset_data(
     # Add modality-specific params
     modality_params = {
         "perturbed_target_ensg": perturbed_target_ensg,
+        "perturbed_target_query": perturbed_target_query,
         "effect_gene_ensg": effect_gene_ensg,
+        "effect_gene_query": effect_gene_query,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1432,25 +1626,34 @@ async def download_dataset_data(
 @router.get("/v1/perturb-seq-gsea/download")
 async def download_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_target_ensg: str = Query(
-        ..., description="Mandatory perturbed target Ensembl gene ID"
+    perturbed_target_ensg: Optional[str] = Query(
+        None, description="Perturbed target Ensembl gene ID"
+    ),
+    perturbed_target_query: Optional[str] = Query(
+        None,
+        description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
     ),
 ):
     """Download GSEA data for a specific perturbed target in a dataset as CSV."""
+    if not perturbed_target_ensg and not perturbed_target_query:
+        raise HTTPException(
+            status_code=400,
+            detail="Either perturbed_target_ensg or perturbed_target_query is required",
+        )
+
     # Reuse the existing GSEA endpoint logic
     pg_pool = db_pools.get("pg")
     if not pg_pool:
         raise HTTPException(status_code=500, detail="Database pool not initialized")
 
     async with pg_pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT * FROM perturb_seq_gsea
-            WHERE dataset_id = $1 AND perturbed_target_ensg = $2
-            ORDER BY sidak ASC
-            """,
+        rows = await _fetch_perturb_seq_gsea(
+            conn,
             dataset_id,
-            perturbed_target_ensg,
+            {
+                "perturbed_target_ensg": perturbed_target_ensg,
+                "perturbed_target_query": perturbed_target_query,
+            },
         )
 
         if not rows:
@@ -1475,7 +1678,8 @@ async def download_perturb_seq_gsea(
             ]
             csv_content = _gsea_results_to_csv(results)
 
-    filename = f"gsea_{perturbed_target_ensg}_{dataset_id}_data.csv"
+    target_label = perturbed_target_ensg or perturbed_target_query
+    filename = f"gsea_{target_label}_{dataset_id}_data.csv"
 
     return StreamingResponse(
         iter([csv_content]),
