@@ -126,6 +126,8 @@ python3 preflight/ensg_dev_preflight.py
 The preflight step fails if configured BQ datasets, PG objects, or ES aliases do
 not use the ENSG dev namespace, or if they point to legacy `gene_id_migration`
 assets. It only uses read-only metadata/count APIs.
+When running locally outside the Cloud SQL VPC path, use `--skip-pg` or set a
+reachable PostgreSQL connection string; Cloud Build uses `PG_CONN_INTERNAL`.
 
 ### dbt
 

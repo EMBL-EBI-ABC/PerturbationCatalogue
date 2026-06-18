@@ -11,7 +11,7 @@ from typing import Any
 
 import psycopg2
 from elasticsearch import Elasticsearch
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import Forbidden, NotFound
 from google.cloud import bigquery
 
 
@@ -54,6 +54,7 @@ class PipelineConfig:
     bq_reference_dataset: str
     bq_opentargets_targets_table: str
     pg_conn: str
+    pg_connect_timeout: int
     pg_tables: dict[str, str]
     pg_summary_views: dict[str, str]
     pg_sync_state_table: str
@@ -69,6 +70,17 @@ def required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def env_int(name: str, default: int) -> int:
+    """Return an integer environment variable."""
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
 
 
 def validate_sql_identifier(value: str, label: str) -> None:
@@ -104,6 +116,7 @@ def load_config() -> PipelineConfig:
         bq_reference_dataset=required_env("BQ_REFERENCE_DATASET"),
         bq_opentargets_targets_table=required_env("BQ_OPENTARGETS_TARGETS_TABLE"),
         pg_conn=required_env("PG_CONN_INTERNAL"),
+        pg_connect_timeout=env_int("PG_CONNECT_TIMEOUT", 10),
         pg_tables={
             "crispr_data": required_env("PG_CRISPR_DATA_TABLE"),
             "mave_data": required_env("PG_MAVE_DATA_TABLE"),
@@ -173,7 +186,11 @@ def validate_dev_targets(config: PipelineConfig) -> list[str]:
 
 
 def bq_table_state(
-    client: bigquery.Client, project: str, dataset: str, table: str
+    client: bigquery.Client,
+    project: str,
+    dataset: str,
+    table: str,
+    required_access: bool = True,
 ) -> dict[str, Any]:
     """Return metadata for a BigQuery table without querying row data."""
     table_id = f"{project}.{dataset}.{table}"
@@ -181,7 +198,17 @@ def bq_table_state(
         bq_table = client.get_table(table_id)
     except NotFound:
         return {"exists": False, "table": table_id}
+    except Forbidden as exc:
+        if required_access:
+            raise
+        return {
+            "accessible": False,
+            "exists": None,
+            "error": str(exc),
+            "table": table_id,
+        }
     return {
+        "accessible": True,
         "exists": True,
         "table": table_id,
         "rows": bq_table.num_rows,
@@ -223,7 +250,11 @@ def check_bq(config: PipelineConfig) -> dict[str, Any]:
         "landing_page_summary",
     ]:
         result["production_baseline"][table] = bq_table_state(
-            client, config.project, "unified_data", table
+            client,
+            config.project,
+            "unified_data",
+            table,
+            required_access=False,
         )
 
     return result
@@ -265,7 +296,10 @@ def check_pg(config: PipelineConfig) -> dict[str, Any]:
         "production_baseline": {},
     }
 
-    with psycopg2.connect(config.pg_conn) as conn:
+    with psycopg2.connect(
+        config.pg_conn,
+        connect_timeout=config.pg_connect_timeout,
+    ) as conn:
         with conn.cursor() as cursor:
             for logical_name, object_name in config.pg_tables.items():
                 result["dev_tables"][logical_name] = pg_object_state(
