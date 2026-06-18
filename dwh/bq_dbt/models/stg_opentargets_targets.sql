@@ -8,11 +8,11 @@ with
             approvedName as approved_name,
             biotype,
             genomicLocation as genomic_location,
-            symbolSynonyms as symbol_synonyms,
-            nameSynonyms as name_synonyms,
-            obsoleteSymbols as obsolete_symbols,
-            obsoleteNames as obsolete_names,
-            synonyms
+            symbolSynonyms.list as symbol_synonyms,
+            nameSynonyms.list as name_synonyms,
+            obsoleteSymbols.list as obsolete_symbols,
+            obsoleteNames.list as obsolete_names,
+            synonyms.list as synonyms
         from {{ source("reference", "opentargets_targets") }}
     ),
 
@@ -23,15 +23,17 @@ with
 
         union distinct
 
-        select t.ensembl_gene_id, synonym.label as alias
+        select t.ensembl_gene_id, synonym.element.label as alias
         from targets t, unnest(t.symbol_synonyms) as synonym
-        where synonym.label is not null and synonym.label != ''
+        where synonym.element.label is not null and synonym.element.label != ''
 
         union distinct
 
-        select t.ensembl_gene_id, obsolete_symbol.label as alias
+        select t.ensembl_gene_id, obsolete_symbol.element.label as alias
         from targets t, unnest(t.obsolete_symbols) as obsolete_symbol
-        where obsolete_symbol.label is not null and obsolete_symbol.label != ''
+        where
+            obsolete_symbol.element.label is not null
+            and obsolete_symbol.element.label != ''
     ),
 
     search_keyword_rows as (
@@ -53,33 +55,51 @@ with
 
         union distinct
 
-        select t.ensembl_gene_id, synonym.label as keyword
+        select t.ensembl_gene_id, synonym.element.label as keyword
         from targets t, unnest(t.symbol_synonyms) as synonym
-        where synonym.label is not null and synonym.label != ''
+        where synonym.element.label is not null and synonym.element.label != ''
 
         union distinct
 
-        select t.ensembl_gene_id, obsolete_symbol.label as keyword
+        select t.ensembl_gene_id, obsolete_symbol.element.label as keyword
         from targets t, unnest(t.obsolete_symbols) as obsolete_symbol
-        where obsolete_symbol.label is not null and obsolete_symbol.label != ''
+        where
+            obsolete_symbol.element.label is not null
+            and obsolete_symbol.element.label != ''
 
         union distinct
 
-        select t.ensembl_gene_id, name_synonym.label as keyword
+        select t.ensembl_gene_id, name_synonym.element.label as keyword
         from targets t, unnest(t.name_synonyms) as name_synonym
-        where name_synonym.label is not null and name_synonym.label != ''
+        where name_synonym.element.label is not null and name_synonym.element.label != ''
 
         union distinct
 
-        select t.ensembl_gene_id, obsolete_name.label as keyword
+        select t.ensembl_gene_id, obsolete_name.element.label as keyword
         from targets t, unnest(t.obsolete_names) as obsolete_name
-        where obsolete_name.label is not null and obsolete_name.label != ''
+        where
+            obsolete_name.element.label is not null
+            and obsolete_name.element.label != ''
 
         union distinct
 
-        select t.ensembl_gene_id, synonym.label as keyword
+        select t.ensembl_gene_id, synonym.element.label as keyword
         from targets t, unnest(t.synonyms) as synonym
-        where synonym.label is not null and synonym.label != ''
+        where synonym.element.label is not null and synonym.element.label != ''
+    ),
+
+    exact_aliases as (
+        select ensembl_gene_id, array_agg(alias order by lower(alias)) as exact_aliases
+        from (select distinct ensembl_gene_id, alias from exact_alias_rows)
+        group by ensembl_gene_id
+    ),
+
+    search_keywords as (
+        select
+            ensembl_gene_id,
+            array_agg(keyword order by lower(keyword)) as search_keywords
+        from (select distinct ensembl_gene_id, keyword from search_keyword_rows)
+        group by ensembl_gene_id
     )
 
 select
@@ -88,16 +108,8 @@ select
     t.approved_name,
     t.biotype,
     t.genomic_location,
-    array(
-        select alias
-        from exact_alias_rows e
-        where e.ensembl_gene_id = t.ensembl_gene_id
-        order by lower(alias)
-    ) as exact_aliases,
-    array(
-        select keyword
-        from search_keyword_rows k
-        where k.ensembl_gene_id = t.ensembl_gene_id
-        order by lower(keyword)
-    ) as search_keywords
+    coalesce(e.exact_aliases, []) as exact_aliases,
+    coalesce(k.search_keywords, []) as search_keywords
 from targets t
+left join exact_aliases e using (ensembl_gene_id)
+left join search_keywords k using (ensembl_gene_id)
