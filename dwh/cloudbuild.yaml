@@ -16,7 +16,7 @@
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD, _ES_*,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
 
-timeout: 43200s  # 12 hours
+timeout: 86400s  # 24 hours
 
 options:
   logging: LEGACY
