@@ -22,6 +22,9 @@ COPY bq_to_postgres/bq_to_postgres.py bq_to_postgres/bq_to_postgres.py
 # Copy bq_to_elastic
 COPY bq_to_elastic/ bq_to_elastic/
 
+# Copy preflight checks
+COPY preflight/ preflight/
+
 # Copy Open Targets reference loaders
 COPY reference/ reference/
 

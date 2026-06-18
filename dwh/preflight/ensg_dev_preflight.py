@@ -1,0 +1,361 @@
+"""Read-only preflight checks for the ENSG dev DWH pipeline."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+from dataclasses import dataclass
+from typing import Any
+
+import psycopg2
+from elasticsearch import Elasticsearch
+from google.api_core.exceptions import NotFound
+from google.cloud import bigquery
+
+
+SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+PRODUCTION_BQ_DATASETS = {"unified_data", "reference"}
+PRODUCTION_PG_OBJECTS = {
+    "crispr_data",
+    "mave_data",
+    "perturb_seq_dea",
+    "perturb_seq_gsea",
+    "sync_state",
+    "perturb_seq_summary_perturbation",
+    "perturb_seq_summary_effect",
+    "perturb_seq_summary_dataset",
+}
+PRODUCTION_ES_ALIASES = {
+    "dataset-summary",
+    "target-summary",
+    "landing-page-summary",
+}
+BQ_TABLES_TO_REPORT = [
+    "crispr_data",
+    "mave_data",
+    "perturb_seq_dea",
+    "perturb_seq_gsea",
+    "dataset_summary",
+    "target_summary_ensg",
+    "landing_page_summary",
+]
+
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    """Environment-derived pipeline target names."""
+
+    project: str
+    bq_location: str
+    bq_dataset: str
+    bq_reference_dataset: str
+    bq_opentargets_targets_table: str
+    pg_conn: str
+    pg_tables: dict[str, str]
+    pg_summary_views: dict[str, str]
+    pg_sync_state_table: str
+    es_url: str
+    es_username: str
+    es_password: str
+    es_aliases: dict[str, str]
+
+
+def required_env(name: str) -> str:
+    """Return a required environment variable."""
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} is required")
+    return value
+
+
+def validate_sql_identifier(value: str, label: str) -> None:
+    """Reject unsafe SQL identifier names."""
+    if not SQL_IDENTIFIER_RE.fullmatch(value):
+        raise RuntimeError(f"{label} must be a plain SQL identifier: {value!r}")
+
+
+def reject_legacy_migration_name(value: str, label: str) -> None:
+    """Reject legacy migration assets that should not be reused."""
+    if "gene_id_migration" in value:
+        raise RuntimeError(f"{label} must not use legacy gene_id_migration assets")
+
+
+def require_name_contains(value: str, expected: str, label: str) -> None:
+    """Require a dev namespace marker in a configured object name."""
+    if expected not in value:
+        raise RuntimeError(f"{label} must contain {expected!r}: {value!r}")
+
+
+def require_name_suffix(value: str, suffix: str, label: str) -> None:
+    """Require a dev namespace suffix in a configured object name."""
+    if not value.endswith(suffix):
+        raise RuntimeError(f"{label} must end with {suffix!r}: {value!r}")
+
+
+def load_config() -> PipelineConfig:
+    """Load target names from the environment."""
+    return PipelineConfig(
+        project=required_env("GCLOUD_PROJECT"),
+        bq_location=os.getenv("BQ_LOCATION", "EU"),
+        bq_dataset=required_env("BQ_DATASET"),
+        bq_reference_dataset=required_env("BQ_REFERENCE_DATASET"),
+        bq_opentargets_targets_table=required_env("BQ_OPENTARGETS_TARGETS_TABLE"),
+        pg_conn=required_env("PG_CONN_INTERNAL"),
+        pg_tables={
+            "crispr_data": required_env("PG_CRISPR_DATA_TABLE"),
+            "mave_data": required_env("PG_MAVE_DATA_TABLE"),
+            "perturb_seq_dea": required_env("PG_PERTURB_SEQ_DEA_TABLE"),
+            "perturb_seq_gsea": required_env("PG_PERTURB_SEQ_GSEA_TABLE"),
+        },
+        pg_summary_views={
+            "perturbation": required_env("PG_PERTURB_SEQ_SUMMARY_PERTURBATION"),
+            "effect": required_env("PG_PERTURB_SEQ_SUMMARY_EFFECT"),
+            "dataset": required_env("PG_PERTURB_SEQ_SUMMARY_DATASET"),
+        },
+        pg_sync_state_table=required_env("PG_SYNC_STATE_TABLE"),
+        es_url=required_env("ES_URL").rstrip("/"),
+        es_username=required_env("ES_USERNAME"),
+        es_password=required_env("ES_PASSWORD"),
+        es_aliases={
+            "dataset_summary": required_env("ES_DATASET_SUMMARY"),
+            "target_summary": required_env("ES_TARGET_SUMMARY"),
+            "landing_page_summary": required_env("ES_LANDING_PAGE_SUMMARY"),
+        },
+    )
+
+
+def validate_dev_targets(config: PipelineConfig) -> list[str]:
+    """Fail if configured destinations look like production or legacy targets."""
+    checked: list[str] = []
+
+    bq_targets = {
+        "BQ_DATASET": config.bq_dataset,
+        "BQ_REFERENCE_DATASET": config.bq_reference_dataset,
+        "BQ_OPENTARGETS_TARGETS_TABLE": config.bq_opentargets_targets_table,
+    }
+    for label, value in bq_targets.items():
+        validate_sql_identifier(value, label)
+        reject_legacy_migration_name(value, label)
+
+    for label, value in {
+        "BQ_DATASET": config.bq_dataset,
+        "BQ_REFERENCE_DATASET": config.bq_reference_dataset,
+    }.items():
+        require_name_contains(value, "ensg_dev", label)
+        if value in PRODUCTION_BQ_DATASETS:
+            raise RuntimeError(f"{label} points at a production dataset: {value}")
+        checked.append(f"{label}={value}")
+
+    pg_targets = {
+        **config.pg_tables,
+        **config.pg_summary_views,
+        "sync_state": config.pg_sync_state_table,
+    }
+    for label, value in pg_targets.items():
+        validate_sql_identifier(value, f"PG {label}")
+        reject_legacy_migration_name(value, f"PG {label}")
+        require_name_suffix(value, "_ensg_dev", f"PG {label}")
+        if value in PRODUCTION_PG_OBJECTS:
+            raise RuntimeError(f"PG {label} points at production object: {value}")
+        checked.append(f"PG {label}={value}")
+
+    for label, value in config.es_aliases.items():
+        reject_legacy_migration_name(value, f"ES {label}")
+        require_name_suffix(value, "-ensg-dev", f"ES {label}")
+        if value in PRODUCTION_ES_ALIASES:
+            raise RuntimeError(f"ES {label} points at production alias: {value}")
+        checked.append(f"ES {label}={value}")
+
+    return checked
+
+
+def bq_table_state(
+    client: bigquery.Client, project: str, dataset: str, table: str
+) -> dict[str, Any]:
+    """Return metadata for a BigQuery table without querying row data."""
+    table_id = f"{project}.{dataset}.{table}"
+    try:
+        bq_table = client.get_table(table_id)
+    except NotFound:
+        return {"exists": False, "table": table_id}
+    return {
+        "exists": True,
+        "table": table_id,
+        "rows": bq_table.num_rows,
+        "schema_columns": [field.name for field in bq_table.schema],
+    }
+
+
+def check_bq(config: PipelineConfig) -> dict[str, Any]:
+    """Report BigQuery source, reference, and dev table state."""
+    client = bigquery.Client(project=config.project, location=config.bq_location)
+    result: dict[str, Any] = {
+        "dev_dataset": config.bq_dataset,
+        "reference_dataset": config.bq_reference_dataset,
+        "location": config.bq_location,
+        "dev_tables": {},
+        "reference_table": {},
+        "production_baseline": {},
+    }
+
+    for table in BQ_TABLES_TO_REPORT:
+        result["dev_tables"][table] = bq_table_state(
+            client, config.project, config.bq_dataset, table
+        )
+
+    result["reference_table"] = bq_table_state(
+        client,
+        config.project,
+        config.bq_reference_dataset,
+        config.bq_opentargets_targets_table,
+    )
+
+    for table in [
+        "crispr_data",
+        "mave_data",
+        "perturb_seq_dea",
+        "perturb_seq_gsea",
+        "dataset_summary",
+        "target_summary",
+        "landing_page_summary",
+    ]:
+        result["production_baseline"][table] = bq_table_state(
+            client, config.project, "unified_data", table
+        )
+
+    return result
+
+
+def pg_object_state(cursor: Any, object_name: str) -> dict[str, Any]:
+    """Return approximate PostgreSQL object state without scanning rows."""
+    cursor.execute("SELECT to_regclass(%s)", (object_name,))
+    regclass = cursor.fetchone()[0]
+    if regclass is None:
+        return {"exists": False, "object": object_name}
+
+    cursor.execute(
+        """
+        SELECT c.relkind, c.reltuples::bigint
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = current_schema()
+          AND c.relname = %s
+        """,
+        (object_name,),
+    )
+    row = cursor.fetchone()
+    relkind, reltuples = row if row else (None, None)
+    return {
+        "exists": True,
+        "object": object_name,
+        "relkind": relkind,
+        "estimated_rows": reltuples,
+    }
+
+
+def check_pg(config: PipelineConfig) -> dict[str, Any]:
+    """Report PostgreSQL dev objects and production baselines."""
+    result: dict[str, Any] = {
+        "dev_tables": {},
+        "dev_summary_views": {},
+        "sync_state": {},
+        "production_baseline": {},
+    }
+
+    with psycopg2.connect(config.pg_conn) as conn:
+        with conn.cursor() as cursor:
+            for logical_name, object_name in config.pg_tables.items():
+                result["dev_tables"][logical_name] = pg_object_state(
+                    cursor, object_name
+                )
+            for logical_name, object_name in config.pg_summary_views.items():
+                result["dev_summary_views"][logical_name] = pg_object_state(
+                    cursor, object_name
+                )
+            result["sync_state"] = pg_object_state(cursor, config.pg_sync_state_table)
+            for object_name in sorted(PRODUCTION_PG_OBJECTS):
+                result["production_baseline"][object_name] = pg_object_state(
+                    cursor, object_name
+                )
+
+    return result
+
+
+def es_alias_state(es: Elasticsearch, alias: str) -> dict[str, Any]:
+    """Return Elasticsearch alias/index state using read-only APIs."""
+    exists = bool(es.indices.exists_alias(name=alias))
+    result: dict[str, Any] = {"exists": exists, "alias": alias}
+    if not exists:
+        return result
+
+    alias_response = es.indices.get_alias(name=alias)
+    result["indices"] = sorted(alias_response.keys())
+    try:
+        result["docs"] = es.count(index=alias)["count"]
+    except Exception as exc:
+        result["count_error"] = str(exc)
+    return result
+
+
+def check_es(config: PipelineConfig) -> dict[str, Any]:
+    """Report Elasticsearch dev aliases and production baselines."""
+    es = Elasticsearch(
+        config.es_url,
+        basic_auth=(config.es_username, config.es_password),
+        request_timeout=30,
+        verify_certs=True,
+    )
+    result: dict[str, Any] = {"dev_aliases": {}, "production_baseline": {}}
+    for logical_name, alias in config.es_aliases.items():
+        result["dev_aliases"][logical_name] = es_alias_state(es, alias)
+    for alias in sorted(PRODUCTION_ES_ALIASES):
+        result["production_baseline"][alias] = es_alias_state(es, alias)
+    return result
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Read-only safety checks for the ENSG dev DWH pipeline."
+    )
+    parser.add_argument("--skip-bq", action="store_true")
+    parser.add_argument("--skip-pg", action="store_true")
+    parser.add_argument("--skip-es", action="store_true")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Only validate configured target names; do not connect to services.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Run preflight checks and print a JSON report."""
+    args = parse_args()
+    config = load_config()
+    checked_targets = validate_dev_targets(config)
+
+    report: dict[str, Any] = {
+        "status": "ok",
+        "checked_targets": checked_targets,
+        "bq": None,
+        "pg": None,
+        "es": None,
+    }
+
+    if not args.validate_only:
+        if not args.skip_bq:
+            report["bq"] = check_bq(config)
+        if not args.skip_pg:
+            report["pg"] = check_pg(config)
+        if not args.skip_es:
+            report["es"] = check_es(config)
+
+    print(json.dumps(report, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

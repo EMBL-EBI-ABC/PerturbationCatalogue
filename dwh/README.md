@@ -6,14 +6,15 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs four stages sequentially:
+The pipeline runs five stages sequentially:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
-| 1. **Open Targets reference** | `reference/` | Downloads Open Targets Platform targets and loads the configured BQ reference table | ~minutes |
-| 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
-| 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
-| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
+| 1. **Preflight** | `preflight/` | Validates dev-only target names and reports current BQ/PG/ES object state without writes | ~minutes |
+| 2. **Open Targets reference** | `reference/` | Downloads Open Targets Platform targets and loads the configured BQ reference table | ~minutes |
+| 3. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
+| 4. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
+| 5. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
 For the ENSG dev stack, the Open Targets reference stage writes only to
@@ -112,6 +113,19 @@ To exclude datasets from metadata tables (while keeping them in data tables):
 ## Running stages individually
 
 For debugging or partial re-runs, you can run each stage manually.
+
+### Preflight
+
+```bash
+cd dwh
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 preflight/ensg_dev_preflight.py
+```
+
+The preflight step fails if configured BQ datasets, PG objects, or ES aliases do
+not use the ENSG dev namespace, or if they point to legacy `gene_id_migration`
+assets. It only uses read-only metadata/count APIs.
 
 ### dbt
 
