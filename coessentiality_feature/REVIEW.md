@@ -111,6 +111,23 @@ sign) was scoped out of this fix.
 **Status:** Resolved (naming) — magnitude question remains open.
 **🔵 Needs discussion with @AleksZakirov** — whether to preserve coefficient magnitude.
 
+**@AleksZakirov's input (2026-06-18):** Pointed to the paper's Methods, verified
+verbatim: *"although the GLS P value is consistent regardless of which of the two
+genes is chosen as endog and which as exog, the GLS effect size is not consistent
+with respect to this choice, and as a result is not reported."* In other words,
+the GLS coefficient for pair (A,B) depends on which gene is treated as the
+predictor vs. the response — regressing A on B gives a different coefficient than
+regressing B on A (only the **sign** is guaranteed to match between the two
+directions, not the magnitude). This is why Wainberg's paper never reports an
+effect size at all, only the p-value and sign.
+
+**Implication for the magnitude decision:** this isn't just "should we store more
+data" — there's no single, well-defined magnitude value per gene pair to store in
+the first place without picking an arbitrary convention (e.g., always use the
+alphabetically-first gene as predictor, average the two directions' coefficients,
+or report both). Whatever Aleks/the team decides here also has to settle that
+convention question, not just whether magnitude is "useful."
+
 ## Comment 3b — same issue, reiterated (`app/coessentiality_feature_pc.py:568`)
 
 **Reviewer's comment:** As discussed in the previous comment, this is not a
@@ -168,6 +185,17 @@ layers, both worth doing:
 
 **Status:** Open.
 **🔵 Needs discussion with @AleksZakirov** — what benchmark/metrics to adopt.
+
+**@AleksZakirov's input (2026-06-18):** Pointed out the paper already did
+extensive benchmarking — Figure 2 and Extended Data Figure 4 ("GLS improves
+recall of known functional interactions in co-essential gene pairs and modules,"
+with/without PCA-based bias correction). Suggested replicating some of these
+validations as a useful sanity check — directly confirming the biological/
+functional layer (option 2) above, and Extended Data Fig 4 in particular is
+specifically the GLS-with/without-bias-correction comparison that would give
+Comment 1's decision real empirical backing. Next step: look at exactly what
+gold-standard data and metric those figures used, to replicate as closely as
+practical rather than inventing our own from scratch.
 
 ## Comment 5 — Ad hoc NA imputation strategy (`step2_gls_coessentiality.py:53`)
 
@@ -311,6 +339,17 @@ happen to come first" has no biological rationale.
 **Status:** Open — logged for later; revisiting after Comment 3's magnitude
 decision and discussion with Aleks.
 **🔵 Needs discussion with @AleksZakirov** — truncation strategy for large networks.
+
+**@AleksZakirov's input (2026-06-18):** Asked directly — "Is there a problem with
+using more than 300 nodes in the network (apart from visibility, of course)?"
+Checked the codebase: `MULTI_MAX_EXPANDED_GENES = 300` is only ever justified in
+comments/docs as "so the layout stays readable and the callback stays fast" — no
+measured Cytoscape.js rendering benchmark or callback-latency threshold exists
+anywhere backing the specific number 300. **This is an open question for us to
+answer, not yet resolved** — either point to an actual measured limit (e.g. test
+Cytoscape.js rendering/interaction performance at 500/1000+ nodes, or time the
+callback at larger sizes) or concede there's no hard technical reason and the cap
+could be raised or made configurable.
 
 ## Comment 10 — Enrichr dependency for GO enrichment (`app/coessentiality_feature_pc.py:1201`)
 
@@ -456,7 +495,8 @@ their shapes match each other, and both match `len(genes)` — raising a clear
 **Status:** Resolved. Verified both the real data still runs correctly (25,889
 pairs, unchanged) and that the new checks actually fire on bad input — tested a
 non-square matrix and a gene-count mismatch, both raised the intended clear
-error immediately instead of failing later in the analysis.
+error immediately instead of failing later in the analysis. Reply posted on
+the PR thread.
 
 ## Comment 16 — Possible duplicate gene symbols after stripping Entrez IDs (`step2_gls_coessentiality.py:47`)
 
@@ -469,12 +509,20 @@ duplicates after stripping Entrez IDs (18,531 columns, all unique), so this is a
 latent/future-proofing concern, not an active bug. Worth guarding anyway since a
 silent collision would corrupt the covariance/GLS computation without any error.
 
-**Decision:** `clean_column_names()` now checks for duplicate column names after
-stripping Entrez IDs and raises a clear `ValueError` listing the colliding
-symbol(s) if any are found, rather than silently merging them.
+**Decision (revised):** Initially implemented as a hard stop (`raise ValueError`)
+on any collision. Reconsidered: this pipeline runs unattended monthly, and a hard
+stop over 1-2 colliding genes would halt the *entire* run rather than just those
+genes — inconsistent with how NA genes are already handled (dropped, not a full
+pipeline failure, per Comment 5). Revised to match that pattern: `clean_column_names()`
+now logs a warning naming the exact raw (pre-strip) column names that collided for
+each duplicated symbol, keeps the first occurrence, drops the rest, and continues
+— never silently merging two genes' profiles or guessing which duplicate is
+"correct," but also never taking down the whole pipeline over a handful of genes.
 
 **Status:** Resolved. Verified: real data passes through unchanged (no
-duplicates), and a synthetic collision case correctly raises the intended error.
+duplicates, no warnings), and a synthetic collision case correctly logs the
+warning (naming both raw columns, e.g. `FOO (111)`/`FOO (222)`), keeps the first,
+drops the second, and the pipeline continues with the remaining genes intact.
 
 ## Comment 17 — Bar chart and partner table are misaligned and table is cut off (`app/coessentiality_feature_pc.py:557`)
 

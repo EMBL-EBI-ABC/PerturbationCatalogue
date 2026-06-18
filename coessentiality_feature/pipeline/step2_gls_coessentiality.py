@@ -32,18 +32,29 @@ def clean_column_names(df):
     Converts 'GENE_SYMBOL (ENTREZ_ID)' -> 'GENE_SYMBOL' for every column.
     Columns that don't match the pattern are left unchanged.
 
-    Raises ValueError if stripping the Entrez ID produces duplicate gene
-    symbols (e.g. aliased/repeated symbols across different Entrez IDs) —
-    silently merging them would corrupt the covariance/GLS computation.
+    If stripping the Entrez ID produces duplicate gene symbols (e.g.
+    aliased/repeated symbols across different Entrez IDs), keeps only the
+    first occurrence of each symbol and drops the rest — flagging exactly
+    which original (raw) columns collided and which one was kept, rather
+    than silently merging them (which would corrupt the covariance/GLS
+    computation) or halting the whole monthly pipeline over a few genes.
     """
-    cleaned = df.rename(columns=lambda x: re.sub(r"\s*\(\d+\)$", "", x))
-    counts = cleaned.columns.value_counts()
-    duplicates = counts[counts > 1]
-    if not duplicates.empty:
-        raise ValueError(
-            f"Stripping Entrez IDs produced {len(duplicates)} duplicate gene symbol(s): "
-            f"{duplicates.index.tolist()}. Resolve the underlying alias collision before proceeding."
-        )
+    original_columns = df.columns
+    cleaned_names = [re.sub(r"\s*\(\d+\)$", "", x) for x in original_columns]
+    cleaned = df.copy()
+    cleaned.columns = cleaned_names
+
+    is_duplicate = cleaned.columns.duplicated(keep="first")
+    if is_duplicate.any():
+        dup_symbols = sorted(set(cleaned.columns[is_duplicate]))
+        for symbol in dup_symbols:
+            raw_names = [orig for orig, name in zip(original_columns, cleaned_names) if name == symbol]
+            print(
+                f"      WARNING: duplicate gene symbol {symbol!r} after stripping Entrez IDs "
+                f"— raw columns {raw_names}. Keeping {raw_names[0]!r}, dropping {raw_names[1:]}."
+            )
+        cleaned = cleaned.loc[:, ~is_duplicate]
+
     return cleaned
 
 
