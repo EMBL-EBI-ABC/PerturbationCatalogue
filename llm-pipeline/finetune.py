@@ -59,8 +59,6 @@ def format_for_sft(record):
     )
 
 
-
-
 def load_split(jsonl_path):
     """
     Load records from a JSONL file and return as a HuggingFace Dataset.
@@ -154,7 +152,6 @@ def load_splits(splits_dir):
     return train_dataset, val_dataset, split_manifest
 
 
-
 def build_lora_model(
     model_name,
     use_qlora=False,
@@ -213,9 +210,9 @@ def build_lora_model(
             )
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",  
+            bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,  
+            bnb_4bit_use_double_quant=True,
         )
         log.info("QLoRA enabled: loading base model in 4-bit NF4")
 
@@ -231,13 +228,18 @@ def build_lora_model(
     if use_qlora:
         model = prepare_model_for_kbit_training(model)
 
+    if any(name in model_name.lower() for name in ["gpt2", "gpt-2"]):
+        target_modules = ["c_attn", "c_proj"]
+    else:
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+
     # q_proj, k_proj, v_proj, o_proj are the query/key/value/output
     lora_config = LoraConfig(
         task_type=TaskType.CAUSAL_LM,
         r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        target_modules=target_modules,
         bias="none",
     )
 
@@ -251,7 +253,6 @@ def build_lora_model(
     )
 
     return model, tokenizer
-
 
 
 def build_training_args(
@@ -276,14 +277,14 @@ def build_training_args(
     output_dir : str
         Directory to save checkpoints and final adapter.
     epochs : int
-        Number of training epochs. 
+        Number of training epochs.
     batch_size : int
-        Per-device batch size. 
+        Per-device batch size.
     grad_accum : int
-        Gradient accumulation steps. 
+        Gradient accumulation steps.
         Effective batch = batch_size * grad_accum = 16.
     lr : float
-        Peak learning rate. 
+        Peak learning rate.
     wandb_project : str or None
         W&B project name. If None and WANDB_API_KEY is not set,
         W&B logging is disabled gracefully.
@@ -312,24 +313,21 @@ def build_training_args(
         gradient_accumulation_steps=grad_accum,
         learning_rate=lr,
         lr_scheduler_type="cosine",
-        warmup_ratio=0.05,  
+        warmup_ratio=0.05,
         weight_decay=0.01,
         fp16=False,
-        bf16=torch.cuda.is_available(),  
+        bf16=torch.cuda.is_available(),
         logging_steps=10,
-        eval_strategy="epoch",  
-        save_strategy="epoch",  
-        load_best_model_at_end=True,  
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to=report_to,
         run_name=wandb_project,
-        dataloader_num_workers=0,  
+        dataloader_num_workers=0,
         remove_unused_columns=False,
     )
-
-
-
 
 
 def compute_perplexity(eval_loss):
@@ -389,15 +387,13 @@ def train(
     -------
     trainer : trl.SFTTrainer (contains training history)
     """
+
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         args=training_args,
-        dataset_text_field="text",  
-        max_seq_length=max_seq_length,
-        packing=False,  
     )
 
     log.info("Starting training...")
@@ -436,7 +432,6 @@ def train(
     log.info(f"Saved split manifest to {manifest_path}")
 
     return trainer
-
 
 
 def main():
