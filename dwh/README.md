@@ -175,36 +175,36 @@ The script expects these materialized views to exist for `perturb_seq_dea`. Crea
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
     dataset_id,
-    perturbed_target_symbol,
+    perturbed_target_ensg,
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
 FROM perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, perturbed_target_symbol;
+WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
+GROUP BY dataset_id, perturbed_target_ensg;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
 SELECT
     dataset_id,
-    gene,
+    effect_gene_ensg,
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
     AVG(score_value) AS avg_score
 FROM perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, gene;
+WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
+GROUP BY dataset_id, effect_gene_ensg;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, gene);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
 SELECT
     dataset_id,
     COUNT(*) AS n_total
 FROM perturb_seq_dea
-WHERE gene IS NOT NULL
+WHERE effect_gene_ensg IS NOT NULL
 GROUP BY dataset_id;
 
 CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);
