@@ -46,25 +46,25 @@ SECTION_CONFIGS = [
         "id": "crispr",
         "title": "CRISPR screen data",
         "modality": "crispr-screen",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target_ensg",
     },
     {
         "id": "mave",
         "title": "MAVE data",
         "modality": "mave",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target_ensg",
     },
     {
         "id": "perturb_seq_perturbed",
         "title": "Perturb-Seq (Perturbed)",
         "modality": "perturb-seq",
-        "filter_field": "perturbation_gene_name",
+        "filter_field": "perturbed_target_ensg",
     },
     {
         "id": "perturb_seq_affected",
         "title": "Perturb-Seq (Affected)",
         "modality": "perturb-seq",
-        "filter_field": "effect_gene_name",
+        "filter_field": "effect_gene_ensg",
     },
 ]
 SECTION_LOOKUP = {config["id"]: config for config in SECTION_CONFIGS}
@@ -115,7 +115,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
 
     sections = []
     for config in SECTION_CONFIGS:
-        # Add gene search box for Perturb-Seq (Perturbed) section header
+        # Add effect gene search box for Perturb-Seq (Perturbed) section header
         # For other sections, create hidden input to satisfy MATCH callback
         if config["id"] == "perturb_seq_perturbed":
             gene_search_input = dcc.Input(
@@ -139,13 +139,13 @@ def layout(target_name: Optional[str] = None, **kwargs):
                 style={"display": "none"},
             )
 
-        # Add perturbed gene search box for Perturb-Seq (Affected) section
+        # Add perturbed target search box for Perturb-Seq (Affected) section
         # For other sections, create hidden input to satisfy MATCH callback
         if config["id"] == "perturb_seq_affected":
             perturbed_gene_search_input = dcc.Input(
                 id={"type": "perturbed-gene-search", "section": config["id"]},
                 type="text",
-                placeholder="Search by perturbed gene…",
+                placeholder="Search by perturbed target…",
                 debounce=True,
                 className="form-control form-control-sm",
                 style={
@@ -157,7 +157,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
             perturbed_gene_search_input = dcc.Input(
                 id={"type": "perturbed-gene-search", "section": config["id"]},
                 type="text",
-                placeholder="Search by perturbed gene…",
+                placeholder="Search by perturbed target…",
                 debounce=True,
                 className="form-control form-control-sm",
                 style={"display": "none"},
@@ -193,7 +193,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         id={"type": "dataset-summary", "section": config["id"]},
                         className="mb-2",
                     ),
-                    # Search boxes row: Search datasets, Search by perturbed gene, and Search by effect gene
+                    # Search boxes row: search datasets, perturbed target, and effect gene
                     html.Div(
                         [
                             html.Div(
@@ -565,7 +565,7 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         ),
         section_id=section_id,
         download_url_base=download_url_base,
-        perturbed_gene_name=(
+        perturbed_target_ensg=(
             target_name if section_id == "perturb_seq_perturbed" else None
         ),
     )
@@ -930,16 +930,16 @@ def _fetch_section_payload(
         cleaned = dataset_search.strip()
         if cleaned:
             filters["dataset_metadata"] = cleaned
-    # Add effect_gene_name filter for Perturb-Seq (Perturbed) section
+    # Add effect gene query filter for Perturb-Seq (Perturbed) section
     if config["id"] == "perturb_seq_perturbed" and gene_search:
         cleaned_gene = gene_search.strip()
         if cleaned_gene:
-            filters["effect_gene_name"] = cleaned_gene
-    # Add perturbation_gene_name filter for Perturb-Seq (Affected) section
+            filters["effect_gene_query"] = cleaned_gene
+    # Add perturbed target query filter for Perturb-Seq (Affected) section
     if config["id"] == "perturb_seq_affected" and perturbed_gene_search:
         cleaned_perturbed_gene = perturbed_gene_search.strip()
         if cleaned_perturbed_gene:
-            filters["perturbation_gene_name"] = cleaned_perturbed_gene
+            filters["perturbed_target_query"] = cleaned_perturbed_gene
     # For MAVE, add effect_score_name and perturbation_position
     if config["modality"] == "mave":
         filters["effect_score_name"] = "score"
@@ -1058,8 +1058,8 @@ def _paginate_dataset_rows(
         )
         return updated_store
 
-    # Get the target symbol (perturbed target) for the API call
-    target_symbol = updated_store.get("target_name")
+    # Get the target ENSG for the API call
+    target_ensg = updated_store.get("target_name")
 
     # Get the correct filter field based on the section
     section_id = updated_store.get("section")
@@ -1096,11 +1096,11 @@ def _paginate_dataset_rows(
         # Build filters for MAVE
         filters = (
             {
-                config.get("filter_field", "perturbation_gene_name"): target_symbol,
+                config.get("filter_field", "perturbed_target_ensg"): target_ensg,
                 "effect_score_name": "score",
                 "perturbation_position": new_position_range,
             }
-            if target_symbol and config
+            if target_ensg and config
             else {}
         )
 
@@ -1137,16 +1137,16 @@ def _paginate_dataset_rows(
             return updated_store
 
         filter_field = (
-            config.get("filter_field", "perturbation_gene_name")
+            config.get("filter_field", "perturbed_target_ensg")
             if config
-            else "perturbation_gene_name"
+            else "perturbed_target_ensg"
         )
 
-        # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_symbol}&limit=5&offset=X
+        # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_ensg}&limit=5&offset=X
         response = fetch_dataset_rows(
             modality,
             dataset_id,
-            filters={filter_field: target_symbol} if target_symbol else {},
+            filters={filter_field: target_ensg} if target_ensg else {},
             offset=new_offset,
             limit=DATASET_LOAD_MORE_SIZE,  # Always 5 rows per page
         )

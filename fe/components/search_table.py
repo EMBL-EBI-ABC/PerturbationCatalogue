@@ -104,16 +104,8 @@ def render_targets_table(results):
 
     rows = []
     for record in results:
-        target_id = (
-            record.get("ensembl_gene_id")
-            or record.get("perturbed_target_symbol")
-            or "N/A"
-        )
-        approved_symbol = (
-            record.get("approved_symbol")
-            or record.get("perturbed_target_symbol")
-            or target_id
-        )
+        target_id = record.get("ensembl_gene_id") or "N/A"
+        approved_symbol = record.get("approved_symbol") or target_id
         approved_name = record.get("approved_name")
         results_store[target_id] = record
 

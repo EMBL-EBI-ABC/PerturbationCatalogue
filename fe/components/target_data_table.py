@@ -90,7 +90,7 @@ def TargetDataTable(
     effect_gene_source: str = "effect",
     section_id: Optional[str] = None,
     download_url_base: Optional[str] = None,
-    perturbed_gene_name: Optional[str] = None,
+    perturbed_target_ensg: Optional[str] = None,
 ):
     """Render the reusable data table."""
     datasets = data or []
@@ -114,7 +114,7 @@ def TargetDataTable(
                     effect_gene_source,
                     section_id,
                     download_url_base,
-                    perturbed_gene_name,
+                    perturbed_target_ensg,
                 )
             )
 
@@ -160,7 +160,7 @@ def _build_dataset_rows(
     effect_gene_source: str,
     section_id: Optional[str],
     download_url_base: Optional[str] = None,
-    perturbed_gene_name: Optional[str] = None,
+    perturbed_target_ensg: Optional[str] = None,
 ) -> List[Any]:
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
@@ -198,10 +198,10 @@ def _build_dataset_rows(
 
     # Build GSEA button data for this dataset (perturb_seq_perturbed only)
     gsea_button_data = None
-    if perturbed_gene_name and dataset_id and section_id == "perturb_seq_perturbed":
+    if perturbed_target_ensg and dataset_id and section_id == "perturb_seq_perturbed":
         gsea_button_data = {
             "dataset_id": dataset_id,
-            "perturbed_gene_name": perturbed_gene_name,
+            "perturbed_target_ensg": perturbed_target_ensg,
             "dataset_cell_types": ds_cell_type,
         }
 
@@ -356,8 +356,8 @@ def _perturb_seq_effect(
     section_id: Optional[str] = None,
 ) -> html.Div:
     """Render a single Perturb-Seq result row (legacy card format for non-table sections)."""
-    perturbation_gene_name = perturbation.get("gene_name") or "N/A"
-    effect_gene_name = effect.get("gene_name") or "N/A"
+    perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
+    effect_gene_ensg = effect.get("effect_gene_ensg") or "N/A"
 
     log2fc_value = effect.get("log2fc")
     padj_value = _format_numeric(effect.get("padj"))
@@ -396,7 +396,7 @@ def _perturb_seq_effect(
                     [
                         html.Span("Perturbation", className="fw-light text-muted me-2"),
                         html.Span(
-                            perturbation_gene_name,
+                            perturbed_target_ensg,
                             className="h4 fw-bold mb-0 text-break",
                         ),
                     ],
@@ -406,7 +406,7 @@ def _perturb_seq_effect(
                     [
                         html.Span("Effect gene", className="fw-light text-muted me-2"),
                         html.Span(
-                            effect_gene_name, className="h4 fw-bold mb-0 text-break"
+                            effect_gene_ensg, className="h4 fw-bold mb-0 text-break"
                         ),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
@@ -415,17 +415,17 @@ def _perturb_seq_effect(
             className="mb-2",
         )
     else:
-        # For other sections, show only one gene based on effect_gene_source
+        # For other sections, show only one identifier based on effect_gene_source
         if effect_gene_source == "perturbation":
-            gene_name = perturbation_gene_name
-            gene_label = "Perturbation gene"
+            identifier = perturbed_target_ensg
+            identifier_label = "Perturbed target"
         else:
-            gene_name = effect_gene_name
-            gene_label = "Effect gene"
+            identifier = effect_gene_ensg
+            identifier_label = "Effect gene ENSG"
         gene_section = html.Div(
             [
-                html.Span(gene_label, className="fw-light text-muted me-2"),
-                html.Span(gene_name, className="h4 fw-bold mb-0 text-break"),
+                html.Span(identifier_label, className="fw-light text-muted me-2"),
+                html.Span(identifier, className="h4 fw-bold mb-0 text-break"),
             ],
             className="d-flex flex-column flex-md-row gap-1 mb-2",
         )
@@ -458,7 +458,7 @@ def _perturb_seq_table(
     header_row = html.Tr(
         [
             html.Th("Perturbation", className="text-start"),
-            html.Th("Effect Gene", className="text-start"),
+            html.Th("Effect Gene ENSG", className="text-start"),
             html.Th("Log2FC", className="text-end"),
             html.Th("Padj", className="text-end"),
             html.Th("Statistical Score", className="text-start"),
@@ -472,8 +472,8 @@ def _perturb_seq_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
-        effect_gene_name = effect.get("gene_name") or "N/A"
+        perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
+        effect_gene_ensg = effect.get("effect_gene_ensg") or "N/A"
 
         log2fc_value = effect.get("log2fc")
         log2fc_display = _format_numeric(log2fc_value)
@@ -526,10 +526,10 @@ def _perturb_seq_table(
             html.Tr(
                 [
                     html.Td(
-                        perturbation_gene_name,
+                        perturbed_target_ensg,
                         className="text-start fw-semibold",
                     ),
-                    html.Td(effect_gene_name, className="text-start fw-semibold"),
+                    html.Td(effect_gene_ensg, className="text-start fw-semibold"),
                     log2fc_cell,
                     padj_cell,
                     html.Td(statistical_score, className="text-start"),
@@ -576,10 +576,10 @@ def _perturb_seq_table(
     # Add GSEA button for perturb_seq_perturbed section only
     if section_id == "perturb_seq_perturbed" and gsea_button_data:
         dataset_id = gsea_button_data.get("dataset_id", "")
-        perturbed_gene = gsea_button_data.get("perturbed_gene_name", "")
+        perturbed_target_ensg = gsea_button_data.get("perturbed_target_ensg", "")
         gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_types") or ""
         # Generate unique ID for the popover target
-        unique_key = f"{dataset_id}_{perturbed_gene}"
+        unique_key = f"{dataset_id}_{perturbed_target_ensg}"
         gsea_icon_id = (
             f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
         )
@@ -593,7 +593,7 @@ def _perturb_seq_table(
                     id={
                         "type": "gsea-modal-trigger",
                         "dataset_id": dataset_id,
-                        "perturbed_gene": perturbed_gene,
+                        "perturbed_gene": perturbed_target_ensg,
                         "dataset_cell_types": gsea_dataset_cell_type,
                     },
                     color="success",
@@ -670,7 +670,7 @@ def _crispr_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
+        perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
         score_name = effect.get("score_name") or "N/A"
         score_value = _format_numeric(effect.get("score_value"))
         significant = effect.get("significant")
@@ -700,7 +700,7 @@ def _crispr_table(
             html.Tr(
                 [
                     html.Td(
-                        perturbation_gene_name,
+                        perturbed_target_ensg,
                         className="text-start fw-semibold",
                     ),
                     html.Td(score_name, className="text-start"),
@@ -758,7 +758,7 @@ def _crispr_table(
 def _score_effect(
     perturbation: Dict[str, Any], effect: Dict[str, Any], modality: str
 ) -> html.Div:
-    pert_gene = perturbation.get("gene_name") or "N/A"
+    pert_gene = perturbation.get("perturbed_target_ensg") or "N/A"
     variant = perturbation.get("name")
     score_name = effect.get("score_name")
     score_value = _format_numeric(effect.get("score_value"))
