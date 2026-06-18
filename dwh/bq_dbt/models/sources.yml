@@ -27,9 +27,9 @@ sources:
       - name: metadata
         description: "Sample-level metadata"
       - name: pertpy_dea
-        description: "DEA per (dataset_id, perturbed_target_symbol)"
+        description: "DEA per dataset, perturbed target ENSG, and effect gene ENSG"
       - name: pertpy_gsea
-        description: "GSEA results per (dataset_id, perturbed_target_symbol)"
+        description: "GSEA results per dataset and perturbed target ENSG"
   - name: reference
     description: "Reference data loaded from external canonical resources"
     database: prj-ext-dev-pertcat-437314   # GCP project id
