@@ -5,6 +5,7 @@ import enum
 import io
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +37,48 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+PG_TABLE_ENV_VARS = {
+    "crispr_data": "PG_CRISPR_DATA_TABLE",
+    "mave_data": "PG_MAVE_DATA_TABLE",
+    "perturb_seq_dea": "PG_PERTURB_SEQ_DEA_TABLE",
+    "perturb_seq_gsea": "PG_PERTURB_SEQ_GSEA_TABLE",
+}
+
+PG_SUMMARY_ENV_VARS = {
+    "perturbation": "PG_PERTURB_SEQ_SUMMARY_PERTURBATION",
+    "effect": "PG_PERTURB_SEQ_SUMMARY_EFFECT",
+    "dataset": "PG_PERTURB_SEQ_SUMMARY_DATASET",
+}
+
+
+def env_identifier(name: str, default: str) -> str:
+    """Read a SQL identifier from env, rejecting unsafe table/view names."""
+    value = os.getenv(name, default)
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+        raise RuntimeError(f"{name} must be a plain SQL identifier")
+    return value
+
+
+PG_TABLES = {
+    table_name: env_identifier(env_var, table_name)
+    for table_name, env_var in PG_TABLE_ENV_VARS.items()
+}
+
+SYNC_STATE_TABLE = env_identifier("PG_SYNC_STATE_TABLE", "sync_state")
+
+PERTURB_SEQ_SUMMARY_VIEWS = {
+    name: env_identifier(env_var, default)
+    for name, env_var, default in [
+        (
+            "perturbation",
+            "PG_PERTURB_SEQ_SUMMARY_PERTURBATION",
+            "perturb_seq_summary_perturbation",
+        ),
+        ("effect", "PG_PERTURB_SEQ_SUMMARY_EFFECT", "perturb_seq_summary_effect"),
+        ("dataset", "PG_PERTURB_SEQ_SUMMARY_DATASET", "perturb_seq_summary_dataset"),
+    ]
+}
+
 SYNC_QUERIES = {
     "crispr_data": {
         "export_query": r"""
@@ -47,13 +90,13 @@ SYNC_QUERIES = {
                 score_value,
                 significant,
                 significance_criteria,
-                ingested_at as max_ingested_at
-            FROM `{project}.crispr.data`
+                max_ingested_at
+            FROM `{project}.{bq_dataset}.crispr_data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.crispr.data`
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.{bq_dataset}.crispr_data`
             GROUP BY dataset_id
         """,
     },
@@ -73,13 +116,13 @@ SYNC_QUERIES = {
                 regexp_extract(
                     perturbation_name, r'p\.[a-zA-Z]+\d+([a-zA-Z=]+)'
                 ) as perturbation_aa_change,
-                ingested_at as max_ingested_at
-            FROM `{project}.mavedb.data`
+                max_ingested_at
+            FROM `{project}.{bq_dataset}.mave_data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.mavedb.data`
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.{bq_dataset}.mave_data`
             GROUP BY dataset_id
         """,
     },
@@ -90,17 +133,17 @@ SYNC_QUERIES = {
                 perturbed_target_ensg,
                 effect_gene_ensg,
                 padj,
-                log2FoldChange as log2foldchange,
+                log2foldchange,
                 score_name,
                 score_value,
                 cell_type,
-                ingested_at as max_ingested_at
-            FROM `{project}.perturb_seq.pertpy_dea`
+                max_ingested_at
+            FROM `{project}.{bq_dataset}.perturb_seq_dea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.perturb_seq.pertpy_dea`
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.{bq_dataset}.perturb_seq_dea`
             GROUP BY dataset_id
         """,
     },
@@ -118,13 +161,13 @@ SYNC_QUERIES = {
                 geneset_size,
                 leading_edge,
                 cell_type,
-                ingested_at as max_ingested_at
-            FROM `{project}.perturb_seq.pertpy_gsea`
+                max_ingested_at
+            FROM `{project}.{bq_dataset}.perturb_seq_gsea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.perturb_seq.pertpy_gsea`
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.{bq_dataset}.perturb_seq_gsea`
             GROUP BY dataset_id
         """,
     },
@@ -179,15 +222,8 @@ INDEX_DEFINITIONS = {
     ],
 }
 
-# Names of materialized views to refresh for each table.
-# Definitions are no longer managed here (assumed to exist).
-TABLE_MATERIALIZED_VIEWS = {
-    "perturb_seq_dea": [
-        "perturb_seq_summary_perturbation",
-        "perturb_seq_summary_effect",
-        "perturb_seq_summary_dataset",
-    ],
-}
+# Names of materialized views to refresh for each logical table.
+TABLE_MATERIALIZED_VIEWS = {"perturb_seq_dea": list(PERTURB_SEQ_SUMMARY_VIEWS.values())}
 
 # Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
 GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
@@ -216,20 +252,26 @@ def get_pg_type(field):
     return pg_type
 
 
-def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
+def get_all_sync_states(cursor, sync_state_table: str) -> Dict[str, Dict[str, Any]]:
     """Gets the current sync state for all tables and datasets from Postgres."""
     cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sync_state (
+        sql.SQL(
+            """
+        CREATE TABLE IF NOT EXISTS {} (
             table_name TEXT NOT NULL,
             dataset_id TEXT NOT NULL,
             last_synced_at TIMESTAMP WITHOUT TIME ZONE,
             PRIMARY KEY (table_name, dataset_id)
         );
     """
+        ).format(sql.Identifier(sync_state_table))
     )
     states = {}
-    cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
+    cursor.execute(
+        sql.SQL("SELECT table_name, dataset_id, last_synced_at FROM {}").format(
+            sql.Identifier(sync_state_table)
+        )
+    )
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
         if table_name not in states:
             states[table_name] = {}
@@ -238,10 +280,12 @@ def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
 
 
 def get_bq_latest_timestamps_and_counts(
-    bq_client, table_name, bq_location
+    bq_client, bq_dataset, table_name, bq_location
 ) -> Dict[str, Tuple[Any, int]]:
     """Gets the latest max_ingested_at and row count for every dataset_id in a BQ table."""
-    query = SYNC_QUERIES[table_name]["ts_query"].format(project=bq_client.project)
+    query = SYNC_QUERIES[table_name]["ts_query"].format(
+        project=bq_client.project, bq_dataset=bq_dataset
+    )
     query_job = bq_client.query(query, location=bq_location)
     results = query_job.result()
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
@@ -261,7 +305,7 @@ def export_dataset_to_gcs(
     temp_table_ref = dataset_ref.table(temp_table_id)
 
     query = SYNC_QUERIES[table_name]["export_query"].format(
-        project=bq_client.project, dataset_id=dataset_id
+        project=bq_client.project, bq_dataset=bq_dataset, dataset_id=dataset_id
     )
     job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
@@ -412,15 +456,17 @@ def delete_dataset_from_pg(cursor, pg_table, dataset_id):
     )
 
 
-def update_sync_state(cursor, pg_table, dataset_id, timestamp):
+def update_sync_state(cursor, sync_state_table, pg_table, dataset_id, timestamp):
     """Updates or inserts the sync state for a specific dataset."""
     cursor.execute(
-        """
-        INSERT INTO sync_state (table_name, dataset_id, last_synced_at)
+        sql.SQL(
+            """
+        INSERT INTO {} (table_name, dataset_id, last_synced_at)
         VALUES (%s, %s, %s)
         ON CONFLICT (table_name, dataset_id) DO UPDATE
         SET last_synced_at = EXCLUDED.last_synced_at;
-    """,
+    """
+        ).format(sql.Identifier(sync_state_table)),
         (pg_table, dataset_id, timestamp),
     )
 
@@ -442,38 +488,131 @@ def ensure_pg_table_exists(cursor, pg_table, bq_schema):
         )
 
 
-def drop_indexes(cursor, table_name, suffix=""):
+def _index_suffix(logical_table, pg_table):
+    """Return a compact suffix that keeps dev index names away from production."""
+    if pg_table == logical_table:
+        return ""
+    prefix = f"{logical_table}_"
+    if pg_table.startswith(prefix):
+        return f"_{pg_table[len(prefix):]}"
+    return f"_{pg_table}"
+
+
+def drop_indexes(cursor, logical_table, pg_table):
     """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
+    if logical_table not in INDEX_DEFINITIONS:
         return
-    logging.info(f"    Dropping indexes for {table_name}{suffix}...")
-    for index_name, _ in INDEX_DEFINITIONS[table_name]:
+    suffix = _index_suffix(logical_table, pg_table)
+    logging.info(f"    Dropping indexes for {pg_table}...")
+    for index_name, _ in INDEX_DEFINITIONS[logical_table]:
         idx = f"{index_name}{suffix}"
         logging.info(f"        Dropping {idx}...")
         cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
-def create_indexes(cursor, table_name, suffix=""):
+def create_indexes(cursor, logical_table, pg_table):
     """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
+    if logical_table not in INDEX_DEFINITIONS:
         return
-    logging.info(
-        f"      - Creating indexes for {table_name}{suffix} (this may take a while)..."
-    )
-    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+    suffix = _index_suffix(logical_table, pg_table)
+    logging.info(f"      - Creating indexes for {pg_table} (this may take a while)...")
+    for index_name, index_sql_template in INDEX_DEFINITIONS[logical_table]:
         idx = f"{index_name}{suffix}"
         logging.info(f"        Creating {idx}...")
         index_sql = index_sql_template.format(
             idx=sql.Identifier(idx).as_string(cursor.connection),
-            table=sql.Identifier(f"{table_name}{suffix}").as_string(cursor.connection),
+            table=sql.Identifier(pg_table).as_string(cursor.connection),
         )
         cursor.execute(index_sql)
+
+
+def ensure_perturb_seq_summary_views(cursor):
+    """Create ENSG summary materialized views and unique indexes when missing."""
+    dea_table = PG_TABLES["perturb_seq_dea"]
+    perturbation_view = PERTURB_SEQ_SUMMARY_VIEWS["perturbation"]
+    effect_view = PERTURB_SEQ_SUMMARY_VIEWS["effect"]
+    dataset_view = PERTURB_SEQ_SUMMARY_VIEWS["dataset"]
+
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            SELECT
+                dataset_id,
+                perturbed_target_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+            FROM {}
+            WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
+            GROUP BY dataset_id, perturbed_target_ensg
+            """
+        ).format(sql.Identifier(perturbation_view), sql.Identifier(dea_table))
+    )
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id, perturbed_target_ensg)
+            """
+        ).format(
+            sql.Identifier(f"idx_{perturbation_view}_pk"),
+            sql.Identifier(perturbation_view),
+        )
+    )
+
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            SELECT
+                dataset_id,
+                effect_gene_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+                AVG(score_value) AS avg_score
+            FROM {}
+            WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id, effect_gene_ensg
+            """
+        ).format(sql.Identifier(effect_view), sql.Identifier(dea_table))
+    )
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id, effect_gene_ensg)
+            """
+        ).format(sql.Identifier(f"idx_{effect_view}_pk"), sql.Identifier(effect_view))
+    )
+
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            SELECT dataset_id, COUNT(*) AS n_total
+            FROM {}
+            WHERE effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id
+            """
+        ).format(sql.Identifier(dataset_view), sql.Identifier(dea_table))
+    )
+    cursor.execute(
+        sql.SQL(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id)
+            """
+        ).format(
+            sql.Identifier(f"idx_{dataset_view}_pk"), sql.Identifier(dataset_view)
+        )
+    )
 
 
 def refresh_materialized_views(cursor, table_name, concurrently=False):
     """Refreshes materialized views associated with the table."""
     if table_name not in TABLE_MATERIALIZED_VIEWS:
         return
+    if table_name == "perturb_seq_dea":
+        ensure_perturb_seq_summary_views(cursor)
     for view_name in TABLE_MATERIALIZED_VIEWS[table_name]:
         logging.info(f"      - Refreshing materialized view {view_name}...")
         conc_clause = "CONCURRENTLY " if concurrently else ""
@@ -532,7 +671,9 @@ class TableSynchronizer:
     def _get_bq_schema(self, table_name):
         query = (
             SYNC_QUERIES[table_name]["export_query"].format(
-                project=self.bq_client.project, dataset_id="_dummy_limit_0_"
+                project=self.bq_client.project,
+                bq_dataset=self.bq_dataset,
+                dataset_id="_dummy_limit_0_",
             )
             + " LIMIT 0"
         )
@@ -577,37 +718,38 @@ class TableSynchronizer:
         - (Separate) Refresh MVs concurrently.
         """
         bq_schema = self._get_bq_schema(table_name)
+        pg_table = PG_TABLES[table_name]
         datasets = sorted(plan["to_update"] + plan["to_insert"])
 
         # 1. Main Transaction Block
         with psycopg2.connect(self.pg_conn_str) as conn:
             with conn.cursor() as cursor:
-                ensure_pg_table_exists(cursor, table_name, bq_schema)
+                ensure_pg_table_exists(cursor, pg_table, bq_schema)
 
                 logging.info(
-                    f"    Starting transaction for {len(datasets)} datasets..."
+                    f"    Starting transaction for {len(datasets)} datasets into {pg_table}..."
                 )
 
                 # A. Drop Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    drop_indexes(cursor, table_name)
+                    drop_indexes(cursor, table_name, pg_table)
 
                 # B. Ingest Loop
                 for ds_id in tqdm(
-                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
+                    datasets, desc=f"    Syncing {pg_table}", unit="dataset"
                 ):
                     # Data Ingestion
                     self._ingest_dataset_logic(
-                        cursor, table_name, table_name, ds_id, bq_schema
+                        cursor, pg_table, table_name, ds_id, bq_schema
                     )
 
                     # Update sync state
                     bq_ts = plan["bq_info"][ds_id][0]
-                    update_sync_state(cursor, table_name, ds_id, bq_ts)
+                    update_sync_state(cursor, SYNC_STATE_TABLE, pg_table, ds_id, bq_ts)
 
                 # C. Recreate Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    create_indexes(cursor, table_name)
+                    create_indexes(cursor, table_name, pg_table)
 
         # 2. Materialized View Refresh (concurrently, separate connection)
         # Only if we successfully committed the transaction above.
@@ -683,16 +825,17 @@ def main():
     try:
         with conn.cursor() as cursor:
             # fetch current state
-            pg_states = get_all_sync_states(cursor)
+            pg_states = get_all_sync_states(cursor, SYNC_STATE_TABLE)
             bq_client = synchronizer.bq_client
 
             for table_name in TABLES_TO_SYNC:
+                pg_table = PG_TABLES[table_name]
                 logging.info(f"Checking {table_name}...")
 
                 # 1. Get BQ state
                 try:
                     bq_info = get_bq_latest_timestamps_and_counts(
-                        bq_client, table_name, args.bq_location
+                        bq_client, args.bq_dataset, table_name, args.bq_location
                     )
                 except Exception as e:
                     logging.warning(
@@ -701,7 +844,7 @@ def main():
                     continue
 
                 # 2. Compare with PG state
-                pg_info = pg_states.get(table_name, {})
+                pg_info = pg_states.get(pg_table, {})
                 to_insert = []
                 to_update = []
 
