@@ -272,13 +272,11 @@ def pivot_gene_records(raw_results):
         dataset_meta = r.get("_dataset_meta", {})
 
         cell_lines = dataset_meta.get("dataset_cell_lines", [])
-        if not cell_lines:
+        if not cell_lines and dataset_meta:
             log.warning(
                 "No cell line label found in dataset metadata — using 'unknown'"
             )
-            cell_line_value = "unknown"
-        else:
-            cell_line_value = cell_lines[0]
+        cell_line_value = cell_lines[0] if cell_lines else "unknown"
 
         rows.append(
             {
