@@ -6,15 +6,19 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs three stages sequentially:
+The pipeline runs four stages sequentially:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
-| 1. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
-| 2. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
-| 3. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
+| 1. **Open Targets reference** | `reference/` | Downloads Open Targets Platform targets and loads the configured BQ reference table | ~minutes |
+| 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
+| 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
+| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
+For the ENSG dev stack, the Open Targets reference stage writes only to
+`BQ_REFERENCE_DATASET.BQ_OPENTARGETS_TARGETS_TABLE`, which should be
+`reference_ensg_dev.opentargets_targets`.
 
 ## Prerequisites
 
@@ -36,7 +40,9 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
+The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_REFERENCE_DATASET`, `BQ_OPENTARGETS_TARGETS_TABLE`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `PG_CRISPR_DATA_TABLE`, `PG_MAVE_DATA_TABLE`, `PG_PERTURB_SEQ_DEA_TABLE`, `PG_PERTURB_SEQ_GSEA_TABLE`, `PG_SYNC_STATE_TABLE`, `PG_PERTURB_SEQ_SUMMARY_PERTURBATION`, `PG_PERTURB_SEQ_SUMMARY_EFFECT`, `PG_PERTURB_SEQ_SUMMARY_DATASET`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_DATASET_SUMMARY`, `ES_TARGET_SUMMARY`, `ES_LANDING_PAGE_SUMMARY`.
+
+`OPENTARGETS_RELEASE` is optional and defaults to `26.03`.
 
 ### 4. Grant IAM permissions to Cloud Build service account
 
@@ -123,6 +129,20 @@ Additional dbt commands:
 - Specific model + dependencies: `dbt run --profiles-dir . --select +dataset_summary`
 - Full refresh (non-incremental): `dbt run --profiles-dir . --full-refresh`
 
+### Open Targets reference
+
+```bash
+cd dwh
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python3 reference/load_opentargets_targets.py
+```
+
+The loader uses `GCLOUD_PROJECT`, `BQ_LOCATION`, `BQ_REFERENCE_DATASET`,
+`BQ_OPENTARGETS_TARGETS_TABLE`, and optionally `OPENTARGETS_RELEASE`.
+By default it refuses destinations that do not contain `ensg_dev`, so the
+development reference load cannot accidentally overwrite a production table.
+
 ### BQ → Postgres
 
 ```bash
@@ -147,7 +167,8 @@ python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_met
 ```
 
 The target summary projection reads `target_summary_ensg` and writes to the
-separate `target-summary-ensg` Elasticsearch alias.
+configured `ES_TARGET_SUMMARY` Elasticsearch alias, for example
+`target-summary-ensg-dev`.
 
 ## Creating the PostgreSQL instance
 

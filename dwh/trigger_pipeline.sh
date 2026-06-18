@@ -11,6 +11,7 @@
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD, BQ_REFERENCE_DATASET,
 #       BQ_OPENTARGETS_TARGETS_TABLE, PG_*_TABLE, PG_*_SUMMARY_*, ES_*_SUMMARY
+#       Optional: OPENTARGETS_RELEASE (defaults to 26.03)
 #
 
 set -euo pipefail
@@ -77,6 +78,8 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     exit 1
 fi
 
+OPENTARGETS_RELEASE="${OPENTARGETS_RELEASE:-26.03}"
+
 # ---------------------------------------------------------------------------
 # Resolve paths
 # ---------------------------------------------------------------------------
@@ -100,6 +103,7 @@ echo "  Project:            $GCLOUD_PROJECT"
 echo "  Region:             $GCLOUD_REGION"
 echo "  BQ Dataset:         $BQ_DATASET"
 echo "  BQ Reference:       $BQ_REFERENCE_DATASET.$BQ_OPENTARGETS_TARGETS_TABLE"
+echo "  OT Release:         $OPENTARGETS_RELEASE"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
 echo "  PG Tables:          $PG_CRISPR_DATA_TABLE, $PG_MAVE_DATA_TABLE, $PG_PERTURB_SEQ_DEA_TABLE, $PG_PERTURB_SEQ_GSEA_TABLE"
@@ -119,6 +123,7 @@ _GCLOUD_REGION=$GCLOUD_REGION,\
 _BQ_DATASET=$BQ_DATASET,\
 _BQ_REFERENCE_DATASET=$BQ_REFERENCE_DATASET,\
 _BQ_OPENTARGETS_TARGETS_TABLE=$BQ_OPENTARGETS_TARGETS_TABLE,\
+_OPENTARGETS_RELEASE=$OPENTARGETS_RELEASE,\
 _BQ_LOCATION=$BQ_LOCATION,\
 _GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET,\
 _PG_CONN_INTERNAL=$PG_CONN_INTERNAL,\
