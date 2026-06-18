@@ -6,6 +6,7 @@ import asyncpg
 from dotenv import load_dotenv
 import json
 import logging
+import os
 import re
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -35,9 +36,9 @@ load_dotenv()
 
 
 # Elastic indexes to use.
-ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
-ES_TARGET_SUMMARY = "target-summary-ensg"
-ES_DATASET_SUMMARY = "dataset-summary"
+ES_LANDING_PAGE_SUMMARY = os.getenv("ES_LANDING_PAGE_SUMMARY", "landing-page-summary")
+ES_TARGET_SUMMARY = os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg")
+ES_DATASET_SUMMARY = os.getenv("ES_DATASET_SUMMARY", "dataset-summary")
 
 
 # Configuration

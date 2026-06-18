@@ -28,17 +28,17 @@ BQ_DATASET = os.getenv("BQ_DATASET")
 
 TABLE_CONFIG = {
     "dataset_summary": {
-        "index_base": "dataset-summary",
+        "index_base": os.getenv("ES_DATASET_SUMMARY", "dataset-summary"),
         "key_field": "dataset_id",
         "prefix": "dataset",
     },
     "target_summary_ensg": {
-        "index_base": "target-summary-ensg",
+        "index_base": os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg"),
         "key_field": "ensembl_gene_id",
         "prefix": "target-ensg",
     },
     "landing_page_summary": {
-        "index_base": "landing-page-summary",
+        "index_base": os.getenv("ES_LANDING_PAGE_SUMMARY", "landing-page-summary"),
         "key_field": "summary",
         "prefix": "landing-page",
     },

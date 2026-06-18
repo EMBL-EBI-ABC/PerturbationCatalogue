@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: crispr
     description: "Crispr metadata and data"
-    database: prj-ext-dev-pertcat-437314   # GCP project id
+    database: "{{ env_var('GCLOUD_PROJECT', 'prj-ext-dev-pertcat-437314') }}"   # GCP project id
     schema: crispr                   # BigQuery dataset
     tables:
       - name: metadata
@@ -12,7 +12,7 @@ sources:
         description: "CRISPR scores per (dataset_id, sample_id)"
   - name: mave
     description: "MAVE metadata and data"
-    database: prj-ext-dev-pertcat-437314   # GCP project id
+    database: "{{ env_var('GCLOUD_PROJECT', 'prj-ext-dev-pertcat-437314') }}"   # GCP project id
     schema: mavedb                   # BigQuery dataset
     tables:
       - name: metadata
@@ -21,7 +21,7 @@ sources:
         description: "MAVE scores per (dataset_id, sample_id)"
   - name: perturb_seq
     description: "Perturb-seq metadata and data"
-    database: prj-ext-dev-pertcat-437314   # GCP project id
+    database: "{{ env_var('GCLOUD_PROJECT', 'prj-ext-dev-pertcat-437314') }}"   # GCP project id
     schema: perturb_seq                   # BigQuery dataset
     tables:
       - name: metadata
@@ -32,8 +32,9 @@ sources:
         description: "GSEA results per dataset and perturbed target ENSG"
   - name: reference
     description: "Reference data loaded from external canonical resources"
-    database: prj-ext-dev-pertcat-437314   # GCP project id
-    schema: reference                   # BigQuery dataset
+    database: "{{ env_var('GCLOUD_PROJECT', 'prj-ext-dev-pertcat-437314') }}"   # GCP project id
+    schema: "{{ env_var('BQ_REFERENCE_DATASET', 'reference') }}"                   # BigQuery dataset
     tables:
       - name: opentargets_targets
+        identifier: "{{ env_var('BQ_OPENTARGETS_TARGETS_TABLE', 'opentargets_targets') }}"
         description: "Open Targets Platform target table keyed by Ensembl gene ID"
