@@ -1194,7 +1194,7 @@ def _paginate_dataset_rows(
         {
             "type": "gsea-modal-trigger",
             "dataset_id": ALL,
-            "perturbed_gene": ALL,
+            "perturbed_target_ensg": ALL,
             "dataset_cell_types": ALL,
         },
         "n_clicks",
@@ -1215,26 +1215,26 @@ def handle_gsea_modal(n_clicks_list):
     triggered = ctx.triggered[0]
     prop_id = triggered["prop_id"]
 
-    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_types
+    # Parse the ID to get dataset_id, perturbed target ENSG, and dataset_cell_types
     try:
         id_str = prop_id.rsplit(".", 1)[0]
         button_id = json.loads(id_str)
         dataset_id = button_id.get("dataset_id", "")
-        perturbed_gene = button_id.get("perturbed_gene", "")
+        perturbed_target_ensg = button_id.get("perturbed_target_ensg", "")
         dataset_cell_types = button_id.get("dataset_cell_types", "")
     except (json.JSONDecodeError, KeyError):
         raise PreventUpdate
 
-    if not dataset_id or not perturbed_gene:
+    if not dataset_id or not perturbed_target_ensg:
         raise PreventUpdate
 
     # Fetch GSEA data
-    response = fetch_perturb_seq_gsea(dataset_id, perturbed_gene)
+    response = fetch_perturb_seq_gsea(dataset_id, perturbed_target_ensg)
 
     if response.get("error"):
         return (
             True,
-            f"GSEA Results: {perturbed_gene}",
+            f"GSEA Results: {perturbed_target_ensg}",
             html.Div(
                 f"Error loading GSEA data: {response['error']}",
                 className="text-danger",
@@ -1247,7 +1247,7 @@ def handle_gsea_modal(n_clicks_list):
     if not results:
         return (
             True,
-            f"GSEA Results: {perturbed_gene}",
+            f"GSEA Results: {perturbed_target_ensg}",
             html.Div("No GSEA results available.", className="text-muted fst-italic"),
             None,
         )
@@ -1340,11 +1340,11 @@ def handle_gsea_modal(n_clicks_list):
         style={"fontSize": "0.9rem"},
     )
 
-    modal_title = f"Pathway Enrichment (GSEA): {perturbed_gene}"
+    modal_title = f"Pathway Enrichment (GSEA): {perturbed_target_ensg}"
 
     # Prepare data for download (list of dicts for CSV export)
     download_data = {
-        "perturbed_gene": perturbed_gene,
+        "perturbed_target_ensg": perturbed_target_ensg,
         "rows": [],
     }
     for result in results:
@@ -1400,7 +1400,7 @@ def download_gsea_data(n_clicks, gsea_data):
         raise PreventUpdate
 
     rows = gsea_data.get("rows", [])
-    perturbed_gene = gsea_data.get("perturbed_gene", "unknown")
+    perturbed_target_ensg = gsea_data.get("perturbed_target_ensg", "unknown")
 
     if not rows:
         raise PreventUpdate
@@ -1432,6 +1432,6 @@ def download_gsea_data(n_clicks, gsea_data):
         csv_lines.append(",".join(csv_row))
 
     csv_content = "\n".join(csv_lines)
-    filename = f"gsea_{perturbed_gene}.csv"
+    filename = f"gsea_{perturbed_target_ensg}.csv"
 
     return dict(content=csv_content, filename=filename)

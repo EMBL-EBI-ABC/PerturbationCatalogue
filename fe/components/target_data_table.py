@@ -593,7 +593,7 @@ def _perturb_seq_table(
                     id={
                         "type": "gsea-modal-trigger",
                         "dataset_id": dataset_id,
-                        "perturbed_gene": perturbed_target_ensg,
+                        "perturbed_target_ensg": perturbed_target_ensg,
                         "dataset_cell_types": gsea_dataset_cell_type,
                     },
                     color="success",
