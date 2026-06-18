@@ -36,7 +36,7 @@ with
             perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_crispr,
             countif(significant = 'True') as n_sig_crispr
-        from {{ source("crispr", "data") }}
+        from {{ ref("crispr_data") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -47,7 +47,7 @@ with
         select
             perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_mave
-        from {{ source("mave", "data") }}
+        from {{ ref("mave_data") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -58,9 +58,9 @@ with
         select
             perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_perturb_seq,
-            countif(padj <= 0.05 and log2FoldChange > 0) as n_sig_perturb_pairs_up,
-            countif(padj <= 0.05 and log2FoldChange < 0) as n_sig_perturb_pairs_down
-        from {{ source("perturb_seq", "pertpy_dea") }}
+            countif(padj <= 0.05 and log2foldchange > 0) as n_sig_perturb_pairs_up,
+            countif(padj <= 0.05 and log2foldchange < 0) as n_sig_perturb_pairs_down
+        from {{ ref("perturb_seq_dea") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -75,7 +75,7 @@ with
             row_number() over (
                 partition by perturbed_target_ensg order by sidak asc
             ) as rn
-        from {{ source("perturb_seq", "pertpy_gsea") }}
+        from {{ ref("perturb_seq_gsea") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -93,7 +93,7 @@ with
 
     effect_targets as (
         select distinct effect_gene_ensg as ensembl_gene_id
-        from {{ source("perturb_seq", "pertpy_dea") }}
+        from {{ ref("perturb_seq_dea") }}
         where
             effect_gene_ensg is not null
             and starts_with(effect_gene_ensg, "ENSG")
