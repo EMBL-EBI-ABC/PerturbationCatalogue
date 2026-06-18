@@ -1,6 +1,8 @@
 # =============================================================================
 # IMPORTS
 # =============================================================================
+import json
+import logging
 import os
 import re
 import numpy as np
@@ -42,40 +44,59 @@ DATA_PATH = _resolve_data_path()
 
 df_all = pd.read_csv(DATA_PATH)
 
-# All genes that appear in the FDR 10% network; used to populate both dropdowns.
-all_genes = sorted(set(df_all["source"]).union(set(df_all["target"])))
 
-
-def _load_dataset_stats():
-    """Return (n_cell_lines, n_genes_profiled).
-
-    n_cell_lines:     row count from CRISPRGeneEffect CSV.
-    n_genes_profiled: line count from the GLS genes.txt (all genes that passed
-                      NA filtering and entered the GLS analysis).
-    """
+def _load_all_profiled_genes():
+    """All genes that passed NA filtering and entered the GLS analysis — the
+    full searchable gene set, not just genes with a significant partner in the
+    FDR 10% network (which would silently exclude profiled-but-isolated genes)."""
     version_raw = open(os.path.join(_DATA_DIR, "depmap_version.txt")).read().strip()
     m = re.search(r"(\d+Q\d+)", version_raw, re.IGNORECASE)
     version = m.group(1) if m else None
 
-    n_cell_lines = None
-    if version:
-        crispr_path = os.path.join(_DATA_DIR, f"CRISPRGeneEffect_{version}.csv")
-        if os.path.isfile(crispr_path):
-            with open(crispr_path) as fh:
-                n_cell_lines = sum(1 for _ in fh) - 1  # subtract header
-
-    n_genes_profiled = None
     if version:
         genes_path = os.path.join(_DATA_DIR, f"depmap_{version}_genes.txt")
         if os.path.isfile(genes_path):
             with open(genes_path) as fh:
-                n_genes_profiled = sum(1 for _ in fh)
+                return sorted(line.strip() for line in fh if line.strip())
 
-    return n_cell_lines, n_genes_profiled
+    # Fallback: derive from the network CSV alone (excludes isolated genes).
+    return sorted(set(df_all["source"]).union(set(df_all["target"])))
+
+
+# Full profiled gene set — populates both search dropdowns. Used separately
+# from df_all, which only carries gene *pairs/relationships*.
+all_genes = _load_all_profiled_genes()
+
+
+def _load_dataset_stats():
+    """Return (n_cell_lines, n_genes_profiled) from the metadata JSON written
+    by step2_gls_coessentiality.py — avoids scanning the full CRISPRGeneEffect
+    CSV (hundreds of MB) just to count rows at app startup."""
+    version_raw = open(os.path.join(_DATA_DIR, "depmap_version.txt")).read().strip()
+    m = re.search(r"(\d+Q\d+)", version_raw, re.IGNORECASE)
+    version = m.group(1) if m else None
+
+    if version:
+        metadata_path = os.path.join(_DATA_DIR, f"depmap_{version}_metadata.json")
+        if os.path.isfile(metadata_path):
+            with open(metadata_path) as fh:
+                metadata = json.load(fh)
+            return metadata.get("n_cell_lines"), metadata.get("n_genes_profiled")
+
+    return None, None
 
 
 _N_CELL_LINES, _N_GENES_PROFILED = _load_dataset_stats()
 _DEPMAP_VERSION = open(os.path.join(_DATA_DIR, "depmap_version.txt")).read().strip()
+
+
+# =============================================================================
+# LOGGING
+# Server-side only — error details (incl. tracebacks) go to stdout/stderr,
+# which Cloud Run captures automatically. Never shown to users; UI gets a
+# generic message instead (see annotate_multi_modules).
+# =============================================================================
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -89,7 +110,7 @@ app.title = "DepMap Co-Essentiality Explorer"
 
 # =============================================================================
 # COLOUR HELPER
-# Maps a correlation value in [-1, 1] to a hex colour on a
+# Maps a co-essentiality direction (+1/-1) to a hex colour on a
 # blue (#0072B2) → neutral grey (#dcdcdc) → orange (#E69F00) gradient.
 # Palette: Wong (2011) colorblind-safe — distinguishable under deuteranopia,
 # protanopia, and tritanopia.
@@ -100,7 +121,7 @@ _NEUTRAL  = np.array([220, 220, 220])
 _POSITIVE = np.array([  0, 114, 178])   # #0072B2 — blue  (positive co-essentiality)
 _NEGATIVE = np.array([230, 159,   0])   # #E69F00 — orange (negative co-essentiality)
 
-def corr_to_color(c):
+def direction_to_color(c):
     c = float(np.clip(c, -1.0, 1.0))
     # +1 → blue, 0 → neutral grey, -1 → orange
     rgb = (_NEUTRAL + c * (_POSITIVE - _NEUTRAL)).astype(int) if c >= 0 \
@@ -114,21 +135,21 @@ def corr_to_color(c):
 #  - input genes with no displayed pair are a light, dull grey
 #  - genes added via degree-of-interaction expansion are a light, dull
 #    purple — distinct in hue from the light grey above
-#  - edges are coloured by the sign of the underlying correlation, using the
+#  - edges are coloured by the underlying co-essentiality direction, using the
 #    same Positive/Negative colours as the single-gene view
 # Grey/purple shades are distinguished by lightness/hue independent of the
 # blue/orange edge colours, so the palette stays colour-blind friendly.
 _MULTI_NODE_COLOR         = "#222222"   # near-black — input gene with a pair (bright/prominent)
 _MULTI_NODE_NEUTRAL_COLOR = "#D9D9D9"   # light grey — input gene with no pair (dull)
-_MULTI_POSITIVE_COLOR     = "#0072B2"   # blue   — positive correlation edges
-_MULTI_NEGATIVE_COLOR     = "#E69F00"   # orange — negative correlation edges
+_MULTI_POSITIVE_COLOR     = "#0072B2"   # blue   — positive-direction edges
+_MULTI_NEGATIVE_COLOR     = "#E69F00"   # orange — negative-direction edges
 _MULTI_EXTENDED_COLOR     = "#D8BFD8"   # light purple — added by degree of interaction (dull)
 
 
 # =============================================================================
 # CYTOSCAPE STYLESHEETS
 # Nodes use data(bg_color) — a hex string computed per-node in the callback —
-# so colour reflects the correlation value without needing mapData colours.
+# so colour reflects the co-essentiality direction without needing mapData colours.
 # White text + dark outline stays readable on any background shade.
 # Edge width is mapped from "weight" (-log10 adj-p, clamped to [0, 10]).
 # =============================================================================
@@ -196,10 +217,10 @@ def _module_highlight_rules(cluster_id):
 # CO-ESSENTIAL MODULE DETECTION + GO:BP ANNOTATION  (Tab 2 "Gene-list network")
 # Modules are connected components of the user's induced sub-network — same
 # convention as create_coessential_clusters() in the pilot/sanger scripts —
-# numbered by size (1 = largest). Detection is cheap (no API calls) and runs
-# live as the user edits their gene list; GO:BP annotation calls the Enrichr
-# API per module, so it is gated behind an explicit button to avoid firing a
-# query on every keystroke.
+# numbered by size (1 = largest). Detection is cheap and runs live as the user
+# edits their gene list; GO:BP annotation runs a local hypergeometric test per
+# module (no network calls), gated behind an explicit button to avoid
+# recomputing on every keystroke.
 # =============================================================================
 MULTI_MAX_DEGREE              = 2     # max degree-of-interaction slider value — beyond this the
                                        # network grows too large to interpret
@@ -207,14 +228,22 @@ MULTI_MAX_EXPANDED_GENES      = 300   # safety cap on total network size after d
 MULTI_MIN_MODULE_GENES        = 2      # smallest connected component counted as a "module"
 MULTI_MIN_GENES_FOR_GO        = 4      # only modules with MORE than 3 genes are GO:BP-annotated
                                        # (a 2-3 gene module is too small for a meaningful enrichment test)
-MULTI_MAX_MODULES_TO_ANNOTATE = 10    # cap on Enrichr queries per click (politeness + latency)
+MULTI_MAX_MODULES_TO_ANNOTATE = 10    # cap on enrichment runs per click (latency, not API politeness anymore)
 MULTI_MAX_GO_GENES            = 200   # modules larger than this are reported but not queried
-GO_GENE_SETS                  = "GO_Biological_Process_2025"
-GO_ORGANISM                   = "human"
+GO_GENE_SET_PATH              = os.path.join(_DATA_DIR, "GO_Biological_Process_2025.gmt")
 GO_ADJ_P_THRESHOLD            = 0.05  # only GO:BP terms at or below this FDR are shown
 GO_COVER_THRESHOLD            = 0.50  # WSC redundancy threshold: a term is redundant if
                                       # ≥50% of its genes are already covered by a more
                                       # significant selected term (mirrors WebGestalt default)
+
+# Local GO:BP gene-set library — downloaded once via:
+#   gp.get_library(name="GO_Biological_Process_2025", organism="Human",
+#                   save="required_data/GO_Biological_Process_2025.gmt")
+# Pinned to a specific Enrichr-packaged version (these are refreshed roughly
+# every 1-2 years) for reproducibility; bump deliberately, not automatically.
+# Enrichment runs fully offline against this — no per-query network calls,
+# no dependency on Enrichr's uptime/bandwidth.
+_GO_LIBRARY = gp.get_library(name=GO_GENE_SET_PATH)
 
 GO_TERM_PATTERN = re.compile(r"^(.*)\s\((GO:\d+)\)$")
 
@@ -541,14 +570,14 @@ app.layout = html.Div([
                             ),
                             html.Div([
                                 html.P(
-                                    "Co-essential partners — significance & correlation",
+                                    "Co-essential partners — significance & direction",
                                     style={"fontWeight": "600", "fontSize": "20px",
                                            "color": _TEXT, "margin": "0 0 8px 0"}),
                                 html.P(
                                     "Each row is a gene whose CRISPR essentiality profile "
                                     "co-varies significantly with the query gene across cancer "
-                                    "cell lines. Adj. p-value is BH-corrected; correlation "
-                                    "reflects the direction of co-essentiality "
+                                    "cell lines. Adj. p-value is BH-corrected; direction "
+                                    "reflects the sign of co-essentiality "
                                     "(positive = both essential together).",
                                     style={"fontSize": "18px", "color": _MUTED,
                                            "margin": "0 0 12px 0", "lineHeight": "1.5"}),
@@ -562,7 +591,7 @@ app.layout = html.Div([
                                         {"name": "GLS ADJ. P-VALUE", "id": "pvalue_adj",
                                          "type": "numeric",
                                          "format": {"specifier": ".2e"}},
-                                        {"name": "CORRELATION",  "id": "corr_genes",
+                                        {"name": "DIRECTION",  "id": "direction",
                                          "type": "numeric",
                                          "format": {"specifier": ".3f"}},
                                     ],
@@ -596,7 +625,7 @@ app.layout = html.Div([
                         _panel("Co-essential genetic interaction network", [
                             html.P(
                                 "Partner nodes coloured by "
-                                "correlation (edge thickness = −log₁₀(adj. p-value)). ",
+                                "direction (edge thickness = −log₁₀(adj. p-value)). ",
                                 style={"color": _MUTED, "fontSize": "20px",
                                        "margin": "0 0 10px 0"}),
                             html.Div([
@@ -708,7 +737,7 @@ app.layout = html.Div([
                             # the user scrolls down to interact with the modules table
                             html.Div(_panel("Co-essential genetic interaction network", [
                                 html.P(
-                                    "Edges coloured by the sign of the correlation "
+                                    "Edges coloured by co-essentiality direction "
                                     "(thickness = −log₁₀(adj. p-value)). "
                                     "Nodes coloured by gene group (see legend).",
                                     style={"color": _MUTED, "fontSize": "20px",
@@ -954,7 +983,22 @@ def update_single(gene, fdr):
     sub["partner"] = sub.apply(
         lambda r: r["target"] if r["source"] == gene else r["source"], axis=1
     )
-    sub = sub[["partner", "pvalue", "pvalue_adj", "corr_genes"]].sort_values("pvalue_adj")
+    sub = sub[["partner", "pvalue", "pvalue_adj", "direction"]].sort_values("pvalue_adj")
+
+    if sub.empty:
+        placeholder = go.Figure()
+        placeholder.update_layout(
+            xaxis={"visible": False}, yaxis={"visible": False},
+            paper_bgcolor="white", plot_bgcolor="white", height=500,
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
+            annotations=[{"text": f"No co-essential partners found for {gene} at FDR ≤ {pct}%.",
+                           "xref": "paper", "yref": "paper", "x": 0.5, "y": 0.5,
+                           "showarrow": False,
+                           "font": {"size": 15, "color": _MUTED}}],
+        )
+        summary = f"No co-essential partners found for {gene} at FDR ≤ {pct}%."
+        query_node = [{"data": {"id": gene, "bg_color": "#D55E00"}, "classes": "query"}]
+        return summary, placeholder, [], query_node, True
 
     summary = f"{gene} has {len(sub):,} co-essential partner(s) at FDR ≤ {pct}%."
 
@@ -980,13 +1024,13 @@ def update_single(gene, fdr):
 
     top_partners = set(top["partner"].tolist())
 
-    # corr_genes per partner (used for node colour)
-    partner_corr = sub.set_index("partner")["corr_genes"].to_dict()
+    # direction per partner (used for node colour)
+    partner_direction = sub.set_index("partner")["direction"].to_dict()
 
     # Query node: orange via .query selector; bg_color unused but set for consistency
     nodes = [{"data": {"id": gene, "bg_color": "#D55E00"}, "classes": "query"}]
     for p in top_partners:
-        nodes.append({"data": {"id": p, "bg_color": corr_to_color(partner_corr.get(p, 0.0))}})
+        nodes.append({"data": {"id": p, "bg_color": direction_to_color(partner_direction.get(p, 0.0))}})
 
     # Spoke edges: query → each partner (fixed mid-weight so they're visible)
     edges = [{"data": {"source": gene, "target": p, "weight": 3.0}}
@@ -1115,7 +1159,7 @@ def update_multi(_n_blur, _example_btn, fdr, degree, text, version):
         src_mod = gene_module.get(row["source"], 0)
         tgt_mod = gene_module.get(row["target"], 0)
         edge_mod = src_mod if src_mod == tgt_mod else 0
-        edge_color = _MULTI_POSITIVE_COLOR if row["corr_genes"] >= 0 else _MULTI_NEGATIVE_COLOR
+        edge_color = _MULTI_POSITIVE_COLOR if row["direction"] >= 0 else _MULTI_NEGATIVE_COLOR
         edges.append({"data": {"source": row["source"], "target": row["target"],
                                 "weight": w, "module": edge_mod,
                                 "edge_color": edge_color}})
@@ -1196,11 +1240,15 @@ def annotate_multi_modules(n_clicks, _version, modules):
 
         n_queried += 1
         try:
-            enrichment = gp.enrichr(gene_list=gene_list, gene_sets=GO_GENE_SETS,
-                                    organism=GO_ORGANISM, outdir=None)
+            enrichment = gp.enrich(gene_list=gene_list, gene_sets=_GO_LIBRARY,
+                                    background=all_genes, outdir=None, no_plot=True)
             terms = enrichment.results.sort_values("Adjusted P-value")
-        except Exception as exc:
-            rows.append({**base, "go_term": f"GO:BP query failed: {exc}"})
+        except Exception:
+            logger.exception(
+                "GO:BP enrichment failed for module %s (%d genes)",
+                cluster_id, len(gene_list),
+            )
+            rows.append({**base, "go_term": "GO:BP enrichment failed — please try again."})
             continue
 
         sig = terms[terms["Adjusted P-value"] <= GO_ADJ_P_THRESHOLD]
@@ -1293,15 +1341,15 @@ def download_single_partners(_n_clicks, gene, fdr):
     sub["partner"] = sub.apply(
         lambda r: r["target"] if r["source"] == gene else r["source"], axis=1
     )
-    sub = (sub[["partner", "pvalue", "pvalue_adj", "corr_genes"]]
+    sub = (sub[["partner", "pvalue", "pvalue_adj", "direction"]]
            .sort_values("pvalue_adj")
            .rename(columns={
                "partner":    "Partner Gene",
                "pvalue":     "GLS P-value",
                "pvalue_adj": "GLS Adj. P-value (FDR)",
-               "corr_genes": "Correlation",
+               "direction":  "Direction",
            }))
-    sub["Correlation Notes"] = sub["Correlation"].apply(
+    sub["Direction Notes"] = sub["Direction"].apply(
         lambda c: "co-essential" if c > 0 else "anti-correlated"
     )
     pct = int(fdr * 100)
@@ -1342,7 +1390,7 @@ def download_multi_pairs(_n_clicks, text, fdr, degree):
         all_genes, gene_degree = gene_set, {g: 0 for g in gene_set}
 
     mask = df["source"].isin(all_genes) & df["target"].isin(all_genes)
-    out = df[mask][["source", "target", "pvalue", "pvalue_adj", "corr_genes"]].copy()
+    out = df[mask][["source", "target", "pvalue", "pvalue_adj", "direction"]].copy()
     out["Gene Degree of Interaction"] = out["source"].map(gene_degree)
     out["Partner Gene Degree of Interaction"] = out["target"].map(gene_degree)
     out["Pair Type"] = np.where(
@@ -1355,13 +1403,13 @@ def download_multi_pairs(_n_clicks, text, fdr, degree):
                "target":     "Partner Gene",
                "pvalue":     "GLS P-value",
                "pvalue_adj": "GLS Adj. P-value (FDR)",
-               "corr_genes": "Correlation",
+               "direction":  "Direction",
            }))
-    out["Correlation Notes"] = out["Correlation"].apply(
+    out["Direction Notes"] = out["Direction"].apply(
         lambda c: "co-essential" if c > 0 else "anti-correlated"
     )
     out = out[["Gene", "Partner Gene", "GLS P-value", "GLS Adj. P-value (FDR)",
-               "Correlation", "Correlation Notes",
+               "Direction", "Direction Notes",
                "Gene Degree of Interaction", "Partner Gene Degree of Interaction", "Pair Type"]]
     pct = int(fdr * 100)
     return dcc.send_data_frame(out.to_csv, f"coessential_pairs_FDR{pct}pct.csv", index=False)

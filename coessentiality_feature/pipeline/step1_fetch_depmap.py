@@ -22,7 +22,6 @@ import requests
 
 FILES_API    = "https://depmap.org/portal/api/download/files"
 TARGET_FILE  = "CRISPRGeneEffect.csv"
-MODEL_FILE   = "Model.csv"
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; depmap-pipeline/1.0)"
@@ -97,11 +96,11 @@ def download_with_md5(url, dest_path, expected_md5):
 def run(output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
-    print(f"[1/4] Fetching DepMap file listing from {FILES_API} ...")
+    print(f"[1/3] Fetching DepMap file listing from {FILES_API} ...")
     df = fetch_file_listing()
     print(f"      {len(df):,} files listed across {df['release'].nunique()} release(s)")
 
-    print(f"[2/4] Identifying latest {TARGET_FILE} release ...")
+    print(f"[2/3] Identifying latest {TARGET_FILE} release ...")
     entry   = find_latest_entry(df, TARGET_FILE)
     release = entry["release"]
     version = extract_version(release)
@@ -110,16 +109,8 @@ def run(output_dir):
     print(f"      Version : {version}")
 
     dest = os.path.join(output_dir, f"CRISPRGeneEffect_{version}.csv")
-    print(f"[3/4] Downloading {TARGET_FILE} to {dest} ...")
+    print(f"[3/3] Downloading {TARGET_FILE} to {dest} ...")
     download_with_md5(entry["url"], dest, expected_md5=entry["md5_hash"])
-
-    model_dest = os.path.join(output_dir, "Model.csv")
-    print(f"[4/4] Downloading {MODEL_FILE} (cancer model metadata) to {model_dest} ...")
-    try:
-        model_entry = find_latest_entry(df, MODEL_FILE)
-        download_with_md5(model_entry["url"], model_dest, expected_md5=model_entry["md5_hash"])
-    except ValueError as exc:
-        print(f"      WARNING: {exc}\n      Skipping Model.csv — cancer subtype info will be unavailable.")
 
     version_path = os.path.join(output_dir, "depmap_version.txt")
     with open(version_path, "w") as fh:

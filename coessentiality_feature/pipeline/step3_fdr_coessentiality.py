@@ -16,25 +16,11 @@ Usage:
         --output <network_output.csv>
 
 Outputs:
-    <output>  — CSV with columns: source, target, pvalue, pvalue_adj, corr_genes
+    <output>  — CSV with columns: source, target, pvalue, pvalue_adj, direction
 """
 
 import argparse
-import importlib.util
 import os
-import subprocess
-import sys
-
-
-def _ensure_deps():
-    packages = {"numpy": "numpy", "pandas": "pandas", "statsmodels": "statsmodels"}
-    missing = [pkg for mod, pkg in packages.items() if importlib.util.find_spec(mod) is None]
-    if missing:
-        print(f"Installing missing packages: {', '.join(missing)} ...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
-        print("Done.")
-
-_ensure_deps()
 
 import numpy as np
 import pandas as pd
@@ -44,11 +30,29 @@ from statsmodels.stats.multitest import multipletests
 def load_inputs(gls_p_path, gls_sign_path, genes_path):
     print(f"[1/4] Loading inputs ...")
     genes = pd.read_csv(genes_path, header=None).squeeze()
-    GLS_p = pd.DataFrame(np.load(gls_p_path), columns=genes, index=genes)
-    GLS_sign = pd.DataFrame(np.load(gls_sign_path), columns=genes, index=genes)
+    p_array = np.load(gls_p_path)
+    sign_array = np.load(gls_sign_path)
     print(f"      Genes: {len(genes)}")
-    print(f"      GLS_p shape:    {GLS_p.shape}")
-    print(f"      GLS_sign shape: {GLS_sign.shape}")
+    print(f"      GLS_p shape:    {p_array.shape}")
+    print(f"      GLS_sign shape: {sign_array.shape}")
+
+    n_genes = len(genes)
+    if p_array.ndim != 2 or p_array.shape[0] != p_array.shape[1]:
+        raise ValueError(f"--gls-p must be a square matrix, got shape {p_array.shape}")
+    if sign_array.ndim != 2 or sign_array.shape[0] != sign_array.shape[1]:
+        raise ValueError(f"--gls-sign must be a square matrix, got shape {sign_array.shape}")
+    if p_array.shape != sign_array.shape:
+        raise ValueError(
+            f"--gls-p and --gls-sign shapes must match, got {p_array.shape} vs {sign_array.shape}"
+        )
+    if p_array.shape[0] != n_genes:
+        raise ValueError(
+            f"--genes has {n_genes} entries but matrices are {p_array.shape[0]}x{p_array.shape[0]} "
+            f"— gene list does not match matrix dimensions"
+        )
+
+    GLS_p = pd.DataFrame(p_array, columns=genes, index=genes)
+    GLS_sign = pd.DataFrame(sign_array, columns=genes, index=genes)
     return GLS_p, GLS_sign, genes
 
 
@@ -73,7 +77,7 @@ def apply_fdr(GLS_p, GLS_sign, fdr_threshold):
     )
 
     combined = pd.concat([stacked_p, fdr, stacked_sign], axis=1)
-    combined.columns = ["pvalue", "pvalue_adj", "corr_genes"]
+    combined.columns = ["pvalue", "pvalue_adj", "direction"]
 
     print(f"[3/4] Filtering at FDR <= {fdr_threshold} ...")
     significant = combined[combined["pvalue_adj"] <= fdr_threshold]
@@ -89,7 +93,7 @@ def build_network_df(significant):
             "target": significant.index.get_level_values(1),
             "pvalue": significant["pvalue"].values,
             "pvalue_adj": significant["pvalue_adj"].values,
-            "corr_genes": significant["corr_genes"].values,
+            "direction": significant["direction"].values,
         }
     )
 

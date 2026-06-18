@@ -50,7 +50,7 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 
 - **GLS (Generalised Least Squares):** A statistical regression method used here to test whether two genes' essentiality profiles are correlated. GLS is used instead of ordinary regression because cancer cell lines from the same tissue type look similar to each other; GLS corrects for this shared structure so the test is not artificially inflated.
 
-- **FDR (False Discovery Rate):** When testing ~144 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee.
+- **FDR (False Discovery Rate):** When testing ~146 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee. **This correction is applied globally**, across all ~146 million unique pairs at once — not per-gene as in Wainberg et al.'s original method. This is an intentional choice: global correction gives one well-defined, symmetric FDR per pair (Wainberg's per-gene method has no defined rule for symmetrizing a pair when the two genes disagree) and keeps only the strongest co-essential signals. See `REVIEW.md` for the full comparison.
 
 ---
 
@@ -64,13 +64,13 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 │        │                                                                │
 │        ▼                                                                │
 │  step1_fetch_depmap.py ──► CRISPRGeneEffect_<version>.csv               │
-│                    ──► Model.csv                                        │
 │                    ──► depmap_version.txt                               │
 │        │                                                                │
 │        ▼                                                                │
 │  step2_gls_coessentiality.py ──► <prefix>_GLS_p.npy                     │
 │                           ──► <prefix>_GLS_sign.npy                     │
 │                           ──► <prefix>_genes.txt                        │
+│                           ──► <prefix>_metadata.json                    │
 │        │                                                                │
 │        ▼                                                                │
 │  step3_fdr_coessentiality.py ──► depmap_<version>_gls_whole_            │
@@ -102,7 +102,6 @@ for all subsequent requests — there are no per-request file reads.
 coessentiality_feature/
 ├── README.md                              this file
 ├── requirements.txt                       Python dependencies for pipeline + app
-├── setup_env.sh                           one-command environment setup script
 ├── pipeline/
 │   ├── step1_fetch_depmap.py              downloads CRISPR data from DepMap API
 │   ├── step2_gls_coessentiality.py        computes GLS p-values and sign matrix
@@ -117,11 +116,12 @@ coessentiality_feature/
 └── required_data/                         local data directory (not committed to git)
     ├── depmap_version.txt
     ├── CRISPRGeneEffect_<version>.csv
-    ├── Model.csv
     ├── <prefix>_genes.txt
     ├── <prefix>_GLS_p.npy
     ├── <prefix>_GLS_sign.npy
-    └── depmap_<version>_gls_whole_coessential_network_FDR_10.csv
+    ├── <prefix>_metadata.json
+    ├── depmap_<version>_gls_whole_coessential_network_FDR_10.csv
+    └── GO_Biological_Process_2025.gmt         GO:BP gene-set library for local enrichment
 ```
 
 > **Note:** The `required_data/` directory is excluded from version control. Large
@@ -166,30 +166,29 @@ Use it as the contract when modifying any script or when setting up GCS.
 
 ---
 
-### `Model.csv`
-
-| Property | Value |
-|---|---|
-| Format | CSV |
-| Key column | `OncotreeLineage` — cancer tissue/subtype classification per cell line |
-| Produced by | `step1_fetch_depmap.py` (downloaded from DepMap API) |
-| Consumed by | Not currently used by the Dash app (downloaded for reference only) |
-
-> `Model.csv` is downloaded alongside the CRISPR matrix and kept in `required_data/`
-> for reference. The app currently shows the number of genes profiled (from
-> `<prefix>_genes.txt`) rather than cancer subtype counts.
-
----
-
 ### `<prefix>_genes.txt`
 
 | Property | Value |
 |---|---|
 | Format | Plain text, one gene symbol per line, no header |
 | Example content | `A1BG\nA1CF\nA2M\n...` |
-| Row count | 17,870 (DepMap 26Q1, after NA filtering) |
+| Row count | 17,087 (DepMap 26Q1, after NA filtering) |
 | Produced by | `step2_gls_coessentiality.py` |
 | Consumed by | `step3_fdr_coessentiality.py` |
+
+---
+
+### `<prefix>_metadata.json`
+
+| Property | Value |
+|---|---|
+| Format | JSON |
+| Keys | `n_cell_lines` (row count of the input CRISPR matrix), `n_genes_profiled` (gene count after NA filtering) |
+| Produced by | `step2_gls_coessentiality.py` |
+| Consumed by | `coessentiality_feature_pc.py` (app stat chips) |
+
+> Avoids the app having to scan the ~440 MB `CRISPRGeneEffect_<version>.csv` or
+> count lines in `<prefix>_genes.txt` just to display two numbers at startup.
 
 ---
 
@@ -198,7 +197,7 @@ Use it as the contract when modifying any script or when setting up GCS.
 | Property | Value |
 |---|---|
 | Format | NumPy binary array (`.npy`) |
-| Shape | `(n_genes, n_genes)` — e.g. `(17870, 17870)` for DepMap 26Q1 |
+| Shape | `(n_genes, n_genes)` — e.g. `(17087, 17087)` for DepMap 26Q1 |
 | Dtype | `float64` |
 | Values | Two-sided GLS p-values for each gene pair; diagonal set to 1.0 |
 | Size on disk | ~2.4 GB |
@@ -239,12 +238,54 @@ Use it as the contract when modifying any script or when setting up GCS.
 | `source` | string | Gene symbol (alphabetically first in the pair) |
 | `target` | string | Gene symbol (alphabetically second in the pair) |
 | `pvalue` | float64 | Raw two-sided GLS p-value |
-| `pvalue_adj` | float64 | Benjamini-Hochberg adjusted p-value (FDR) |
-| `corr_genes` | float64 | Sign of GLS coefficient: `+1.0` = positive co-essentiality, `−1.0` = negative |
+| `pvalue_adj` | float64 | Benjamini-Hochberg adjusted p-value (FDR), corrected **globally** across all unique pairs (see Key Concepts above) — not per-gene as in Wainberg et al.'s original method |
+| `direction` | float64 | Sign of GLS coefficient: `+1.0` = positive co-essentiality, `−1.0` = negative |
 
 > **Important:** This file contains all pairs at FDR ≤ 10%. The app filters
 > it at query time to either FDR ≤ 5% or FDR ≤ 10% based on the user's
 > dropdown selection. Do not pre-filter to 5% before writing.
+
+---
+
+### `GO_Biological_Process_2025.gmt`
+
+| Property | Value |
+|---|---|
+| Format | GMT (tab-separated: term name + GO ID, then gene symbols) |
+| Size | ~1.4 MB, 5,341 terms |
+| Produced by | One-time manual download (see below) — **not** part of the regular pipeline |
+| Consumed by | `coessentiality_feature_pc.py` (`_GO_LIBRARY`, loaded once at startup) for local GO:BP enrichment |
+
+**Why this exists:** GO:BP enrichment used to call the live Enrichr API per module
+on every "Find modules & annotate" click — slow (~1-2s/module), and a hard
+external dependency (rate limits, outages) once deployed to GCP with multiple
+concurrent users sharing one outbound IP. This file lets enrichment run **fully
+offline** via `gp.enrich()` (gseapy's local hypergeometric test), which is also
+noticeably faster in practice than the old per-click Enrichr round trip.
+
+**⚠️ Maintenance — this is a pinned snapshot, not auto-updated:**
+
+Enrichr re-packages a new GO:BP library roughly every 1-2 years (available
+versions as of writing: `2021`, `2023`, `2025`, `2026`). This file intentionally
+does **not** auto-refresh — silently shifting enrichment results out from under
+users without anyone reviewing the change would be worse than being a year
+"stale." To bump it deliberately:
+
+```bash
+python3 -c "
+import gseapy as gp
+gp.get_library(name='GO_Biological_Process_2026', organism='Human',
+               save='required_data/GO_Biological_Process_2026.gmt')
+"
+```
+Then update `GO_GENE_SET_PATH` in `coessentiality_feature_pc.py` to point at the
+new filename. Do this as a deliberate, reviewed decision (e.g. an annual check),
+not as part of the routine monthly pipeline run.
+
+**Production note:** `required_data/` is gitignored, so this file must be
+uploaded to GCS once (alongside the network CSV / metadata.json — see Cloud
+Deployment below). It does **not** need re-uploading on every monthly pipeline
+run — only when you deliberately bump the version.
 
 ---
 
@@ -253,8 +294,7 @@ Use it as the contract when modifying any script or when setting up GCS.
 ### Step 1 — Fetch DepMap data
 
 **Purpose:** Queries the DepMap portal files API, identifies the latest
-`CRISPRGeneEffect.csv` release, downloads it with MD5 verification, and
-downloads `Model.csv` (cancer model metadata, kept for reference).
+`CRISPRGeneEffect.csv` release, and downloads it with MD5 verification.
 
 **Usage:**
 ```bash
@@ -270,7 +310,6 @@ python step1_fetch_depmap.py [--output-dir DIR]
 | File | Description |
 |---|---|
 | `CRISPRGeneEffect_<version>.csv` | CRISPR gene effect matrix |
-| `Model.csv` | Cancer model metadata |
 | `depmap_version.txt` | Release name, e.g. `DepMap Public 26Q1` |
 
 **Runtime:** ~5–10 minutes (depends on download speed; file is ~436 MB).
@@ -286,14 +325,14 @@ python step1_fetch_depmap.py [--output-dir DIR]
 
 ### Step 2 — GLS co-essentiality
 
-**Purpose:** Loads the CRISPR matrix, handles missing values by median
-imputation, computes the pseudoinverse covariance matrix (GLS), runs OLS
-regression in the GLS-transformed space for all gene pairs, and saves the
-p-value and sign matrices.
+**Purpose:** Loads the CRISPR matrix, drops genes with any missing values,
+computes the pseudoinverse covariance matrix (GLS), runs OLS regression in
+the GLS-transformed space for all gene pairs, and saves the p-value and
+sign matrices.
 
 **Usage:**
 ```bash
-python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME] [--no-impute]
+python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME]
 ```
 
 | Argument | Default | Description |
@@ -301,7 +340,6 @@ python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME
 | `input` | (required) | Path to `CRISPRGeneEffect_<version>.csv` |
 | `--output-dir` | `./output` | Directory for output files |
 | `--prefix` | input filename stem | Prefix for all output filenames |
-| `--no-impute` | off | Drop all genes with any NA instead of median-imputing |
 
 **Outputs:**
 
@@ -310,15 +348,16 @@ python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME
 | `<prefix>_genes.txt` | Gene list after NA filtering, one per line |
 | `<prefix>_GLS_p.npy` | `(n_genes, n_genes)` float64 p-value matrix |
 | `<prefix>_GLS_sign.npy` | `(n_genes, n_genes)` float64 sign matrix |
+| `<prefix>_metadata.json` | `{"n_cell_lines": ..., "n_genes_profiled": ...}` — read by the app for its stat chips |
 
-**Runtime:** ~4–8 hours on a single core (17,870 gene iterations, each a
+**Runtime:** ~4–8 hours on a single core (17,087 gene iterations, each a
 vectorised NumPy lstsq call over all other genes simultaneously).
 
-**Memory requirement:** ~16 GB RAM peak. The 17,870 × 17,870 float64 matrices
+**Memory requirement:** ~16 GB RAM peak. The 17,087 × 17,087 float64 matrices
 each consume ~2.4 GB. Cloud Run Jobs should be configured with `--memory 16Gi`.
 
 > **Critical constraint:** This script must run on the **full DepMap gene
-> matrix** (all 17,870+ genes). Running on a gene subset causes the
+> matrix** (all 17,087+ genes). Running on a gene subset causes the
 > pseudoinverse covariance matrix to become rank-deficient, which breaks the
 > Cholesky decomposition with a `LinAlgError`. This is expected mathematical
 > behaviour, not a bug.
@@ -328,9 +367,10 @@ each consume ~2.4 GB. Cloud Run Jobs should be configured with `--memory 16Gi`.
 ### Step 3 — FDR filtering & network CSV
 
 **Purpose:** Loads the p-value matrix, sign matrix, and gene list. Extracts the
-upper-triangle gene pairs, applies Benjamini-Hochberg FDR correction across all
-~144 million pairs, filters at the specified FDR threshold, and writes the
-significant network to a CSV file.
+upper-triangle gene pairs, applies Benjamini-Hochberg FDR correction **globally**
+across all ~146 million pairs at once (an intentional departure from Wainberg et
+al.'s per-gene FDR — see Key Concepts above), filters at the specified FDR
+threshold, and writes the significant network to a CSV file.
 
 **Usage:**
 ```bash
@@ -356,8 +396,8 @@ python step3_fdr_coessentiality.py \
 |---|---|
 | `<output>` | Network CSV (see [Data I/O Schema](#data-io-schema)) |
 
-**Runtime:** ~10–20 minutes. The stacking of a 17,870 × 17,870 matrix and
-BH correction across ~144 million pairs is memory-intensive.
+**Runtime:** ~10–20 minutes. The stacking of a 17,087 × 17,087 matrix and
+BH correction across ~146 million pairs is memory-intensive.
 
 **Memory requirement:** ~16 GB RAM peak (stacked Pandas Series + multipletests).
 
@@ -370,10 +410,17 @@ BH correction across ~144 million pairs is memory-intensive.
 
 ## Running Locally (end-to-end)
 
-Prerequisites: Python 3.10+. Run `bash setup_env.sh` once to create a virtual environment and install all dependencies (see [Dependencies](#dependencies)). Activate it with `source .venv/bin/activate` before running any script.
+Prerequisites: Python 3.10+.
 
 ```bash
 cd coessentiality_feature/
+
+# One-time setup: create a virtual environment and install dependencies
+# (see Dependencies below). Re-run `pip install -r requirements.txt` after
+# pulling changes that touch requirements.txt.
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
 # Step 1: download the latest DepMap data
 python pipeline/step1_fetch_depmap.py --output-dir required_data/
@@ -415,10 +462,9 @@ Opens at `http://localhost:8050`.
 1. `required_data/depmap_version.txt` — determines which network CSV filename to load.
 2. `required_data/depmap_<version>_gls_whole_coessential_network_FDR_10.csv` — the
    network data; loaded once into memory.
-3. `required_data/CRISPRGeneEffect_<version>.csv` — scanned for row count (cell lines).
-   Optional: if absent, the cell-line count chip shows `—`.
-4. `required_data/depmap_<version>_genes.txt` — line-counted for the number of genes
-   that passed QC and entered the GLS analysis. Optional: if absent, the gene count chip shows `—`.
+3. `required_data/depmap_<version>_metadata.json` — `n_cell_lines` and
+   `n_genes_profiled` for the stat chips, written once by step 2. Optional: if
+   absent, both chips show `—`.
 
 **Two UI tabs:**
 
@@ -530,13 +576,15 @@ layout = html.Div([...])
 **d. Replace local file reads with GCS reads:**
 
 `_DATA_DIR` (and the local `required_data/` folder it points to) is read in
-**three** places — all of them need to be handled, not just the network CSV:
+**five** places — all of them need to be handled, not just the network CSV:
 
 | Reads from `_DATA_DIR` | What for | Size |
 |---|---|---|
 | `_resolve_data_path()` → `df_all` | The network CSV — primary app data | ~1.7 MB |
 | `_DEPMAP_VERSION` (module-level) | Version badge text, e.g. "DepMap Public 26Q1" | a few bytes |
-| `_load_dataset_stats()` | `n_cell_lines` (row count of `CRISPRGeneEffect_<version>.csv`) and `n_genes_profiled` (line count of `depmap_<version>_genes.txt`) for the stat chips | CRISPR CSV is **~436 MB**, genes.txt is small |
+| `_load_dataset_stats()` | `n_cell_lines` and `n_genes_profiled` from `depmap_<version>_metadata.json` for the stat chips | a few bytes |
+| `_load_all_profiled_genes()` | Full gene list from `depmap_<version>_genes.txt` for the search dropdowns | a few hundred KB |
+| `_GO_LIBRARY` (module-level) | Local GO:BP enrichment library from `GO_Biological_Process_2025.gmt` | ~1.4 MB |
 
 Replace `_resolve_data_path()` with a GCS read for the network CSV. Install
 `google-cloud-storage` and add:
@@ -610,15 +658,14 @@ gcloud run services update <SERVICE_NAME> \
 
 | Constraint | Detail |
 |---|---|
-| Full gene matrix required | `step2_gls_coessentiality.py` must receive the complete DepMap matrix (~17,870 genes). Running on a gene subset causes a `LinAlgError` in the Cholesky step — this is expected, not a bug. |
+| Full gene matrix required | `step2_gls_coessentiality.py` must receive the complete DepMap matrix (~17,087 genes after NA filtering). Running on a gene subset causes a `LinAlgError` in the Cholesky step — this is expected, not a bug. |
 | Memory: pipeline | `step2_gls_coessentiality.py` and `step3_fdr_coessentiality.py` each peak at ~16 GB RAM. Set `--memory 16Gi` on the Cloud Run Job. |
 | Memory: app | The network CSV is ~1.7 MB and expands to ~10 MB as a DataFrame. Negligible; no concern for the app container. |
 | Runtime: step 2 | ~4–8 hours on a single CPU core. Acceptable for a monthly batch job; configure Cloud Run Job `--task-timeout` accordingly (max 24h). |
 | `debug=True` | The app file currently runs with `debug=True` in standalone mode. This enables Werkzeug's interactive debugger — a remote code execution vector on a public URL. Always set `debug=False` in the main website's `app.py`. |
 | No per-request file I/O | The network CSV is loaded once at startup. Restarting the Cloud Run service is the mechanism for picking up newly uploaded data; there is no hot-reload. |
 | FDR file must be 10% | The app expects the FDR 10% superset file. If only a 5% file is available, the 10% dropdown option will produce incorrect results (showing fewer pairs than expected). |
-| `_ensure_deps()` in step 2 and step 3 | These functions call `pip install` at runtime — they work locally but should be removed before containerising. Dependencies must be in `requirements.txt` and baked into the Docker image. |
-| GO:BP annotation calls Enrichr live | "Find modules & annotate with GO:BP" makes a live HTTP call per module (up to 10 per click) to the Enrichr API. Fine for local use; risks Cloud Run timeouts and cross-user rate-limiting in production. A local-enrichment replacement is designed but not yet implemented — see `documentation/gene_list_workflow.md`. |
+| `GO_Biological_Process_2025.gmt` must be present | The app loads this at startup for local GO:BP enrichment; if absent, the app fails to start. Pinned, not auto-updated — see [`GO_Biological_Process_2025.gmt`](#go_biological_process_2025gmt) in Data I/O Schema for the maintenance process. |
 
 ---
 
@@ -645,7 +692,7 @@ gcloud run services update <SERVICE_NAME> \
 | `numpy` | Colour interpolation for node colours |
 | `pandas` | Network CSV querying |
 | `networkx` | Connected-component detection for co-essential module discovery |
-| `gseapy` | GO Biological Process enrichment via the Enrichr API |
+| `gseapy` | Local GO Biological Process enrichment (hypergeometric test against a pinned `.gmt` file — no Enrichr API calls at runtime) |
 | `google-cloud-storage` | GCS CSV read (cloud deployment only) |
 
 ---

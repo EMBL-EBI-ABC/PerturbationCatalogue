@@ -3,35 +3,23 @@
 GLS co-essentiality pipeline.
 
 Reads an essentiality matrix CSV, cleans gene symbol column names,
-imputes/drops NA genes, then computes GLS p-values and sign matrix
+drops genes with any NA values, then computes GLS p-values and sign matrix
 for all gene pairs.
 
 Usage:
-    python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME] [--no-impute]
+    python step2_gls_coessentiality.py <input_csv> [--output-dir DIR] [--prefix NAME]
 
 Outputs (written to output_dir):
     <prefix>_genes.txt       — gene list after NA filtering
     <prefix>_GLS_p.npy      — n x n matrix of two-sided p-values
     <prefix>_GLS_sign.npy   — n x n matrix of correlation signs (+1 / -1)
+    <prefix>_metadata.json  — n_cell_lines, n_genes_profiled
 """
 
 import argparse
-import importlib.util
+import json
 import os
 import re
-import subprocess
-import sys
-
-
-def _ensure_deps():
-    packages = {"numpy": "numpy", "pandas": "pandas", "scipy": "scipy"}
-    missing = [pkg for mod, pkg in packages.items() if importlib.util.find_spec(mod) is None]
-    if missing:
-        print(f"Installing missing packages: {', '.join(missing)} ...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
-        print("Done.")
-
-_ensure_deps()
 
 import numpy as np
 import pandas as pd
@@ -43,26 +31,20 @@ def clean_column_names(df):
 
     Converts 'GENE_SYMBOL (ENTREZ_ID)' -> 'GENE_SYMBOL' for every column.
     Columns that don't match the pattern are left unchanged.
+
+    Raises ValueError if stripping the Entrez ID produces duplicate gene
+    symbols (e.g. aliased/repeated symbols across different Entrez IDs) —
+    silently merging them would corrupt the covariance/GLS computation.
     """
-    return df.rename(columns=lambda x: re.sub(r"\s*\(\d+\)$", "", x))
-
-
-def impute_na_by_median(df, median_threshold):
-    df_copy = df.copy()
-    columns_with_na = df_copy.columns[df_copy.isna().any()]
-    na_counts = df_copy[columns_with_na].isna().sum()
-
-    columns_to_drop = na_counts[na_counts > median_threshold].index.tolist()
-    columns_to_impute = na_counts[na_counts <= median_threshold].index.tolist()
-
-    for col in columns_to_impute:
-        df_copy.loc[:, col] = df_copy[col].fillna(df_copy[col].median())
-
-    df_copy.drop(columns=columns_to_drop, inplace=True)
-
-    print(f"  Imputed {len(columns_to_impute)} genes, dropped {len(columns_to_drop)} genes.")
-    print(f"  Shape: {df.shape} -> {df_copy.shape}")
-    return df_copy
+    cleaned = df.rename(columns=lambda x: re.sub(r"\s*\(\d+\)$", "", x))
+    counts = cleaned.columns.value_counts()
+    duplicates = counts[counts > 1]
+    if not duplicates.empty:
+        raise ValueError(
+            f"Stripping Entrez IDs produced {len(duplicates)} duplicate gene symbol(s): "
+            f"{duplicates.index.tolist()}. Resolve the underlying alias collision before proceeding."
+        )
+    return cleaned
 
 
 def linear_regression(warped_screens, warped_intercept):
@@ -81,12 +63,13 @@ def linear_regression(warped_screens, warped_intercept):
     return GLS_coef, GLS_se
 
 
-def run_pipeline(input_file, output_dir, prefix, impute=True):
+def run_pipeline(input_file, output_dir, prefix):
     os.makedirs(output_dir, exist_ok=True)
 
     # ── Load ────────────────────────────────────────────────────────────────
     print(f"[1/6] Loading data from {input_file} ...")
     data = pd.read_csv(input_file, index_col=0)
+    n_cell_lines = data.shape[0]
     print(f"      {data.shape[0]} screens x {data.shape[1]} genes")
 
     # ── Clean column names ───────────────────────────────────────────────────
@@ -104,14 +87,8 @@ def run_pipeline(input_file, output_dir, prefix, impute=True):
     columns_with_na = data.columns[data.isna().any()]
     if len(columns_with_na) == 0:
         print("      No NA values found.")
-    elif impute:
-        na_counts = data[columns_with_na].isna().sum()
-        median_threshold = na_counts.median()
-        print(f"      {len(columns_with_na)} genes with NAs; median NA count = {median_threshold}")
-        print("      Imputing genes at or below median; dropping the rest ...")
-        data = impute_na_by_median(data, median_threshold)
     else:
-        print(f"      {len(columns_with_na)} genes with NAs; imputation skipped — dropping all.")
+        print(f"      {len(columns_with_na)} genes with NAs — dropping all.")
         data = data.drop(columns=columns_with_na)
 
     assert not data.isnull().any().any(), "NA values remain after cleaning."
@@ -121,6 +98,11 @@ def run_pipeline(input_file, output_dir, prefix, impute=True):
     genes_path = os.path.join(output_dir, f"{prefix}_genes.txt")
     data.T.index.to_series().to_csv(genes_path, index=False, header=False)
     print(f"      {len(data.columns)} genes -> {genes_path}")
+
+    metadata_path = os.path.join(output_dir, f"{prefix}_metadata.json")
+    with open(metadata_path, "w") as fh:
+        json.dump({"n_cell_lines": n_cell_lines, "n_genes_profiled": len(data.columns)}, fh, indent=2)
+    print(f"      metadata -> {metadata_path}")
 
     # ── GLS decomposition ───────────────────────────────────────────────────
     print("[5/6] Computing GLS (Cholesky of pseudoinverse of covariance) ...")
@@ -169,17 +151,12 @@ def main():
         default=None,
         help="Prefix for output filenames (default: input filename without extension)",
     )
-    parser.add_argument(
-        "--no-impute",
-        action="store_true",
-        help="Drop all genes with any NA values instead of imputing by median (default: impute)",
-    )
     args = parser.parse_args()
 
     if args.prefix is None:
         args.prefix = os.path.splitext(os.path.basename(args.input))[0]
 
-    run_pipeline(args.input, args.output_dir, args.prefix, impute=not args.no_impute)
+    run_pipeline(args.input, args.output_dir, args.prefix)
 
 
 if __name__ == "__main__":

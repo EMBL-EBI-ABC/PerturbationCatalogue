@@ -14,7 +14,7 @@ flowchart LR
 classDef file  fill:#4C72B0,color:#fff,stroke:none
 classDef data  fill:#2E7D52,color:#fff,stroke:none
 
-A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · corr_genes]:::data
+A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · direction]:::data
 A --> C[CRISPRGeneEffect CSV\n→ number of cancer cell lines]:::data
 A --> D[genes.txt\n→ number of genes profiled]:::data
 B --> E[(df_all loaded into memory\nall callbacks filter this at query time)]:::data
@@ -45,8 +45,8 @@ subgraph CB["Callback — update_single  runs on gene selection or FDR change"]
 
     D --> E[Summary text\nGENE has N co-essential partners at FDR ≤ X%]:::out
     D --> F[Bar chart\ntop 20 partners ranked by −log₁₀ adj. p-value]:::out
-    D --> G[Partner table\nPARTNER GENE · P-VALUE · ADJ. P-VALUE · CORRELATION]:::out
-    D --> H[Build Cytoscape elements\nquery gene node = dark orange\npartner nodes coloured by corr_genes\nblue = positive · orange = negative co-essentiality\nedge weight = −log₁₀ adj. p-value]:::fast
+    D --> G[Partner table\nPARTNER GENE · P-VALUE · ADJ. P-VALUE · DIRECTION]:::out
+    D --> H[Build Cytoscape elements\nquery gene node = dark orange\npartner nodes coloured by direction\nblue = positive · orange = negative co-essentiality\nedge weight = −log₁₀ adj. p-value]:::fast
     H --> I[/Network graph rendered\ntop 20 partners + cross-edges among them/]:::out
 end
 
@@ -60,7 +60,7 @@ A small separate callback (`set_example_gene`) wires the **TP53 / BRCA1 / KRAS**
 
 ## 3. How node colours are computed
 
-Partner nodes are coloured on a **blue → grey → orange** gradient based on their `corr_genes` value — the sign of the co-essentiality relationship with the query gene.
+Partner nodes are coloured on a **blue → grey → orange** gradient based on their `direction` value — the sign of the co-essentiality relationship with the query gene.
 
 ```mermaid
 flowchart LR
@@ -69,9 +69,9 @@ classDef pos fill:#0072B2,color:#fff,stroke:none
 classDef neu fill:#DCDCDC,color:#333,stroke:#aaa
 classDef neg fill:#E69F00,color:#fff,stroke:none
 
-A[corr_genes = +1]:::pos --> B[Blue  both genes are\nco-essential together]:::pos
-C[corr_genes = 0]:::neu --> D[Grey  no directional\ncorrelation]:::neu
-E[corr_genes = −1]:::neg --> F[Orange  genes are\nmutually essential in opposite contexts]:::neg
+A[direction = +1]:::pos --> B[Blue  both genes are\nco-essential together]:::pos
+C[direction = 0]:::neu --> D[Grey  no directional\ncorrelation]:::neu
+E[direction = −1]:::neg --> F[Orange  genes are\nmutually essential in opposite contexts]:::neg
 ```
 
 The query gene itself is always shown in **dark orange (#D55E00)** to distinguish it from its partners. The palette is from Wong (2011) and is colourblind-safe.
