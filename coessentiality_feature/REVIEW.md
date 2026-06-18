@@ -183,7 +183,9 @@ layers, both worth doing:
      imputation strategy from Comment 5, FDR rule from Comment 2, etc.) instead of
      reasoning about each in isolation.
 
-**Status:** Open.
+**Status:** Partially addressed — CORUM+GLS MVP implemented and produces a sane
+result (see below). STRING/hu.MAP/DoRothEA and the Pearson comparison still
+open.
 **🔵 Needs discussion with @AleksZakirov** — what benchmark/metrics to adopt.
 
 **@AleksZakirov's input (2026-06-18):** Pointed out the paper already did
@@ -196,6 +198,35 @@ specifically the GLS-with/without-bias-correction comparison that would give
 Comment 1's decision real empirical backing. Next step: look at exactly what
 gold-standard data and metric those figures used, to replicate as closely as
 practical rather than inventing our own from scratch.
+
+**Implemented (MVP, scoped to CORUM + GLS only):** Checked exactly what Fig 2 /
+Ext Data Fig 4 measure — gold standards CORUM/hu.MAP/STRING (co-expression-only
+pairs removed)/DoRothEA; metric is "enrichment" = (% of top-N pairs found in the
+gold-standard database) / (% of all possible pairs found in it); x-axis is top-N
+partner ranks per gene (N=1..10); methods compared include GLS with/without bias
+correction and Pearson with/without bias correction.
+
+Built a first slice in `pipeline_validation_corum/validate_corum_enrichment.py`
+(new folder, kept separate from the production pipeline since this is a one-off
+validation, not a monthly pipeline step): CORUM gold standard (fetched via
+`gseapy.get_library(name="CORUM")` — same Enrichr mechanism as the GO:BP fix in
+Comment 10, 1,658 human complexes, gene-symbol-native so no ID-mapping needed),
+evaluated against GLS only (no Pearson comparison yet).
+
+**Result** (full table and interpretation in `pipeline_validation_corum/RESULTS.md`):
+across 2,284 genes with ≥1 CORUM complex-mate in our 17,087-gene panel, GLS's
+top-1 ranked partner is the gene's *actual* CORUM complex-mate 26.9% of the time,
+vs. a 0.016% background rate — **~1,658x enrichment over chance at N=1**,
+declining smoothly to ~723x at N=10. Sane, expected pattern (best-ranked
+prediction more reliable than 10th-best), and consistent with the literature
+finding that complex membership is one of the strongest co-essentiality signals.
+**Directly answers "does this pipeline produce sensible results?" — yes.**
+
+**Explicitly not yet covered** (see RESULTS.md caveats): STRING/hu.MAP/DoRothEA,
+the Pearson comparison (needed to actually validate Comment 1's bias-correction
+decision empirically, not just via documentation), and the computational/sanity
+layer (permutation test, synthetic example) from the original analysis above.
+Not wired into CI — a manual script to re-run when needed.
 
 ## Comment 5 — Ad hoc NA imputation strategy (`step2_gls_coessentiality.py:53`)
 
