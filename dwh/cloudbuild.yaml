@@ -7,7 +7,7 @@
 #   4. bq_to_postgres   (BQ final tables → Postgres)
 #   5. bq_to_es         (BQ summary tables → Elasticsearch)
 #
-# Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
+# Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]
 #
 # Substitution variables (passed by trigger_pipeline.sh):
 #   _GCLOUD_PROJECT, _GCLOUD_REGION, _BQ_DATASET, _BQ_REFERENCE_DATASET,
@@ -15,6 +15,7 @@
 #   _GCLOUD_TMP_BUCKET, _PG_CONN_INTERNAL, _PG_*,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD, _ES_*,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
+#   _FORCE_PG_TABLES (optional, comma-separated logical BQ/PG table names)
 
 timeout: 86400s  # 24 hours
 
@@ -116,6 +117,8 @@ steps:
       - --gcs-bucket
       - $_GCLOUD_TMP_BUCKET
       - --drop-and-recreate-indexes
+      - --force-pg-tables
+      - $_FORCE_PG_TABLES
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - PG_CRISPR_DATA_TABLE=$_PG_CRISPR_DATA_TABLE
@@ -149,3 +152,4 @@ steps:
 substitutions:
   _OPENTARGETS_RELEASE: "26.03"
   _SUPPRESS_DATASETS: ""
+  _FORCE_PG_TABLES: ""

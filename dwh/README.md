@@ -173,6 +173,13 @@ python3 bq_to_postgres/bq_to_postgres.py \
     --drop-and-recreate-indexes
 ```
 
+To reload PG tables even when `sync_state` timestamps are current, pass logical
+table names:
+
+```bash
+./dwh/trigger_pipeline.sh --force-pg-tables perturb_seq_dea,perturb_seq_gsea
+```
+
 ### BQ → Elasticsearch
 
 ```bash

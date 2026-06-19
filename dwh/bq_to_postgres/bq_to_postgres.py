@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional, Any, Set
 
 import psycopg2
 from psycopg2 import sql
@@ -227,6 +227,22 @@ TABLE_MATERIALIZED_VIEWS = {"perturb_seq_dea": list(PERTURB_SEQ_SUMMARY_VIEWS.va
 
 # Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
 GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
+
+
+def parse_force_pg_tables(raw_tables: Optional[str]) -> Set[str]:
+    """Parse comma-separated logical table names that should be fully reloaded."""
+    if not raw_tables:
+        return set()
+
+    tables = {table.strip() for table in raw_tables.split(",") if table.strip()}
+    unknown_tables = tables - set(TABLES_TO_SYNC)
+    if unknown_tables:
+        valid_tables = ", ".join(TABLES_TO_SYNC)
+        unknown = ", ".join(sorted(unknown_tables))
+        raise RuntimeError(
+            f"Unknown forced PG table(s): {unknown}. Valid values: {valid_tables}"
+        )
+    return tables
 
 
 # ------------------------------------------------------------------------------
@@ -601,9 +617,7 @@ def ensure_perturb_seq_summary_views(cursor):
             """
             CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id)
             """
-        ).format(
-            sql.Identifier(f"idx_{dataset_view}_pk"), sql.Identifier(dataset_view)
-        )
+        ).format(sql.Identifier(f"idx_{dataset_view}_pk"), sql.Identifier(dataset_view))
     )
 
 
@@ -793,8 +807,14 @@ def main():
         action="store_true",
         help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
     )
+    parser.add_argument(
+        "--force-pg-tables",
+        default="",
+        help="Comma-separated logical table names to fully reload even when sync_state is current.",
+    )
 
     args = parser.parse_args()
+    force_pg_tables = parse_force_pg_tables(args.force_pg_tables)
 
     # Validate required arguments
     missing = []
@@ -848,15 +868,21 @@ def main():
                 to_insert = []
                 to_update = []
 
-                for ds_id, (bq_ts, bq_count) in bq_info.items():
-                    if ds_id not in pg_info:
-                        to_insert.append(ds_id)
-                    else:
-                        pg_ts = pg_info[ds_id]
-                        if pg_ts and pg_ts.tzinfo is None:
-                            pg_ts = pg_ts.replace(tzinfo=timezone.utc)
-                        if bq_ts > pg_ts:
-                            to_update.append(ds_id)
+                if table_name in force_pg_tables:
+                    logging.info(
+                        f"  Force reload requested for {table_name}; all BigQuery datasets will be reloaded."
+                    )
+                    to_update = list(bq_info)
+                else:
+                    for ds_id, (bq_ts, bq_count) in bq_info.items():
+                        if ds_id not in pg_info:
+                            to_insert.append(ds_id)
+                        else:
+                            pg_ts = pg_info[ds_id]
+                            if pg_ts and pg_ts.tzinfo is None:
+                                pg_ts = pg_ts.replace(tzinfo=timezone.utc)
+                            if bq_ts > pg_ts:
+                                to_update.append(ds_id)
 
                 if not to_insert and not to_update:
                     logging.info(f"  {table_name} is up to date.")

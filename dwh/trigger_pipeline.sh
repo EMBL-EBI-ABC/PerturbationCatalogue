@@ -3,7 +3,7 @@
 # Trigger the DWH pipeline on Google Cloud Build.
 #
 # Usage:
-#   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
+#   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
@@ -20,6 +20,7 @@ set -euo pipefail
 # Parse arguments
 # ---------------------------------------------------------------------------
 SUPPRESS_DATASETS=""
+FORCE_PG_TABLES=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,9 +28,13 @@ while [[ $# -gt 0 ]]; do
             SUPPRESS_DATASETS="$2"
             shift 2
             ;;
+        --force-pg-tables)
+            FORCE_PG_TABLES="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--suppress-datasets id1,id2,...]"
+            echo "Usage: $0 [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]"
             exit 1
             ;;
     esac
@@ -109,6 +114,7 @@ echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
 echo "  PG Tables:          $PG_CRISPR_DATA_TABLE, $PG_MAVE_DATA_TABLE, $PG_PERTURB_SEQ_DEA_TABLE, $PG_PERTURB_SEQ_GSEA_TABLE"
 echo "  ES Aliases:         $ES_DATASET_SUMMARY, $ES_TARGET_SUMMARY, $ES_LANDING_PAGE_SUMMARY"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
+echo "  Force PG Tables:    ${FORCE_PG_TABLES:-<none>}"
 echo "============================================"
 echo ""
 
@@ -141,7 +147,8 @@ _ES_PASSWORD=$ES_PASSWORD,\
 _ES_DATASET_SUMMARY=$ES_DATASET_SUMMARY,\
 _ES_TARGET_SUMMARY=$ES_TARGET_SUMMARY,\
 _ES_LANDING_PAGE_SUMMARY=$ES_LANDING_PAGE_SUMMARY,\
-_SUPPRESS_DATASETS=$SUPPRESS_DATASETS" \
+_SUPPRESS_DATASETS=$SUPPRESS_DATASETS,\
+_FORCE_PG_TABLES=$FORCE_PG_TABLES" \
     --async \
     --format='value(id)')
 
