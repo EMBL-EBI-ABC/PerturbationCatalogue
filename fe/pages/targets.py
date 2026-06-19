@@ -30,14 +30,14 @@ layout = html.Div(
                     [
                         html.H2("Browse Targets", className="mb-3 mt-4"),
                         html.P(
-                            "Explore all gene targets across perturbation experiments. Use the search bar to find genes by symbol, synonym, name, or Ensembl ID, and the facets to narrow down results.",
+                            "Explore all gene targets across perturbation experiments. Use the search bar to find genes by symbol, Ensembl ID, or name, and the facets to narrow down results.",
                             className="text-muted mb-3",
                         ),
                         dbc.InputGroup(
                             [
                                 dbc.Input(
                                     id="targets-search-input",
-                                    placeholder="Search targets by gene symbol, synonym, name, or Ensembl ID...",
+                                    placeholder="Search targets by gene symbol, Ensembl ID or name...",
                                     type="text",
                                     value="",
                                     debounce=True,
