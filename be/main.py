@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
+from target_search import build_target_exact_query, build_target_fuzzy_query
 
 load_dotenv()
 
@@ -150,136 +151,10 @@ DATASET_SEARCHABLE_FIELDS = [
     "library_perturbation_type_labels",
 ]
 
-TARGET_EXACT_SEARCH_FIELDS = {
-    "ensembl_gene_id": 10.0,
-    "approved_symbol": 8.0,
-    "exact_aliases": 6.0,
-}
-
-TARGET_TEXT_SEARCH_FIELDS = [
-    "ensembl_gene_id^10.0",
-    "ensembl_gene_id.text^4.0",
-    "approved_symbol^8.0",
-    "approved_symbol.text^4.0",
-    "exact_aliases^6.0",
-    "exact_aliases.text^3.0",
-    "approved_name^3.0",
-    "approved_name.text^2.0",
-    "search_keywords^2.0",
-    "search_keywords.text^1.5",
-]
-
-TARGET_SEARCHABLE_FIELDS = [
-    "ensembl_gene_id",
-    "approved_symbol",
-    "exact_aliases",
-    "approved_name",
-    "search_keywords",
-]
-
-
 # Elasticsearch helper functions
 def _escape_wildcard(value: str) -> str:
     """Escape characters that have special meaning in wildcard queries."""
     return re.sub(r"([\\*?])", r"\\\1", value)
-
-
-def build_elasticsearch_query(
-    query: Optional[str], filters: Optional[Dict[str, List[str]]]
-) -> Dict[str, Any]:
-    """Build Elasticsearch query with search and filters"""
-    filter_clauses = []
-    should_clauses = []
-
-    # Text search across all searchable fields
-    if query:
-        cleaned_query = query.strip()
-        if cleaned_query:
-            for field, boost in TARGET_EXACT_SEARCH_FIELDS.items():
-                should_clauses.append(
-                    {
-                        "term": {
-                            field: {
-                                "value": cleaned_query,
-                                "case_insensitive": True,
-                                "boost": boost,
-                            }
-                        }
-                    }
-                )
-
-            # Exact/fuzzy matches with higher boosts for canonical target fields.
-            should_clauses.append(
-                {
-                    "multi_match": {
-                        "query": cleaned_query,
-                        "fields": TARGET_TEXT_SEARCH_FIELDS,
-                        "type": "best_fields",
-                        "fuzziness": "AUTO:5,8",
-                    }
-                }
-            )
-
-            # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
-            for field in TARGET_SEARCHABLE_FIELDS:
-                should_clauses.append(
-                    {
-                        "match_phrase_prefix": {
-                            f"{field}.text": {
-                                "query": cleaned_query,
-                                "slop": 1,
-                                "boost": 1.2,
-                            }
-                        }
-                    }
-                )
-
-            # Wildcard for partial/infix search (case-insensitive)
-            wildcard_terms = []
-            for term in cleaned_query.split():
-                safe_term = _escape_wildcard(term.lower())
-                if safe_term:
-                    wildcard_terms.append(f"*{safe_term}*")
-
-            # Include whole query if no spaces
-            if not wildcard_terms:
-                safe_term = _escape_wildcard(cleaned_query.lower())
-                if safe_term:
-                    wildcard_terms.append(f"*{safe_term}*")
-
-            for wildcard_value in wildcard_terms:
-                for field in TARGET_SEARCHABLE_FIELDS:
-                    should_clauses.append(
-                        {
-                            "wildcard": {
-                                field: {
-                                    "value": wildcard_value,
-                                    "case_insensitive": True,
-                                    "boost": 0.3,
-                                }
-                            }
-                        }
-                    )
-
-    # Filters for facet fields
-    if filters:
-        for field, values in filters.items():
-            if field in FACET_FIELDS and values:
-                filter_clauses.append({"terms": {field: values}})
-
-    bool_query: Dict[str, Any] = {}
-
-    if filter_clauses:
-        bool_query["filter"] = filter_clauses
-
-    if should_clauses:
-        bool_query["should"] = should_clauses
-        bool_query["minimum_should_match"] = 1
-
-    if bool_query:
-        return {"bool": bool_query}
-
-    return {"match_all": {}}
 
 
 def build_aggregations(facet_fields: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -483,7 +358,7 @@ async def perform_search(
         es_index = ES_DATASET_SUMMARY
         sort_field = "dataset_id"
     else:
-        es_query = build_elasticsearch_query(query, filters)
+        es_query = build_target_fuzzy_query(query, filters, FACET_FIELDS)
         facet_fields = FACET_FIELDS
         es_index = ES_TARGET_SUMMARY
         sort_field = "approved_symbol"
@@ -510,7 +385,19 @@ async def perform_search(
 
     # Execute search with aggregations
     try:
-        response = await db_pools["es"].search(**search_kwargs)
+        response = None
+        if not is_dataset_mode and query and query.strip():
+            exact_search_kwargs = {
+                **search_kwargs,
+                "query": build_target_exact_query(query, filters, FACET_FIELDS),
+            }
+            exact_response = await db_pools["es"].search(**exact_search_kwargs)
+            exact_total = exact_response.get("hits", {}).get("total", {}).get("value", 0)
+            if exact_total > 0:
+                response = exact_response
+
+        if response is None:
+            response = await db_pools["es"].search(**search_kwargs)
     except Exception as e:
         error_detail = str(e)
         raise HTTPException(

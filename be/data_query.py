@@ -11,6 +11,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
+from target_search import build_target_exact_query, build_target_fuzzy_query
 
 
 # --- Database Connection Management ---
@@ -115,33 +116,6 @@ MODALITY_TARGET_QUERY_FIELDS = {
     "crispr-screen": {"perturbed_target_query"},
     "mave": {"perturbed_target_query"},
 }
-
-TARGET_EXACT_SEARCH_FIELDS = {
-    "ensembl_gene_id": 10.0,
-    "approved_symbol": 8.0,
-    "exact_aliases": 6.0,
-}
-
-TARGET_TEXT_SEARCH_FIELDS = [
-    "ensembl_gene_id^10.0",
-    "ensembl_gene_id.text^4.0",
-    "approved_symbol^8.0",
-    "approved_symbol.text^4.0",
-    "exact_aliases^6.0",
-    "exact_aliases.text^3.0",
-    "approved_name^3.0",
-    "approved_name.text^2.0",
-    "search_keywords^2.0",
-    "search_keywords.text^1.5",
-]
-
-TARGET_SEARCHABLE_FIELDS = [
-    "ensembl_gene_id",
-    "approved_symbol",
-    "exact_aliases",
-    "approved_name",
-    "search_keywords",
-]
 
 # Numeric field mappings: "int" for integer fields, "float" for float fields
 NUMERIC_FIELDS = {
@@ -511,86 +485,6 @@ def parse_numeric_filter(param_name: str, value: str) -> Tuple[str, List[Any]]:
         return f"{param_name} = $... ", [float(value)]
 
 
-def _escape_wildcard(value: str) -> str:
-    """Escape characters that have special meaning in wildcard queries."""
-    return re.sub(r"([\\*?])", r"\\\1", value)
-
-
-def build_target_resolution_query(query: str) -> Dict[str, Any]:
-    """Build the target ES query used to resolve user gene queries to ENSGs."""
-    cleaned_query = query.strip()
-    should_clauses = []
-
-    for field, boost in TARGET_EXACT_SEARCH_FIELDS.items():
-        should_clauses.append(
-            {
-                "term": {
-                    field: {
-                        "value": cleaned_query,
-                        "case_insensitive": True,
-                        "boost": boost,
-                    }
-                }
-            }
-        )
-
-    should_clauses.append(
-        {
-            "multi_match": {
-                "query": cleaned_query,
-                "fields": TARGET_TEXT_SEARCH_FIELDS,
-                "type": "best_fields",
-                "fuzziness": "AUTO:5,8",
-            }
-        }
-    )
-
-    for field in TARGET_SEARCHABLE_FIELDS:
-        should_clauses.append(
-            {
-                "match_phrase_prefix": {
-                    f"{field}.text": {
-                        "query": cleaned_query,
-                        "slop": 1,
-                        "boost": 1.2,
-                    }
-                }
-            }
-        )
-
-    wildcard_terms = []
-    for term in cleaned_query.split():
-        safe_term = _escape_wildcard(term.lower())
-        if safe_term:
-            wildcard_terms.append(f"*{safe_term}*")
-
-    if not wildcard_terms:
-        safe_term = _escape_wildcard(cleaned_query.lower())
-        if safe_term:
-            wildcard_terms.append(f"*{safe_term}*")
-
-    for wildcard_value in wildcard_terms:
-        for field in TARGET_SEARCHABLE_FIELDS:
-            should_clauses.append(
-                {
-                    "wildcard": {
-                        field: {
-                            "value": wildcard_value,
-                            "case_insensitive": True,
-                            "boost": 0.3,
-                        }
-                    }
-                }
-            )
-
-    return {
-        "bool": {
-            "should": should_clauses,
-            "minimum_should_match": 1,
-        }
-    }
-
-
 async def resolve_target_query_to_ensg(query: str) -> List[str]:
     """Resolve a user target query to ordered unique Ensembl gene IDs."""
     cleaned_query = query.strip()
@@ -601,15 +495,25 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     if not es_client:
         raise HTTPException(status_code=500, detail="Elasticsearch pool not initialized")
 
-    response = await es_client.search(
+    search_body = {
+        "_source": ["ensembl_gene_id"],
+        "size": TARGET_QUERY_RESOLUTION_LIMIT,
+        "sort": [{"_score": "desc"}, {"approved_symbol": "asc"}],
+        "track_total_hits": True,
+    }
+
+    exact_response = await es_client.search(
         index=ES_TARGET_SUMMARY,
-        body={
-            "query": build_target_resolution_query(cleaned_query),
-            "_source": ["ensembl_gene_id"],
-            "size": TARGET_QUERY_RESOLUTION_LIMIT,
-            "sort": [{"_score": "desc"}, {"approved_symbol": "asc"}],
-        },
+        body={**search_body, "query": build_target_exact_query(cleaned_query)},
     )
+    exact_total = exact_response.get("hits", {}).get("total", {}).get("value", 0)
+    response = exact_response
+
+    if exact_total == 0:
+        response = await es_client.search(
+            index=ES_TARGET_SUMMARY,
+            body={**search_body, "query": build_target_fuzzy_query(cleaned_query)},
+        )
 
     ensg_ids = []
     seen = set()
