@@ -74,7 +74,7 @@ def build_evaluation_splits(records, seed=42):
         log.info(f"Held out cell type: {holdout_cell}")
 
     if "modality" in df.columns and df["modality"].nunique() > 1:
-        holdout_modality = "scPerturb_seq"
+        holdout_modality = "scPerturb-seq"
         splits["cross_modal"] = [
             records[i] for i in df[df["modality"] == holdout_modality]["record_idx"]
         ]

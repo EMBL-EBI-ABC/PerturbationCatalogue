@@ -97,6 +97,7 @@ def query_crispr_screen(dataset_id=None, limit=100, max_records=5000):
 
         time.sleep(0.1)
 
+    all_results = all_results[:max_records]
     log.info(f"Retrieved {len(all_results)} raw records")
     return all_results
 
@@ -151,6 +152,7 @@ def query_perturb_seq(dataset_id=None, limit=100, max_records=5000):
 
         time.sleep(0.1)
 
+    all_results = all_results[:max_records]
     log.info(f"Retrieved {len(all_results)} raw records")
     return all_results
 
@@ -206,6 +208,7 @@ def query_mave(dataset_id=None, limit=100, max_records=5000):
 
         time.sleep(0.1)
 
+    all_results = all_results[:max_records]
     log.info(f"Retrieved {len(all_results)} raw records")
     return all_results
 

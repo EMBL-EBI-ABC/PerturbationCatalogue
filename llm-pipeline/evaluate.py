@@ -317,10 +317,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # Load model
     model, tokenizer = load_model(args.adapter_dir, args.model_name)
 
-    # Load test records
     test_path = Path(args.splits_dir) / "test.jsonl"
     test_records = []
     with open(test_path) as f:
@@ -331,11 +329,9 @@ def main():
 
     log.info(f"Loaded {len(test_records)} test records")
 
-    # Detect modality from first record
     first_modality = test_records[0]["metadata"].get("modality", "unknown")
     log.info(f"Detected modality: {first_modality}")
 
-    # Generate predictions
     predictions = []
     for i, record in enumerate(test_records):
         gene = record["metadata"]["gene"]
@@ -366,7 +362,6 @@ def main():
         log.info(f"  Predicted class: {pred_class}")
         log.info(f"  Generated: {generated[:100]}...")
 
-    # Evaluate based on modality
     if "CRISPR" in first_modality:
         metrics, results = evaluate_crispr(predictions, test_records)
         metric_display = f"Accuracy: {metrics['accuracy']:.4f} ({metrics['correct']}/{metrics['n_evaluated']})"
@@ -384,7 +379,6 @@ def main():
     print(f"{metric_display}")
     print("=" * 60)
 
-    # Save results if requested
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
