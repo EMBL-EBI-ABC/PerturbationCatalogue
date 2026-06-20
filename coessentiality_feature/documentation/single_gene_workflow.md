@@ -1,6 +1,6 @@
 # Single-Gene Explorer — Workflow
 
-The single-gene explorer lets users search for one gene and see all its co-essential partners — ranked by significance, coloured by correlation, and laid out as a network graph.
+The single-gene explorer lets users search for one gene and see all its co-essential partners — ranked by significance, coloured by direction, and laid out as a network graph.
 
 ---
 
@@ -15,10 +15,10 @@ classDef file  fill:#4C72B0,color:#fff,stroke:none
 classDef data  fill:#2E7D52,color:#fff,stroke:none
 
 A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · direction]:::data
-A --> C[CRISPRGeneEffect CSV\n→ number of cancer cell lines]:::data
-A --> D[genes.txt\n→ number of genes profiled]:::data
+A --> C[metadata.json\n→ n_cell_lines, n_genes_profiled]:::data
+A --> D[genes.txt\n→ full profiled gene list]:::data
 B --> E[(df_all loaded into memory\nall callbacks filter this at query time)]:::data
-B --> F[all_genes list\npopulates the gene search dropdown]:::data
+D --> F[all_genes list\npopulates the gene search dropdown]:::data
 ```
 
 ---
@@ -44,8 +44,7 @@ subgraph CB["Callback — update_single  runs on gene selection or FDR change"]
     C --> D
 
     D --> E[Summary text\nGENE has N co-essential partners at FDR ≤ X%]:::out
-    D --> F[Bar chart\ntop 20 partners ranked by −log₁₀ adj. p-value]:::out
-    D --> G[Partner table\nPARTNER GENE · P-VALUE · ADJ. P-VALUE · DIRECTION]:::out
+    D --> G[Partner table — single table, one row per gene\nPARTNER GENE · DIRECTION badge · GLS P-VALUE · BH-adjusted confidence bar]:::out
     D --> H[Build Cytoscape elements\nquery gene node = dark orange\npartner nodes coloured by direction\nblue = positive · orange = negative co-essentiality\nedge weight = −log₁₀ adj. p-value]:::fast
     H --> I[/Network graph rendered\ntop 20 partners + cross-edges among them/]:::out
 end
@@ -60,7 +59,7 @@ A small separate callback (`set_example_gene`) wires the **TP53 / BRCA1 / KRAS**
 
 ## 3. How node colours are computed
 
-Partner nodes are coloured on a **blue → grey → orange** gradient based on their `direction` value — the sign of the co-essentiality relationship with the query gene.
+Partner nodes are coloured on a **blue → grey → orange** gradient based on their `direction` value — the sign of the co-essentiality relationship with the query gene. Same colours as the Direction badge in the partner table, so colour means the same thing everywhere in the app.
 
 ```mermaid
 flowchart LR
@@ -74,7 +73,7 @@ C[direction = 0]:::neu --> D[Grey  no directional\ncorrelation]:::neu
 E[direction = −1]:::neg --> F[Orange  genes are\nmutually essential in opposite contexts]:::neg
 ```
 
-The query gene itself is always shown in **dark orange (#D55E00)** to distinguish it from its partners. The palette is from Wong (2011) and is colourblind-safe.
+The query gene itself is always shown in **dark orange (#D55E00)** to distinguish it from its partners. The palette is from Wong (2011) and is colourblind-safe — kept deliberately separate from the Perturbation Catalogue brand green/red, since green+red is a difficult pair for red-green colourblindness.
 
 ---
 
@@ -82,6 +81,6 @@ The query gene itself is always shown in **dark orange (#D55E00)** to distinguis
 
 - All computation is **local and instantaneous** — no external API calls are made in the single-gene view.
 - The FDR dropdown is shared across both tabs; changing it updates the single-gene view and the gene-list view simultaneously.
-- The bar chart and table both show all partners at the chosen FDR; the Cytoscape graph is capped at the **top 20** to keep the layout readable.
-- The **"Download all partners (CSV)"** button (enabled once a gene is selected) exports the *full* partner list at the current FDR — not just the top 20 shown in the chart/graph — with a plain-English "co-essential / anti-correlated" note per row.
+- The partner table shows all partners at the chosen FDR (paginated, 15 rows per page); the Cytoscape graph is capped at the **top 20** to keep the layout readable.
+- The **"Download all partners (CSV)"** button (enabled once a gene is selected) exports the *full* partner list at the current FDR — not just the top 20 shown in the network graph — with a plain-English "co-essential / anti-correlated" note per row.
 - For the gene-list view (Tab 2) and its GO:BP annotation workflow, see `gene_list_workflow.md`.

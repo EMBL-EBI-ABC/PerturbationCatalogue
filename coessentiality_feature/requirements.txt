@@ -8,7 +8,6 @@ requests
 # App (coessentiality_feature_pc.py)
 dash
 dash-cytoscape
-plotly
 networkx
 gseapy
 

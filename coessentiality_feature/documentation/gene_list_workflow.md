@@ -114,8 +114,7 @@ Expansion is a breadth-first search over the FDR-filtered network, capped at 300
 
 | Colour | Meaning |
 |---|---|
-| Near-black (`#222222`) | Input gene with at least one co-essential pair to another input gene |
-| Light grey (`#D9D9D9`) | Input gene with no pair to another input gene (at the current FDR) |
+| Near-black (`#222222`) | Input gene |
 | Light purple (`#D8BFD8`) | Gene added by degree-of-interaction expansion |
 
 **Edge colours:** same blue/orange convention as the single-gene view — blue (`#0072B2`) for positive co-essentiality, orange (`#E69F00`) for negative — based on the sign of `direction`.

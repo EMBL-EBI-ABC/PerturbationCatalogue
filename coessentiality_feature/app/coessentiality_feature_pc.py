@@ -10,8 +10,6 @@ import pandas as pd
 import dash
 import dash_cytoscape as cyto
 from dash import dcc, html, dash_table, Input, Output, State, ctx
-import plotly.express as px
-import plotly.graph_objects as go
 import networkx as nx
 import gseapy as gp
 
@@ -107,13 +105,25 @@ cyto.load_extra_layouts()
 app = dash.Dash(__name__)
 app.title = "DepMap Co-Essentiality Explorer"
 
+# DataTable wraps markdown cells (the Direction badge / Statistical
+# Confidence bar) in a <p> with the browser's default margin, which adds
+# unwanted vertical spacing inside the cell. Injected here via index_string
+# rather than a separate assets/ CSS file, since it's the only global rule
+# needed and this keeps everything in one file.
+app.index_string = app.index_string.replace(
+    "</head>",
+    "<style>#partner-table .dash-cell-value p { margin: 0; }</style></head>",
+)
+
 
 # =============================================================================
 # COLOUR HELPER
 # Maps a co-essentiality direction (+1/-1) to a hex colour on a
 # blue (#0072B2) → neutral grey (#dcdcdc) → orange (#E69F00) gradient.
 # Palette: Wong (2011) colorblind-safe — distinguishable under deuteranopia,
-# protanopia, and tritanopia.
+# protanopia, and tritanopia. Direction is intentionally kept on this palette
+# rather than the Perturbation Catalogue brand green/red, since green+red is
+# the classic problematic combination for red-green colourblindness.
 # The three-stop gradient is computed in Python because Cytoscape's mapData
 # only interpolates between two colours, producing a muddy midpoint.
 # =============================================================================
@@ -130,17 +140,14 @@ def direction_to_color(c):
 
 
 # Flat (non-gradient) colours for the multi-gene network:
-#  - input genes with at least one displayed pair are a bright, near-black
-#    grey — the most prominent nodes
-#  - input genes with no displayed pair are a light, dull grey
+#  - input genes are a bright, near-black grey — the most prominent nodes
 #  - genes added via degree-of-interaction expansion are a light, dull
-#    purple — distinct in hue from the light grey above
+#    purple — distinct in hue from the grey above
 #  - edges are coloured by the underlying co-essentiality direction, using the
-#    same Positive/Negative colours as the single-gene view
+#    same Positive/Negative colours as the single-gene view and the table
 # Grey/purple shades are distinguished by lightness/hue independent of the
 # blue/orange edge colours, so the palette stays colour-blind friendly.
-_MULTI_NODE_COLOR         = "#222222"   # near-black — input gene with a pair (bright/prominent)
-_MULTI_NODE_NEUTRAL_COLOR = "#D9D9D9"   # light grey — input gene with no pair (dull)
+_MULTI_NODE_COLOR         = "#222222"   # near-black — input gene
 _MULTI_POSITIVE_COLOR     = "#0072B2"   # blue   — positive-direction edges
 _MULTI_NEGATIVE_COLOR     = "#E69F00"   # orange — negative-direction edges
 _MULTI_EXTENDED_COLOR     = "#D8BFD8"   # light purple — added by degree of interaction (dull)
@@ -370,6 +377,18 @@ def _panel(header_text, children, header_icon=""):
     ], style={"marginBottom": "24px"})
 
 
+def _partner_table_columns():
+    """Columns for the co-essential partners table."""
+    return [
+        {"name": "PARTNER GENE", "id": "partner"},
+        {"name": "DIRECTION", "id": "direction_badge", "presentation": "markdown"},
+        {"name": "GLS P-VALUE", "id": "pvalue", "type": "numeric",
+         "format": {"specifier": ".2e"}},
+        {"name": "STATISTICAL CONFIDENCE (BH-ADJUSTED P-VALUE)",
+         "id": "strength_bar", "presentation": "markdown"},
+    ]
+
+
 # =============================================================================
 # LAYOUT
 # =============================================================================
@@ -559,16 +578,19 @@ app.layout = html.Div([
                         ], style={"display": "flex", "alignItems": "center",
                                   "gap": "16px", "marginBottom": "20px"}),
 
-                        # Chart + table row
+                        # Co-essential partners table — single table, one row per
+                        # gene (replaces the former side-by-side bar chart +
+                        # table, which showed the same gene list twice with no
+                        # guaranteed row alignment between them, and squeezed
+                        # the table into only half the page width). Bar length
+                        # encodes statistical confidence (BH-adjusted), kept
+                        # distinct from biological effect size, which GLS does
+                        # not report (see PR #365 review discussion). Direction
+                        # badge replaces a raw +/-1.0 number; a legend above
+                        # the table spells out what it means without needing
+                        # to read the paragraph below.
                         html.Div([
-                            dcc.Loading(
-                                dcc.Graph(id="partner-bar",
-                                          config={"displayModeBar": False},
-                                          style={"flex": "1", "minWidth": "0"}),
-                                type="circle", color=_G,
-                                style={"flex": "1"},
-                            ),
-                            html.Div([
+                            dcc.Loading(html.Div([
                                 html.P(
                                     "Co-essential partners — significance & direction",
                                     style={"fontWeight": "600", "fontSize": "20px",
@@ -576,25 +598,55 @@ app.layout = html.Div([
                                 html.P(
                                     "Each row is a gene whose CRISPR essentiality profile "
                                     "co-varies significantly with the query gene across cancer "
-                                    "cell lines. Adj. p-value is BH-corrected; direction "
-                                    "reflects the sign of co-essentiality "
-                                    "(positive = both essential together).",
+                                    "cell lines. Bar length shows statistical confidence after "
+                                    "Benjamini-Hochberg multiple-testing correction (the grey "
+                                    "number is −log₁₀ of the adjusted p-value — higher means more "
+                                    "confident) — a longer bar means we are more confident the "
+                                    "relationship is real, not necessarily that it is a bigger "
+                                    "biological effect.",
                                     style={"fontSize": "18px", "color": _MUTED,
                                            "margin": "0 0 12px 0", "lineHeight": "1.5"}),
-                                dash_table.DataTable(
+                                html.Div([
+                                    html.Div("Direction:", style={
+                                        "fontSize": "16px", "fontWeight": "700",
+                                        "color": _TEXT, "marginBottom": "8px"}),
+                                    html.Div([
+                                        html.Span("+ Positive", style={
+                                            "display": "inline-block", "padding": "3px 11px",
+                                            "borderRadius": "13px", "fontSize": "15px",
+                                            "fontWeight": "600", "color": "#fff",
+                                            "whiteSpace": "nowrap", "marginRight": "8px",
+                                            "background": "#0072B2"}),
+                                        html.Span(
+                                            "co-essential gene pair",
+                                            style={"fontSize": "16px", "color": _MUTED}),
+                                    ], style={"display": "flex", "alignItems": "center",
+                                              "marginBottom": "6px"}),
+                                    html.Div([
+                                        html.Span("− Negative", style={
+                                            "display": "inline-block", "padding": "3px 11px",
+                                            "borderRadius": "13px", "fontSize": "15px",
+                                            "fontWeight": "600", "color": "#fff",
+                                            "whiteSpace": "nowrap", "marginRight": "8px",
+                                            "background": "#E69F00"}),
+                                        html.Span(
+                                            "anti-correlated gene pair",
+                                            style={"fontSize": "16px", "color": _MUTED}),
+                                    ], style={"display": "flex", "alignItems": "center"}),
+                                ], style={"marginBottom": "16px"}),
+                                html.Div(
+                                    "Please select a gene from the Search gene box above "
+                                    "to see its co-essential partners.",
+                                    id="partner-table-placeholder",
+                                    style={"display": "none", "textAlign": "center",
+                                           "padding": "48px 20px", "fontSize": "18px",
+                                           "color": _MUTED, "background": _BG,
+                                           "borderRadius": "6px"},
+                                ),
+                                html.Div(dash_table.DataTable(
                                     id="partner-table",
-                                    columns=[
-                                        {"name": "PARTNER GENE", "id": "partner"},
-                                        {"name": "GLS P-VALUE",      "id": "pvalue",
-                                         "type": "numeric",
-                                         "format": {"specifier": ".2e"}},
-                                        {"name": "GLS ADJ. P-VALUE", "id": "pvalue_adj",
-                                         "type": "numeric",
-                                         "format": {"specifier": ".2e"}},
-                                        {"name": "DIRECTION",  "id": "direction",
-                                         "type": "numeric",
-                                         "format": {"specifier": ".3f"}},
-                                    ],
+                                    columns=_partner_table_columns(),
+                                    markdown_options={"html": True},
                                     sort_action="native",
                                     page_size=15,
                                     style_table={"overflowX": "auto", "border": "none"},
@@ -603,23 +655,33 @@ app.layout = html.Div([
                                         "fontSize": "18px", "border": "none",
                                         "borderBottom": f"1px solid {_BORDER}",
                                         "fontFamily": "inherit",
+                                        "verticalAlign": "middle",
                                     },
+                                    style_cell_conditional=[
+                                        {"if": {"column_id": "partner"}, "width": "16%"},
+                                        {"if": {"column_id": "direction_badge"}, "width": "14%"},
+                                        {"if": {"column_id": "pvalue"}, "width": "14%",
+                                         "textAlign": "right"},
+                                        {"if": {"column_id": "strength_bar"}, "width": "56%"},
+                                    ],
                                     style_header={
-                                        "fontWeight": "700", "fontSize": "18px",
+                                        "fontWeight": "700", "fontSize": "16px",
                                         "color": _MUTED, "letterSpacing": "0.05em",
                                         "border": "none",
                                         "borderBottom": f"2px solid {_BORDER}",
                                         "background": "#fff",
                                     },
+                                    style_header_conditional=[
+                                        {"if": {"column_id": "pvalue"}, "textAlign": "right"},
+                                    ],
                                     style_data_conditional=[{
                                         "if": {"state": "selected"},
                                         "backgroundColor": _G_LITE,
                                         "border": f"1px solid {_G}",
                                     }],
-                                ),
-                            ], style={"flex": "1", "paddingLeft": "28px", "minWidth": "0"}),
-                        ], style={"display": "flex", "alignItems": "flex-start",
-                                  "marginBottom": "32px"}),
+                                ), id="partner-table-wrapper"),
+                            ]), type="circle", color=_G),
+                        ], style={"marginBottom": "32px"}),
 
                         # Network panel
                         _panel("Co-essential genetic interaction network", [
@@ -766,16 +828,7 @@ app.layout = html.Div([
                                             "color": _TEXT, "marginRight": "10px"}),
                                         html.Span("■ Input gene", style={
                                             "fontSize": "18px", "color": _MULTI_NODE_COLOR,
-                                            "fontWeight": "700", "marginRight": "4px"}),
-                                        html.Span("(has a pair)", style={
-                                            "fontSize": "18px", "color": _MUTED,
-                                            "marginRight": "20px"}),
-                                        html.Span("■ Input gene", style={
-                                            "fontSize": "18px", "color": _MULTI_NODE_NEUTRAL_COLOR,
-                                            "fontWeight": "700", "marginRight": "4px"}),
-                                        html.Span("(no pair)", style={
-                                            "fontSize": "18px", "color": _MUTED,
-                                            "marginRight": "20px"}),
+                                            "fontWeight": "700", "marginRight": "20px"}),
                                         html.Span("■ Extended", style={
                                             "fontSize": "18px", "color": _MULTI_EXTENDED_COLOR,
                                             "fontWeight": "700", "marginRight": "4px"}),
@@ -951,13 +1004,62 @@ def update_network_size(fdr):
     return f"{n:,} significant gene pairs at FDR ≤ {pct}%"
 
 
+# Inline styles (not a separate CSS file) for the Direction badge and
+# Statistical Confidence bar rendered inside DataTable markdown cells.
+# Colours use the Wong (2011) colourblind-safe blue/orange pair — kept
+# deliberately separate from the Perturbation Catalogue brand green/red,
+# since green+red is the classic problematic combination for red-green
+# colourblindness.
+_BADGE_STYLE = "display:inline-block;padding:3px 11px;border-radius:13px;font-size:15px;font-weight:600;color:#fff;white-space:nowrap;"
+_BADGE_POS_STYLE = _BADGE_STYLE + "background:#0072B2;"
+_BADGE_NEG_STYLE = _BADGE_STYLE + "background:#E69F00;"
+
+
+def _direction_badge_html(direction_value):
+    if direction_value >= 0:
+        return f'<span style="{_BADGE_POS_STYLE}">+ Positive</span>'
+    return f'<span style="{_BADGE_NEG_STYLE}">&minus; Negative</span>'
+
+
+def _strength_bar_html(pvalue_adj, max_strength):
+    # Fill is a light/semi-transparent tint (not solid colour) so the dark
+    # label text reads fine whether it lands on the filled or unfilled part
+    # of the bar — same trick as tskir's mockup screenshot. The -log10(FDR)
+    # scale itself is shown once, as axis tick numbers in the column header
+    # (see _partner_table_columns), not repeated per row.
+    strength = -np.log10(max(pvalue_adj, 1e-300))
+    pct = min(100, (strength / max_strength) * 100) if max_strength > 0 else 0
+    track_style = "position:relative;height:30px;background:#eef2ef;border-radius:3px;overflow:hidden;min-width:160px;"
+    fill_style = (f"position:absolute;top:0;left:0;bottom:0;width:{pct:.1f}%;"
+                  "background:rgba(0,123,83,0.35);border-radius:3px 0 0 3px;"
+                  "display:flex;align-items:center;")
+    label_style = "color:#212121;font-size:18px;font-weight:600;padding-left:8px;white-space:nowrap;"
+    return (
+        f'<div style="{track_style}"><div style="{fill_style}">'
+        f'<span style="{label_style}">{pvalue_adj:.2e}</span></div></div>'
+    )
+
+
+_PLACEHOLDER_STYLE_BASE = {
+    "textAlign": "center", "padding": "48px 20px", "fontSize": "18px",
+    "color": _MUTED, "background": _BG, "borderRadius": "6px",
+}
+_PLACEHOLDER_SHOWN  = {**_PLACEHOLDER_STYLE_BASE, "display": "block"}
+_PLACEHOLDER_HIDDEN = {**_PLACEHOLDER_STYLE_BASE, "display": "none"}
+_TABLE_SHOWN  = {"display": "block"}
+_TABLE_HIDDEN = {"display": "none"}
+
+
 # --- Single-gene explorer ---
 @app.callback(
-    Output("summary-text",          "children"),
-    Output("partner-bar",           "figure"),
-    Output("partner-table",         "data"),
-    Output("cyto-graph",            "elements"),
-    Output("single-download-btn",   "disabled"),
+    Output("summary-text",              "children"),
+    Output("partner-table",             "data"),
+    Output("partner-table",             "columns"),
+    Output("cyto-graph",                "elements"),
+    Output("single-download-btn",       "disabled"),
+    Output("partner-table-placeholder", "children"),
+    Output("partner-table-placeholder", "style"),
+    Output("partner-table-wrapper",     "style"),
     Input("gene-dropdown",  "value"),
     Input("fdr-filter",     "value"),
 )
@@ -966,17 +1068,10 @@ def update_single(gene, fdr):
     pct = int(fdr * 100)
 
     if not gene:
-        placeholder = go.Figure()
-        placeholder.update_layout(
-            xaxis={"visible": False}, yaxis={"visible": False},
-            paper_bgcolor="white", plot_bgcolor="white", height=500,
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            annotations=[{"text": "Select a gene above to see its co-essential partners",
-                           "xref": "paper", "yref": "paper", "x": 0.5, "y": 0.5,
-                           "showarrow": False,
-                           "font": {"size": 15, "color": _MUTED}}],
-        )
-        return "Select a gene to explore its co-essential partners.", placeholder, [], [], True
+        placeholder_text = ("Please select a gene from the Search gene box above "
+                             "to see its co-essential partners.")
+        return ("Select a gene to explore its co-essential partners.", [], _partner_table_columns(), [], True,
+                placeholder_text, _PLACEHOLDER_SHOWN, _TABLE_HIDDEN)
 
     mask = (df["source"] == gene) | (df["target"] == gene)
     sub = df[mask].copy()
@@ -986,42 +1081,21 @@ def update_single(gene, fdr):
     sub = sub[["partner", "pvalue", "pvalue_adj", "direction"]].sort_values("pvalue_adj")
 
     if sub.empty:
-        placeholder = go.Figure()
-        placeholder.update_layout(
-            xaxis={"visible": False}, yaxis={"visible": False},
-            paper_bgcolor="white", plot_bgcolor="white", height=500,
-            margin={"l": 0, "r": 0, "t": 0, "b": 0},
-            annotations=[{"text": f"No co-essential partners found for {gene} at FDR ≤ {pct}%.",
-                           "xref": "paper", "yref": "paper", "x": 0.5, "y": 0.5,
-                           "showarrow": False,
-                           "font": {"size": 15, "color": _MUTED}}],
-        )
         summary = f"No co-essential partners found for {gene} at FDR ≤ {pct}%."
         query_node = [{"data": {"id": gene, "bg_color": "#D55E00"}, "classes": "query"}]
-        return summary, placeholder, [], query_node, True
+        placeholder_text = f"No co-essential partners found for {gene} at FDR ≤ {pct}%."
+        return (summary, [], _partner_table_columns(), query_node, True,
+                placeholder_text, _PLACEHOLDER_SHOWN, _TABLE_HIDDEN)
 
     summary = f"{gene} has {len(sub):,} co-essential partner(s) at FDR ≤ {pct}%."
 
-    top = sub.head(20).copy()
-    top["-log10(FDR)"] = -np.log10(top["pvalue_adj"].clip(lower=1e-300))
-    fig = px.bar(
-        top, x="-log10(FDR)", y="partner", orientation="h",
-        title=f"Top co-essential partners of {gene}  (FDR ≤ {pct}%)",
-        labels={"partner": ""},
-        height=500,
-    )
-    fig.update_traces(marker_color=_G)
-    fig.update_layout(
-        yaxis={"categoryorder": "total ascending",
-               "tickfont": {"size": 16}, "ticksuffix": "  "},
-        plot_bgcolor="white", paper_bgcolor="white",
-        font={"family": "'Segoe UI', Arial, sans-serif", "color": _TEXT, "size": 16},
-        title={"font": {"size": 18, "color": _TEXT}},
-        xaxis={"gridcolor": _BORDER, "linecolor": _BORDER, "title": "−log₁₀(FDR)",
-               "tickfont": {"size": 17}, "title_font": {"size": 18}},
-        margin={"l": 10, "t": 52, "b": 52, "r": 10},
-    )
+    # Bar length is scaled relative to this gene's own strongest partner, so
+    # the scale stays meaningful across every page of this gene's table.
+    max_strength = -np.log10(max(sub["pvalue_adj"].min(), 1e-300))
+    sub["direction_badge"] = sub["direction"].apply(_direction_badge_html)
+    sub["strength_bar"] = sub["pvalue_adj"].apply(_strength_bar_html, max_strength=max_strength)
 
+    top = sub.head(20)
     top_partners = set(top["partner"].tolist())
 
     # direction per partner (used for node colour)
@@ -1043,7 +1117,8 @@ def update_single(gene, fdr):
         edges.append({"data": {"source": row["source"], "target": row["target"],
                                 "weight": w}})
 
-    return summary, fig, sub.to_dict("records"), nodes + edges, False
+    return (summary, sub.to_dict("records"), _partner_table_columns(), nodes + edges, False,
+            "", _PLACEHOLDER_HIDDEN, _TABLE_SHOWN)
 
 
 # --- Tab 1: example-gene buttons load a gene into the dropdown ---
@@ -1164,22 +1239,19 @@ def update_multi(_n_blur, _example_btn, fdr, degree, text, version):
                                 "weight": w, "module": edge_mod,
                                 "edge_color": edge_color}})
 
-    # Input genes with at least one pair to ANOTHER INPUT GENE are dark
-    # grey; input genes with no such pair are light grey — this stays fixed
-    # regardless of the degree-of-interaction slider, even if expansion adds
-    # edges from that gene to extended genes. Genes added via
-    # degree-of-interaction expansion are purple.
-    seed_mask = edges_df["source"].isin(gene_set) & edges_df["target"].isin(gene_set)
-    seed_genes_with_pairs = (set(edges_df.loc[seed_mask, "source"])
-                             | set(edges_df.loc[seed_mask, "target"]))
+    # All input genes share one colour, regardless of whether they have a
+    # pair to another input gene specifically — whether a gene is connected
+    # is already visible from the rendered graph itself, and distinguishing
+    # "has a pair" vs "no pair" became actively misleading once
+    # degree-of-interaction expansion could give a previously-isolated input
+    # gene real partners while it kept showing the "no pair" colour. Genes
+    # added via degree-of-interaction expansion are purple.
     nodes = []
     for g in all_genes_sorted:
         if gene_degree.get(g, 0) > 0:
             bg_color = _MULTI_EXTENDED_COLOR
-        elif g in seed_genes_with_pairs:
-            bg_color = _MULTI_NODE_COLOR
         else:
-            bg_color = _MULTI_NODE_NEUTRAL_COLOR
+            bg_color = _MULTI_NODE_COLOR
         nodes.append({"data": {"id": g, "bg_color": bg_color,
                                "module": gene_module.get(g, 0),
                                "degree": gene_degree.get(g, 0)}})

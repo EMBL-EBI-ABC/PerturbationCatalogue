@@ -570,7 +570,55 @@ bar-chart/table layout, and a rough mockup of a single combined per-gene-row tab
 with an inline bar visualization — described as "a crude AI mockup... just conveys
 a general idea," not to be followed exactly.)
 
-**Status:** Open.
+**Decision:** Implemented, closely following his mockup layout (compared directly
+against his attached screenshots, not just his description). Removed the
+separate bar chart (`dcc.Graph`) entirely — single `dash_table.DataTable`, one
+row per gene, full panel width instead of sharing 50% with a chart (that 50%
+split was the actual root cause of the table being cut off, regardless of
+browser/zoom — confirmed by reading his screenshot).
+
+Column order now matches his layout: Partner Gene → Direction (badge) → GLS
+P-value → Statistical Confidence (bar). Specifics:
+- **Direction** is a coloured badge ("+ Positive" / "− Negative") instead of a
+  raw ±1.0 number, with a legend above the table spelling out what each means in
+  plain language ("co-essential gene pair" / "anti-correlated gene pair").
+  Colours kept on the Wong (2011) colourblind-safe blue/orange pair — checked
+  matching them to the Perturbation Catalogue brand green/red and reverted,
+  since green+red is the classic problematic combination for red-green
+  colourblindness.
+- **Statistical Confidence** bar length = −log₁₀(BH-adjusted p-value), scaled
+  to that gene's own strongest partner. Explicitly labelled and described as
+  confidence/significance, not biological effect size (GLS doesn't report an
+  effect size — see Comment 3/Aleks's input). Bar fill is a semi-transparent
+  green with dark label text (not solid colour + white text), so the label
+  stays legible regardless of where it lands on the bar — same contrast trick
+  as tskir's mockup screenshot. Tried adding a tskir-style tick-mark axis
+  showing the −log10(FDR) scale in the column header; reverted after feedback
+  that it didn't look right — bar stayed, axis removed.
+- Added explicit column widths and matched the GLS P-VALUE header's alignment
+  to its data (was previously left-aligned over right-aligned numbers).
+- Added a friendly placeholder ("Please select a gene from the Search gene box
+  above...") instead of a blank table when no gene is selected, and a similar
+  message when a gene has zero partners.
+- Initially added `app/assets/partner_table.css` (new file, auto-loaded by Dash)
+  for the badge/bar styling. Per request to avoid a new separate file, removed
+  it and folded the styling into inline `style="..."` strings directly in
+  `_direction_badge_html()`/`_strength_bar_html()`, plus inline `style={}` dicts
+  on the legend's badge spans. The one rule that can't be done inline
+  (flattening the markdown renderer's default `<p>` margin inside table cells)
+  is injected via `app.index_string` instead — still entirely within
+  `coessentiality_feature_pc.py`, no new file.
+- Documentation consistency pass: found and fixed real drift between the docs
+  and the actual current app — `README.md`'s Tabs table and dependencies table
+  still described the removed bar chart and listed `plotly` as a dependency
+  (no longer imported anywhere, removed from `requirements.txt` too);
+  `documentation/single_gene_workflow.md` still described the old separate
+  bar-chart+table layout and had a leftover "PC green = positive" label from
+  an earlier (reverted) colour experiment.
+
+**Status:** In progress — bare-minimum structural fix shipped (single
+full-width table, no more misalignment/cutoff), but the look/feel is not yet
+finalized; expect further visual iteration before calling this resolved.
 
 ## Comment 18 — Drop the "input gene (no pair)" vs "(has a pair)" colour distinction in multi-gene network (`app/coessentiality_feature_pc.py:602`)
 
@@ -583,4 +631,14 @@ co-essential partners in the network before expansion (as this will be very obvi
 visually anyway). (Reviewer attached a screenshot showing PTEN and BRCA1 coloured
 differently as input nodes despite both having partners post-expansion.)
 
-**Status:** Open.
+**Decision:** Agreed and implemented exactly as suggested. All input genes now
+render the same near-black colour (`_MULTI_NODE_COLOR`) regardless of whether
+they have a pair to another input gene specifically. Removed
+`_MULTI_NODE_NEUTRAL_COLOR` and the `seed_genes_with_pairs` branch entirely
+(not just hidden — the distinction no longer exists in the code), collapsed
+the legend from two "Input gene" entries down to one, and updated
+`documentation/gene_list_workflow.md`'s node-colour table to match.
+
+**Status:** Resolved. Verified live in the running app — legend now shows a
+single "Input gene" entry, and a gene that's isolated before expansion but
+gains real partners after expansion renders consistently.
