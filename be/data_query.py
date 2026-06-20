@@ -491,6 +491,12 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     if not cleaned_query:
         return []
 
+    if "|" in cleaned_query:
+        parts = [p.strip() for p in cleaned_query.split("|") if p.strip()]
+        if all(p.startswith("ENSG") for p in parts):
+            return parts
+        cleaned_query = cleaned_query.replace("|", " ")
+
     es_client = db_pools.get("es")
     if not es_client:
         raise HTTPException(status_code=500, detail="Elasticsearch pool not initialized")
@@ -592,13 +598,18 @@ async def build_pg_filters(
 
         db_field = TARGET_QUERY_FIELDS[key]
         ensg_ids = await resolve_target_query_to_ensg(value)
-        if not ensg_ids:
+        
+        # Include raw values in case it's a control or exact ID not found in ES
+        raw_values = [v.strip() for v in value.split("|") if v.strip()]
+        search_terms = list(set(ensg_ids + raw_values))
+        
+        if not search_terms:
             has_empty_target_resolution = True
             filters.append("FALSE")
             continue
 
-        params.append(ensg_ids)
-        filters.append(f"{db_field} = ANY(${len(params)}::text[])")
+        params.append(search_terms)
+        filters.append(f"string_to_array({db_field}, '|') && ${len(params)}::text[]")
 
     for key, value in query_params.items():
         if key not in api_to_db:
@@ -626,8 +637,19 @@ async def build_pg_filters(
                     params.append(float(value))
         # Simple string filter
         elif isinstance(value, str) and "_" not in value:
-            filters.append(f"{db_field} = ${len(params) + 1}")
-            params.append(value)
+            if db_field in ["perturbed_target_ensg", "effect_gene_ensg"]:
+                if "|" in value:
+                    values = [v.strip() for v in value.split("|") if v.strip()]
+                    if values:
+                        params.append(values)
+                    else:
+                        continue
+                else:
+                    params.append([value])
+                filters.append(f"string_to_array({db_field}, '|') && ${len(params)}::text[]")
+            else:
+                filters.append(f"{db_field} = ${len(params) + 1}")
+                params.append(value)
         # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
         elif isinstance(value, str):
             condition, condition_params = parse_numeric_filter(db_field, value)
