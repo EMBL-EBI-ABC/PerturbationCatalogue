@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
-from target_search import build_target_exact_query, build_target_fuzzy_query
+from target_search import build_target_fuzzy_query
 
 load_dotenv()
 
@@ -385,19 +385,7 @@ async def perform_search(
 
     # Execute search with aggregations
     try:
-        response = None
-        if not is_dataset_mode and query and query.strip():
-            exact_search_kwargs = {
-                **search_kwargs,
-                "query": build_target_exact_query(query, filters, FACET_FIELDS),
-            }
-            exact_response = await db_pools["es"].search(**exact_search_kwargs)
-            exact_total = exact_response.get("hits", {}).get("total", {}).get("value", 0)
-            if exact_total > 0:
-                response = exact_response
-
-        if response is None:
-            response = await db_pools["es"].search(**search_kwargs)
+        response = await db_pools["es"].search(**search_kwargs)
     except Exception as e:
         error_detail = str(e)
         raise HTTPException(

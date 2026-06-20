@@ -11,7 +11,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
-from target_search import build_target_exact_query, build_target_fuzzy_query
+from target_search import build_target_fuzzy_query
 
 
 # --- Database Connection Management ---
@@ -502,18 +502,10 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
         "track_total_hits": True,
     }
 
-    exact_response = await es_client.search(
+    response = await es_client.search(
         index=ES_TARGET_SUMMARY,
-        body={**search_body, "query": build_target_exact_query(cleaned_query)},
+        body={**search_body, "query": build_target_fuzzy_query(cleaned_query)},
     )
-    exact_total = exact_response.get("hits", {}).get("total", {}).get("value", 0)
-    response = exact_response
-
-    if exact_total == 0:
-        response = await es_client.search(
-            index=ES_TARGET_SUMMARY,
-            body={**search_body, "query": build_target_fuzzy_query(cleaned_query)},
-        )
 
     ensg_ids = []
     seen = set()

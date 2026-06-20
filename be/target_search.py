@@ -66,33 +66,6 @@ def _bool_or_match_all(
     return {"match_all": {}}
 
 
-def build_target_exact_query(
-    query: str,
-    filters: Optional[Dict[str, List[str]]] = None,
-    facet_fields: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Build a target query that only matches exact ENSGs, symbols, and aliases."""
-    cleaned_query = query.strip()
-    filter_clauses = _target_filter_clauses(filters, facet_fields or [])
-    should_clauses = []
-
-    if cleaned_query:
-        for field, boost in TARGET_EXACT_SEARCH_FIELDS.items():
-            should_clauses.append(
-                {
-                    "term": {
-                        field: {
-                            "value": cleaned_query,
-                            "case_insensitive": True,
-                            "boost": boost,
-                        }
-                    }
-                }
-            )
-
-    return _bool_or_match_all(should_clauses, filter_clauses)
-
-
 def build_target_fuzzy_query(
     query: Optional[str],
     filters: Optional[Dict[str, List[str]]] = None,
