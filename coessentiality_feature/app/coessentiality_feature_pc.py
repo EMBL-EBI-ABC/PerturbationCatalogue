@@ -231,7 +231,10 @@ def _module_highlight_rules(cluster_id):
 # =============================================================================
 MULTI_MAX_DEGREE              = 2     # max degree-of-interaction slider value — beyond this the
                                        # network grows too large to interpret
-MULTI_MAX_EXPANDED_GENES      = 300   # safety cap on total network size after degree-of-interaction expansion
+MULTI_MAX_EXPANDED_GENES      = 500   # safety ceiling on total rendered network size (raw pasted input
+                                       # AND degree-of-interaction expansion) — only kicks in when
+                                       # exceeded; truncation keeps the most statistically significant
+                                       # genes (PR #365 comment 9), not an arbitrary/random subset
 MULTI_MIN_MODULE_GENES        = 2      # smallest connected component counted as a "module"
 MULTI_MIN_GENES_FOR_GO        = 4      # only modules with MORE than 3 genes are GO:BP-annotated
                                        # (a 2-3 gene module is too small for a meaningful enrichment test)
@@ -292,6 +295,38 @@ def _weighted_set_cover(sig_df):
     return pd.DataFrame(kept) if kept else pd.DataFrame(columns=sig_df.columns)
 
 
+def _truncate_genes_by_significance(gene_set, df, cap):
+    """Truncate gene_set down to at most `cap` genes if it exceeds the cap —
+    deterministically, keeping genes that participate in the most
+    statistically significant pairs (smallest adjusted p-value) within the
+    set first, rather than an arbitrary/random subset (PR #365 comment 9).
+    No-op if gene_set is already within the cap. Returns (kept, truncated).
+    """
+    if len(gene_set) <= cap:
+        return gene_set, False
+
+    mask = df["source"].isin(gene_set) & df["target"].isin(gene_set)
+    induced = df.loc[mask, ["source", "target", "pvalue_adj"]].sort_values("pvalue_adj")
+
+    kept = set()
+    for src, tgt, _ in induced.itertuples(index=False):
+        new = {g for g in (src, tgt) if g not in kept}
+        if not new:
+            continue
+        if len(kept) + len(new) > cap:
+            break
+        kept |= new
+
+    if len(kept) < cap:
+        # Fill any remaining room with leftover genes that have no
+        # significant edge within this set at all (e.g. isolated inputs),
+        # in deterministic alphabetical order.
+        leftover = sorted(gene_set - kept)
+        kept |= set(leftover[: cap - len(kept)])
+
+    return kept, True
+
+
 def _expand_by_degree(seed_genes, df, max_degree):
     """BFS-expand a gene set along co-essential edges, up to max_degree hops.
 
@@ -299,13 +334,15 @@ def _expand_by_degree(seed_genes, df, max_degree):
     df:         FDR-filtered network to search for neighbours (full df_all,
                 not just the induced sub-network).
 
-    Returns (all_genes, gene_degree) where gene_degree maps gene -> hop
-    distance from the seed set (0 for seed genes). Expansion stops early if
-    MULTI_MAX_EXPANDED_GENES is reached.
+    Returns (all_genes, gene_degree, truncated) where gene_degree maps
+    gene -> hop distance from the seed set (0 for seed genes), and
+    truncated is True if MULTI_MAX_EXPANDED_GENES was reached and some
+    candidate genes had to be dropped.
     """
     gene_degree = {g: 0 for g in seed_genes}
     all_genes = set(seed_genes)
     frontier = set(seed_genes)
+    truncated = False
 
     for d in range(1, max_degree + 1):
         if not frontier or len(all_genes) >= MULTI_MAX_EXPANDED_GENES:
@@ -317,13 +354,24 @@ def _expand_by_degree(seed_genes, df, max_degree):
             break
         room = MULTI_MAX_EXPANDED_GENES - len(all_genes)
         if len(new_genes) > room:
-            new_genes = set(list(new_genes)[:room])
+            # Rank candidates by their best (smallest) adjusted p-value edge
+            # to the current frontier — deterministic and principled,
+            # instead of list(set)[:room]'s hash-order-dependent arbitrary cut.
+            candidate_mask = mask & (df["source"].isin(new_genes) | df["target"].isin(new_genes))
+            best_p = {}
+            for src, tgt, p in df.loc[candidate_mask, ["source", "target", "pvalue_adj"]].itertuples(index=False):
+                for g in (src, tgt):
+                    if g in new_genes and (g not in best_p or p < best_p[g]):
+                        best_p[g] = p
+            ranked = sorted(new_genes, key=lambda g: (best_p.get(g, 1.0), g))
+            new_genes = set(ranked[:room])
+            truncated = True
         for g in new_genes:
             gene_degree[g] = d
         all_genes |= new_genes
         frontier = new_genes
 
-    return all_genes, gene_degree
+    return all_genes, gene_degree, truncated
 
 
 def _detect_modules(genes, edges_df):
@@ -1195,13 +1243,19 @@ def update_multi(_n_blur, _example_btn, fdr, degree, text, version):
     gene_set = set(genes)
     degree = int(degree or 0)
 
+    # Truncate the raw pasted input itself if it alone exceeds the ceiling —
+    # previously only expansion was capped, so pasting a huge list directly
+    # (degree=0) went straight to Cytoscape uncapped and could crash the
+    # browser (PR #365 comment 9).
+    gene_set, input_truncated = _truncate_genes_by_significance(gene_set, df, MULTI_MAX_EXPANDED_GENES)
+
     # Degree-of-interaction expansion — BFS out from the input genes along
     # the FDR-filtered network. Expanded genes are tagged with their hop
     # distance so they can be coloured separately from the input genes.
     if degree > 0:
-        all_genes, gene_degree = _expand_by_degree(gene_set, df, degree)
+        all_genes, gene_degree, expansion_truncated = _expand_by_degree(gene_set, df, degree)
     else:
-        all_genes, gene_degree = gene_set, {g: 0 for g in gene_set}
+        all_genes, gene_degree, expansion_truncated = gene_set, {g: 0 for g in gene_set}, False
     all_genes_sorted = sorted(all_genes)
 
     mask = df["source"].isin(all_genes) & df["target"].isin(all_genes)
@@ -1211,12 +1265,11 @@ def update_multi(_n_blur, _example_btn, fdr, degree, text, version):
     n_added = len(all_genes) - len(gene_set)
     if n_added:
         summary += f" + {n_added} gene(s) within {degree} degree(s) of interaction"
-        if len(all_genes) >= MULTI_MAX_EXPANDED_GENES:
-            summary += f" (capped at {MULTI_MAX_EXPANDED_GENES})"
     summary += f" — {len(edges_df):,} co-essential pair(s) at FDR ≤ {pct}%."
-    if unknown:
-        summary += (f"  Not found in network: "
-                    f"{', '.join(unknown[:10])}{'…' if len(unknown) > 10 else ''}.")
+    if input_truncated or expansion_truncated:
+        summary += (f"  Network truncated to the {MULTI_MAX_EXPANDED_GENES:,} most "
+                    f"statistically significant genes (sorted by GLS p-value) "
+                    f"to preserve performance.")
 
     # Co-essential modules — connected components of the induced sub-network,
     # numbered by size (1 = largest). Cheap (no API calls), so it's safe to
@@ -1456,8 +1509,11 @@ def download_multi_pairs(_n_clicks, text, fdr, degree):
     df = df_all[df_all["pvalue_adj"] <= fdr]
     gene_set = set(genes)
     degree = int(degree or 0)
+    # Same truncation as the on-screen network (update_multi), so the
+    # download matches what's actually displayed.
+    gene_set, _ = _truncate_genes_by_significance(gene_set, df, MULTI_MAX_EXPANDED_GENES)
     if degree > 0:
-        all_genes, gene_degree = _expand_by_degree(gene_set, df, degree)
+        all_genes, gene_degree, _ = _expand_by_degree(gene_set, df, degree)
     else:
         all_genes, gene_degree = gene_set, {g: 0 for g in gene_set}
 

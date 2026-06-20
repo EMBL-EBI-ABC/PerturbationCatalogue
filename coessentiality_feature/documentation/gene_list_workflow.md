@@ -15,10 +15,10 @@ classDef file  fill:#4C72B0,color:#fff,stroke:none
 classDef data  fill:#2E7D52,color:#fff,stroke:none
 
 A[depmap_version.txt]:::file --> B[FDR 10% network CSV\nsource · target · pvalue_adj · direction]:::data
-A --> C[CRISPRGeneEffect CSV\n→ number of cancer cell lines]:::data
-A --> D[genes.txt\n→ number of genes profiled]:::data
+A --> C[metadata.json\n→ n_cell_lines, n_genes_profiled]:::data
+A --> D[genes.txt\n→ full profiled gene list]:::data
 B --> E[(df_all loaded into memory\nall callbacks filter this at query time)]:::data
-B --> F[all_genes set\nused to validate user input]:::data
+D --> F[all_genes set\nused to validate user input]:::data
 ```
 
 ---
@@ -41,11 +41,12 @@ A([Paste gene list, set FDR / degree slider,\nor click 'Load example gene list']
 subgraph CB1["Callback 1 — update_multi\nruns on blur, FDR change, degree-slider change, or example-button click"]
     B[Parse & validate gene symbols]:::fast
     C[Filter network at chosen FDR\nkeep pairs at adj. p ≤ FDR]:::fast
-    D[Degree-of-interaction expansion\nBFS out from input genes over the\nFDR-filtered network, N hops, capped at 300 genes]:::fast
+    P[Truncate pasted input itself if it alone\nexceeds 500 genes — keeps genes in the\nmost statistically significant pairs first]:::fast
+    D[Degree-of-interaction expansion\nBFS out from input genes over the\nFDR-filtered network, N hops, capped at 500 genes\nsame significance-based truncation if exceeded]:::fast
     E[Build induced sub-network\nkeep pairs where both genes are in the expanded set]:::fast
     F[Find connected components\nnumber by size  1 = largest\ndrop components with fewer than 2 genes]:::fast
     T[Tag each node & edge\nwith module ID + degree-of-interaction hop]:::fast
-    B --> C --> D --> E --> F --> T
+    B --> C --> P --> D --> E --> F --> T
 end
 
 A --> B
@@ -108,7 +109,9 @@ By default the network shows only pairs **between** the genes the user typed in.
 - **1**: also include genes that are directly co-essential with at least one input gene.
 - **2**: also include genes one further hop out from those.
 
-Expansion is a breadth-first search over the FDR-filtered network, capped at 300 total genes (`MULTI_MAX_EXPANDED_GENES`) so the layout stays readable and the callback stays fast.
+Expansion is a breadth-first search over the FDR-filtered network. The total network size — the raw pasted input **and** any expansion — is capped at 500 genes (`MULTI_MAX_EXPANDED_GENES`) so the browser doesn't choke trying to render an oversized graph. This applies even at degree 0: pasting a very large gene list directly (with no expansion at all) is capped the same way, since rendering thousands of nodes can crash the page regardless of how they got there.
+
+When truncation is needed, genes are kept **by statistical significance** — those involved in the most significant pairs (smallest adjusted p-value) within the candidate set survive first — rather than an arbitrary or random subset. A summary message ("Network truncated to the 500 most statistically significant genes...") appears whenever this happens. The "Download pairs (CSV)" button applies the same truncation, so the download always matches what's on screen.
 
 **Node colours:**
 

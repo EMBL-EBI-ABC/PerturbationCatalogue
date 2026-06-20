@@ -382,6 +382,54 @@ Cytoscape.js rendering/interaction performance at 500/1000+ nodes, or time the
 callback at larger sizes) or concede there's no hard technical reason and the cap
 could be raised or made configurable.
 
+**Aleks's follow-up (2026-06-19):** Proposed a concrete plan — rank pairs by
+p-value (no sign-stratification), raise the cap to something Cytoscape-safe,
+truncate by p-value if still over, and show a "truncated for performance" message.
+
+**Real-world confirmation:** generated 10,000 random HGNC protein-coding gene
+symbols and pasted them into the app to stress-test it — **it crashed**. The
+backend process stayed alive and error-free throughout (confirmed via logs/HTTP
+checks), so the crash was on the frontend (Cytoscape trying to render the
+network), not a Python exception. This also exposed a second, more direct bug:
+**the cap only ever applied during degree-of-interaction expansion** — pasting a
+huge list directly with the slider at 0 went straight to Cytoscape completely
+uncapped. Of the 10,000 pasted genes, 8,756 matched the DepMap panel; even after
+filtering to *only* FDR≤10% significant pairs among them (no cap at all), the
+induced sub-network was still 5,380 genes / 7,165 pairs — confirming a hard
+cap is still necessary even with significance filtering, since "significant"
+does not mean "small" for a large, well-connected input set. Also tested and
+ruled out a percentage-based cap (e.g. "keep top 25%") — it would over-truncate
+small/normal networks that are already safe to render while still not
+guaranteeing safety for huge ones; an absolute ceiling, applied only when
+exceeded, is the right mechanism.
+
+**Decision:** Implemented Aleks's plan, extended to cover both cases:
+- New `_truncate_genes_by_significance()` helper: ranks genes by their best
+  (smallest) adjusted p-value within the candidate set, deterministically keeps
+  the top N up to the cap (no more hash-order randomness), with any remaining
+  room filled by leftover/isolated genes in alphabetical order.
+- Applied to the **raw pasted gene set itself**, before any expansion — fixes
+  the crash directly.
+- Applied inside `_expand_by_degree()`, replacing `list(new_genes)[:room]` with
+  the same significance-ranking logic (the original non-determinism complaint).
+- `MULTI_MAX_EXPANDED_GENES` raised from 300 to **500** (no browser-testing
+  tooling available to find an exact safe ceiling; this is a starting point for
+  further manual testing, not a measured limit).
+- Added a visible message whenever truncation fires: "Network truncated to the
+  500 most statistically significant genes (sorted by GLS p-value) to preserve
+  performance."
+- The "Download pairs (CSV)" button applies the same truncation, so downloads
+  match what's displayed.
+- Removed the "Not found in network: gene1, gene2, ..." list from the summary
+  for this view — not informative at scale (e.g. listing the first 10 of 1,244
+  unmatched genes from a 10,000-gene paste); the equivalent message for the
+  separate "fewer than 2 valid genes" error case was left unchanged since it's
+  still useful there (small lists, likely typos).
+
+**Status:** Resolved. Re-tested live with the same 10,000-gene file after the
+fix — confirmed working (no crash, cap and message behave as expected). Reply
+not yet posted to the PR thread.
+
 ## Comment 10 — Enrichr dependency for GO enrichment (`app/coessentiality_feature_pc.py:1201`)
 
 **Reviewer's comment:** We should migrate this so that enrichment is performed
