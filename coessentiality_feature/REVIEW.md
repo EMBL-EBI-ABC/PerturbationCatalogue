@@ -108,8 +108,10 @@ app code/UI labels, README, workflow docs, and the existing
 values unchanged). Magnitude (saving the actual `GLS_coef` instead of just its
 sign) was scoped out of this fix.
 
-**Status:** Resolved (naming) — magnitude question remains open.
-**🔵 Needs discussion with @AleksZakirov** — whether to preserve coefficient magnitude.
+**Status:** Resolved. Naming fixed; on the magnitude question, agreed (👍 on
+the PR thread) with Aleks's input below that there's no single well-defined
+magnitude to store without picking an arbitrary directional convention —
+not pursuing further.
 
 **@AleksZakirov's input (2026-06-18):** Pointed to the paper's Methods, verified
 verbatim: *"although the GLS P value is consistent regardless of which of the two
@@ -183,10 +185,11 @@ layers, both worth doing:
      imputation strategy from Comment 5, FDR rule from Comment 2, etc.) instead of
      reasoning about each in isolation.
 
-**Status:** Partially addressed — CORUM+GLS MVP implemented and produces a sane
-result (see below). STRING/hu.MAP/DoRothEA and the Pearson comparison still
-open.
-**🔵 Needs discussion with @AleksZakirov** — what benchmark/metrics to adopt.
+**Status:** Resolved — CORUM+GLS validation implemented and produces a sane
+result (see below), with a side-by-side comparison against Wainberg et al.'s
+own published CORUM number added on top. STRING/hu.MAP/DoRothEA and the
+Pearson/bias-correction comparison deliberately **not** pursued — see
+"Closing this out" below for why.
 
 **@AleksZakirov's input (2026-06-18):** Pointed out the paper already did
 extensive benchmarking — Figure 2 and Extended Data Figure 4 ("GLS improves
@@ -206,27 +209,40 @@ gold-standard database) / (% of all possible pairs found in it); x-axis is top-N
 partner ranks per gene (N=1..10); methods compared include GLS with/without bias
 correction and Pearson with/without bias correction.
 
-Built a first slice in `pipeline_validation_corum/validate_corum_enrichment.py`
-(new folder, kept separate from the production pipeline since this is a one-off
-validation, not a monthly pipeline step): CORUM gold standard (fetched via
-`gseapy.get_library(name="CORUM")` — same Enrichr mechanism as the GO:BP fix in
-Comment 10, 1,658 human complexes, gene-symbol-native so no ID-mapping needed),
-evaluated against GLS only (no Pearson comparison yet).
+Built a standalone maintainer tool in `pipeline_validation_corum/` (new folder,
+deliberately kept separate from the production pipeline since this is a
+one-off sanity check, not a monthly pipeline step or a CI-wired regression
+test): CORUM gold standard (fetched via `gseapy.get_library(name="CORUM")` —
+same Enrichr mechanism as the GO:BP fix in Comment 10, 1,658 human complexes,
+gene-symbol-native so no ID-mapping needed), evaluated against GLS only (no
+Pearson comparison). Built as `corum_validation.ipynb` — an interactive
+notebook (rather than a plain script) so anyone re-running it can see the
+head samples of both raw inputs, the CORUM-to-pairwise processing step with a
+worked example, and the results table/plot directly.
 
-**Result** (full table and interpretation in `pipeline_validation_corum/RESULTS.md`):
-across 2,284 genes with ≥1 CORUM complex-mate in our 17,087-gene panel, GLS's
-top-1 ranked partner is the gene's *actual* CORUM complex-mate 26.9% of the time,
-vs. a 0.016% background rate — **~1,658x enrichment over chance at N=1**,
+**Result** (full table, mermaid flowchart, and interpretation in
+`pipeline_validation_corum/RESULTS.md`): across 2,284 genes with ≥1 CORUM
+complex-mate in our 17,087-gene panel, GLS's top-1 ranked partner is the
+gene's *actual* CORUM complex-mate 26.9% of the time, vs. a 0.016% background
+rate — **~1,658x enrichment over chance at N=1** (Fisher's exact p < 1e-300),
 declining smoothly to ~723x at N=10. Sane, expected pattern (best-ranked
 prediction more reliable than 10th-best), and consistent with the literature
 finding that complex membership is one of the strongest co-essentiality signals.
 **Directly answers "does this pipeline produce sensible results?" — yes.**
 
-**Explicitly not yet covered** (see RESULTS.md caveats): STRING/hu.MAP/DoRothEA,
-the Pearson comparison (needed to actually validate Comment 1's bias-correction
-decision empirically, not just via documentation), and the computational/sanity
-layer (permutation test, synthetic example) from the original analysis above.
-Not wired into CI — a manual script to re-run when needed.
+**Closing this out — comparison with Wainberg et al., and why STRING/hu.MAP/
+DoRothEA/Pearson weren't pursued:** Added a side-by-side comparison against the
+paper's own published CORUM number (~160-fold enrichment vs. our ~1,658-fold —
+see RESULTS.md for the full discussion of why these aren't perfectly
+apples-to-apples, e.g. more cell lines in 26Q1, Chronos vs. CERES). On the
+OR-bias/Pearson comparison specifically: the paper states GLS "automatically
+performs bias correction without requiring a putatively nonessential gene set
+like olfactory receptors" — i.e. Wainberg et al. already established this for
+GLS specifically, so re-deriving it ourselves via a Pearson comparison would
+be re-proving a settled finding, not adding new information. Decided CORUM
+alone is sufficient as the one validation gate; the other gold standards
+(STRING/hu.MAP/DoRothEA) were not pursued, as CORUM was judged sufficient to
+answer the core question. Replied on the PR thread with the final result.
 
 ## Comment 5 — Ad hoc NA imputation strategy (`step2_gls_coessentiality.py:53`)
 
@@ -367,10 +383,6 @@ happen to come first" has no biological rationale.
   revisit C once Comment 3's magnitude question is settled — they're naturally
   sequenced, not competing. D is worth doing regardless of ranking choice.
 
-**Status:** Open — logged for later; revisiting after Comment 3's magnitude
-decision and discussion with Aleks.
-**🔵 Needs discussion with @AleksZakirov** — truncation strategy for large networks.
-
 **@AleksZakirov's input (2026-06-18):** Asked directly — "Is there a problem with
 using more than 300 nodes in the network (apart from visibility, of course)?"
 Checked the codebase: `MULTI_MAX_EXPANDED_GENES = 300` is only ever justified in
@@ -427,8 +439,8 @@ exceeded, is the right mechanism.
   still useful there (small lists, likely typos).
 
 **Status:** Resolved. Re-tested live with the same 10,000-gene file after the
-fix — confirmed working (no crash, cap and message behave as expected). Reply
-not yet posted to the PR thread.
+fix — confirmed working (no crash, cap and message behave as expected).
+Replied on the PR thread.
 
 ## Comment 10 — Enrichr dependency for GO enrichment (`app/coessentiality_feature_pc.py:1201`)
 

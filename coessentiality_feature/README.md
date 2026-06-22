@@ -21,8 +21,9 @@ gene co-essentiality networks from DepMap CRISPR screen data.
 9. [Cloud Deployment](#cloud-deployment)
 10. [Integration Guide](#integration-guide)
 11. [Known Constraints & Pitfalls](#known-constraints--pitfalls)
-12. [Dependencies](#dependencies)
-13. [Citation](#citation)
+12. [Validation (not part of the pipeline or app)](#validation-not-part-of-the-pipeline-or-app)
+13. [Dependencies](#dependencies)
+14. [Citation](#citation)
 
 ---
 
@@ -113,6 +114,10 @@ coessentiality_feature/
 │   └── gene_list_workflow.md              callback flow for the gene-list network tab
 ├── example_data/
 │   └── 594_DoenchJG_A375.txt             example gene list for testing the app
+├── pipeline_validation_corum/              standalone maintainer tool — NOT part of the pipeline or app, see "Validation"
+│   ├── corum_validation.ipynb
+│   ├── RESULTS.md
+│   └── CORUM.gmt
 └── required_data/                         local data directory (not committed to git)
     ├── depmap_version.txt
     ├── CRISPRGeneEffect_<version>.csv
@@ -666,6 +671,25 @@ gcloud run services update <SERVICE_NAME> \
 | No per-request file I/O | The network CSV is loaded once at startup. Restarting the Cloud Run service is the mechanism for picking up newly uploaded data; there is no hot-reload. |
 | FDR file must be 10% | The app expects the FDR 10% superset file. If only a 5% file is available, the 10% dropdown option will produce incorrect results (showing fewer pairs than expected). |
 | `GO_Biological_Process_2025.gmt` must be present | The app loads this at startup for local GO:BP enrichment; if absent, the app fails to start. Pinned, not auto-updated — see [`GO_Biological_Process_2025.gmt`](#go_biological_process_2025gmt) in Data I/O Schema for the maintenance process. |
+
+---
+
+## Validation (not part of the pipeline or app)
+
+`pipeline_validation_corum/` is a **standalone maintainer tool**, not a
+pipeline step and not run automatically by anything in this repo. It exists
+so that whoever maintains this feature in the future can manually re-check
+that the GLS pipeline's output is still biologically sensible — the same
+kind of sanity check Wainberg et al. performed in the original paper, using
+[CORUM](https://mips.helmholtz-muenchen.de/corum/) (curated,
+experimentally-verified protein complexes) as a gold standard external to
+DepMap/GLS entirely.
+
+| File | Purpose |
+|---|---|
+| `corum_validation.ipynb` | Run top to bottom against the current `required_data/` pipeline output — head samples of both raw inputs, the CORUM→pairwise processing step, the per-gene ranking, results table, a line plot, and a Fisher's exact significance test per N |
+| `RESULTS.md` | Write-up: a mermaid flowchart of the validation concept, results table, definitions of N/observed hit rate/enrichment, and a side-by-side comparison against Wainberg et al.'s own published CORUM enrichment number |
+| `CORUM.gmt` | Cached gold-standard data (pinned snapshot, fetched via `gseapy.get_library()` — same not-auto-updated philosophy as `GO_Biological_Process_2025.gmt`) |
 
 ---
 
