@@ -634,15 +634,28 @@ P-value → Statistical Confidence (bar). Specifics:
   matching them to the Perturbation Catalogue brand green/red and reverted,
   since green+red is the classic problematic combination for red-green
   colourblindness.
-- **Statistical Confidence** bar length = −log₁₀(BH-adjusted p-value), scaled
-  to that gene's own strongest partner. Explicitly labelled and described as
+- **Statistical Confidence** bar length = −log₁₀(BH-adjusted p-value) on a
+  **fixed, labelled axis** (rounded up to a "nice" round number — 10, 20, 30,
+  40, 50, 75...— above that gene's own strongest partner), not a percentage
+  relative to that gene's own max. Explicitly labelled and described as
   confidence/significance, not biological effect size (GLS doesn't report an
-  effect size — see Comment 3/Aleks's input). Bar fill is a semi-transparent
-  green with dark label text (not solid colour + white text), so the label
-  stays legible regardless of where it lands on the bar — same contrast trick
-  as tskir's mockup screenshot. Tried adding a tskir-style tick-mark axis
-  showing the −log10(FDR) scale in the column header; reverted after feedback
-  that it didn't look right — bar stayed, axis removed.
+  effect size — see Comment 3/Aleks's input) — the column header says
+  "STATISTICAL CONFIDENCE", not "...and Strength", deliberately. Bar fill is
+  a semi-transparent green with dark label text (not solid colour + white
+  text), so the label stays legible regardless of where it lands on the bar —
+  same contrast trick as tskir's mockup screenshot. A tick-mark axis (axis
+  line, 5 ticks at 0/25/50/75/100% of the scale, and a centred
+  `−log₁₀(FDR)` caption underneath) is appended as the table's own
+  **synthetic last row**, not a separate sibling element next to the table —
+  a from-scratch sibling row drifted out of pixel alignment with the real
+  bars (the bar's track shares its flex row with a trailing confidence-value
+  label, making it narrower than the full column); reusing the literal same
+  column of the literal same table guarantees the ruler always lines up.
+- Sorting (`sort_action="custom"`) re-sorts by the real underlying field
+  (`direction`, `pvalue_adj`, etc.) rather than Dash's native sort, which
+  would otherwise sort the DIRECTION and STATISTICAL CONFIDENCE columns by
+  their rendered HTML markup text — a silent, meaningless ordering bug found
+  during this round of fixes.
 - Added explicit column widths and matched the GLS P-VALUE header's alignment
   to its data (was previously left-aligned over right-aligned numbers).
 - Added a friendly placeholder ("Please select a gene from the Search gene box
@@ -664,9 +677,11 @@ P-value → Statistical Confidence (bar). Specifics:
   bar-chart+table layout and had a leftover "PC green = positive" label from
   an earlier (reverted) colour experiment.
 
-**Status:** In progress — bare-minimum structural fix shipped (single
-full-width table, no more misalignment/cutoff), but the look/feel is not yet
-finalized; expect further visual iteration before calling this resolved.
+**Status:** In progress — structural fix (single full-width table, no more
+misalignment/cutoff) plus a full visual pass on the Statistical Confidence
+bar (fixed axis with ticks/line/caption, matching tskir's mockup) and a
+sorting bug fix are shipped. Not yet formally called resolved with the
+reviewer.
 
 ## Comment 18 — Drop the "input gene (no pair)" vs "(has a pair)" colour distinction in multi-gene network (`app/coessentiality_feature_pc.py:602`)
 

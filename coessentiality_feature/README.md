@@ -470,7 +470,7 @@ Opens at `http://localhost:8050`.
 
 | Tab | Purpose |
 |---|---|
-| Single-gene explorer | Search one gene (or click a TP53/BRCA1/KRAS quick-search button); shows a partner table (gene, direction badge, p-value, BH-adjusted confidence bar), Cytoscape network (top 20 partners), and a "Download all partners (CSV)" button for the full partner list |
+| Single-gene explorer | Search one gene (or click a TP53/BRCA1/KRAS quick-search button); shows a sortable partner table (gene, direction badge, p-value, statistical-confidence bar on a labelled −log₁₀(FDR) axis), Cytoscape network (top 20 partners), and a "Download all partners (CSV)" button for the full partner list |
 | Gene-list network | Paste a list of genes (or click "Load example gene list"); shows a Cytoscape network of significant pairs, with a degree-of-interaction slider to expand to nearby genes, a co-essential modules table with on-demand GO:BP annotation, and CSV downloads for both the network pairs and the GO:BP terms |
 
 **FDR filter** (top dropdown): applies globally to both tabs; filters the

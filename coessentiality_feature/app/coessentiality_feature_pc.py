@@ -432,7 +432,7 @@ def _partner_table_columns():
         {"name": "DIRECTION", "id": "direction_badge", "presentation": "markdown"},
         {"name": "GLS P-VALUE", "id": "pvalue", "type": "numeric",
          "format": {"specifier": ".2e"}},
-        {"name": "STATISTICAL CONFIDENCE (BH-ADJUSTED P-VALUE)",
+        {"name": "STATISTICAL CONFIDENCE",
          "id": "strength_bar", "presentation": "markdown"},
     ]
 
@@ -691,43 +691,55 @@ app.layout = html.Div([
                                            "color": _MUTED, "background": _BG,
                                            "borderRadius": "6px"},
                                 ),
-                                html.Div(dash_table.DataTable(
-                                    id="partner-table",
-                                    columns=_partner_table_columns(),
-                                    markdown_options={"html": True},
-                                    sort_action="native",
-                                    page_size=15,
-                                    style_table={"overflowX": "auto", "border": "none"},
-                                    style_cell={
-                                        "textAlign": "left", "padding": "10px 12px",
-                                        "fontSize": "18px", "border": "none",
-                                        "borderBottom": f"1px solid {_BORDER}",
-                                        "fontFamily": "inherit",
-                                        "verticalAlign": "middle",
-                                    },
-                                    style_cell_conditional=[
-                                        {"if": {"column_id": "partner"}, "width": "16%"},
-                                        {"if": {"column_id": "direction_badge"}, "width": "14%"},
-                                        {"if": {"column_id": "pvalue"}, "width": "14%",
-                                         "textAlign": "right"},
-                                        {"if": {"column_id": "strength_bar"}, "width": "56%"},
-                                    ],
-                                    style_header={
-                                        "fontWeight": "700", "fontSize": "16px",
-                                        "color": _MUTED, "letterSpacing": "0.05em",
-                                        "border": "none",
-                                        "borderBottom": f"2px solid {_BORDER}",
-                                        "background": "#fff",
-                                    },
-                                    style_header_conditional=[
-                                        {"if": {"column_id": "pvalue"}, "textAlign": "right"},
-                                    ],
-                                    style_data_conditional=[{
-                                        "if": {"state": "selected"},
-                                        "backgroundColor": _G_LITE,
-                                        "border": f"1px solid {_G}",
-                                    }],
-                                ), id="partner-table-wrapper"),
+                                html.Div([
+                                    dash_table.DataTable(
+                                        id="partner-table",
+                                        columns=_partner_table_columns(),
+                                        markdown_options={"html": True},
+                                        sort_action="custom",
+                                        sort_mode="single",
+                                        page_size=15,
+                                        style_table={"overflowX": "auto", "border": "none",
+                                                     "tableLayout": "fixed"},
+                                        style_cell={
+                                            "textAlign": "left", "padding": "10px 12px",
+                                            "fontSize": "18px", "border": "none",
+                                            "borderBottom": f"1px solid {_BORDER}",
+                                            "fontFamily": "inherit",
+                                            "verticalAlign": "middle",
+                                            "boxSizing": "border-box",
+                                        },
+                                        style_cell_conditional=[
+                                            {"if": {"column_id": "partner"}, "width": "16%"},
+                                            {"if": {"column_id": "direction_badge"}, "width": "14%"},
+                                            {"if": {"column_id": "pvalue"}, "width": "14%",
+                                             "textAlign": "right"},
+                                            {"if": {"column_id": "strength_bar"}, "width": "56%"},
+                                        ],
+                                        style_header={
+                                            "fontWeight": "700", "fontSize": "16px",
+                                            "color": _MUTED, "letterSpacing": "0.05em",
+                                            "border": "none",
+                                            "borderBottom": f"2px solid {_BORDER}",
+                                            "background": "#fff",
+                                        },
+                                        style_header_conditional=[
+                                            {"if": {"column_id": "pvalue"}, "textAlign": "right"},
+                                        ],
+                                        style_data_conditional=[{
+                                            "if": {"state": "selected"},
+                                            "backgroundColor": _G_LITE,
+                                            "border": f"1px solid {_G}",
+                                        }, {
+                                            "if": {"filter_query": '{partner} = "__AXIS__"'},
+                                            "borderBottom": "none",
+                                        }, {
+                                            "if": {"filter_query": '{partner} = "__AXIS__"',
+                                                   "column_id": "partner"},
+                                            "color": "transparent",
+                                        }],
+                                    ),
+                                ], id="partner-table-wrapper"),
                             ]), type="circle", color=_G),
                         ], style={"marginBottom": "32px"}),
 
@@ -1069,22 +1081,90 @@ def _direction_badge_html(direction_value):
     return f'<span style="{_BADGE_NEG_STYLE}">&minus; Negative</span>'
 
 
-def _strength_bar_html(pvalue_adj, max_strength):
+_AXIS_TICK_PRESETS = [10, 20, 30, 40, 50, 75, 100, 150, 200, 250, 300, 1e9]
+
+
+def _axis_max_for(max_strength):
+    """Smallest 'nice' round number >= max_strength, for axis tick labels."""
+    return next(p for p in _AXIS_TICK_PRESETS if p >= max_strength)
+
+
+# Vertical gridlines at 25/50/75% of the track, same idea as tskir's mockup
+# (an explicit numeric axis, like WebGestalt's -log10(FDR) enrichment plots)
+# rather than an unlabelled, per-row-relative fill.
+_GRIDLINE_BG = (
+    "background-image:"
+    "linear-gradient(to right, #e3e3e3 1px, transparent 1px),"
+    "linear-gradient(to right, #e3e3e3 1px, transparent 1px),"
+    "linear-gradient(to right, #e3e3e3 1px, transparent 1px);"
+    "background-size:25% 100%,50% 100%,75% 100%;"
+    "background-position:25% 0,50% 0,75% 0;"
+    "background-repeat:no-repeat;"
+)
+
+
+def _strength_bar_html(pvalue_adj, axis_max):
     # Fill is a light/semi-transparent tint (not solid colour) so the dark
     # label text reads fine whether it lands on the filled or unfilled part
-    # of the bar — same trick as tskir's mockup screenshot. The -log10(FDR)
-    # scale itself is shown once, as axis tick numbers in the column header
-    # (see _partner_table_columns), not repeated per row.
+    # of the bar — same trick as tskir's mockup screenshot. Bar length is on
+    # a fixed, labelled -log10(FDR) axis (see _confidence_axis_row) rather
+    # than a percentage relative to this gene's own strongest partner, so
+    # the bar position is directly readable against the axis ticks.
     strength = -np.log10(max(pvalue_adj, 1e-300))
-    pct = min(100, (strength / max_strength) * 100) if max_strength > 0 else 0
-    track_style = "position:relative;height:30px;background:#eef2ef;border-radius:3px;overflow:hidden;min-width:160px;"
+    pct = min(100, (strength / axis_max) * 100) if axis_max > 0 else 0
+    track_style = ("position:relative;height:30px;background:#eef2ef;"
+                   "border-radius:3px;overflow:hidden;min-width:160px;" + _GRIDLINE_BG)
     fill_style = (f"position:absolute;top:0;left:0;bottom:0;width:{pct:.1f}%;"
                   "background:rgba(0,123,83,0.35);border-radius:3px 0 0 3px;"
                   "display:flex;align-items:center;")
     label_style = "color:#212121;font-size:18px;font-weight:600;padding-left:8px;white-space:nowrap;"
+    value_style = f"color:{_MUTED};font-size:16px;white-space:nowrap;"
     return (
-        f'<div style="{track_style}"><div style="{fill_style}">'
+        f'<div style="display:flex;align-items:center;gap:8px;">'
+        f'<div style="{track_style}flex:1;"><div style="{fill_style}">'
         f'<span style="{label_style}">{pvalue_adj:.2e}</span></div></div>'
+        f'<span style="{value_style}">{strength:.1f}</span></div>'
+    )
+
+
+def _confidence_axis_html(axis_max):
+    """Ruler (line + ticks) for the -log10(FDR) scale, as a synthetic last
+    row of the partner table rather than a separate sibling element.
+
+    A sibling row built from scratch can never be guaranteed to land in the
+    same pixel position as the real bars: the bar's track is a flex child
+    that shares its row with the trailing confidence-value label (flex:1,
+    gap:8px, ~62px reserved for the label), so the track is narrower than
+    the full cell. Replicating that math separately is exactly the kind of
+    thing that drifts out of alignment. Reusing the literal same column of
+    the literal same table guarantees the ruler always lines up with the
+    bars above it, regardless of column width, padding, or viewport size.
+    """
+    fracs = (0, 0.25, 0.5, 0.75, 1.0)
+    ticks = [axis_max * f for f in fracs]
+    tick_html = "".join(
+        f'<div style="position:absolute;left:{frac * 100}%;top:0;width:1px;'
+        f'height:6px;background:{_MUTED};transform:translateX(-0.5px);"></div>'
+        f'<span style="position:absolute;left:{frac * 100}%;top:9px;'
+        f'transform:{"translateX(-50%)" if frac > 0 else "none"};'
+        f'color:{_MUTED};font-size:16px;">{t:.0f}</span>'
+        for frac, t in zip(fracs, ticks)
+    )
+    axis_line = (f'<div style="position:absolute;left:0;right:0;top:0;'
+                 f'height:1px;background:{_BORDER};"></div>')
+    # Caption sits centred, below the tick numbers (not floating to the
+    # side) — same convention as a normal chart x-axis title. Absolutely
+    # positioned so it doesn't affect the flex:1 sizing other rows' bars
+    # depend on for alignment.
+    axis_caption = (f'<span style="position:absolute;left:50%;top:30px;'
+                     f'line-height:20px;transform:translateX(-50%);white-space:nowrap;'
+                     f'color:{_MUTED};font-size:16px;font-style:italic;">'
+                     f'&minus;log&#8321;&#8320;(FDR)</span>')
+    return (
+        f'<div style="display:flex;align-items:center;gap:8px;">'
+        f'<div style="position:relative;height:54px;flex:1;overflow:visible;">'
+        f'{axis_line}{tick_html}{axis_caption}</div>'
+        f'<span style="visibility:hidden;font-size:16px;">00.0</span></div>'
     )
 
 
@@ -1110,8 +1190,9 @@ _TABLE_HIDDEN = {"display": "none"}
     Output("partner-table-wrapper",     "style"),
     Input("gene-dropdown",  "value"),
     Input("fdr-filter",     "value"),
+    Input("partner-table",  "sort_by"),
 )
-def update_single(gene, fdr):
+def update_single(gene, fdr, sort_by):
     df = df_all[df_all["pvalue_adj"] <= fdr]
     pct = int(fdr * 100)
 
@@ -1137,11 +1218,29 @@ def update_single(gene, fdr):
 
     summary = f"{gene} has {len(sub):,} co-essential partner(s) at FDR ≤ {pct}%."
 
-    # Bar length is scaled relative to this gene's own strongest partner, so
-    # the scale stays meaningful across every page of this gene's table.
+    # Bar length is on a fixed, labelled -log10(FDR) axis (rounded up to a
+    # "nice" number above this gene's strongest partner), so the bar position
+    # is directly readable against the axis ticks appended as the table's
+    # last row (see _confidence_axis_html) below.
     max_strength = -np.log10(max(sub["pvalue_adj"].min(), 1e-300))
+    axis_max = _axis_max_for(max_strength)
     sub["direction_badge"] = sub["direction"].apply(_direction_badge_html)
-    sub["strength_bar"] = sub["pvalue_adj"].apply(_strength_bar_html, max_strength=max_strength)
+    sub["strength_bar"] = sub["pvalue_adj"].apply(_strength_bar_html, axis_max=axis_max)
+
+    # Custom sort: the displayed columns (direction_badge, strength_bar) are
+    # rendered HTML, so Dash's native string-based sort would order them by
+    # markup text rather than the real value. Sort the underlying numeric/
+    # string field instead, keyed off whichever column header was clicked.
+    sub_display = sub
+    if sort_by:
+        sort_field = {
+            "partner": "partner", "direction_badge": "direction",
+            "pvalue": "pvalue", "strength_bar": "pvalue_adj",
+        }.get(sort_by[0]["column_id"])
+        if sort_field:
+            sub_display = sub.sort_values(
+                sort_field, ascending=(sort_by[0]["direction"] == "asc")
+            )
 
     top = sub.head(20)
     top_partners = set(top["partner"].tolist())
@@ -1165,7 +1264,11 @@ def update_single(gene, fdr):
         edges.append({"data": {"source": row["source"], "target": row["target"],
                                 "weight": w}})
 
-    return (summary, sub.to_dict("records"), _partner_table_columns(), nodes + edges, False,
+    records = sub_display.to_dict("records")
+    records.append({"partner": "__AXIS__", "direction_badge": "", "pvalue": None,
+                     "strength_bar": _confidence_axis_html(axis_max)})
+
+    return (summary, records, _partner_table_columns(), nodes + edges, False,
             "", _PLACEHOLDER_HIDDEN, _TABLE_SHOWN)
 
 
