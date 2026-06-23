@@ -41,8 +41,8 @@ E -- no  --> G[Miss]:::bad
 F --> H["Observed hit rate =\nhits / (genes x N) checked"]:::proc
 G --> H
 
-H --> I["Enrichment = observed hit rate\n/ background rate\n(background = true CORUM pairs\nas a fraction of ALL possible pairs)"]:::proc
-I --> J["~1,658x at N=1\n(Fisher's exact p < 1e-300)"]:::out
+H --> I["Enrichment = observed hit rate\n/ background rate\n(background = true CORUM pairs as a\nfraction of slots from evaluated genes only --\nsame restricted population as the numerator)"]:::proc
+I --> J["~222x at N=1\n(Fisher's exact p < 1e-300)"]:::out
 ```
 
 In plain terms: take GLS's own predictions, check them against an answer key
@@ -60,10 +60,16 @@ GLS never saw, and measure how much better than a random guess GLS does.
 
    ```
    enrichment(N) = (% of top-N pairs that are true CORUM pairs)
-                 / (% of all possible pairs that are true CORUM pairs)
+                 / (% of true CORUM pairs among all possible pairs
+                    from genes with a known CORUM partner)
    ```
 
-   `1.0` = GLS ranking is no better than random.
+   The background (denominator) is restricted to the same population the
+   numerator is drawn from — genes with a known CORUM partner, against
+   every other gene in the panel — not all ~146M pairs across the full
+   17,087-gene panel. Mixing those two populations was an earlier bug in
+   this analysis (caught in PR review) that inflated the result roughly
+   7.5x. `1.0` = GLS ranking is no better than random.
 
 Data used: `depmap_26Q1_GLS_p.npy` / `depmap_26Q1_genes.txt` (current
 production pipeline output, 17,087 genes, post-Comment-5 fix).
@@ -82,23 +88,25 @@ production pipeline output, 17,087 genes, post-Comment-5 fix).
 
 | N (top-N partners) | Observed hit rate | Enrichment vs. chance |
 |---:|---:|---:|
-| 1 | 26.93% | **1,657.6x** |
-| 2 | 23.49% | 1,446.0x |
-| 3 | 20.93% | 1,288.3x |
-| 4 | 18.63% | 1,146.8x |
-| 5 | 16.92% | 1,041.4x |
-| 6 | 15.51% | 955.0x |
-| 7 | 14.35% | 883.3x |
-| 8 | 13.36% | 822.7x |
-| 9 | 12.47% | 767.8x |
-| 10 | 11.74% | 722.6x |
+| 1 | 26.93% | **221.6x** |
+| 2 | 23.49% | 193.3x |
+| 3 | 20.93% | 172.2x |
+| 4 | 18.63% | 153.3x |
+| 5 | 16.92% | 139.2x |
+| 6 | 15.51% | 127.7x |
+| 7 | 14.35% | 118.1x |
+| 8 | 13.36% | 110.0x |
+| 9 | 12.47% | 102.6x |
+| 10 | 11.74% | 96.6x |
 
 - **Genes evaluated:** 2,284 (genes with ≥1 CORUM complex-mate inside our panel)
-- **Background rate:** 0.0162% (23,713 true CORUM pairs out of 145,974,241
-  total possible pairs among our 17,087 genes)
+- **Background rate:** 0.1215% (23,713 true CORUM pairs, 47,426 directed, out
+  of 39,024,424 directed slots from those 2,284 evaluated genes to every
+  other gene in the panel — *not* all ~146M pairs across the full
+  17,087-gene panel, which would mix two different populations)
 
 At N=1, GLS's single most-significant predicted partner for a gene is its
-*actual* known complex-mate **26.9% of the time** — roughly **1,658x
+*actual* known complex-mate **26.9% of the time** — roughly **222x
 enrichment over random chance**.
 
 ## Side-by-side comparison with Wainberg et al. (2021)
@@ -113,11 +121,14 @@ The paper reports its own CORUM enrichment number directly in the text:
 |---|---|---|
 | DepMap data | CERES, 485 cell lines, 18Q3 | Chronos, 1,208 cell lines, 26Q1 |
 | Gold standard | CORUM | CORUM |
-| Enrichment at top rank | ~160-fold | **~1,658-fold** |
+| Enrichment at top rank | ~160-fold | **~222-fold** |
 
-**GLS is still highly relevant on today's data — if anything, more so than in
-2021.** Our enrichment is roughly 10x stronger than the original published
-result, on a newer DepMap release with over twice the cell lines.
+**GLS is still highly relevant on today's data.** Our enrichment is modestly
+higher than the original published result — plausibly more cell lines
+(1,208 vs. 485) and/or Chronos vs. CERES gene-effect correction — but the two
+numbers now land in the same ballpark rather than an order of magnitude
+apart, which is the more reassuring outcome: it means the result is
+consistent with, not suspiciously different from, the original paper.
 
 ## Files
 

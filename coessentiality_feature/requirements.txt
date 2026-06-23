@@ -1,15 +1,19 @@
 # Pipeline (step1 → step2 → step3)
-numpy
-pandas
-scipy
-statsmodels
-requests
+numpy==2.4.6
+pandas==3.0.3
+scipy==1.17.1
+statsmodels==0.14.6
+requests==2.34.2
 
 # App (coessentiality_feature_pc.py)
-dash
-dash-cytoscape
-networkx
-gseapy
+dash==4.2.0
+dash-cytoscape==1.0.2
+networkx==3.6.1
+gseapy==1.2.1
+
+# Validation (pipeline_validation_corum/corum_validation.ipynb) — not used by
+# the pipeline or app, only by the standalone maintainer notebook
+matplotlib==3.10.9
 
 # Cloud deployment (optional — only needed when reading/writing from GCS)
 # google-cloud-storage

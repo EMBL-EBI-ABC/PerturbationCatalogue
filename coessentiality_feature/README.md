@@ -9,21 +9,22 @@ gene co-essentiality networks from DepMap CRISPR screen data.
 
 1. [Overview](#overview)
 2. [Key Concepts](#key-concepts)
-3. [Architecture](#architecture)
-4. [Directory Layout](#directory-layout)
-5. [Data I/O Schema](#data-io-schema)
-6. [Pipeline](#pipeline)
+3. [Differences from Wainberg et al. (2021)](#differences-from-wainberg-et-al-2021)
+4. [Architecture](#architecture)
+5. [Directory Layout](#directory-layout)
+6. [Data I/O Schema](#data-io-schema)
+7. [Pipeline](#pipeline)
    - [Step 1 — Fetch DepMap data](#step-1--fetch-depmap-data)
    - [Step 2 — GLS co-essentiality](#step-2--gls-co-essentiality)
    - [Step 3 — FDR filtering & network CSV](#step-3--fdr-filtering--network-csv)
-7. [Running Locally (end-to-end)](#running-locally-end-to-end)
-8. [Dash App — Standalone](#dash-app--standalone)
-9. [Cloud Deployment](#cloud-deployment)
-10. [Integration Guide](#integration-guide)
-11. [Known Constraints & Pitfalls](#known-constraints--pitfalls)
-12. [Validation (not part of the pipeline or app)](#validation-not-part-of-the-pipeline-or-app)
-13. [Dependencies](#dependencies)
-14. [Citation](#citation)
+8. [Running Locally (end-to-end)](#running-locally-end-to-end)
+9. [Dash App — Standalone](#dash-app--standalone)
+10. [Cloud Deployment](#cloud-deployment)
+11. [Integration Guide](#integration-guide)
+12. [Known Constraints & Pitfalls](#known-constraints--pitfalls)
+13. [Validation (not part of the pipeline or app)](#validation-not-part-of-the-pipeline-or-app)
+14. [Dependencies](#dependencies)
+15. [Citation](#citation)
 
 ---
 
@@ -51,7 +52,62 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 
 - **GLS (Generalised Least Squares):** A statistical regression method used here to test whether two genes' essentiality profiles are correlated. GLS is used instead of ordinary regression because cancer cell lines from the same tissue type look similar to each other; GLS corrects for this shared structure so the test is not artificially inflated.
 
-- **FDR (False Discovery Rate):** When testing ~146 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee. **This correction is applied globally**, across all ~146 million unique pairs at once — not per-gene as in Wainberg et al.'s original method. This is an intentional choice: global correction gives one well-defined, symmetric FDR per pair (Wainberg's per-gene method has no defined rule for symmetrizing a pair when the two genes disagree) and keeps only the strongest co-essential signals. See `REVIEW.md` for the full comparison.
+- **FDR (False Discovery Rate):** When testing ~146 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee. **This correction is applied globally**, across all ~146 million unique pairs at once — not per-gene as in Wainberg et al.'s original method. See [Differences from Wainberg et al. (2021)](#differences-from-wainberg-et-al-2021) below for the full rationale and numbers.
+
+---
+
+## Differences from Wainberg et al. (2021)
+
+This pipeline follows Wainberg et al.'s GLS co-essentiality method closely,
+but deliberately diverges from it in a few specific places. Documented here
+so the reasoning survives independently of any single PR discussion.
+
+- **No olfactory-receptor (OR) PCA bias correction.** The original
+  `load_screens.py` fits a PCA on OR-gene profiles (non-functional outside
+  olfactory neurons, so treated as a negative control) and subtracts that
+  signal from every gene — needed in 2021 because CERES, the DepMap
+  gene-effect model used at the time, didn't fully remove screen-quality/batch
+  variation on its own. This pipeline instead uses DepMap's current
+  **Chronos**-corrected gene effect scores, whose mechanistic model already
+  targets sgRNA efficacy, screen quality, and copy-number bias directly.
+  Replicating the OR-PCA step on top of Chronos-corrected data would risk
+  removing real signal rather than residual noise, so it was intentionally
+  not implemented.
+
+- **Global FDR correction, not per-gene.** Wainberg's Methods describe a
+  **per-gene (row-wise)** Benjamini-Hochberg correction — each gene's FDR is
+  computed across its own list of partners. This pipeline instead applies
+  **one global BH correction** across all ~146M unique pairs at once. On the
+  current 26Q1 data (17,087 genes, FDR ≤ 10%): global correction yields
+  **25,889** significant pairs, vs. **27,346** under a per-gene-AND rule (both
+  genes in the pair must independently pass) and **40,081** under per-gene-OR
+  (either gene passing is enough) — a real, non-trivial difference, not a
+  rounding artifact. Global correction was chosen because it gives one
+  well-defined, symmetric FDR per pair (per-gene has no rule for what happens
+  when the two genes in a pair disagree) and, dividing by a much larger
+  denominator, keeps only the strongest signals in the dataset — the more
+  conservative, safer choice for a general-purpose network.
+
+- **Direction only, not magnitude.** The network stores the *sign* of the
+  GLS coefficient (`direction`: +1.0 / −1.0), not the coefficient's
+  magnitude. This isn't a missing feature so much as a property of GLS
+  itself: the coefficient for a pair (A, B) depends on which gene is treated
+  as predictor vs. response — regressing A on B gives a different value than
+  regressing B on A (only the *sign* is guaranteed to match between the two
+  directions). This is also why Wainberg et al.'s own paper never reports a
+  GLS effect size, only the p-value and sign.
+
+- **Validation scoped to CORUM only.** Wainberg et al.'s Figure 2 / Extended
+  Data Figure 4 benchmark GLS against four gold standards (CORUM, hu.MAP,
+  STRING, DoRothEA) and compare GLS with/without PCA-based bias correction
+  against Pearson correlation. This pipeline's validation
+  (`pipeline_validation_corum/`, see [Validation](#validation-not-part-of-the-pipeline-or-app)
+  below) checks only against CORUM, and doesn't re-run the
+  Pearson/bias-correction comparison — the paper already establishes that
+  GLS "automatically performs bias correction without requiring a putatively
+  nonessential gene set like olfactory receptors," so re-deriving that
+  finding ourselves wouldn't add new information. CORUM alone was judged
+  sufficient to answer "does this pipeline produce sensible results."
 
 ---
 
@@ -244,7 +300,7 @@ Use it as the contract when modifying any script or when setting up GCS.
 | `target` | string | Gene symbol (alphabetically second in the pair) |
 | `pvalue` | float64 | Raw two-sided GLS p-value |
 | `pvalue_adj` | float64 | Benjamini-Hochberg adjusted p-value (FDR), corrected **globally** across all unique pairs (see Key Concepts above) — not per-gene as in Wainberg et al.'s original method |
-| `direction` | float64 | Sign of GLS coefficient: `+1.0` = positive co-essentiality, `−1.0` = negative |
+| `direction` | float64 | Sign of GLS coefficient: `+1.0` = positive co-essentiality, `−1.0` = negative. Magnitude isn't stored — see [Differences from Wainberg et al. (2021)](#differences-from-wainberg-et-al-2021) for why |
 
 > **Important:** This file contains all pairs at FDR ≤ 10%. The app filters
 > it at query time to either FDR ≤ 5% or FDR ≤ 10% based on the user's
@@ -443,6 +499,15 @@ python pipeline/step3_fdr_coessentiality.py \
     --genes    required_data/depmap_26Q1_genes.txt \
     --fdr      0.10 \
     --output   required_data/depmap_26Q1_gls_whole_coessential_network_FDR_10.csv
+
+# One-time: fetch the GO:BP gene-set library the app needs at startup for
+# local enrichment (see GO_Biological_Process_2025.gmt under Data I/O Schema
+# below — not part of steps 1-3, only needs to be run once, ever)
+python3 -c "
+import gseapy as gp
+gp.get_library(name='GO_Biological_Process_2025', organism='Human',
+               save='required_data/GO_Biological_Process_2025.gmt')
+"
 
 # Step 4: launch the app
 python app/coessentiality_feature_pc.py
