@@ -62,52 +62,34 @@ This pipeline follows Wainberg et al.'s GLS co-essentiality method closely,
 but deliberately diverges from it in a few specific places. Documented here
 so the reasoning survives independently of any single PR discussion.
 
-- **No olfactory-receptor (OR) PCA bias correction.** The original
-  `load_screens.py` fits a PCA on OR-gene profiles (non-functional outside
-  olfactory neurons, so treated as a negative control) and subtracts that
-  signal from every gene — needed in 2021 because CERES, the DepMap
-  gene-effect model used at the time, didn't fully remove screen-quality/batch
-  variation on its own. This pipeline instead uses DepMap's current
-  **Chronos**-corrected gene effect scores, whose mechanistic model already
-  targets sgRNA efficacy, screen quality, and copy-number bias directly.
-  Replicating the OR-PCA step on top of Chronos-corrected data would risk
-  removing real signal rather than residual noise, so it was intentionally
-  not implemented.
+- **No olfactory-receptor (OR) PCA bias correction.** Wainberg's PCA step
+  patched residual screen-quality noise that CERES (the 2021 DepMap model)
+  didn't fully remove. Current DepMap data uses **Chronos**, which already
+  corrects for this directly — and the paper itself notes GLS
+  "automatically performs bias correction without requiring a putatively
+  nonessential gene set like olfactory receptors." So this step was skipped.
 
-- **Global FDR correction, not per-gene.** Wainberg's Methods describe a
-  **per-gene (row-wise)** Benjamini-Hochberg correction — each gene's FDR is
-  computed across its own list of partners. This pipeline instead applies
-  **one global BH correction** across all ~146M unique pairs at once. On the
-  current 26Q1 data (17,087 genes, FDR ≤ 10%): global correction yields
-  **25,889** significant pairs, vs. **27,346** under a per-gene-AND rule (both
-  genes in the pair must independently pass) and **40,081** under per-gene-OR
-  (either gene passing is enough) — a real, non-trivial difference, not a
-  rounding artifact. Global correction was chosen because it gives one
-  well-defined, symmetric FDR per pair (per-gene has no rule for what happens
-  when the two genes in a pair disagree) and, dividing by a much larger
-  denominator, keeps only the strongest signals in the dataset — the more
-  conservative, safer choice for a general-purpose network.
+- **Global FDR, not per-gene.** Wainberg corrects FDR per-gene (row-wise);
+  this pipeline applies one global correction across all ~146M pairs
+  instead. On 26Q1 data: global yields **25,889** significant pairs vs.
+  **27,346** (per-gene-AND) and **40,081** (per-gene-OR) — a real
+  difference. Global was chosen because it gives one well-defined FDR per
+  pair (per-gene has no rule for resolving disagreement between the two
+  genes) and is the more conservative choice.
 
-- **Direction only, not magnitude.** The network stores the *sign* of the
-  GLS coefficient (`direction`: +1.0 / −1.0), not the coefficient's
-  magnitude. This isn't a missing feature so much as a property of GLS
-  itself: the coefficient for a pair (A, B) depends on which gene is treated
-  as predictor vs. response — regressing A on B gives a different value than
-  regressing B on A (only the *sign* is guaranteed to match between the two
-  directions). This is also why Wainberg et al.'s own paper never reports a
-  GLS effect size, only the p-value and sign.
+- **Direction only, not magnitude.** We store the GLS coefficient's sign,
+  not its value. The coefficient itself depends on which gene is treated as
+  predictor vs. response, so there's no single well-defined magnitude per
+  pair — Wainberg's own paper reports only the p-value and sign too, for
+  the same reason.
 
-- **Validation scoped to CORUM only.** Wainberg et al.'s Figure 2 / Extended
-  Data Figure 4 benchmark GLS against four gold standards (CORUM, hu.MAP,
-  STRING, DoRothEA) and compare GLS with/without PCA-based bias correction
-  against Pearson correlation. This pipeline's validation
-  (`pipeline_validation_corum/`, see [Validation](#validation-not-part-of-the-pipeline-or-app)
-  below) checks only against CORUM, and doesn't re-run the
-  Pearson/bias-correction comparison — the paper already establishes that
-  GLS "automatically performs bias correction without requiring a putatively
-  nonessential gene set like olfactory receptors," so re-deriving that
-  finding ourselves wouldn't add new information. CORUM alone was judged
-  sufficient to answer "does this pipeline produce sensible results."
+- **Validation scoped to CORUM only.** Wainberg benchmarks against four
+  gold standards (CORUM, hu.MAP, STRING, DoRothEA) plus a Pearson
+  with/without-bias-correction comparison. This pipeline's validation
+  (`pipeline_validation_corum/`, see
+  [Validation](#validation-not-part-of-the-pipeline-or-app) below) checks
+  CORUM only — sufficient to answer "does this pipeline produce sensible
+  results."
 
 ---
 
@@ -527,14 +509,21 @@ python app/coessentiality_feature_pc.py
 
 Opens at `http://localhost:8050`.
 
-**What the app expects at startup:**
+**What the app expects at startup** (all read from `required_data/`, all
+required unless noted — see [Integration Guide](#integration-guide) for the
+exact code locations when porting this to read from GCS instead):
 
-1. `required_data/depmap_version.txt` — determines which network CSV filename to load.
-2. `required_data/depmap_<version>_gls_whole_coessential_network_FDR_10.csv` — the
+1. `depmap_version.txt` — determines which network CSV filename to load.
+2. `depmap_<version>_gls_whole_coessential_network_FDR_10.csv` — the
    network data; loaded once into memory.
-3. `required_data/depmap_<version>_metadata.json` — `n_cell_lines` and
-   `n_genes_profiled` for the stat chips, written once by step 2. Optional: if
-   absent, both chips show `—`.
+3. `depmap_<version>_genes.txt` — full profiled gene list, populates the
+   search dropdowns (not just genes with significant partners).
+4. `depmap_<version>_metadata.json` — `n_cell_lines` and `n_genes_profiled`
+   for the stat chips, written once by step 2. **Optional:** if absent, both
+   chips show `—`.
+5. `GO_Biological_Process_2025.gmt` — local GO:BP enrichment library for the
+   gene-list view's module annotation. **Required** — the app fails to
+   start if this is missing (see [Known Constraints & Pitfalls](#known-constraints--pitfalls)).
 
 **Two UI tabs:**
 
@@ -769,7 +758,7 @@ DepMap/GLS entirely.
 | `scipy` | `stdtr` for p-value computation |
 | `statsmodels` | Benjamini-Hochberg FDR correction |
 | `requests` | DepMap API HTTP calls |
-| `google-cloud-storage` | GCS upload (cloud deployment) |
+| `google-cloud-storage` | GCS upload (cloud deployment) — **optional**, commented out in `requirements.txt` until cloud upload is implemented (see Cloud Deployment) |
 
 ### App
 
@@ -781,7 +770,7 @@ DepMap/GLS entirely.
 | `pandas` | Network CSV querying |
 | `networkx` | Connected-component detection for co-essential module discovery |
 | `gseapy` | Local GO Biological Process enrichment (hypergeometric test against a pinned `.gmt` file — no Enrichr API calls at runtime) |
-| `google-cloud-storage` | GCS CSV read (cloud deployment only) |
+| `google-cloud-storage` | GCS CSV read (cloud deployment only) — **optional**, commented out in `requirements.txt` until the app reads from GCS (see Integration Guide) |
 
 ---
 

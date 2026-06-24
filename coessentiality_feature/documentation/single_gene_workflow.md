@@ -59,9 +59,9 @@ S --> R
 
 A small separate callback (`set_example_gene`) wires the **TP53 / BRCA1 / KRAS** quick-search buttons next to the dropdown — clicking one just sets the gene-dropdown value, which then triggers the callback above as normal.
 
-### Why sorting is server-side (`sort_action="custom"`), not native
+### Why sorting is server-side
 
-The DIRECTION and STATISTICAL CONFIDENCE columns render raw HTML (a colour badge, a bar chart) via `presentation="markdown"`, not plain values. Dash's built-in native sort would sort those columns by their literal HTML markup text, not by the actual direction or p-value — silently producing a meaningless order. Instead, `partner-table`'s `sort_by` is wired as a callback `Input`; clicking a header re-sorts the underlying pandas data by the real field (`direction`, `pvalue_adj`, etc.) before re-rendering the HTML, so the displayed order always matches what the column claims to be sorted by.
+DIRECTION and STATISTICAL CONFIDENCE render HTML (badge/bar), not plain values — Dash's native sort would order them by markup text, not the real value. `sort_by` is wired as a callback input instead, so clicking a header re-sorts the underlying data by the real field first.
 
 ### The Statistical Confidence axis
 
@@ -74,18 +74,27 @@ The bar's fill length is on a **fixed, labelled `−log₁₀(FDR)` scale** (rou
 Partner nodes are coloured on a **blue → grey → orange** gradient based on their `direction` value — the sign of the co-essentiality relationship with the query gene. Same colours as the Direction badge in the partner table, so colour means the same thing everywhere in the app.
 
 ```mermaid
-flowchart LR
+flowchart TD
 
-classDef pos fill:#0072B2,color:#fff,stroke:none
-classDef neu fill:#DCDCDC,color:#333,stroke:#aaa
-classDef neg fill:#E69F00,color:#fff,stroke:none
+classDef query fill:#D55E00,color:#fff,stroke:none
+classDef pos   fill:#0072B2,color:#fff,stroke:none
+classDef neu   fill:#DCDCDC,color:#333,stroke:#aaa
+classDef neg   fill:#E69F00,color:#fff,stroke:none
 
-A[direction = +1]:::pos --> B[Blue  both genes are\nco-essential together]:::pos
-C[direction = 0]:::neu --> D[Grey  no directional\ncorrelation]:::neu
-E[direction = −1]:::neg --> F[Orange  genes are\nmutually essential in opposite contexts]:::neg
+Q[Query gene]:::query     --> QC[#D55E00]:::query
+A[direction = +1]:::pos   --> B[#0072B2]:::pos
+C[direction = 0]:::neu    --> D[#DCDCDC]:::neu
+E[direction = −1]:::neg   --> F[#E69F00]:::neg
 ```
 
-The query gene itself is always shown in **dark orange (#D55E00)** to distinguish it from its partners. The palette is from Wong (2011) and is colourblind-safe — kept deliberately separate from the Perturbation Catalogue brand green/red, since green+red is a difficult pair for red-green colourblindness.
+| | Meaning |
+|---|---|
+| `#D55E00` | Query gene (dark orange — a different shade from the anti-correlated colour below, so it's never confused with a partner) |
+| `#0072B2` | Co-essential pair — both genes' essentiality scores move together across cell lines (perturbing either tends to impair fitness in the same lines) |
+| `#DCDCDC` | Neutral, no directional correlation |
+| `#E69F00` | Anti-correlated pair — the two genes are mutually essential in opposite contexts (each tends to matter where the other doesn't) |
+
+The palette is from Wong (2011) and is colourblind-safe — kept deliberately separate from the Perturbation Catalogue brand green/red, since green+red is a difficult pair for red-green colourblindness.
 
 ---
 
