@@ -32,7 +32,7 @@ gene co-essentiality networks from DepMap CRISPR screen data.
 
 This feature calculates **gene co-essentiality** — pairs of genes whose CRISPR
 knockout essentiality profiles co-vary significantly across cancer cell lines —
-using a **Generalised Least Squares (GLS)** regression that accounts for
+using a **Generalized Least Squares (GLS)** regression that accounts for
 cell-line covariance structure. The resulting network is served through an
 interactive Dash web application.
 
@@ -50,7 +50,11 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 
 - **Co-essentiality:** Two genes are co-essential when their essentiality scores move together across many cell lines — cell lines where gene A is critical also tend to need gene B. Co-essential genes usually function in the same biological pathway or complex, so this relationship can reveal the function of poorly characterised genes.
 
-- **GLS (Generalised Least Squares):** A statistical regression method used here to test whether two genes' essentiality profiles are correlated. GLS is used instead of ordinary regression because cancer cell lines from the same tissue type look similar to each other; GLS corrects for this shared structure so the test is not artificially inflated.
+- **GLS (Generalized Least Squares):** A statistical regression method used
+  here to test whether two genes' essentiality profiles are correlated. GLS
+  is used instead of ordinary regression because cancer cell lines from the
+  same tissue type look similar to each other; GLS corrects for this shared
+  structure so the test is not artificially inflated.
 
 - **FDR (False Discovery Rate):** When testing ~146 million gene pairs simultaneously, many false positives arise by chance. An FDR threshold of 5% means: among all pairs flagged as significant, we tolerate at most 5% being false positives. The Benjamini–Hochberg (BH) method converts raw p-values into FDR-adjusted p-values to enforce this guarantee. **This correction is applied globally**, across all ~146 million unique pairs at once — not per-gene as in Wainberg et al.'s original method. See [Differences from Wainberg et al. (2021)](#differences-from-wainberg-et-al-2021) below for the full rationale and numbers.
 

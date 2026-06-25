@@ -430,9 +430,9 @@ def _partner_table_columns():
     return [
         {"name": "PARTNER GENE", "id": "partner"},
         {"name": "DIRECTION", "id": "direction_badge", "presentation": "markdown"},
-        {"name": "GLS P-VALUE", "id": "pvalue", "type": "numeric",
+        {"name": "GLS P-VALUE (RAW)", "id": "pvalue", "type": "numeric",
          "format": {"specifier": ".2e"}},
-        {"name": "STATISTICAL CONFIDENCE",
+        {"name": "GLS P-VALUE (BH-ADJUSTED)",
          "id": "strength_bar", "presentation": "markdown"},
     ]
 
@@ -462,7 +462,7 @@ app.layout = html.Div([
                 "are likely to be functionally related and operate in the same pathway or complex.",
                 html.Br(),
                 html.Br(),
-                "Co-essentiality is computed by applying Generalised Least Squares (GLS) "
+                "Co-essentiality is computed by applying Generalized Least Squares (GLS) "
                 "regression to DepMap CRISPR gene effect scores to correct for cell-line "
                 "covariance structure, following ",
                 html.Em(
@@ -644,14 +644,24 @@ app.layout = html.Div([
                                     style={"fontWeight": "600", "fontSize": "20px",
                                            "color": _TEXT, "margin": "0 0 8px 0"}),
                                 html.P(
-                                    "Each row is a gene whose CRISPR essentiality profile "
-                                    "co-varies significantly with the query gene across cancer "
-                                    "cell lines. Bar length shows statistical confidence after "
-                                    "Benjamini-Hochberg multiple-testing correction (the grey "
-                                    "number is −log₁₀ of the adjusted p-value — higher means more "
-                                    "confident) — a longer bar means we are more confident the "
-                                    "relationship is real, not necessarily that it is a bigger "
-                                    "biological effect.",
+                                    "Each row is a gene whose CRISPR gene essentiality pattern "
+                                    "is significantly related to the query gene's across many "
+                                    "cancer cell lines (in the same direction or the opposite "
+                                    "direction — see Direction below). GLS P-VALUE (RAW) is "
+                                    "the original p-value from the Generalized Least Squares "
+                                    "(GLS) regression. GLS P-VALUE (BH-ADJUSTED) is that same "
+                                    "p-value adjusted using Benjamini-Hochberg multiple testing "
+                                    "correction to account for testing many gene pairs at once.",
+                                    style={"fontSize": "18px", "color": _MUTED,
+                                           "margin": "0 0 8px 0", "lineHeight": "1.5"}),
+                                html.P(
+                                    "Bar length reflects the level of statistical confidence "
+                                    "that this relationship is real. It is measured against "
+                                    "the −log₁₀(FDR) scale shown at the bottom of the table. A "
+                                    "longer bar means more confidence rather than a bigger "
+                                    "biological effect. The grey number is the adjusted "
+                                    "p-value on a different scale (−log₁₀). Therefore smaller "
+                                    "p-values produce bigger numbers and longer bars.",
                                     style={"fontSize": "18px", "color": _MUTED,
                                            "margin": "0 0 12px 0", "lineHeight": "1.5"}),
                                 html.Div([
@@ -712,8 +722,7 @@ app.layout = html.Div([
                                         style_cell_conditional=[
                                             {"if": {"column_id": "partner"}, "width": "16%"},
                                             {"if": {"column_id": "direction_badge"}, "width": "14%"},
-                                            {"if": {"column_id": "pvalue"}, "width": "14%",
-                                             "textAlign": "right"},
+                                            {"if": {"column_id": "pvalue"}, "width": "14%"},
                                             {"if": {"column_id": "strength_bar"}, "width": "56%"},
                                         ],
                                         style_header={
@@ -723,13 +732,13 @@ app.layout = html.Div([
                                             "borderBottom": f"2px solid {_BORDER}",
                                             "background": "#fff",
                                         },
-                                        style_header_conditional=[
-                                            {"if": {"column_id": "pvalue"}, "textAlign": "right"},
-                                        ],
                                         style_data_conditional=[{
                                             "if": {"state": "selected"},
                                             "backgroundColor": _G_LITE,
                                             "border": f"1px solid {_G}",
+                                        }, {
+                                            "if": {"column_id": "pvalue"},
+                                            "textAlign": "right",
                                         }, {
                                             "if": {"filter_query": '{partner} = "__AXIS__"'},
                                             "borderBottom": "none",
