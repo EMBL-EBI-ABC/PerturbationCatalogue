@@ -355,6 +355,14 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         log.info(f"Saved {len(records)} DEA records to {output_path}")
 
     df = pd.DataFrame(rows)
+    # Save gene list for GSEA step
+    if output_path and rows:
+        genes_path = Path(output_path).parent / "genes.txt"
+        with open(genes_path, "w") as f_genes:
+            for row in rows:
+                f_genes.write(row["gene"] + "\n")
+        log.info(f"Saved gene list to {genes_path}")
+
     log.info(f"Built {len(records)} training records from {dataset_id}")
     return records, df
 
