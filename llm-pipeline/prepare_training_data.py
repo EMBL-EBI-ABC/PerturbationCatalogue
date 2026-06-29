@@ -108,7 +108,7 @@ def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_thresho
     return df
 
 
-def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
+def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", include_condition=True):
     """
     Convert harmonised CRISPR Catalogue records into training record format.
 
@@ -146,7 +146,9 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
                 f"Describe the phenotype and its biological interpretation."
             ),
             "input": (
-                f"Gene: {gene}. " f"Cell line: {cell_line}. " f"Condition: {condition}."
+                f"Gene: {gene}. "
+                f"Cell line: {cell_line}."
+                + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
@@ -167,7 +169,7 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen"):
     return records
 
 
-def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
+def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000, include_condition=True):
     """
     Fetch CRISPR screen data from Catalogue API and save as training records.
 
@@ -200,7 +202,7 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
 
     df = normalise_within_dataset(df)
     df = classify_from_catalogue(df)
-    records = catalogue_records_to_training(df, dataset_id)
+    records = catalogue_records_to_training(df, dataset_id, include_condition=include_condition)
 
     if output_path and records:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -212,7 +214,7 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000):
     return records, df
 
 
-def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000):
+def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000, include_condition=True):
     """
     Fetch scPerturb-seq DEA data from Catalogue API and save as training records.
 
@@ -314,8 +316,8 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
             ),
             "input": (
                 f"Gene: {perturbed_gene}. "
-                f"Cell line: {cell_line}. "
-                f"Condition: {condition}."
+                f"Cell line: {cell_line}."
+                + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
@@ -358,7 +360,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
 
 
 def fetch_and_process_perturb_seq_gsea(
-    dataset_id, gene_names, output_path=None, fdr_threshold=0.05, top_n_pathways=5
+    dataset_id, gene_names, output_path=None, fdr_threshold=0.05, top_n_pathways=5, include_condition=True
 ):
     """
     Fetch scPerturb-seq GSEA data from Catalogue API and save as training records.
@@ -460,7 +462,9 @@ def fetch_and_process_perturb_seq_gsea(
                 f"Describe the activated and suppressed pathways."
             ),
             "input": (
-                f"Gene: {gene}. " f"Cell line: {cell_line}. " f"Condition: {condition}."
+                f"Gene: {gene}. "
+                f"Cell line: {cell_line}."
+                + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
@@ -529,6 +533,11 @@ def main():
         help="Maximum records to fetch (CRISPR and DEA only)",
     )
     parser.add_argument(
+        "--no_condition",
+        action="store_true",
+        help="Exclude disease/condition from input fields. Use to test whether condition improves or hurts generalisation.",
+    )
+    parser.add_argument(
         "--genes_file",
         type=str,
         default=None,
@@ -541,6 +550,7 @@ def main():
             dataset_id=args.dataset_id,
             output_path=args.output,
             max_records=args.max_records,
+            include_condition=not args.no_condition,
         )
         print(f"Saved {len(records)} CRISPR training records to {args.output}")
 
@@ -549,6 +559,7 @@ def main():
             dataset_id=args.dataset_id,
             output_path=args.output,
             max_records=args.max_records,
+            include_condition=not args.no_condition,
         )
         print(f"Saved {len(records)} DEA training records to {args.output}")
 
@@ -561,6 +572,7 @@ def main():
             dataset_id=args.dataset_id,
             gene_names=gene_names,
             output_path=args.output,
+            include_condition=not args.no_condition,
         )
         print(f"Saved {len(records)} GSEA training records to {args.output}")
 
