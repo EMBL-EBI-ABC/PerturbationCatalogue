@@ -33,6 +33,12 @@ DATASETS = [
 ]
 
 
+def guide_id_with_ensg(guide_id, ensg):
+    guide_id = str(guide_id).strip().replace(",", "-")
+    ensg = str(ensg).strip().split(".", 1)[0]
+    return f"{guide_id}__{ensg}" if ensg.startswith("ENSG") else guide_id
+
+
 def generate_features_tsv(xlsx_path, output_tsv):
     if not xlsx_path.exists():
         print(f"Error: could not find guide XLSX at {xlsx_path}", file=sys.stderr)
@@ -41,18 +47,27 @@ def generate_features_tsv(xlsx_path, output_tsv):
     print(f"Reading sheet 'ST20' from {xlsx_path}")
     df = pd.read_excel(xlsx_path, sheet_name="ST20")
 
-    df_a = df[["targeting sequence A", "sgID_A"]].rename(
-        columns={"targeting sequence A": "seq", "sgID_A": "id"}
+    df_a = df[["targeting sequence A", "sgID_A", "ensembl gene id"]].rename(
+        columns={
+            "targeting sequence A": "seq",
+            "sgID_A": "id",
+            "ensembl gene id": "ensg",
+        }
     )
-    df_b = df[["targeting sequence B", "sgID_B"]].rename(
-        columns={"targeting sequence B": "seq", "sgID_B": "id"}
+    df_b = df[["targeting sequence B", "sgID_B", "ensembl gene id"]].rename(
+        columns={
+            "targeting sequence B": "seq",
+            "sgID_B": "id",
+            "ensembl gene id": "ensg",
+        }
     )
 
-    features_df = pd.concat([df_a, df_b]).dropna()
+    features_df = pd.concat([df_a, df_b]).dropna(subset=["seq", "id"])
     features_df["seq"] = features_df["seq"].astype(str).str.strip().str.upper()
-    features_df["id"] = (
-        features_df["id"].astype(str).str.strip().str.replace(",", "-", regex=False)
-    )
+    features_df["id"] = [
+        guide_id_with_ensg(guide_id, ensg)
+        for guide_id, ensg in zip(features_df["id"], features_df["ensg"])
+    ]
 
     invalid = features_df[~features_df["seq"].str.fullmatch(r"[ACGT]{20}")]
     if not invalid.empty:

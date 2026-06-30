@@ -70,6 +70,11 @@ def parse_gtf_attributes(raw: str) -> dict[str, str]:
     return fields
 
 
+def strip_ensembl_version(value: Any) -> str:
+    value = str(value).strip()
+    return value.split(".", 1)[0] if value.startswith("ENSG") else ""
+
+
 def load_gtf_gene_symbols(path: str | None) -> dict[str, str]:
     if not path:
         return {}
@@ -193,6 +198,7 @@ def write_gene_metadata(
         )
         symbols.append(symbol)
     gene_keys = make_unique_gene_keys(gene_ids, symbols)
+    gene_ensgs = [strip_ensembl_version(gene_id) for gene_id in gene_ids]
     mapped = sum(
         symbol != gene_id and not str(symbol).startswith("ENSG")
         for gene_id, symbol in zip(gene_ids, symbols)
@@ -202,6 +208,7 @@ def write_gene_metadata(
         {
             "gene_index": np.arange(len(gene_ids), dtype=np.int32),
             "gene_id": gene_ids,
+            "gene_ensg": gene_ensgs,
             "gene_symbol": symbols,
             "gene_key": gene_keys,
             "h5ad_var_name": var_index,
@@ -250,6 +257,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         n_cells = int(handle["X"].attrs["shape"][0])
         n_genes = int(handle["X"].attrs["shape"][1])
         target_labels = read_h5ad_column_full(handle, "obs", args.target_col)
+        target_ensgs = read_h5ad_column_full(handle, "obs", args.target_ensg_col)
         gene_counts = read_h5ad_column_full(handle, "obs", args.gene_count_col).astype(
             np.int64
         )
@@ -270,6 +278,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
 
     if (
         len(target_labels) != n_cells
+        or len(target_ensgs) != n_cells
         or len(gene_counts) != n_cells
         or len(control_probe_counts) != n_cells
     ):
@@ -303,6 +312,9 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         {
             "cell_index": single_indices,
             "perturbed_target_symbol": target_labels[single_indices],
+            "perturbed_target_ensg": [
+                strip_ensembl_version(value) for value in target_ensgs[single_indices]
+            ],
         }
     )
     perturbation_counts = single_df["perturbed_target_symbol"].value_counts()
@@ -325,6 +337,25 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         )
         if perturbation in keep_counts.index
     }
+    perturbation_to_ensg_sets = (
+        single_df[single_df["perturbed_target_symbol"].isin(keep_counts.index)]
+        .groupby("perturbed_target_symbol")["perturbed_target_ensg"]
+        .agg(lambda values: sorted({value for value in values if value}))
+    )
+    missing_ensg = [
+        perturbation
+        for perturbation, values in perturbation_to_ensg_sets.items()
+        if len(values) != 1
+    ]
+    if missing_ensg:
+        raise ValueError(
+            "Expected exactly one perturbed_target_ensg per retained perturbation. "
+            f"Examples: {missing_ensg[:5]}"
+        )
+    perturbation_to_ensg = {
+        perturbation: values[0]
+        for perturbation, values in perturbation_to_ensg_sets.items()
+    }
 
     batches = assign_balanced_batches(keep_counts, args.batch_size)
     batch_summaries: list[dict[str, Any]] = []
@@ -339,6 +370,10 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
             "batch_id": batch_id,
             "dataset_id": args.dataset_id,
             "perturbations": perturbations,
+            "perturbed_target_ensg": {
+                perturbation: perturbation_to_ensg[perturbation]
+                for perturbation in perturbations
+            },
             "perturbation_indices": perturbation_indices,
             "n_control_cells": int(len(control_indices)),
             "n_perturbation_cells": int(n_perturbation_cells),
@@ -364,6 +399,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         "dataset_id": args.dataset_id,
         "h5ad_path": str(h5ad_path),
         "target_col": args.target_col,
+        "target_ensg_col": args.target_ensg_col,
         "gene_count_col": args.gene_count_col,
         "control_probe_count_col": args.control_probe_count_col,
         "call_type_col": args.call_type_col,
@@ -443,6 +479,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--outdir", required=True)
     parser.add_argument("--dataset-id", required=True)
     parser.add_argument("--target-col", default="perturbed_target_symbol")
+    parser.add_argument("--target-ensg-col", default="perturbed_target_ensg")
     parser.add_argument("--gene-count-col", default="called_knockout_gene_count")
     parser.add_argument(
         "--control-probe-count-col", default="called_control_probe_count"

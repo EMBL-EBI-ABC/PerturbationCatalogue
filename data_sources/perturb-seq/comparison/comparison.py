@@ -5,6 +5,7 @@ os.environ.setdefault("NUMBA_CACHE_DIR", "/tmp/numba")
 
 import gzip
 import json
+import re
 import textwrap
 from collections import Counter, defaultdict
 import sys
@@ -726,7 +727,18 @@ def guide_target_name(guide_name):
     )
 
 
-def call_info(label):
+def strip_ensembl_version(value):
+    value = str(value).strip()
+    return value.split(".", 1)[0] if value.startswith("ENSG") else ""
+
+
+def guide_target_ensg(guide_name):
+    match = re.search(r"ENSG\d+(?:\.\d+)?", str(guide_name))
+    return strip_ensembl_version(match.group(0)) if match else ""
+
+
+def call_info(label, target_ensg_by_symbol=None):
+    target_ensg_by_symbol = target_ensg_by_symbol or {}
     label = str(label).strip()
     if label.lower() in {"", "none", "nan"}:
         probes = []
@@ -734,14 +746,18 @@ def call_info(label):
         probes = sorted(
             p.strip().replace(",", "-") for p in label.split("|") if p.strip()
         )
-    genes = sorted(
-        {
-            guide_target_name(alias)
-            for probe in probes
-            for alias in guide_aliases(probe)
-            if guide_target_name(alias) != CONTROL_TARGET_SYMBOL
-        }
-    )
+    gene_names = set()
+    gene_ensgs = defaultdict(set)
+    for probe in probes:
+        for alias in guide_aliases(probe):
+            gene = guide_target_name(alias)
+            if gene == CONTROL_TARGET_SYMBOL:
+                continue
+            gene_names.add(gene)
+            gene_ensg = guide_target_ensg(alias) or target_ensg_by_symbol.get(gene, "")
+            if gene_ensg:
+                gene_ensgs[gene].add(gene_ensg)
+    genes = sorted(gene_names)
     controls = sorted(
         {
             probe
@@ -785,6 +801,10 @@ def call_info(label):
         "control_probe_label": "|".join(controls) if controls else "None",
         "n_control_probes": len(controls),
         "gene_label": "|".join(genes) if genes else "None",
+        "gene_ensg_label": "|".join(
+            sorted({ensg for values in gene_ensgs.values() for ensg in values})
+        )
+        or "None",
         "n_genes": len(genes),
         "outcome": outcome,
         "perturbation_call_type": call_type,
@@ -901,7 +921,13 @@ def call_probe_lists(rep):
         offset += len(rows)
 
     labels = pd.Series(labels, index=rep.final_obs_names, name="called_probe_label")
-    infos = [call_info(label) for label in labels]
+    target_ensg_by_symbol = {}
+    for symbol, values in rep.var_table.groupby("gene_symbol")["gene_id"]:
+        ensgs = sorted({strip_ensembl_version(value) for value in values})
+        ensgs = [ensg for ensg in ensgs if ensg]
+        if len(ensgs) == 1:
+            target_ensg_by_symbol[str(symbol)] = ensgs[0]
+    infos = [call_info(label, target_ensg_by_symbol) for label in labels]
     call_table = pd.DataFrame(infos, index=rep.final_obs_names)
     count_values, count_freqs = np.unique(positive_counts, return_counts=True)
     diagnostics = {
@@ -1001,6 +1027,11 @@ def output_obs(rep):
         call_table["gene_label"].to_numpy(),
         "",
     )
+    obs["perturbed_target_ensg"] = np.where(
+        obs["is_single_gene_perturbation"].to_numpy(),
+        call_table["gene_ensg_label"].replace("None", "").to_numpy(),
+        "",
+    )
     obs["perturbation_call_method"] = "gaussian_poisson"
     obs["dataset_id"] = DATASET_ID
     return obs
@@ -1094,6 +1125,7 @@ def write_filtered_h5ad(rep, path):
         "downstream_columns": {
             "expression_counts": "layers['counts']",
             "perturbed_target_symbol": "obs['perturbed_target_symbol']",
+            "perturbed_target_ensg": "obs['perturbed_target_ensg']",
             "control_indicator": "obs['is_control']",
             "perturbation_indicator": "obs['is_single_gene_perturbation']",
             "control_probe_count": "obs['called_control_probe_count']",

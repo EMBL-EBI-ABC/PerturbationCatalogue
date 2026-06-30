@@ -83,9 +83,9 @@ def main() -> None:
     if not dea.empty:
         dea["dataset_id"] = args.dataset_id
         dea["max_ingested_at"] = max_ingested_at
-        dea = dea.sort_values(["perturbed_target_symbol", "gene"]).reset_index(
-            drop=True
-        )
+        dea = dea.sort_values(
+            ["perturbed_target_symbol", "effect_gene_symbol"]
+        ).reset_index(drop=True)
     else:
         dea = empty_frame(DEA_SCHEMA)
 

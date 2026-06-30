@@ -178,10 +178,12 @@ def rank_genes_groups_to_dea(
     adata: ad.AnnData,
     dataset_id: str,
     perturbations: list[str],
+    perturbed_target_ensg: dict[str, str],
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     rg = adata.uns["rank_genes_groups"]
     available_groups = set(rg["names"].dtype.names)
-    gene_lookup = adata.var["gene_symbol"].astype(str).to_dict()
+    gene_symbol_lookup = adata.var["gene_symbol"].astype(str).to_dict()
+    gene_ensg_lookup = adata.var["gene_ensg"].astype(str).to_dict()
 
     dea_frames: list[pd.DataFrame] = []
     ranking_by_perturbation: dict[str, pd.DataFrame] = {}
@@ -191,7 +193,11 @@ def rank_genes_groups_to_dea(
             continue
 
         gene_keys = np.asarray(rg["names"][perturbation]).astype(str)
-        genes = pd.Series(gene_keys).map(gene_lookup).fillna(pd.Series(gene_keys))
+        gene_key_series = pd.Series(gene_keys)
+        effect_gene_symbols = gene_key_series.map(gene_symbol_lookup).fillna(
+            gene_key_series
+        )
+        effect_gene_ensgs = gene_key_series.map(gene_ensg_lookup).fillna("")
         scores = finite_series(rg["scores"][perturbation], 0.0)
         if "pvals_adj" in rg:
             padj = finite_series(rg["pvals_adj"][perturbation], 1.0)
@@ -209,7 +215,9 @@ def rank_genes_groups_to_dea(
             {
                 "dataset_id": dataset_id,
                 "perturbed_target_symbol": perturbation,
-                "gene": genes.astype(str).to_numpy(),
+                "perturbed_target_ensg": perturbed_target_ensg[perturbation],
+                "effect_gene_symbol": effect_gene_symbols.astype(str).to_numpy(),
+                "effect_gene_ensg": effect_gene_ensgs.astype(str).to_numpy(),
                 "padj": padj,
                 "log2foldchange": logfc,
                 "score_name": "Wilcoxon Score",
@@ -219,7 +227,9 @@ def rank_genes_groups_to_dea(
         )
         dea_frames.append(df)
 
-        ranking = df[["gene", "score_value"]].copy()
+        ranking = df[["effect_gene_symbol", "score_value"]].rename(
+            columns={"effect_gene_symbol": "gene"}
+        )
         ranking = ranking[ranking["gene"].astype(str).str.len() > 0]
         ranking["_abs_score"] = ranking["score_value"].abs()
         ranking = (
@@ -260,6 +270,7 @@ def result_value(row: pd.Series, candidates: list[str], default: Any = None) -> 
 
 def run_gsea_for_perturbation(
     perturbation: str,
+    perturbed_target_ensg: str,
     ranking: pd.DataFrame,
     gene_sets: dict[str, list[str]],
     args: argparse.Namespace,
@@ -318,6 +329,7 @@ def run_gsea_for_perturbation(
                 "dataset_id": args.dataset_id,
                 "term": term,
                 "perturbed_target_symbol": perturbation,
+                "perturbed_target_ensg": perturbed_target_ensg,
                 "es": float(result_value(row, ["ES", "es"], 0.0) or 0.0),
                 "nes": float(result_value(row, ["NES", "nes"], 0.0) or 0.0),
                 "pval": pval,
@@ -342,13 +354,20 @@ def run_gsea_for_perturbation(
 
 def run_gsea(
     ranking_by_perturbation: dict[str, pd.DataFrame],
+    perturbed_target_ensg: dict[str, str],
     args: argparse.Namespace,
 ) -> pd.DataFrame:
     gene_sets = load_gmt(args.gmt)
     frames: list[pd.DataFrame] = []
     for perturbation, ranking in ranking_by_perturbation.items():
         try:
-            result = run_gsea_for_perturbation(perturbation, ranking, gene_sets, args)
+            result = run_gsea_for_perturbation(
+                perturbation,
+                perturbed_target_ensg[perturbation],
+                ranking,
+                gene_sets,
+                args,
+            )
         except Exception as exc:
             print(f"[WARN] GSEA failed for {perturbation}: {exc}")
             result = pd.DataFrame(columns=[field.name for field in GSEA_SCHEMA])
@@ -399,6 +418,10 @@ def main() -> None:
         batch = json.load(handle)
     batch_id = batch["batch_id"]
     perturbations = list(batch["perturbations"])
+    perturbed_target_ensg = {
+        str(perturbation): str(ensg)
+        for perturbation, ensg in batch["perturbed_target_ensg"].items()
+    }
     control_indices = np.load(args.control_indices)
     gene_metadata = pd.read_parquet(args.gene_metadata)
 
@@ -433,9 +456,9 @@ def main() -> None:
     )
 
     dea, ranking_by_perturbation = rank_genes_groups_to_dea(
-        adata, args.dataset_id, perturbations
+        adata, args.dataset_id, perturbations, perturbed_target_ensg
     )
-    gsea = run_gsea(ranking_by_perturbation, args)
+    gsea = run_gsea(ranking_by_perturbation, perturbed_target_ensg, args)
     max_ingested_at = pd.Timestamp.now(tz="UTC").floor("s")
     if not dea.empty:
         dea["max_ingested_at"] = max_ingested_at

@@ -41,7 +41,7 @@ mv ~/kb_python.sif $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/pipe
 
 For each dataset, add a dataset-specific script under `datasets/<dataset_or_group>/` that produces:
 
-- `<dataset>_features.tsv`: headerless TSV with a 20 bp guide sequence and probe name.
+- `<dataset>_features.tsv`: headerless TSV with a 20 bp guide sequence and probe name carrying the target ENSG for gene-targeting guides.
 - `<dataset>_samples.tsv`: TSV with `sample_id`, `mRNA_srrs`, and `sgRNA_srrs`. SRR lists are semicolon-separated. It is important to group all runs for a given sample into one row. The grouping is usually clear from the `library_name` field, which is a bit different from dataset to dataset, but includes a clearly identifiable sample name. It is this sample name which the dataset-specific script must extract. 
 
 Then, run the script to generate the inputs (in this example for nadig_2025 dataset group):
