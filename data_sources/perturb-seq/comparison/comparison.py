@@ -737,8 +737,7 @@ def guide_target_ensg(guide_name):
     return strip_ensembl_version(match.group(0)) if match else ""
 
 
-def call_info(label, target_ensg_by_symbol=None):
-    target_ensg_by_symbol = target_ensg_by_symbol or {}
+def call_info(label):
     label = str(label).strip()
     if label.lower() in {"", "none", "nan"}:
         probes = []
@@ -754,7 +753,7 @@ def call_info(label, target_ensg_by_symbol=None):
             if gene == CONTROL_TARGET_SYMBOL:
                 continue
             gene_names.add(gene)
-            gene_ensg = guide_target_ensg(alias) or target_ensg_by_symbol.get(gene, "")
+            gene_ensg = guide_target_ensg(alias)
             if gene_ensg:
                 gene_ensgs[gene].add(gene_ensg)
     genes = sorted(gene_names)
@@ -921,13 +920,7 @@ def call_probe_lists(rep):
         offset += len(rows)
 
     labels = pd.Series(labels, index=rep.final_obs_names, name="called_probe_label")
-    target_ensg_by_symbol = {}
-    for symbol, values in rep.var_table.groupby("gene_symbol")["gene_id"]:
-        ensgs = sorted({strip_ensembl_version(value) for value in values})
-        ensgs = [ensg for ensg in ensgs if ensg]
-        if len(ensgs) == 1:
-            target_ensg_by_symbol[str(symbol)] = ensgs[0]
-    infos = [call_info(label, target_ensg_by_symbol) for label in labels]
+    infos = [call_info(label) for label in labels]
     call_table = pd.DataFrame(infos, index=rep.final_obs_names)
     count_values, count_freqs = np.unique(positive_counts, return_counts=True)
     diagnostics = {
@@ -1039,6 +1032,7 @@ def output_obs(rep):
 
 def output_var(rep):
     var = rep.var_table.loc[rep.final_var_names].copy()
+    var["gene_ensg"] = var["gene_id"].map(strip_ensembl_version)
     var["qc_n_cells_by_counts"] = rep.qc_n_cells_by_counts
     var["qc_pct_cells_by_counts"] = (
         rep.qc_n_cells_by_counts / len(rep.final_obs_pos) * 100

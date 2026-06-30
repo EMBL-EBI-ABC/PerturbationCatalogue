@@ -64,6 +64,16 @@ def generate_features_tsv(xlsx_path, output_tsv):
 
     features_df = pd.concat([df_a, df_b]).dropna(subset=["seq", "id"])
     features_df["seq"] = features_df["seq"].astype(str).str.strip().str.upper()
+    features_df["id"] = (
+        features_df["id"].astype(str).str.strip().str.replace(",", "-", regex=False)
+    )
+    features_df["ensg"] = (
+        features_df["ensg"].astype(str).str.strip().str.split(".", n=1).str[0]
+    )
+    features_df = features_df[
+        features_df["id"].str.startswith("non-targeting")
+        | features_df["ensg"].str.startswith("ENSG")
+    ]
     features_df["id"] = [
         guide_id_with_ensg(guide_id, ensg)
         for guide_id, ensg in zip(features_df["id"], features_df["ensg"])

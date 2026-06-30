@@ -18,11 +18,6 @@ params.gsea_min_size = 15
 params.gsea_max_size = 500
 params.gsea_seed = 1
 params.tie_correct = false
-params.target_col = "perturbed_target_symbol"
-params.target_ensg_col = "perturbed_target_ensg"
-params.gene_count_col = "called_knockout_gene_count"
-params.control_probe_count_col = "called_control_probe_count"
-params.call_type_col = "perturbation_call_type"
 
 
 process PREPARE_INPUTS {
@@ -47,11 +42,6 @@ process PREPARE_INPUTS {
       --h5ad ${h5ad} \
       --outdir analysis_inputs \
       --dataset-id ${params.dataset_id} \
-      --target-col ${params.target_col} \
-      --target-ensg-col ${params.target_ensg_col} \
-      --gene-count-col ${params.gene_count_col} \
-      --control-probe-count-col ${params.control_probe_count_col} \
-      --call-type-col ${params.call_type_col} \
       --batch-size ${params.batch_size} \
       --min-cells-per-perturbation ${params.min_cells_per_perturbation} \
       --limit-perturbations ${params.limit_perturbations} \

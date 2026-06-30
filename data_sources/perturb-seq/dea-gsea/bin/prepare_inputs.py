@@ -70,11 +70,6 @@ def parse_gtf_attributes(raw: str) -> dict[str, str]:
     return fields
 
 
-def strip_ensembl_version(value: Any) -> str:
-    value = str(value).strip()
-    return value.split(".", 1)[0] if value.startswith("ENSG") else ""
-
-
 def load_gtf_gene_symbols(path: str | None) -> dict[str, str]:
     if not path:
         return {}
@@ -178,6 +173,9 @@ def write_gene_metadata(
             ]
         else:
             gene_ids = var_index
+        gene_ensgs = [
+            str(value) for value in read_h5ad_column_full(handle, "var", "gene_ensg")
+        ]
         if h5ad_column_exists(handle, "var", "gene_symbol"):
             h5ad_symbols = [
                 str(value)
@@ -198,7 +196,6 @@ def write_gene_metadata(
         )
         symbols.append(symbol)
     gene_keys = make_unique_gene_keys(gene_ids, symbols)
-    gene_ensgs = [strip_ensembl_version(gene_id) for gene_id in gene_ids]
     mapped = sum(
         symbol != gene_id and not str(symbol).startswith("ENSG")
         for gene_id, symbol in zip(gene_ids, symbols)
@@ -256,31 +253,28 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
     with h5py.File(h5ad_path, "r") as handle:
         n_cells = int(handle["X"].attrs["shape"][0])
         n_genes = int(handle["X"].attrs["shape"][1])
-        target_labels = read_h5ad_column_full(handle, "obs", args.target_col)
-        target_ensgs = read_h5ad_column_full(handle, "obs", args.target_ensg_col)
-        gene_counts = read_h5ad_column_full(handle, "obs", args.gene_count_col).astype(
-            np.int64
-        )
-        if not h5ad_column_exists(handle, "obs", args.control_probe_count_col):
+        target_labels = read_h5ad_column_full(handle, "obs", "perturbed_target_symbol")
+        target_ensgs = read_h5ad_column_full(handle, "obs", "perturbed_target_ensg")
+        gene_counts = read_h5ad_column_full(
+            handle, "obs", "called_knockout_gene_count"
+        ).astype(np.int64)
+        if not h5ad_column_exists(handle, "obs", "called_control_probe_count"):
             raise KeyError(
-                f"Missing required control annotation obs['{args.control_probe_count_col}']. "
+                "Missing required control annotation obs['called_control_probe_count']. "
                 "Re-run data_sources/perturb-seq/comparison/comparison.py after the "
                 "non-targeting control annotation update."
             )
         control_probe_counts = read_h5ad_column_full(
-            handle, "obs", args.control_probe_count_col
+            handle, "obs", "called_control_probe_count"
         ).astype(np.int64)
-        call_types = (
-            read_h5ad_column_full(handle, "obs", args.call_type_col)
-            if h5ad_column_exists(handle, "obs", args.call_type_col)
-            else np.full(n_cells, "", dtype=object)
-        )
+        call_types = read_h5ad_column_full(handle, "obs", "perturbation_call_type")
 
     if (
         len(target_labels) != n_cells
         or len(target_ensgs) != n_cells
         or len(gene_counts) != n_cells
         or len(control_probe_counts) != n_cells
+        or len(call_types) != n_cells
     ):
         raise ValueError("Observation metadata lengths do not match X shape.")
 
@@ -304,7 +298,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
     if control_indices.size == 0:
         raise ValueError(
             "No explicit non-targeting-only control cells found. Expected cells with "
-            f"{args.gene_count_col} == 0 and {args.control_probe_count_col} > 0."
+            "called_knockout_gene_count == 0 and called_control_probe_count > 0."
         )
     np.save(outdir / "control_indices.npy", control_indices)
 
@@ -312,9 +306,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         {
             "cell_index": single_indices,
             "perturbed_target_symbol": target_labels[single_indices],
-            "perturbed_target_ensg": [
-                strip_ensembl_version(value) for value in target_ensgs[single_indices]
-            ],
+            "perturbed_target_ensg": target_ensgs[single_indices],
         }
     )
     perturbation_counts = single_df["perturbed_target_symbol"].value_counts()
@@ -398,11 +390,11 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
     manifest = {
         "dataset_id": args.dataset_id,
         "h5ad_path": str(h5ad_path),
-        "target_col": args.target_col,
-        "target_ensg_col": args.target_ensg_col,
-        "gene_count_col": args.gene_count_col,
-        "control_probe_count_col": args.control_probe_count_col,
-        "call_type_col": args.call_type_col,
+        "target_col": "perturbed_target_symbol",
+        "target_ensg_col": "perturbed_target_ensg",
+        "gene_count_col": "called_knockout_gene_count",
+        "control_probe_count_col": "called_control_probe_count",
+        "call_type_col": "perturbation_call_type",
         "batch_size": int(args.batch_size),
         "min_cells_per_perturbation": int(args.min_cells_per_perturbation),
         "n_cells_total": int(n_cells),
@@ -478,13 +470,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--h5ad", required=True)
     parser.add_argument("--outdir", required=True)
     parser.add_argument("--dataset-id", required=True)
-    parser.add_argument("--target-col", default="perturbed_target_symbol")
-    parser.add_argument("--target-ensg-col", default="perturbed_target_ensg")
-    parser.add_argument("--gene-count-col", default="called_knockout_gene_count")
-    parser.add_argument(
-        "--control-probe-count-col", default="called_control_probe_count"
-    )
-    parser.add_argument("--call-type-col", default="perturbation_call_type")
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--min-cells-per-perturbation", type=int, default=10)
     parser.add_argument(

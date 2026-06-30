@@ -80,22 +80,4 @@ Preparation metadata is published under:
 
 The preparation step logs cell filtering and batching metrics.
 
-## Output Schemas
-
-DEA columns:
-
-```text
-dataset_id, perturbed_target_symbol, perturbed_target_ensg, effect_gene_symbol,
-effect_gene_ensg, padj, log2foldchange, score_name, score_value, cell_type,
-max_ingested_at
-```
-
-GSEA columns:
-
-```text
-dataset_id, term, perturbed_target_symbol, perturbed_target_ensg, es, nes,
-pval, sidak, fdr, geneset_size, leading_edge, cell_type, max_ingested_at
-```
-
-`leading_edge` is written as a Parquet list of strings for the BigQuery
-`REPEATED STRING` field.
+Output schemas are defined in `bin/io_schemas.py`.
