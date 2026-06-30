@@ -3,7 +3,6 @@ import csv
 import io
 import os
 import json
-import re
 from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -27,37 +26,10 @@ TARGET_QUERY_RESOLUTION_LIMIT = 25
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
-
-def _env_identifier(name: str, default: str) -> str:
-    """Read a SQL identifier from env, rejecting unsafe table/view names."""
-    value = os.getenv(name, default)
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
-        raise RuntimeError(f"{name} must be a plain SQL identifier")
-    return value
-
-
-PG_PERTURB_SEQ_DEA_TABLE = _env_identifier(
-    "PG_PERTURB_SEQ_DEA_TABLE", "perturb_seq_dea"
-)
-PG_PERTURB_SEQ_GSEA_TABLE = _env_identifier(
-    "PG_PERTURB_SEQ_GSEA_TABLE", "perturb_seq_gsea"
-)
-PG_CRISPR_DATA_TABLE = _env_identifier("PG_CRISPR_DATA_TABLE", "crispr_data")
-PG_MAVE_DATA_TABLE = _env_identifier("PG_MAVE_DATA_TABLE", "mave_data")
-PG_PERTURB_SEQ_SUMMARY_PERTURBATION = _env_identifier(
-    "PG_PERTURB_SEQ_SUMMARY_PERTURBATION", "perturb_seq_summary_perturbation"
-)
-PG_PERTURB_SEQ_SUMMARY_EFFECT = _env_identifier(
-    "PG_PERTURB_SEQ_SUMMARY_EFFECT", "perturb_seq_summary_effect"
-)
-PG_PERTURB_SEQ_SUMMARY_DATASET = _env_identifier(
-    "PG_PERTURB_SEQ_SUMMARY_DATASET", "perturb_seq_summary_dataset"
-)
-
 PG_TABLES = {
-    "perturb-seq": PG_PERTURB_SEQ_DEA_TABLE,
-    "crispr-screen": PG_CRISPR_DATA_TABLE,
-    "mave": PG_MAVE_DATA_TABLE,
+    "perturb-seq": "perturb_seq_dea",
+    "crispr-screen": "crispr_data",
+    "mave": "mave_data",
 }
 
 # Field mappings from API to database
@@ -688,7 +660,7 @@ async def enrich_perturb_seq_rows(
         pert_task = conn.fetch(
             f"""
             SELECT t.dataset_id, t.perturbed_target_ensg, t.n_total, t.n_up, t.n_down
-            FROM {PG_PERTURB_SEQ_SUMMARY_PERTURBATION} AS t
+            FROM perturb_seq_summary_perturbation AS t
             JOIN unnest($1::text[], $2::text[]) AS keys(did, pts)
             ON t.dataset_id = keys.did AND t.perturbed_target_ensg = keys.pts
             """,
@@ -704,7 +676,7 @@ async def enrich_perturb_seq_rows(
         effect_task = conn.fetch(
             f"""
             SELECT t.dataset_id, t.effect_gene_ensg, t.n_total, t.n_up, t.n_down
-            FROM {PG_PERTURB_SEQ_SUMMARY_EFFECT} AS t
+            FROM perturb_seq_summary_effect AS t
             JOIN unnest($1::text[], $2::text[]) AS keys(did, g)
             ON t.dataset_id = keys.did AND t.effect_gene_ensg = keys.g
             """,
@@ -772,7 +744,7 @@ async def _fetch_perturb_seq_gsea(
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
         SELECT *
-        FROM {PG_PERTURB_SEQ_GSEA_TABLE}
+        FROM perturb_seq_gsea
         {where_clause}
         ORDER BY sidak ASC
         LIMIT 50
@@ -1073,7 +1045,7 @@ async def _search_dataset_impl(
     )
     if modality == "perturb-seq" and no_user_filters:
         count_query = (
-            f"SELECT n_total FROM {PG_PERTURB_SEQ_SUMMARY_DATASET} "
+            "SELECT n_total FROM perturb_seq_summary_dataset "
             "WHERE dataset_id = $1"
         )
         count_params = [dataset_id]
@@ -1300,7 +1272,7 @@ async def get_perturb_seq_gsea(
         pert_summary_rows = await conn.fetch(
             f"""
             SELECT perturbed_target_ensg, n_total, n_up, n_down
-            FROM {PG_PERTURB_SEQ_SUMMARY_PERTURBATION}
+            FROM perturb_seq_summary_perturbation
             WHERE dataset_id = $1
             AND perturbed_target_ensg = ANY($2::text[])
             """,

@@ -5,7 +5,6 @@ import enum
 import io
 import logging
 import os
-import re
 import uuid
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
@@ -36,48 +35,6 @@ TABLES_TO_SYNC = [
     "perturb_seq_dea",
     "perturb_seq_gsea",
 ]
-
-PG_TABLE_ENV_VARS = {
-    "crispr_data": "PG_CRISPR_DATA_TABLE",
-    "mave_data": "PG_MAVE_DATA_TABLE",
-    "perturb_seq_dea": "PG_PERTURB_SEQ_DEA_TABLE",
-    "perturb_seq_gsea": "PG_PERTURB_SEQ_GSEA_TABLE",
-}
-
-PG_SUMMARY_ENV_VARS = {
-    "perturbation": "PG_PERTURB_SEQ_SUMMARY_PERTURBATION",
-    "effect": "PG_PERTURB_SEQ_SUMMARY_EFFECT",
-    "dataset": "PG_PERTURB_SEQ_SUMMARY_DATASET",
-}
-
-
-def env_identifier(name: str, default: str) -> str:
-    """Read a SQL identifier from env, rejecting unsafe table/view names."""
-    value = os.getenv(name, default)
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
-        raise RuntimeError(f"{name} must be a plain SQL identifier")
-    return value
-
-
-PG_TABLES = {
-    table_name: env_identifier(env_var, table_name)
-    for table_name, env_var in PG_TABLE_ENV_VARS.items()
-}
-
-SYNC_STATE_TABLE = env_identifier("PG_SYNC_STATE_TABLE", "sync_state")
-
-PERTURB_SEQ_SUMMARY_VIEWS = {
-    name: env_identifier(env_var, default)
-    for name, env_var, default in [
-        (
-            "perturbation",
-            "PG_PERTURB_SEQ_SUMMARY_PERTURBATION",
-            "perturb_seq_summary_perturbation",
-        ),
-        ("effect", "PG_PERTURB_SEQ_SUMMARY_EFFECT", "perturb_seq_summary_effect"),
-        ("dataset", "PG_PERTURB_SEQ_SUMMARY_DATASET", "perturb_seq_summary_dataset"),
-    ]
-}
 
 SYNC_QUERIES = {
     "crispr_data": {
@@ -222,8 +179,14 @@ INDEX_DEFINITIONS = {
     ],
 }
 
-# Names of materialized views to refresh for each logical table.
-TABLE_MATERIALIZED_VIEWS = {"perturb_seq_dea": list(PERTURB_SEQ_SUMMARY_VIEWS.values())}
+# Names of materialized views to refresh for each table.
+TABLE_MATERIALIZED_VIEWS = {
+    "perturb_seq_dea": [
+        "perturb_seq_summary_perturbation",
+        "perturb_seq_summary_effect",
+        "perturb_seq_summary_dataset",
+    ],
+}
 
 # Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
 GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
@@ -268,26 +231,20 @@ def get_pg_type(field):
     return pg_type
 
 
-def get_all_sync_states(cursor, sync_state_table: str) -> Dict[str, Dict[str, Any]]:
+def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
     """Gets the current sync state for all tables and datasets from Postgres."""
     cursor.execute(
-        sql.SQL(
-            """
-        CREATE TABLE IF NOT EXISTS {} (
+        """
+        CREATE TABLE IF NOT EXISTS sync_state (
             table_name TEXT NOT NULL,
             dataset_id TEXT NOT NULL,
             last_synced_at TIMESTAMP WITHOUT TIME ZONE,
             PRIMARY KEY (table_name, dataset_id)
         );
     """
-        ).format(sql.Identifier(sync_state_table))
     )
     states = {}
-    cursor.execute(
-        sql.SQL("SELECT table_name, dataset_id, last_synced_at FROM {}").format(
-            sql.Identifier(sync_state_table)
-        )
-    )
+    cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
         if table_name not in states:
             states[table_name] = {}
@@ -472,17 +429,15 @@ def delete_dataset_from_pg(cursor, pg_table, dataset_id):
     )
 
 
-def update_sync_state(cursor, sync_state_table, pg_table, dataset_id, timestamp):
+def update_sync_state(cursor, pg_table, dataset_id, timestamp):
     """Updates or inserts the sync state for a specific dataset."""
     cursor.execute(
-        sql.SQL(
-            """
-        INSERT INTO {} (table_name, dataset_id, last_synced_at)
+        """
+        INSERT INTO sync_state (table_name, dataset_id, last_synced_at)
         VALUES (%s, %s, %s)
         ON CONFLICT (table_name, dataset_id) DO UPDATE
         SET last_synced_at = EXCLUDED.last_synced_at;
-    """
-        ).format(sql.Identifier(sync_state_table)),
+    """,
         (pg_table, dataset_id, timestamp),
     )
 
@@ -504,82 +459,61 @@ def ensure_pg_table_exists(cursor, pg_table, bq_schema):
         )
 
 
-def _index_suffix(logical_table, pg_table):
-    """Return a compact suffix that keeps dev index names away from production."""
-    if pg_table == logical_table:
-        return ""
-    prefix = f"{logical_table}_"
-    if pg_table.startswith(prefix):
-        return f"_{pg_table[len(prefix):]}"
-    return f"_{pg_table}"
-
-
-def drop_indexes(cursor, logical_table, pg_table):
+def drop_indexes(cursor, table_name):
     """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
-    if logical_table not in INDEX_DEFINITIONS:
+    if table_name not in INDEX_DEFINITIONS:
         return
-    suffix = _index_suffix(logical_table, pg_table)
-    logging.info(f"    Dropping indexes for {pg_table}...")
-    for index_name, _ in INDEX_DEFINITIONS[logical_table]:
-        idx = f"{index_name}{suffix}"
+    logging.info(f"    Dropping indexes for {table_name}...")
+    for index_name, _ in INDEX_DEFINITIONS[table_name]:
+        idx = index_name
         logging.info(f"        Dropping {idx}...")
         cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
-def create_indexes(cursor, logical_table, pg_table):
+def create_indexes(cursor, table_name):
     """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
-    if logical_table not in INDEX_DEFINITIONS:
+    if table_name not in INDEX_DEFINITIONS:
         return
-    suffix = _index_suffix(logical_table, pg_table)
-    logging.info(f"      - Creating indexes for {pg_table} (this may take a while)...")
-    for index_name, index_sql_template in INDEX_DEFINITIONS[logical_table]:
-        idx = f"{index_name}{suffix}"
+    logging.info(f"      - Creating indexes for {table_name} (this may take a while)...")
+    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+        idx = index_name
         logging.info(f"        Creating {idx}...")
         index_sql = index_sql_template.format(
             idx=sql.Identifier(idx).as_string(cursor.connection),
-            table=sql.Identifier(pg_table).as_string(cursor.connection),
+            table=sql.Identifier(table_name).as_string(cursor.connection),
         )
         cursor.execute(index_sql)
 
 
 def ensure_perturb_seq_summary_views(cursor):
     """Create ENSG summary materialized views and unique indexes when missing."""
-    dea_table = PG_TABLES["perturb_seq_dea"]
-    perturbation_view = PERTURB_SEQ_SUMMARY_VIEWS["perturbation"]
-    effect_view = PERTURB_SEQ_SUMMARY_VIEWS["effect"]
-    dataset_view = PERTURB_SEQ_SUMMARY_VIEWS["dataset"]
-
     cursor.execute(
         sql.SQL(
             """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_perturbation AS
             SELECT
                 dataset_id,
                 perturbed_target_ensg,
                 COUNT(*) AS n_total,
                 COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
                 COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
-            FROM {}
+            FROM perturb_seq_dea
             WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
             GROUP BY dataset_id, perturbed_target_ensg
             """
-        ).format(sql.Identifier(perturbation_view), sql.Identifier(dea_table))
+        )
     )
     cursor.execute(
-        sql.SQL(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id, perturbed_target_ensg)
-            """
-        ).format(
-            sql.Identifier(f"idx_{perturbation_view}_pk"),
-            sql.Identifier(perturbation_view),
-        )
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_perturbation_pk
+        ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg)
+        """
     )
 
     cursor.execute(
         sql.SQL(
             """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_effect AS
             SELECT
                 dataset_id,
                 effect_gene_ensg,
@@ -587,37 +521,35 @@ def ensure_perturb_seq_summary_views(cursor):
                 COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
                 COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
                 AVG(score_value) AS avg_score
-            FROM {}
+            FROM perturb_seq_dea
             WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
             GROUP BY dataset_id, effect_gene_ensg
             """
-        ).format(sql.Identifier(effect_view), sql.Identifier(dea_table))
+        )
     )
     cursor.execute(
-        sql.SQL(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id, effect_gene_ensg)
-            """
-        ).format(sql.Identifier(f"idx_{effect_view}_pk"), sql.Identifier(effect_view))
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_effect_pk
+        ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg)
+        """
     )
 
     cursor.execute(
         sql.SQL(
             """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS {} AS
+            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_dataset AS
             SELECT dataset_id, COUNT(*) AS n_total
-            FROM {}
+            FROM perturb_seq_dea
             WHERE effect_gene_ensg IS NOT NULL
             GROUP BY dataset_id
             """
-        ).format(sql.Identifier(dataset_view), sql.Identifier(dea_table))
+        )
     )
     cursor.execute(
-        sql.SQL(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS {} ON {} (dataset_id)
-            """
-        ).format(sql.Identifier(f"idx_{dataset_view}_pk"), sql.Identifier(dataset_view))
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_dataset_pk
+        ON perturb_seq_summary_dataset (dataset_id)
+        """
     )
 
 
@@ -732,38 +664,37 @@ class TableSynchronizer:
         - (Separate) Refresh MVs concurrently.
         """
         bq_schema = self._get_bq_schema(table_name)
-        pg_table = PG_TABLES[table_name]
         datasets = sorted(plan["to_update"] + plan["to_insert"])
 
         # 1. Main Transaction Block
         with psycopg2.connect(self.pg_conn_str) as conn:
             with conn.cursor() as cursor:
-                ensure_pg_table_exists(cursor, pg_table, bq_schema)
+                ensure_pg_table_exists(cursor, table_name, bq_schema)
 
                 logging.info(
-                    f"    Starting transaction for {len(datasets)} datasets into {pg_table}..."
+                    f"    Starting transaction for {len(datasets)} datasets..."
                 )
 
                 # A. Drop Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    drop_indexes(cursor, table_name, pg_table)
+                    drop_indexes(cursor, table_name)
 
                 # B. Ingest Loop
                 for ds_id in tqdm(
-                    datasets, desc=f"    Syncing {pg_table}", unit="dataset"
+                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
                 ):
                     # Data Ingestion
                     self._ingest_dataset_logic(
-                        cursor, pg_table, table_name, ds_id, bq_schema
+                        cursor, table_name, table_name, ds_id, bq_schema
                     )
 
                     # Update sync state
                     bq_ts = plan["bq_info"][ds_id][0]
-                    update_sync_state(cursor, SYNC_STATE_TABLE, pg_table, ds_id, bq_ts)
+                    update_sync_state(cursor, table_name, ds_id, bq_ts)
 
                 # C. Recreate Indexes (if requested)
                 if self.drop_and_recreate_indexes:
-                    create_indexes(cursor, table_name, pg_table)
+                    create_indexes(cursor, table_name)
 
         # 2. Materialized View Refresh (concurrently, separate connection)
         # Only if we successfully committed the transaction above.
@@ -845,11 +776,10 @@ def main():
     try:
         with conn.cursor() as cursor:
             # fetch current state
-            pg_states = get_all_sync_states(cursor, SYNC_STATE_TABLE)
+            pg_states = get_all_sync_states(cursor)
             bq_client = synchronizer.bq_client
 
             for table_name in TABLES_TO_SYNC:
-                pg_table = PG_TABLES[table_name]
                 logging.info(f"Checking {table_name}...")
 
                 # 1. Get BQ state
@@ -864,7 +794,7 @@ def main():
                     continue
 
                 # 2. Compare with PG state
-                pg_info = pg_states.get(pg_table, {})
+                pg_info = pg_states.get(table_name, {})
                 to_insert = []
                 to_update = []
 

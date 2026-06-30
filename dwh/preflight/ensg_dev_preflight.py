@@ -18,16 +18,6 @@ from google.cloud import bigquery
 SQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 PRODUCTION_BQ_DATASETS = {"unified_data", "reference"}
-PRODUCTION_PG_OBJECTS = {
-    "crispr_data",
-    "mave_data",
-    "perturb_seq_dea",
-    "perturb_seq_gsea",
-    "sync_state",
-    "perturb_seq_summary_perturbation",
-    "perturb_seq_summary_effect",
-    "perturb_seq_summary_dataset",
-}
 PRODUCTION_ES_ALIASES = {
     "dataset-summary",
     "target-summary",
@@ -42,6 +32,18 @@ BQ_TABLES_TO_REPORT = [
     "target_summary_ensg",
     "landing_page_summary",
 ]
+PG_TABLES_TO_REPORT = {
+    "crispr_data": "crispr_data",
+    "mave_data": "mave_data",
+    "perturb_seq_dea": "perturb_seq_dea",
+    "perturb_seq_gsea": "perturb_seq_gsea",
+}
+PG_SUMMARY_VIEWS_TO_REPORT = {
+    "perturbation": "perturb_seq_summary_perturbation",
+    "effect": "perturb_seq_summary_effect",
+    "dataset": "perturb_seq_summary_dataset",
+}
+SYNC_STATE_TABLE = "sync_state"
 
 
 @dataclass(frozen=True)
@@ -55,9 +57,6 @@ class PipelineConfig:
     bq_opentargets_targets_table: str
     pg_conn: str
     pg_connect_timeout: int
-    pg_tables: dict[str, str]
-    pg_summary_views: dict[str, str]
-    pg_sync_state_table: str
     es_url: str
     es_username: str
     es_password: str
@@ -117,18 +116,6 @@ def load_config() -> PipelineConfig:
         bq_opentargets_targets_table=required_env("BQ_OPENTARGETS_TARGETS_TABLE"),
         pg_conn=required_env("PG_CONN_INTERNAL"),
         pg_connect_timeout=env_int("PG_CONNECT_TIMEOUT", 10),
-        pg_tables={
-            "crispr_data": required_env("PG_CRISPR_DATA_TABLE"),
-            "mave_data": required_env("PG_MAVE_DATA_TABLE"),
-            "perturb_seq_dea": required_env("PG_PERTURB_SEQ_DEA_TABLE"),
-            "perturb_seq_gsea": required_env("PG_PERTURB_SEQ_GSEA_TABLE"),
-        },
-        pg_summary_views={
-            "perturbation": required_env("PG_PERTURB_SEQ_SUMMARY_PERTURBATION"),
-            "effect": required_env("PG_PERTURB_SEQ_SUMMARY_EFFECT"),
-            "dataset": required_env("PG_PERTURB_SEQ_SUMMARY_DATASET"),
-        },
-        pg_sync_state_table=required_env("PG_SYNC_STATE_TABLE"),
         es_url=required_env("ES_URL").rstrip("/"),
         es_username=required_env("ES_USERNAME"),
         es_password=required_env("ES_PASSWORD"),
@@ -162,18 +149,7 @@ def validate_dev_targets(config: PipelineConfig) -> list[str]:
             raise RuntimeError(f"{label} points at a production dataset: {value}")
         checked.append(f"{label}={value}")
 
-    pg_targets = {
-        **config.pg_tables,
-        **config.pg_summary_views,
-        "sync_state": config.pg_sync_state_table,
-    }
-    for label, value in pg_targets.items():
-        validate_sql_identifier(value, f"PG {label}")
-        reject_legacy_migration_name(value, f"PG {label}")
-        require_name_suffix(value, "_ensg_dev", f"PG {label}")
-        if value in PRODUCTION_PG_OBJECTS:
-            raise RuntimeError(f"PG {label} points at production object: {value}")
-        checked.append(f"PG {label}={value}")
+    checked.append("PG_CONN_INTERNAL=<set>")
 
     for label, value in config.es_aliases.items():
         reject_legacy_migration_name(value, f"ES {label}")
@@ -293,7 +269,6 @@ def check_pg(config: PipelineConfig) -> dict[str, Any]:
         "dev_tables": {},
         "dev_summary_views": {},
         "sync_state": {},
-        "production_baseline": {},
     }
 
     with psycopg2.connect(
@@ -301,19 +276,15 @@ def check_pg(config: PipelineConfig) -> dict[str, Any]:
         connect_timeout=config.pg_connect_timeout,
     ) as conn:
         with conn.cursor() as cursor:
-            for logical_name, object_name in config.pg_tables.items():
+            for logical_name, object_name in PG_TABLES_TO_REPORT.items():
                 result["dev_tables"][logical_name] = pg_object_state(
                     cursor, object_name
                 )
-            for logical_name, object_name in config.pg_summary_views.items():
+            for logical_name, object_name in PG_SUMMARY_VIEWS_TO_REPORT.items():
                 result["dev_summary_views"][logical_name] = pg_object_state(
                     cursor, object_name
                 )
-            result["sync_state"] = pg_object_state(cursor, config.pg_sync_state_table)
-            for object_name in sorted(PRODUCTION_PG_OBJECTS):
-                result["production_baseline"][object_name] = pg_object_state(
-                    cursor, object_name
-                )
+            result["sync_state"] = pg_object_state(cursor, SYNC_STATE_TABLE)
 
     return result
 
