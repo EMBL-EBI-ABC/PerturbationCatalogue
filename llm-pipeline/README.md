@@ -107,7 +107,7 @@ Each record follows instruction-tuning format:
 
 ```json
 {
-  "instruction": "What is the fitness effect of knocking out gene ATF5 in K562?",
+  "instruction": "What is the fitness effect of CRISPR-mediated inhibition of gene ATF5 in K562?",
   "input": "Gene: ATF5. Cell line: K562.",
   "output": "ATF5 is essential for survival of K562 under chronic myelogenous leukemia conditions...",
   "metadata": {}
