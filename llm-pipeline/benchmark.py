@@ -409,4 +409,43 @@ def evaluate(predictions, ground_truth_records, k=20):
 
 
 if __name__ == "__main__":
-    print("benchmark.py can be imported to use evaluation functions.")
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(
+        description="Run evaluation metrics on model predictions"
+    )
+    parser.add_argument(
+        "--predictions",
+        type=str,
+        required=True,
+        help="Path to JSONL file with predictions (gene, predicted_text fields)"
+    )
+    parser.add_argument(
+        "--ground_truth",
+        type=str,
+        required=True,
+        help="Path to JSONL file with ground truth records"
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=10,
+        help="K for gene set overlap metric (default: 10)"
+    )
+    args = parser.parse_args()
+
+    with open(args.predictions) as f:
+        predictions = [json.loads(l) for l in f if l.strip()]
+
+    with open(args.ground_truth) as f:
+        ground_truth = [json.loads(l) for l in f if l.strip()]
+
+    metrics, df = evaluate(predictions, ground_truth, k=args.k)
+
+    print("\n" + "=" * 60)
+    print("BENCHMARK RESULTS")
+    print("=" * 60)
+    for key, value in metrics.items():
+        print(f"{key}: {value}")
+    print("=" * 60)

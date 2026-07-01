@@ -88,6 +88,19 @@ python evaluate.py \
     --model_name stanford-crfm/BioMedLM
 ```
 
+### Step 5 — Run benchmark metrics
+
+`benchmark.py` contains evaluation metric functions (gene set overlap, direction accuracy, pathway enrichment) used by `evaluate.py`. It can also be run standalone on saved predictions:
+
+```bash
+python benchmark.py \
+    --predictions data/predictions.jsonl \
+    --ground_truth data/splits/test.jsonl \
+    --k 10
+```
+
+Note: `evaluate.py` generates the predictions file. `benchmark.py` can then be used to rerun metrics or compare different model versions on the same predictions.
+
 ## Training Record Format
 
 Each record follows instruction-tuning format:
