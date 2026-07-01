@@ -397,4 +397,5 @@ def get_dataset_metadata(dataset_id):
         "treatment": first(data.get("treatment_labels", [])),
         "score_interpretation": data.get("score_interpretation", ""),
         "experiment_summary": data.get("experiment_summary", ""),
+        "library_perturbation_type": first(data.get("library_perturbation_type_labels", [])),
     }

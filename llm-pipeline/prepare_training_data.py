@@ -20,7 +20,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def fitness_class_to_text(gene, fitness_class, lfc, cell_line, condition):
+def fitness_class_to_text(gene, fitness_class, lfc, cell_line, condition, perturbation_type="knockout"):
     """
     Convert CRISPR fitness classification to natural language.
 
@@ -40,20 +40,20 @@ def fitness_class_to_text(gene, fitness_class, lfc, cell_line, condition):
         "essential": (
             f"{gene} is essential for survival of {cell_line} "
             f"under {condition} conditions (LFC: {lfc:.2f}). "
-            f"Knockout causes significant cell depletion, indicating "
+            f"CRISPR-mediated {perturbation_type} causes significant cell depletion, indicating "
             f"this gene is required for cell fitness under these "
             f"experimental conditions."
         ),
         "anti_essential": (
             f"{gene} acts as a fitness suppressor in {cell_line} "
             f"under {condition} conditions (LFC: {lfc:.2f}). "
-            f"Knockout causes cell enrichment, meaning cells without "
+            f"CRISPR-mediated {perturbation_type} causes cell enrichment, meaning cells without "
             f"this gene grow faster under these experimental conditions."
         ),
         "neutral": (
             f"{gene} shows no significant fitness effect in {cell_line} "
             f"under {condition} conditions (LFC: {lfc:.2f}). "
-            f"Knockout does not substantially alter cell survival or "
+            f"CRISPR-mediated {perturbation_type} does not substantially alter cell survival or "
             f"proliferation under these specific conditions."
         ),
     }
@@ -108,7 +108,7 @@ def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_thresho
     return df
 
 
-def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", include_condition=True):
+def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", include_condition=True, perturbation_type="knockout"):
     """
     Convert harmonised CRISPR Catalogue records into training record format.
 
@@ -134,14 +134,13 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", incl
 
         display_score = zscore if not np.isnan(zscore) else effect_score
         condition = disease if disease != "unknown" else "standard growth"
-
         output_text = fitness_class_to_text(
-            gene, fitness_class, display_score, cell_line, condition
+            gene, fitness_class, display_score, cell_line, condition, perturbation_type
         )
 
         record = {
             "instruction": (
-                f"What is the fitness effect of knocking out gene {gene} "
+                f"What is the fitness effect of CRISPR-mediated {perturbation_type} of gene {gene} "
                 f"in {cell_line} under {condition}? "
                 f"Describe the phenotype and its biological interpretation."
             ),
@@ -202,7 +201,7 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000, inc
 
     df = normalise_within_dataset(df)
     df = classify_from_catalogue(df)
-    records = catalogue_records_to_training(df, dataset_id, include_condition=include_condition)
+    records = catalogue_records_to_training(df, dataset_id, include_condition=include_condition, perturbation_type=metadata.get("library_perturbation_type", "knockout") or "knockout")
 
     if output_path and records:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -276,6 +275,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
     cell_line = metadata.get("cell_line", "unknown")
     disease = metadata.get("disease", "unknown")
     condition = disease if disease != "unknown" else "standard growth"
+    perturbation_type = metadata.get("library_perturbation_type", "knockout") or "knockout"
 
     for perturbed_gene, effects in perturbation_effects.items():
         up_genes = sorted(effects["up_genes"], key=lambda x: abs(x[1]), reverse=True)[
@@ -300,7 +300,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         n_shown_down = len(down_genes)
 
         output_text = (
-            f"Knockout of {perturbed_gene} in {cell_line} causes "
+            f"CRISPR-mediated {perturbation_type} of {perturbed_gene} in {cell_line} causes "
             f"upregulation of: {up_str}; "
             f"and downregulation of: {down_str}. "
             f"Top differentially expressed genes shown: "
@@ -310,7 +310,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
 
         record = {
             "instruction": (
-                f"Predict the transcriptional response to CRISPR knockout "
+                f"Predict the transcriptional response to CRISPR-mediated {perturbation_type} "
                 f"of gene {perturbed_gene} in {cell_line} under {condition}. "
                 f"Describe the key upregulated and downregulated genes."
             ),
@@ -396,6 +396,7 @@ def fetch_and_process_perturb_seq_gsea(
     cell_line = metadata.get("cell_line", "unknown")
     disease = metadata.get("disease", "unknown")
     condition = disease if disease != "unknown" else "standard growth"
+    perturbation_type = metadata.get("library_perturbation_type", "knockout") or "knockout"
 
     records = []
     rows = []
@@ -459,13 +460,13 @@ def fetch_and_process_perturb_seq_gsea(
         )
 
         output_text = (
-            f"Knockout of {gene} in {cell_line} activates pathways: {act_str}. "
+            f"CRISPR-mediated {perturbation_type} of {gene} in {cell_line} activates pathways: {act_str}. "
             f"Suppressed pathways: {sup_str}."
         )
 
         record = {
             "instruction": (
-                f"What biological pathways are affected by CRISPR knockout "
+                f"What biological pathways are affected by CRISPR-mediated {perturbation_type} "
                 f"of gene {gene} in {cell_line} under {condition}? "
                 f"Describe the activated and suppressed pathways."
             ),
