@@ -157,9 +157,9 @@ def extract_genes_from_output(text, direction="up"):
     import re
 
     if direction == "up":
-        pattern = r"upregulation of[:\s]+([^;]+?)(?:\.|$)"
+        pattern = r"upregulation of[:\s]+([^;]+?)(?:;|$)"
     else:
-        pattern = r"downregulation of[:\s]+([^;]+?)(?:\.|$)"
+        pattern = r"downregulation of[:\s]+([^;]+?)(?:;|\.$|$)"
 
     match = re.search(pattern, text, re.IGNORECASE)
     if not match:
