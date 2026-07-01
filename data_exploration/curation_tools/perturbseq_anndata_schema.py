@@ -81,10 +81,15 @@ class ObsSchema(DataFrameModel):
         str_contains=":",
         description="Perturbation type ontology term ID of the investigated sample.",
     )
-    timepoint: Series[String] = Field(
+    timepoint_post_transfection: Series[String] = Field(
         nullable=True,
         regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
-        description="Timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection. Example: P1DT12H30M15S",
+    )
+    differentiation_timepoint: Series[String] = Field(
+        nullable=True,
+        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
+        description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: P1DT12H30M15S",
     )
     treatment_label: Series[String] = Field(
         nullable=True,
