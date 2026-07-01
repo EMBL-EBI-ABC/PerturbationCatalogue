@@ -5,6 +5,7 @@ import torch
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
+from benchmark import parse_genes_from_output, evaluate as benchmark_evaluate
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -144,30 +145,9 @@ def extract_fitness_class(text):
 def extract_genes_from_output(text, direction="up"):
     """
     Extract gene names from DEA model output text.
-
-    Parameters
-    ----------
-    text : str
-    direction : str — up or down
-
-    Returns
-    -------
-    list of gene name strings
+    Delegates to benchmark.parse_genes_from_output for consistency.
     """
-    import re
-
-    if direction == "up":
-        pattern = r"upregulation of[:\s]+([^;]+?)(?:;|$)"
-    else:
-        pattern = r"downregulation of[:\s]+([^;]+?)(?:;|\.$|$)"
-
-    match = re.search(pattern, text, re.IGNORECASE)
-    if not match:
-        return []
-
-    section = match.group(1)
-    genes = re.findall(r"\b([A-Z][A-Z0-9\-]{1,10})\b", section)
-    return genes
+    return parse_genes_from_output(text, direction)
 
 
 def evaluate_crispr(predictions, ground_truth_records):
@@ -226,59 +206,10 @@ def evaluate_crispr(predictions, ground_truth_records):
 def evaluate_dea(predictions, ground_truth_records, k=10):
     """
     Evaluate scPerturb-seq DEA gene predictions.
-
-    Parameters
-    ----------
-    predictions : list of dict
-    ground_truth_records : list of dict
-    k : int
-
-    Returns
-    -------
-    tuple of (metrics dict, results list)
+    Delegates to benchmark.evaluate for full metrics including
+    gene set overlap, direction accuracy, and pathway enrichment.
     """
-    gt = {r["metadata"]["gene"]: r["metadata"] for r in ground_truth_records}
-
-    results = []
-
-    for pred in predictions:
-        gene = pred["gene"]
-        if gene not in gt:
-            continue
-
-        true_up = gt[gene].get("top_up_genes", [])
-        true_down = gt[gene].get("top_down_genes", [])
-
-        pred_up = extract_genes_from_output(pred["predicted_text"], "up")
-        pred_down = extract_genes_from_output(pred["predicted_text"], "down")
-
-        pred_up_set = set(pred_up[:k])
-        true_up_set = set(true_up[:k])
-        pred_down_set = set(pred_down[:k])
-        true_down_set = set(true_down[:k])
-
-        overlap_up = len(pred_up_set & true_up_set) / max(len(true_up_set), 1)
-        overlap_down = len(pred_down_set & true_down_set) / max(len(true_down_set), 1)
-
-        results.append(
-            {
-                "gene": gene,
-                "overlap_up": round(overlap_up, 4),
-                "overlap_down": round(overlap_down, 4),
-                "mean_overlap": round((overlap_up + overlap_down) / 2, 4),
-            }
-        )
-
-    if not results:
-        return {"n_evaluated": 0, "mean_overlap": 0.0}, results
-
-    mean_overlap = sum(r["mean_overlap"] for r in results) / len(results)
-
-    return {
-        "n_evaluated": len(results),
-        "mean_overlap_at_k": round(mean_overlap, 4),
-        "k": k,
-    }, results
+    return benchmark_evaluate(predictions, ground_truth_records, k=k)
 
 
 def main():
