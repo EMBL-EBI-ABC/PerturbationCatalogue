@@ -112,6 +112,9 @@ class CuratedDataset:
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
 
     gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "gene_ont.parquet").drop_duplicates()
+    opentargets_gene_reference_path = (
+        ONTOLOGIES_DIR / "opentargets_gene_identifier_reference_26_03.parquet"
+    )
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
     tis_ont = pd.read_parquet(ONTOLOGIES_DIR / "tissues.parquet").drop_duplicates()
@@ -916,7 +919,7 @@ class CuratedDataset:
         multiple_entries_sep=None,
     ):
         """
-        Standardize gene symbols or ENSG in a DataFrame column using gprofiler.
+        Standardize gene symbols or ENSG in a DataFrame column using Open Targets gene reference table combined with Ensembl outdated ID mapping.
         Args:
             slot: Which AnnData attribute to use: "var" or "obs".
             input_column: Column name containing gene symbols/ENSG IDs
@@ -961,29 +964,52 @@ class CuratedDataset:
         if remove_version:
             conv_df = self.remove_version_from_genes(df=conv_df, column=input_column, sep=version_sep)
 
-        # filter out all non-standard chromosome names from gene_ont
-        gene_ont = self.gene_ont[
-            self.gene_ont["chromosome_name"].isin(
-                [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
-            )
-        ]
+        reference = self.load_opentargets_gene_reference()
+        conv_df["normalized_input_identifier"] = conv_df[input_column].map(
+            self.normalize_gene_identifier
+        )
 
-        # map the ENSG or gene symbols to the gene ontology
-        conv_list = conv_df[input_column].dropna().unique().tolist()
-
-        if input_column_type == "ensembl_gene_id":
-            matched_df = self.merge_gene_ont_ensg(
-                conv_list=conv_list, gene_ont=gene_ont
-            )
-
-        elif input_column_type == "gene_symbol":
-            matched_df = self.merge_gene_ont_symbol(
-                conv_list=conv_list, gene_ont=gene_ont
-            )
-
-        # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
-            matched_df, how="left", left_on=input_column, right_on="original_input"
+            reference,
+            how="left",
+            on="normalized_input_identifier",
+        )
+
+        control_terms = [
+            "control_nontargeting",
+            "control_gsh",
+            "control_genedesert",
+            "control_intergenic",
+            "control_positive",
+            "control_guideonly",
+            "control_casonly",
+        ]
+        control_mask = conv_df[input_column].isin(control_terms)
+        for column in [
+            "ensembl_gene_id",
+            "gene_symbol",
+            "biotype",
+            "gene_coord",
+            "chromosome_name",
+        ]:
+            conv_df.loc[control_mask, column] = conv_df.loc[control_mask, input_column]
+
+        if input_column_type == "gene_symbol":
+            missing_mask = conv_df["ensembl_gene_id"].isna()
+            conv_df.loc[missing_mask, "gene_symbol"] = conv_df.loc[
+                missing_mask, input_column
+            ]
+        elif input_column_type == "ensembl_gene_id":
+            missing_mask = conv_df["ensembl_gene_id"].isna()
+            conv_df.loc[missing_mask, "ensembl_gene_id"] = conv_df.loc[
+                missing_mask, input_column
+            ]
+
+        mapped_count = conv_df["ensembl_gene_id"].dropna().nunique()
+        input_count = conv_df[input_column].dropna().nunique()
+        print(
+            f"{'-'*50}\nSuccessfully mapped {mapped_count} out of "
+            f"{input_count} genes using Open Targets.\n{'-'*50}"
         )
 
         if multiple_entries:
@@ -994,7 +1020,8 @@ class CuratedDataset:
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
             raise ValueError(
-                f"Length of converted DataFrame ({len(matched_df)}) does not match length of original DataFrame ({len(df)})"
+                f"Length of converted DataFrame ({len(conv_df)}) does not match "
+                f"length of original DataFrame ({len(df)})"
             )
 
         # rename the columns depending on the slot
@@ -1026,6 +1053,39 @@ class CuratedDataset:
         out_df.index.name = 'index'
 
         setattr(self.adata, slot, out_df)
+
+    @staticmethod
+    def normalize_gene_identifier(identifier):
+        """Normalize gene identifiers to match the Open Targets reference table."""
+        if identifier is None or pd.isna(identifier):
+            return None
+
+        normalized = re.sub(r"\s+", " ", str(identifier).strip())
+        if not normalized:
+            return None
+
+        if re.match(r"^ENSG[0-9]+(?:\.[0-9]+)?$", normalized, re.IGNORECASE):
+            return normalized.split(".", maxsplit=1)[0].upper()
+
+        return normalized.upper()
+
+    @classmethod
+    def load_opentargets_gene_reference(cls, reference_path=None):
+        """Load the Open Targets gene standardization reference."""
+        if reference_path is None:
+            reference_path = cls.opentargets_gene_reference_path
+
+        return pd.read_parquet(
+            reference_path,
+            columns=[
+                "normalized_input_identifier",
+                "ensembl_gene_id",
+                "gene_symbol",
+                "biotype",
+                "gene_coord",
+                "chromosome_name",
+            ],
+        )
 
     def standardize_ontology(
         self,
