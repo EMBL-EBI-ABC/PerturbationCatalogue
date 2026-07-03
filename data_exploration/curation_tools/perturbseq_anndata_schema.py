@@ -3,20 +3,6 @@ from pandera.pandas import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
-# Get the absolute path to the current module file
-module_path = Path(__file__).resolve()
-
-# Navigate up to the project root and then to 'ontologies'
-ont_dir = module_path.parent / "ontologies"
-
-gene_ont = pd.read_parquet(ont_dir / "genes.parquet").drop_duplicates()
-ctype_ont = pd.read_parquet(ont_dir / "cell_types.parquet").drop_duplicates()
-cline_ont = pd.read_parquet(ont_dir / "cell_lines.parquet").drop_duplicates()
-tis_ont = pd.read_parquet(ont_dir / "tissues.parquet").drop_duplicates()
-dis_ont = pd.read_parquet(ont_dir / "diseases.parquet").drop_duplicates()
-
-
-# adata.obs schema
 class ObsSchema(DataFrameModel):
     dataset_id: Series[String] = Field(
         nullable=False,
