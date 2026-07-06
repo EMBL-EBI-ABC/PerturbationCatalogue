@@ -884,7 +884,6 @@ class CuratedDataset:
         self,
         slot=Literal["var", "obs"],
         input_column=None,
-        input_column_type=Literal["gene_symbol", "ensembl_gene_id"],
         remove_version=False,
         version_sep=".",
         multiple_entries=False,
@@ -896,7 +895,6 @@ class CuratedDataset:
         Args:
             slot: Which AnnData attribute to use: "var" or "obs".
             input_column: Column name containing gene symbols/ENSG IDs
-            input_column_type: Type of the input column, either 'gene_symbol' or 'ensembl_gene_id'
             remove_version: Boolean indicating whether to remove version numbers from gene symbols/ENSG IDs (default is False)
             version_sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
             multiple_entries: Boolean indicating whether to handle multiple entries. Default is False.
@@ -910,11 +908,6 @@ class CuratedDataset:
 
         df = getattr(self.adata, slot)
 
-        # Check if the column is the gene symbol or ENSG
-        if input_column_type not in ["gene_symbol", "ensembl_gene_id"]:
-            raise ValueError(
-                "Input column type must be either 'gene_symbol' or 'ensembl_gene_id'"
-            )
         # Check if the column exists in the DataFrame
         if input_column not in df.columns:
             raise ValueError(f"Column {input_column} not found in DataFrame")
