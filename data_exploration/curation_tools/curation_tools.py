@@ -889,6 +889,7 @@ class CuratedDataset:
         version_sep=".",
         multiple_entries=False,
         multiple_entries_sep=None,
+        keep_unmapped=False,
     ):
         """
         Standardize gene symbols or ENSG in a DataFrame column using Open Targets gene reference table combined with Ensembl outdated ID mapping.
@@ -900,6 +901,9 @@ class CuratedDataset:
             version_sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
             multiple_entries: Boolean indicating whether to handle multiple entries. Default is False.
             multiple_entries_sep: Separator used between multiple entries (default is None).
+            keep_unmapped: Boolean indicating whether to keep unmapped terms as-is.
+                ENSG-like terms are kept in the Ensembl ID column; all other terms
+                are kept in the gene symbol column.
         Returns:
             DataFrame with standardized gene symbols and ENSG IDs
         """
@@ -966,15 +970,17 @@ class CuratedDataset:
         ]:
             conv_df.loc[control_mask, column] = conv_df.loc[control_mask, input_column]
 
-        if input_column_type == "gene_symbol":
+        # Handle unmapped terms: ENSG-like terms are kept in the Ensembl ID column; all other terms are kept in the gene symbol column.
+        if keep_unmapped:
             missing_mask = conv_df["ensembl_gene_id"].isna()
-            conv_df.loc[missing_mask, "gene_symbol"] = conv_df.loc[
-                missing_mask, input_column
+            ensg_mask = conv_df["normalized_input_identifier"].str.match(
+                r"^ENSG[0-9]+", na=False
+            )
+            conv_df.loc[missing_mask & ensg_mask, "ensembl_gene_id"] = conv_df.loc[
+                missing_mask & ensg_mask, input_column
             ]
-        elif input_column_type == "ensembl_gene_id":
-            missing_mask = conv_df["ensembl_gene_id"].isna()
-            conv_df.loc[missing_mask, "ensembl_gene_id"] = conv_df.loc[
-                missing_mask, input_column
+            conv_df.loc[missing_mask & ~ensg_mask, "gene_symbol"] = conv_df.loc[
+                missing_mask & ~ensg_mask, input_column
             ]
 
         mapped_count = conv_df["ensembl_gene_id"].dropna().nunique()
