@@ -489,6 +489,60 @@ class CuratedDataset:
                 data_subset_df.write_parquet(self.curated_parquet_data_path)
                 print(f"✅ Data saved to {self.curated_parquet_data_path}")
 
+    def upload_parquet_to_bq(
+        self,
+        project_id: str,
+        bq_dataset_id: Literal["perturb_seq", "crispr", "mavedb"],
+        bq_table_name: Literal["data", "metadata"],
+        key_columns,
+        parquet_path=None,
+        verbose=True,
+    ):
+        """Upload a curated parquet file to BigQuery.
+
+        Parameters
+        ----------
+        bq_table_name : Literal["data", "metadata"]
+            The name of the BigQuery table to upload to: {project_id}.{bq_dataset_id}.{bq_table_name}
+        key_columns : list[str]
+            Columns used to merge staging rows into the destination table.
+        parquet_path : str, optional
+            Explicit parquet file path. If omitted, bq_table_name must be provided.
+        bq_dataset_id : Literal["perturb_seq", "crispr", "mavedb"]
+            BigQuery dataset ID.
+        project_id : str, optional
+            BigQuery project ID. Defaults to the BQ_PROJECT environment variable.
+        verbose : bool
+            Whether to print upload progress.
+        """
+        if parquet_path is None:
+            if bq_table_name == "metadata":
+                parquet_path = self.curated_parquet_metadata_path
+            elif bq_table_name == "data":
+                parquet_path = self.curated_parquet_data_path
+            else:
+                raise ValueError(
+                    "parquet_path must be provided unless bq_table_name is "
+                    "'metadata' or 'data'."
+                )
+
+        parquet_path = Path(parquet_path)
+        if not parquet_path.exists():
+            raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
+
+        # BigQuery MERGE needs stable keys to decide which rows to update or insert.
+        if not key_columns:
+            raise ValueError("key_columns must contain at least one column.")
+
+        _upload_parquet_to_bq(
+            parquet_path=parquet_path,
+            project_id=project_id,
+            bq_dataset_id=bq_dataset_id,
+            bq_table_name=bq_table_name,
+            key_columns=key_columns,
+            verbose=verbose,
+        )
+
     def chromosome_encoding(self, chromosome_col="perturbed_target_chromosome"):
         """
         Encode the chromosome column (default='perturbed_target_chromosome') in the adata.obs DataFrame.
@@ -1854,11 +1908,38 @@ def add_bq_upload_timestamp(bq_dest_table):
         client.query(sql).result()
 
 
-def upload_parquet_to_bq(
-    parquet_path, bq_dataset_id, bq_table_name, key_columns, verbose=True
+def _upload_parquet_to_bq(
+    parquet_path,
+    project_id,
+    bq_dataset_id: Literal["perturb_seq", "crispr", "mavedb"],
+    bq_table_name: Literal["data", "metadata"],
+    key_columns,
+    verbose=True,
 ):
+    """Upload a parquet file to BigQuery, defaulting project_id to BQ_PROJECT."""
+    if project_id is None:
+        if "BQ_PROJECT" not in os.environ:
+            raise ValueError(
+                "project_id must be provided or set in the BQ_PROJECT environment variable."
+            )
+        else:
+            project_id = os.environ["BQ_PROJECT"]
+            print(
+                f"Using project_id from environment variable BQ_PROJECT: {project_id}"
+            )
+    else:
+        print(f"Using provided project_id: {project_id}")
+
+    if bq_dataset_id is None:
+        raise ValueError("bq_dataset_id must be provided.")
+
+    if bq_table_name is None:
+        raise ValueError("bq_table_name must be provided.")
+    if not key_columns:
+        raise ValueError("key_columns must contain at least one column.")
+
     client = bigquery.Client()
-    target_table_base = f"{bq_dataset_id}.{bq_table_name}"
+    target_table_base = f"{project_id}.{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
     
     # get the target table schema
