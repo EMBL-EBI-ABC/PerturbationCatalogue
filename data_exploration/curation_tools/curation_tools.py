@@ -1022,6 +1022,24 @@ class CuratedDataset:
 
         out_df.index.name = 'index'
 
+        # if keep_unmapped is False, remove unmapped genes from the DataFrame
+        # this subset is done on adata.obs or adata.var, so that the adata object is updated as a whole
+        mapped_output_column = new_colnames_map["ensembl_gene_id"]
+        if not keep_unmapped:
+            mapped_mask = out_df[mapped_output_column].notna()
+            removed_count = len(out_df) - mapped_mask.sum()
+            if removed_count:
+                print(
+                    f"Removing {removed_count} unmapped genes from adata.{slot}."
+                    f"Unmapped genes: {out_df.loc[~mapped_mask, input_column].unique()}"
+                )
+
+            out_df = out_df.loc[mapped_mask].copy()
+            if slot == "obs":
+                self.adata = self.adata[mapped_mask.to_numpy(), :].copy()
+            elif slot == "var":
+                self.adata = self.adata[:, mapped_mask.to_numpy()].copy()
+
         setattr(self.adata, slot, out_df)
 
     @staticmethod
