@@ -170,7 +170,10 @@ class CurationSchema(BaseModel):
         default=None,
     )
     library_generation_type_label: (
-        Literal["endogenous genetic perturbation method", "exogenous genetic perturbation method"]
+        Literal[
+            "endogenous genetic perturbation method",
+            "exogenous genetic perturbation method",
+        ]
         | None
     ) = Field(
         default=...,
