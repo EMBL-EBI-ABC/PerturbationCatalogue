@@ -2,7 +2,7 @@
 
 This loader is intentionally scoped to the Open Targets reference table used by
 the ENSG dev data stack. It downloads the release target parquet parts,
-assembles a single parquet file, creates the configured reference dataset if
+assembles a single parquet file, creates the configured main dataset if
 needed, and loads the parquet into BigQuery.
 """
 
@@ -29,6 +29,7 @@ DEFAULT_BASE_TEMPLATE = (
     "{release}/output/target/"
 )
 DEFAULT_WORK_DIR = "/tmp/perturbation_catalogue/opentargets"
+OPENTARGETS_TARGETS_TABLE = "opentargets_targets"
 CHUNK_SIZE = 1024 * 1024
 EXPECTED_COLUMNS = {
     "id",
@@ -90,7 +91,7 @@ def validate_dev_destination(dataset: str, table: str, allow_non_dev: bool) -> N
         return
     raise ValueError(
         "Refusing to load Open Targets into a non-dev destination. "
-        "Use a BQ_REFERENCE_DATASET/table containing 'ensg_dev', or pass "
+        "Use a BQ_DATASET containing 'ensg_dev', or pass "
         "--allow-non-dev-destination explicitly."
     )
 
@@ -286,7 +287,7 @@ def load_reference_table(
     dataset_ref.location = args.location
     client.create_dataset(dataset_ref, exists_ok=True)
 
-    destination = f"{args.project}.{args.dataset}.{args.table}"
+    destination = f"{args.project}.{args.dataset}.{OPENTARGETS_TARGETS_TABLE}"
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=args.write_disposition,
@@ -321,8 +322,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--project", default=os.getenv("GCLOUD_PROJECT"))
     parser.add_argument("--location", default=os.getenv("BQ_LOCATION", "EU"))
-    parser.add_argument("--dataset", default=os.getenv("BQ_REFERENCE_DATASET"))
-    parser.add_argument("--table", default=os.getenv("BQ_OPENTARGETS_TARGETS_TABLE"))
+    parser.add_argument("--dataset", default=os.getenv("BQ_DATASET"))
     parser.add_argument(
         "--release",
         default=os.getenv("OPENTARGETS_RELEASE", DEFAULT_RELEASE),
@@ -379,15 +379,14 @@ def main() -> None:
     if not args.project:
         raise ValueError("GCLOUD_PROJECT or --project is required")
     if not args.dataset:
-        raise ValueError("BQ_REFERENCE_DATASET or --dataset is required")
-    if not args.table:
-        raise ValueError("BQ_OPENTARGETS_TARGETS_TABLE or --table is required")
+        raise ValueError("BQ_DATASET or --dataset is required")
 
     validate_bigquery_identifier(args.dataset, "dataset")
-    validate_bigquery_identifier(args.table, "table")
-    validate_dev_destination(args.dataset, args.table, args.allow_non_dev_destination)
+    validate_dev_destination(
+        args.dataset, OPENTARGETS_TARGETS_TABLE, args.allow_non_dev_destination
+    )
 
-    destination = f"{args.project}.{args.dataset}.{args.table}"
+    destination = f"{args.project}.{args.dataset}.{OPENTARGETS_TARGETS_TABLE}"
     print("Open Targets reference load", flush=True)
     print(f"  release:     {args.release}", flush=True)
     print(f"  location:    {args.location}", flush=True)

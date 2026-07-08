@@ -33,8 +33,7 @@ sources:
   - name: reference
     description: "Reference data loaded from external canonical resources"
     database: "{{ env_var('GCLOUD_PROJECT', 'prj-ext-dev-pertcat-437314') }}"   # GCP project id
-    schema: "{{ env_var('BQ_REFERENCE_DATASET', 'reference') }}"                   # BigQuery dataset
+    schema: "{{ env_var('BQ_DATASET', 'unified_data') }}"                   # BigQuery dataset
     tables:
       - name: opentargets_targets
-        identifier: "{{ env_var('BQ_OPENTARGETS_TARGETS_TABLE', 'opentargets_targets') }}"
         description: "Open Targets Platform target table keyed by Ensembl gene ID"

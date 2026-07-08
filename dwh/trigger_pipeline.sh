@@ -9,8 +9,7 @@
 #   - gcloud CLI installed and authenticated
 #   - Environment variables set (via dev_secrets or equivalent):
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
-#       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD, BQ_REFERENCE_DATASET,
-#       BQ_OPENTARGETS_TARGETS_TABLE, ES_*_SUMMARY
+#       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD, ES_*_SUMMARY
 #       Optional: OPENTARGETS_RELEASE (defaults to 26.03)
 #
 
@@ -47,8 +46,6 @@ REQUIRED_VARS=(
     GCLOUD_PROJECT
     GCLOUD_REGION
     BQ_DATASET
-    BQ_REFERENCE_DATASET
-    BQ_OPENTARGETS_TARGETS_TABLE
     BQ_LOCATION
     GCLOUD_TMP_BUCKET
     PG_CONN_INTERNAL
@@ -99,7 +96,7 @@ echo "============================================"
 echo "  Project:            $GCLOUD_PROJECT"
 echo "  Region:             $GCLOUD_REGION"
 echo "  BQ Dataset:         $BQ_DATASET"
-echo "  BQ Reference:       $BQ_REFERENCE_DATASET.$BQ_OPENTARGETS_TARGETS_TABLE"
+echo "  BQ Reference:       $BQ_DATASET.opentargets_targets"
 echo "  OT Release:         $OPENTARGETS_RELEASE"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
@@ -118,8 +115,6 @@ BUILD_ID=$(gcloud builds submit "$SCRIPT_DIR" \
 _GCLOUD_PROJECT=$GCLOUD_PROJECT|\
 _GCLOUD_REGION=$GCLOUD_REGION|\
 _BQ_DATASET=$BQ_DATASET|\
-_BQ_REFERENCE_DATASET=$BQ_REFERENCE_DATASET|\
-_BQ_OPENTARGETS_TARGETS_TABLE=$BQ_OPENTARGETS_TARGETS_TABLE|\
 _OPENTARGETS_RELEASE=$OPENTARGETS_RELEASE|\
 _BQ_LOCATION=$BQ_LOCATION|\
 _GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET|\

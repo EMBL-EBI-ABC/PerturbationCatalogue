@@ -17,9 +17,8 @@ The pipeline runs five stages sequentially:
 | 5. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
-For the ENSG dev stack, the Open Targets reference stage writes only to
-`BQ_REFERENCE_DATASET.BQ_OPENTARGETS_TARGETS_TABLE`, which should be
-`reference_ensg_dev.opentargets_targets`.
+For the ENSG dev stack, the Open Targets reference stage writes to
+`BQ_DATASET.opentargets_targets`.
 
 ## Prerequisites
 
@@ -41,7 +40,7 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_REFERENCE_DATASET`, `BQ_OPENTARGETS_TARGETS_TABLE`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_DATASET_SUMMARY`, `ES_TARGET_SUMMARY`, `ES_LANDING_PAGE_SUMMARY`.
+The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_DATASET_SUMMARY`, `ES_TARGET_SUMMARY`, `ES_LANDING_PAGE_SUMMARY`.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`.
 
@@ -154,8 +153,8 @@ pip install -r requirements.txt
 python3 reference/load_opentargets_targets.py
 ```
 
-The loader uses `GCLOUD_PROJECT`, `BQ_LOCATION`, `BQ_REFERENCE_DATASET`,
-`BQ_OPENTARGETS_TARGETS_TABLE`, and optionally `OPENTARGETS_RELEASE`.
+The loader uses `GCLOUD_PROJECT`, `BQ_LOCATION`, `BQ_DATASET`, and optionally
+`OPENTARGETS_RELEASE`. It writes to the fixed `opentargets_targets` table.
 By default it refuses destinations that do not contain `ensg_dev`, so the
 development reference load cannot accidentally overwrite a production table.
 

@@ -44,6 +44,7 @@ PG_SUMMARY_VIEWS_TO_REPORT = {
     "dataset": "perturb_seq_summary_dataset",
 }
 SYNC_STATE_TABLE = "sync_state"
+OPENTARGETS_TARGETS_TABLE = "opentargets_targets"
 
 
 @dataclass(frozen=True)
@@ -53,8 +54,6 @@ class PipelineConfig:
     project: str
     bq_location: str
     bq_dataset: str
-    bq_reference_dataset: str
-    bq_opentargets_targets_table: str
     pg_conn: str
     pg_connect_timeout: int
     es_url: str
@@ -112,8 +111,6 @@ def load_config() -> PipelineConfig:
         project=required_env("GCLOUD_PROJECT"),
         bq_location=os.getenv("BQ_LOCATION", "EU"),
         bq_dataset=required_env("BQ_DATASET"),
-        bq_reference_dataset=required_env("BQ_REFERENCE_DATASET"),
-        bq_opentargets_targets_table=required_env("BQ_OPENTARGETS_TARGETS_TABLE"),
         pg_conn=required_env("PG_CONN_INTERNAL"),
         pg_connect_timeout=env_int("PG_CONNECT_TIMEOUT", 10),
         es_url=required_env("ES_URL").rstrip("/"),
@@ -131,19 +128,12 @@ def validate_dev_targets(config: PipelineConfig) -> list[str]:
     """Fail if configured destinations look like production or legacy targets."""
     checked: list[str] = []
 
-    bq_targets = {
-        "BQ_DATASET": config.bq_dataset,
-        "BQ_REFERENCE_DATASET": config.bq_reference_dataset,
-        "BQ_OPENTARGETS_TARGETS_TABLE": config.bq_opentargets_targets_table,
-    }
+    bq_targets = {"BQ_DATASET": config.bq_dataset}
     for label, value in bq_targets.items():
         validate_sql_identifier(value, label)
         reject_legacy_migration_name(value, label)
 
-    for label, value in {
-        "BQ_DATASET": config.bq_dataset,
-        "BQ_REFERENCE_DATASET": config.bq_reference_dataset,
-    }.items():
+    for label, value in bq_targets.items():
         require_name_contains(value, "ensg_dev", label)
         if value in PRODUCTION_BQ_DATASETS:
             raise RuntimeError(f"{label} points at a production dataset: {value}")
@@ -197,7 +187,7 @@ def check_bq(config: PipelineConfig) -> dict[str, Any]:
     client = bigquery.Client(project=config.project, location=config.bq_location)
     result: dict[str, Any] = {
         "dev_dataset": config.bq_dataset,
-        "reference_dataset": config.bq_reference_dataset,
+        "reference_dataset": config.bq_dataset,
         "location": config.bq_location,
         "dev_tables": {},
         "reference_table": {},
@@ -212,8 +202,8 @@ def check_bq(config: PipelineConfig) -> dict[str, Any]:
     result["reference_table"] = bq_table_state(
         client,
         config.project,
-        config.bq_reference_dataset,
-        config.bq_opentargets_targets_table,
+        config.bq_dataset,
+        OPENTARGETS_TARGETS_TABLE,
     )
 
     for table in [
