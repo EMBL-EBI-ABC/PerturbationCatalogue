@@ -29,7 +29,18 @@ By default it writes:
 - downloaded raw full text to `pub_full_text_raw/`
 - converted Markdown to `pub_full_text_md/`
 
-This script currently has no CLI arguments. Running it launches the full data collection pipeline using the hard-coded/default paths in the script.
+`mavedb/processing.py` exposes a small CLI for overriding the default paths used by the collection pipeline.
+
+Arguments:
+
+- `--dump-dir`: directory containing the MaveDB CSV dump
+- `--metadata-output-dir`: directory used to cache MaveDB entry metadata JSON files
+- `--urn-to-dois-output-file`: output file for the URN-to-DOI mapping JSON
+- `--doi-to-fulltext-output-file`: output file for the DOI-to-full-text mapping JSON
+- `--raw-output-dir`: directory used to cache downloaded publication full text files
+- `--markdown-output-dir`: directory used to write converted Markdown files
+
+The script uses the defaults shown in `processing.py` if you do not pass any arguments.
 
 Note: publication retrieval in this step uses `paperscraper`, which reads publisher API credentials from the repository root `.env` file. Add these variables to `.env` before running the collection pipeline:
 
@@ -42,6 +53,14 @@ Run it from the repository root:
 
 ```bash
 PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing
+```
+
+For example, to override the input dump directory and the output location for cached Markdown:
+
+```bash
+PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing \
+  --dump-dir data_exploration/MaveDB/Dump/mavedb-dump.20250612164404/csv \
+  --markdown-output-dir data_exploration/MaveDB/llm_metadata_extraction/pub_full_text_md
 ```
 
 ### 2. Extract metadata with an LLM
