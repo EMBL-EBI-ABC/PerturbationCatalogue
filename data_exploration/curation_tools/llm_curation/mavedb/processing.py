@@ -7,7 +7,10 @@ from time import sleep
 import requests
 from tqdm import tqdm
 
-from curation_tools.llm_curation.logging_utils import append_log_line, print_status_block
+from curation_tools.llm_curation.logging_utils import (
+    append_log_line,
+    print_status_block,
+)
 from curation_tools.llm_curation.publication_text import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
     DOWNLOAD_PROGRESS_LOG_FILE,
@@ -16,7 +19,6 @@ from curation_tools.llm_curation.publication_text import (
     bulk_convert_full_texts_to_md,
     bulk_download_pub_full_texts,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MAVEDB_DIR = REPO_ROOT / "data_exploration" / "MaveDB"
@@ -222,7 +224,9 @@ def bulk_fetch_mavedb_entries(
                     f"URN: {urn}",
                     f"Skipping download for file: {entry_output_path}",
                 )
-                entries.append(json.loads(entry_output_path.read_text(encoding="utf-8")))
+                entries.append(
+                    json.loads(entry_output_path.read_text(encoding="utf-8"))
+                )
                 continue
 
             entry = fetch_mavedb_entry(urn)
@@ -251,7 +255,9 @@ def collect_publication_dois(
     doi_reference_count = 0
     entries_with_dois = 0
     entry_files = list(mavedb_entries_dir.glob("*.json"))
-    for entry_file in tqdm(entry_files, desc="Collecting publication DOIs", unit="entry"):
+    for entry_file in tqdm(
+        entry_files, desc="Collecting publication DOIs", unit="entry"
+    ):
         try:
             entry = json.loads(entry_file.read_text(encoding="utf-8"))
             urn = entry.get("urn", "<unknown URN>")
@@ -364,7 +370,9 @@ def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, obj
         "experiment_abstract": normalize_prompt_text(
             experiment_payload.get("abstractText")
         ),
-        "experiment_method": normalize_prompt_text(experiment_payload.get("methodText")),
+        "experiment_method": normalize_prompt_text(
+            experiment_payload.get("methodText")
+        ),
         "target_genes": target_genes or None,
         "score_columns": entry_payload.get("datasetColumns", {}).get("scoreColumns")
         or None,
@@ -479,9 +487,7 @@ def context_output_suffix_builder(
         return base_suffix
 
     source_urns = prompt_context.get("source_urns", [])
-    urn_suffix = "__" + "__".join(
-        format_urn_for_filename(urn) for urn in source_urns
-    )
+    urn_suffix = "__" + "__".join(format_urn_for_filename(urn) for urn in source_urns)
     return f"{base_suffix}{urn_suffix}" if base_suffix else urn_suffix
 
 

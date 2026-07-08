@@ -8,9 +8,11 @@ import pymupdf4llm
 from paperscraper.pdf import save_pdf
 from tqdm import tqdm
 
-from curation_tools.llm_curation.logging_utils import append_log_line, print_status_block
+from curation_tools.llm_curation.logging_utils import (
+    append_log_line,
+    print_status_block,
+)
 from curation_tools.llm_curation.xml_parser import xml_to_md
-
 
 LLM_CURATION_DIR = Path(__file__).resolve().parent
 PAPERSCRAPER_DUMP_DIR = LLM_CURATION_DIR / "paperscraper_dumps"
