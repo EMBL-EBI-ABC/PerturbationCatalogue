@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -207,6 +208,7 @@ def remove_references_from_markdown(text: str) -> str:
 def bulk_download_pub_full_texts(
     doi_to_urns: dict[str, set[str]],
     output_dir: str | Path = PAPERSCRAPER_FULL_TEXT_RAW_DIR,
+    doi_to_fulltext_output_file: str | Path | None = None,
     overwrite: bool = False,
     max_workers: int = DEFAULT_DOWNLOAD_MAX_WORKERS,
 ) -> list[Path]:
@@ -217,7 +219,7 @@ def bulk_download_pub_full_texts(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     doi_order = list(doi_to_urns)
-    results_by_doi: dict[str, Path] = {}
+    results_by_doi: dict[str, Path | None] = {doi: None for doi in doi_order}
     total_dois = len(doi_order)
     completed_dois = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -247,8 +249,7 @@ def bulk_download_pub_full_texts(
             doi = future_to_doi[future]
             try:
                 full_text_path = future.result()
-                if full_text_path:
-                    results_by_doi[doi] = full_text_path
+                results_by_doi[doi] = full_text_path
                 completed_dois += 1
                 append_log_line(
                     DOWNLOAD_PROGRESS_LOG_FILE,
@@ -266,7 +267,30 @@ def bulk_download_pub_full_texts(
                     f"DOI: {doi}",
                     f"Error: {exc}",
                 )
-    return [results_by_doi[doi] for doi in doi_order if doi in results_by_doi]
+    if doi_to_fulltext_output_file is not None:
+        doi_to_fulltext_output_file = Path(doi_to_fulltext_output_file).resolve()
+        doi_to_fulltext_output_file.parent.mkdir(parents=True, exist_ok=True)
+        doi_to_fulltext = {
+            doi: str(full_text_path) if full_text_path is not None else None
+            for doi, full_text_path in results_by_doi.items()
+        }
+        doi_to_fulltext_output_file.write_text(
+            json.dumps(doi_to_fulltext, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print_status_block(
+            DOWNLOAD_PROGRESS_LOG_FILE,
+            "DOI to publication full text mapping written",
+            f"DOIs attempted: {len(doi_order)}",
+            f"Full texts retrieved: {sum(path is not None for path in results_by_doi.values())}",
+            f"Output file: {doi_to_fulltext_output_file}",
+        )
+
+    return [
+        full_text_path
+        for doi in doi_order
+        if (full_text_path := results_by_doi[doi]) is not None
+    ]
 
 
 def bulk_convert_full_texts_to_md(

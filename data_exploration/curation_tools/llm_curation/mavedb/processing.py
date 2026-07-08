@@ -26,6 +26,9 @@ MAVEDB_METADATA_OUTPUT_DIR = MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_me
 MAVEDB_URN_TO_DOIS_OUTPUT_FILE = (
     MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_urn_to_dois.json"
 )
+MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE = (
+    MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_doi_to_fulltext.json"
+)
 MAVEDB_API_BASE_URL = "https://api.mavedb.org/api/v1"
 DEFAULT_FETCH_SLEEP_TIME = 0.1
 JSON_INDENT = 2
@@ -470,6 +473,7 @@ def run_full_text_collection_pipeline(
     dump_dir: str | Path = MAVEDB_DUMP_DIR,
     metadata_output_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
     urn_to_dois_output_file: str | Path = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+    doi_to_fulltext_output_file: str | Path = MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE,
     raw_output_dir: str | Path = PAPERSCRAPER_FULL_TEXT_RAW_DIR,
     markdown_output_dir: str | Path = FULL_TEXT_MD_DIR,
     overwrite: bool = False,
@@ -490,6 +494,7 @@ def run_full_text_collection_pipeline(
     full_text_paths = bulk_download_pub_full_texts(
         doi_to_urns=doi_to_urns,
         output_dir=raw_output_dir,
+        doi_to_fulltext_output_file=doi_to_fulltext_output_file,
         overwrite=overwrite,
         max_workers=max_workers,
     )
