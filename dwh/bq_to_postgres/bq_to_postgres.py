@@ -47,13 +47,13 @@ SYNC_QUERIES = {
                 score_value,
                 significant,
                 significance_criteria,
-                max_ingested_at
-            FROM `{project}.{bq_dataset}.crispr_data`
+                ingested_at as max_ingested_at
+            FROM `{project}.crispr.data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.{bq_dataset}.crispr_data`
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.crispr.data`
             GROUP BY dataset_id
         """,
     },
@@ -73,13 +73,13 @@ SYNC_QUERIES = {
                 regexp_extract(
                     perturbation_name, r'p\.[a-zA-Z]+\d+([a-zA-Z=]+)'
                 ) as perturbation_aa_change,
-                max_ingested_at
-            FROM `{project}.{bq_dataset}.mave_data`
+                ingested_at as max_ingested_at
+            FROM `{project}.mavedb.data`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.{bq_dataset}.mave_data`
+            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            FROM `{project}.mavedb.data`
             GROUP BY dataset_id
         """,
     },
@@ -474,7 +474,9 @@ def create_indexes(cursor, table_name):
     """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
     if table_name not in INDEX_DEFINITIONS:
         return
-    logging.info(f"      - Creating indexes for {table_name} (this may take a while)...")
+    logging.info(
+        f"      - Creating indexes for {table_name} (this may take a while)..."
+    )
     for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
         idx = index_name
         logging.info(f"        Creating {idx}...")
