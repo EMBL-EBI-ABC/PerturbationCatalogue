@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,51 @@ DEFAULT_FETCH_SLEEP_TIME = 0.1
 JSON_INDENT = 2
 
 _MAVEDB_URN_TO_DOIS_CACHE: dict[str, list[str]] | None = None
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for the MaveDB text collection pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Collect MaveDB publication full text and convert it to Markdown.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--dump-dir",
+        type=Path,
+        default=MAVEDB_DUMP_DIR,
+        help="Directory containing the MaveDB CSV dump.",
+    )
+    parser.add_argument(
+        "--metadata-output-dir",
+        type=Path,
+        default=MAVEDB_METADATA_OUTPUT_DIR,
+        help="Directory used to cache MaveDB entry metadata JSON files.",
+    )
+    parser.add_argument(
+        "--urn-to-dois-output-file",
+        type=Path,
+        default=MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+        help="Output file for the URN-to-DOI mapping JSON.",
+    )
+    parser.add_argument(
+        "--doi-to-fulltext-output-file",
+        type=Path,
+        default=MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE,
+        help="Output file for the DOI-to-full-text mapping JSON.",
+    )
+    parser.add_argument(
+        "--raw-output-dir",
+        type=Path,
+        default=PAPERSCRAPER_FULL_TEXT_RAW_DIR,
+        help="Directory used to cache downloaded publication full text files.",
+    )
+    parser.add_argument(
+        "--markdown-output-dir",
+        type=Path,
+        default=FULL_TEXT_MD_DIR,
+        help="Directory used to write converted Markdown files.",
+    )
+    return parser
 
 
 def get_unique_mavedb_urns(dump_dir: str | Path = MAVEDB_DUMP_DIR) -> list[str]:
@@ -507,7 +553,15 @@ def run_full_text_collection_pipeline(
 
 
 def main() -> None:
-    run_full_text_collection_pipeline()
+    args = build_parser().parse_args()
+    run_full_text_collection_pipeline(
+        dump_dir=args.dump_dir,
+        metadata_output_dir=args.metadata_output_dir,
+        urn_to_dois_output_file=args.urn_to_dois_output_file,
+        doi_to_fulltext_output_file=args.doi_to_fulltext_output_file,
+        raw_output_dir=args.raw_output_dir,
+        markdown_output_dir=args.markdown_output_dir,
+    )
 
 
 if __name__ == "__main__":
