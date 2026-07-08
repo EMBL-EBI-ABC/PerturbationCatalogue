@@ -269,6 +269,8 @@ class ObsSchema(DataFrameModel):
         isin=[
             "lipofection",
             "nucleofection",
+            "adeno-associated virus transduction",
+            "adenovirus transduction",
             "retrovirus transduction",
             "lentivirus transduction",
             "transformation",
@@ -284,6 +286,8 @@ class ObsSchema(DataFrameModel):
         isin=[
             "lipofection",
             "nucleofection",
+            "adeno-associated virus transduction",
+            "adenovirus transduction",
             "retrovirus transduction",
             "lentivirus transduction",
             "transformation",
@@ -430,11 +434,11 @@ class ObsSchema(DataFrameModel):
         description="Ontology term label associated with the technology used in the readout assay.",
         isin=["single-cell rna-seq", "population growth assay", "flow cytometry"],
     )
-    readout_measurment_id: Series[String] = Field(
+    readout_measurement_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID associated with the measurement type of the readout assay.",
     )
-    readout_measurment_label: Series[String] = Field(
+    readout_measurement_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the measurement type of the readout assay.",
         isin=[
