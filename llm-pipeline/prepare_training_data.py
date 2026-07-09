@@ -83,7 +83,7 @@ def normalise_within_dataset(df, score_col="effect_score"):
     return df
 
 
-def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_threshold=1.5):
+def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_threshold=1.5, use_significant_only=False):
     """
     Classify genes into essential / anti_essential / neutral.
 
@@ -92,15 +92,24 @@ def classify_from_catalogue(df, zscore_col="effect_score_zscore", zscore_thresho
     df : pd.DataFrame
     zscore_col : str
     zscore_threshold : float
+    use_significant_only : bool
+        If True, use only the significant flag without z-score threshold.
+        Use for datasets where effect score is a p-value (e.g. biogrid_2373 MAGeCK neg score).
 
     Returns
     -------
     pd.DataFrame with added fitness_class column
     """
-    conditions = [
-        df["significant"] & (df[zscore_col] < -zscore_threshold),
-        df["significant"] & (df[zscore_col] > zscore_threshold),
-    ]
+    if use_significant_only:
+        conditions = [
+            df["significant"],
+            pd.Series([False] * len(df), index=df.index),
+        ]
+    else:
+        conditions = [
+            df["significant"] & (df[zscore_col] < -zscore_threshold),
+            df["significant"] & (df[zscore_col] > zscore_threshold),
+        ]
     choices = ["essential", "anti_essential"]
     df["fitness_class"] = np.select(conditions, choices, default="neutral")
     counts = df["fitness_class"].value_counts()
@@ -200,7 +209,10 @@ def fetch_and_process_crispr(dataset_id, output_path=None, max_records=5000, inc
         df[key] = value
 
     df = normalise_within_dataset(df)
-    df = classify_from_catalogue(df)
+    # biogrid_2373 uses MAGeCK neg score (a p-value) — use significant flag only
+    # All other CRISPR datasets use z-score classification
+    use_sig_only = (dataset_id == "biogrid_2373")
+    df = classify_from_catalogue(df, use_significant_only=use_sig_only)
     records = catalogue_records_to_training(df, dataset_id, include_condition=include_condition, perturbation_type=metadata.get("library_perturbation_type", "knockout") or "knockout")
 
     if output_path and records:

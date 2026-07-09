@@ -16,10 +16,10 @@ BASE_URL = "https://perturbation-catalogue-be-328296435987.europe-west2.run.app"
 # Order matters — we prefer the first match found
 EFFECT_SCORE_NAMES = [
     "CRISPR Score (CS)",
-    "Log2FC",
     "Gamma (normalized log2e/t)",
     "Rho (Log2e Treated vs. Untreated)",
     "MAGeCK neg score",
+    "Log2FC",
     "LFC",
 ]
 
