@@ -65,7 +65,7 @@ PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.process
 
 ### 2. Extract metadata with an LLM
 
-`mavedb/metadata_extraction_runner.py` reads every Markdown file in `pub_full_text_md/`, augments the prompt with matching MaveDB entry metadata when available, and requests structured output using the Pydantic schema provided through `--extraction-schema`.
+`mavedb/metadata_extraction_runner.py` reads Markdown files from `pub_full_text_md/` by default, augments the prompt with matching MaveDB entry metadata when available, and requests structured output using the Pydantic schema provided through `--extraction-schema`.
 
 Outputs are written to:
 
@@ -85,7 +85,10 @@ Useful flags:
 ```bash
 PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadata_extraction_runner \
   --extraction-schema path/to/schema.py:MyMetadataExtractionSchema \
-  --llm-model google/gemini-2.5-flash \
+  --publication-full-text-dir data_exploration/curation_tools/llm_curation/mavedb/pub_full_text_md \
+  --output-dir data_exploration/MaveDB/llm_metadata_extraction/extracted_metadata \
+  --prompt-template-file data_exploration/curation_tools/llm_curation/mavedb_metadata_extraction_prompt_template.md \
+  --llm-model google/gemini-3.5-flash \
   --max-workers 8 \
   --overwrite \
   --create-csv
@@ -94,6 +97,10 @@ PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadat
 Arguments:
 
 - `--extraction-schema`: required Pydantic `BaseModel` subclass to use for extraction, formatted as `package.module:SchemaClass` or `path/to/schema.py:SchemaClass`
+- `--publication-full-text-dir`: directory containing the Markdown publication files to extract from
+- `--output-dir`: base directory used for `clean/`, `with_evidence/`, and `clean_metadata.csv`
+- `--log-file`: log file used for extraction progress and errors
+- `--prompt-template-file`: Markdown prompt template used to build extraction prompts
 - `--llm-model`: model ID used for extraction; defaults to `LLM_MODEL_NAME` from the environment, or `google/gemini-3.5-flash` if unset
 - `--max-workers`: number of worker threads used for bulk extraction; must be at least `1`
 - `--overwrite`: overwrite existing outputs in `extracted_metadata/` instead of skipping files that already have clean JSON outputs
