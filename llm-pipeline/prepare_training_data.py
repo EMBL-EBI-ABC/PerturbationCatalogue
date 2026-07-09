@@ -251,7 +251,18 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
 
     perturbation_effects = {}
     for r in raw:
-        perturbed_gene = r.get("perturbation", {}).get("gene_name", "unknown")
+        raw_gene_name = r.get("perturbation", {}).get("gene_name", "unknown")
+        # Handle Norman-style combo perturbations (gene|control_nontargeting or gene|gene)
+        if "|" in str(raw_gene_name):
+            parts = raw_gene_name.split("|")
+            if "control_nontargeting" in parts[1].lower():
+                # gene|control_nontargeting → use gene name, keep full name in metadata
+                perturbed_gene = parts[0]
+            else:
+                # gene|gene → true combo, skip
+                continue
+        else:
+            perturbed_gene = raw_gene_name
         effect = r.get("effect", {})
 
         if perturbed_gene not in perturbation_effects:
