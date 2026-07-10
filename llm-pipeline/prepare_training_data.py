@@ -155,14 +155,14 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", incl
             ),
             "input": (
                 f"Gene: {gene}. "
-                f"Cell line: {cell_line_display}."
+                f"Cell line: {cell_line}."
                 + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
                 "gene": gene,
                 "dataset_id": dataset_id,
-                "cell_line": cell_line_display,
+                "cell_line": cell_line,
                 "disease": disease,
                 "effect_score": float(effect_score),
                 "effect_score_zscore": float(zscore) if not np.isnan(zscore) else None,
@@ -500,14 +500,14 @@ def fetch_and_process_perturb_seq_gsea(
             ),
             "input": (
                 f"Gene: {gene}. "
-                f"Cell line: {cell_line_display}."
+                f"Cell line: {cell_line}."
                 + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
                 "gene": gene,
                 "dataset_id": dataset_id,
-                "cell_line": cell_line_display,
+                "cell_line": cell_line,
                 "disease": disease,
                 "activated_pathways": [t for t, _, _ in activated],
                 "suppressed_pathways": [t for t, _, _ in suppressed],
