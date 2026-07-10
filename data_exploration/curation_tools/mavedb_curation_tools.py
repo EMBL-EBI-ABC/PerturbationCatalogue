@@ -316,12 +316,12 @@ def process_mavedb_metadata(
 
 def make_adata_mavedb(
     mavedb_id: str = None,
-    mavedb_csv_dir: str = "../Dump/mavedb-dump.20250612164404/csv",
+    mavedb_csv_dir: str = None,
     curated_metadata_df: pd.DataFrame = None,
-    save_h5ad_dir=None,
+    save_h5ad_dir: str | None = None,
 ):
     """
-    Create an AnnData object for a specific MaveDB experiment id.
+    Create AnnData object for a specific MaveDB experiment id.
 
     Parameters:
     ----------
@@ -331,13 +331,13 @@ def make_adata_mavedb(
         Path to the directory containing MaveDB CSV files.
     curated_metadata_df : pd.DataFrame
         Curated metadata dataframe for MaveDB experiments.
-    save_h5ad_dir : Path
+    save_h5ad_dir : str | None
         Directory to save the AnnData h5ad file. If None, the file is not saved.
 
     Returns:
     -------
-    anndata.AnnData
-        AnnData object containing the MaveDB data.
+    tuple[anndata.AnnData, Path | None]
+        AnnData object containing the MaveDB data and the path to the saved h5ad file (if applicable).
     """
     mavedb_data_path = f"{mavedb_csv_dir}/{mavedb_id.replace(':', '-')}.scores.csv"
     if not Path(mavedb_data_path).exists():
@@ -389,6 +389,7 @@ def make_adata_mavedb(
     # save the anndata object as an h5ad file
     h5ad_path = None
     if save_h5ad_dir:
+        save_h5ad_dir = Path(save_h5ad_dir)
         save_h5ad_dir.mkdir(parents=True, exist_ok=True)
         h5ad_path = save_h5ad_dir / f"{mavedb_id.replace(':', '-')}.h5ad"
         adata.write_h5ad(h5ad_path)
@@ -473,14 +474,14 @@ def curate_mavedb(
 
 def process_mavedb(
     mavedb_dataset_id: str = None,
-    mavedb_csv_dir: str = "../Dump/mavedb-dump.20250612164404/csv",
+    mavedb_csv_dir: str = None,
     curated_metadata_df: pd.DataFrame = None,
-    non_curated_h5ad_dir: Path = Path("../non_curated/h5ad"),
+    non_curated_h5ad_dir: str = None,
     overwrite: bool = False,
 ):
     """
     Process and curate MaveDB dataset.
-    
+
     Parameters:
     ----------
     mavedb_dataset_id : str
@@ -489,11 +490,11 @@ def process_mavedb(
         Path to the directory containing MaveDB CSV files.
     curated_metadata_df : pd.DataFrame
         Curated metadata dataframe for MaveDB experiments.
-    non_curated_h5ad_dir : Path
+    non_curated_h5ad_dir : str
         Directory to save the non-curated AnnData h5ad file.
     overwrite : bool
         Whether to overwrite existing curated data. Defaults to False.
-        
+
     Returns:
     -------
     CuratedDataset
@@ -502,17 +503,17 @@ def process_mavedb(
 
     # check if the data has been processed already, if yes, skip processing
     curated_h5ad_path = (
-        Path(non_curated_h5ad_dir.as_posix().replace("non_curated", "curated"))
+        Path(non_curated_h5ad_dir.replace("non_curated", "curated"))
         / f"{mavedb_dataset_id}_curated.h5ad"
     )
     if curated_h5ad_path.exists():
         if overwrite:
             print(
-                f"♻️ Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Overwriting..."
+                f"Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Overwriting..."
             )
         else:
             print(
-                f"✅ Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Skipping processing."
+                f"Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Skipping processing."
             )
             return
 
