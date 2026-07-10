@@ -155,14 +155,14 @@ def catalogue_records_to_training(df, dataset_id, modality="CRISPR_screen", incl
             ),
             "input": (
                 f"Gene: {gene}. "
-                f"Cell line: {cell_line}."
+                f"Cell line: {cell_line_display}."
                 + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
                 "gene": gene,
                 "dataset_id": dataset_id,
-                "cell_line": cell_line,
+                "cell_line": cell_line_display,
                 "disease": disease,
                 "effect_score": float(effect_score),
                 "effect_score_zscore": float(zscore) if not np.isnan(zscore) else None,
@@ -265,11 +265,14 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
             perturbed_gene = raw_gene_name
         effect = r.get("effect", {})
 
-        if perturbed_gene not in perturbation_effects:
-            perturbation_effects[perturbed_gene] = {
+        record_cell_type = effect.get("cell_type") or "unknown"
+        # Group by (gene, cell_type) to create separate records per cell type
+        group_key = (perturbed_gene, record_cell_type)
+        if group_key not in perturbation_effects:
+            perturbation_effects[group_key] = {
                 "up_genes": [],
                 "down_genes": [],
-                "cell_type": effect.get("cell_type", "unknown"),
+                "cell_type": record_cell_type,
                 "n_total": r.get("perturbation", {}).get("n_total", 0),
                 "n_up": r.get("perturbation", {}).get("n_up", 0),
                 "n_down": r.get("perturbation", {}).get("n_down", 0),
@@ -283,11 +286,11 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         if padj < 0.05:
             if not affected_gene.startswith("ENSG"):
                 if direction == "increased":
-                    perturbation_effects[perturbed_gene]["up_genes"].append(
+                    perturbation_effects[group_key]["up_genes"].append(
                         (affected_gene, round(log2fc, 3))
                     )
                 elif direction == "decreased":
-                    perturbation_effects[perturbed_gene]["down_genes"].append(
+                    perturbation_effects[group_key]["down_genes"].append(
                         (affected_gene, round(log2fc, 3))
                     )
 
@@ -300,7 +303,9 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
     condition = disease if disease != "unknown" else "standard growth"
     perturbation_type = metadata.get("library_perturbation_type", "knockout") or "knockout"
 
-    for perturbed_gene, effects in perturbation_effects.items():
+    for (perturbed_gene, record_cell_type), effects in perturbation_effects.items():
+        # Use cell_type from record when cell_line is unknown (e.g. arce_2025 primary cells)
+        cell_line_display = cell_line if cell_line != "unknown" else record_cell_type
         up_genes = sorted(effects["up_genes"], key=lambda x: abs(x[1]), reverse=True)[
             :10
         ]
@@ -323,7 +328,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         n_shown_down = len(down_genes)
 
         output_text = (
-            f"CRISPR-mediated {perturbation_type} of {perturbed_gene} in {cell_line} causes "
+            f"CRISPR-mediated {perturbation_type} of {perturbed_gene} in {cell_line_display} causes "
             f"upregulation of: {up_str}; "
             f"and downregulation of: {down_str}. "
             f"Top differentially expressed genes shown: "
@@ -334,19 +339,19 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         record = {
             "instruction": (
                 f"Predict the transcriptional response to CRISPR-mediated {perturbation_type} "
-                f"of gene {perturbed_gene} in {cell_line} under {condition}. "
+                f"of gene {perturbed_gene} in {cell_line_display} under {condition}. "
                 f"Describe the key upregulated and downregulated genes."
             ),
             "input": (
                 f"Gene: {perturbed_gene}. "
-                f"Cell line: {cell_line}."
+                f"Cell line: {cell_line_display}."
                 + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
                 "gene": perturbed_gene,
                 "dataset_id": dataset_id,
-                "cell_line": cell_line,
+                "cell_line": cell_line_display,
                 "disease": disease,
                 "top_up_genes": [g for g, _ in up_genes],
                 "top_down_genes": [g for g, _ in down_genes],
@@ -363,7 +368,7 @@ def fetch_and_process_perturb_seq(dataset_id, output_path=None, max_records=5000
         rows.append(
             {
                 "gene": perturbed_gene,
-                "cell_line": cell_line,
+                "cell_line": cell_line_display,
                 "n_up": effects["n_up"],
                 "n_down": effects["n_down"],
                 "n_total": effects["n_total"],
@@ -495,14 +500,14 @@ def fetch_and_process_perturb_seq_gsea(
             ),
             "input": (
                 f"Gene: {gene}. "
-                f"Cell line: {cell_line}."
+                f"Cell line: {cell_line_display}."
                 + (f" Condition: {condition}." if include_condition and condition != "standard growth" else "")
             ),
             "output": output_text,
             "metadata": {
                 "gene": gene,
                 "dataset_id": dataset_id,
-                "cell_line": cell_line,
+                "cell_line": cell_line_display,
                 "disease": disease,
                 "activated_pathways": [t for t, _, _ in activated],
                 "suppressed_pathways": [t for t, _, _ in suppressed],
@@ -516,7 +521,7 @@ def fetch_and_process_perturb_seq_gsea(
         rows.append(
             {
                 "gene": gene,
-                "cell_line": cell_line,
+                "cell_line": cell_line_display,
                 "n_activated": len(activated),
                 "n_suppressed": len(suppressed),
             }
