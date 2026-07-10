@@ -521,7 +521,7 @@ def fetch_and_process_perturb_seq_gsea(
         rows.append(
             {
                 "gene": gene,
-                "cell_line": cell_line_display,
+                "cell_line": cell_line,
                 "n_activated": len(activated),
                 "n_suppressed": len(suppressed),
             }
