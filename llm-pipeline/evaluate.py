@@ -32,8 +32,9 @@ def load_model(adapter_dir, model_name):
     -------
     tuple of (model, tokenizer)
     """
-    log.info(f"Loading tokenizer from {adapter_dir}...")
-    tokenizer = AutoTokenizer.from_pretrained(adapter_dir)
+    tokenizer_source = adapter_dir if (adapter_dir and adapter_dir.lower() != "none") else model_name
+    log.info(f"Loading tokenizer from {tokenizer_source}...")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -45,8 +46,12 @@ def load_model(adapter_dir, model_name):
         trust_remote_code=True,
     )
 
-    log.info(f"Applying LoRA adapter from {adapter_dir}...")
-    model = PeftModel.from_pretrained(base_model, adapter_dir)
+    if adapter_dir and adapter_dir.lower() != "none":
+        log.info(f"Applying LoRA adapter from {adapter_dir}...")
+        model = PeftModel.from_pretrained(base_model, adapter_dir)
+    else:
+        log.info("No adapter — running zero-shot baseline")
+        model = base_model
     model.eval()
 
     return model, tokenizer
@@ -219,7 +224,8 @@ def main():
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        required=True,
+        required=False,
+        default=None,
         help="Path to saved LoRA adapter directory",
     )
     parser.add_argument(
