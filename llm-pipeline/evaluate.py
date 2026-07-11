@@ -6,6 +6,7 @@ from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from benchmark import parse_genes_from_output, evaluate as benchmark_evaluate
+from rouge_score import rouge_scorer
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -153,6 +154,42 @@ def extract_genes_from_output(text, direction="up"):
     Delegates to benchmark.parse_genes_from_output for consistency.
     """
     return parse_genes_from_output(text, direction)
+
+
+def compute_rouge_l(predictions, ground_truth_records):
+    """
+    Compute ROUGE-L between predicted and ground truth outputs.
+    Format-agnostic — works for all modalities.
+
+    Parameters
+    ----------
+    predictions : list of dict — gene, predicted_text
+    ground_truth_records : list of dict — training records with output field
+
+    Returns
+    -------
+    dict of metrics
+    """
+    scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
+    gt = {r["metadata"]["gene"]: r["output"] for r in ground_truth_records}
+
+    scores = []
+    for pred in predictions:
+        gene = pred["gene"]
+        if gene not in gt:
+            continue
+        score = scorer.score(gt[gene], pred["predicted_text"])
+        scores.append(score["rougeL"].fmeasure)
+
+    if not scores:
+        return {"rouge_l_mean": 0.0, "rouge_l_median": 0.0, "n_evaluated": 0}
+
+    import statistics
+    return {
+        "rouge_l_mean": round(sum(scores) / len(scores), 4),
+        "rouge_l_median": round(statistics.median(scores), 4),
+        "n_evaluated": len(scores),
+    }
 
 
 def evaluate_crispr(predictions, ground_truth_records):
@@ -306,6 +343,9 @@ def main():
         metrics, results = evaluate_dea(predictions, test_records)
         metric_display = f"Mean overlap@k: {metrics.get('mean_overlap_at_k', 0):.4f}"
 
+    # Compute ROUGE-L for all modalities
+    rouge_metrics = compute_rouge_l(predictions, test_records)
+
     print("\n" + "=" * 60)
     print("EVALUATION RESULTS")
     print("=" * 60)
@@ -314,6 +354,8 @@ def main():
     print(f"Modality:     {first_modality}")
     print(f"Test records: {metrics['n_evaluated']}")
     print(f"{metric_display}")
+    print(f"ROUGE-L mean: {rouge_metrics['rouge_l_mean']:.4f}")
+    print(f"ROUGE-L median: {rouge_metrics['rouge_l_median']:.4f}")
     print("=" * 60)
 
     if args.output:
