@@ -364,6 +364,20 @@ def main():
             for r in results:
                 f.write(json.dumps(r) + "\n")
         log.info(f"Saved per-gene results to {args.output}")
+        # Save summary metrics
+        summary_path = Path(args.output).parent / "eval_summary.json"
+        import json as json_module
+        summary = {
+            "model": args.model_name,
+            "adapter": args.adapter_dir,
+            "modality": first_modality,
+            "n_evaluated": metrics["n_evaluated"],
+            "task_metrics": metrics,
+            "rouge_l": rouge_metrics,
+        }
+        with open(summary_path, "w") as f:
+            f.write(json_module.dumps(summary, indent=2))
+        log.info(f"Saved eval summary to {summary_path}")
 
 
 if __name__ == "__main__":
