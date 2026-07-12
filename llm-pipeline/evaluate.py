@@ -145,7 +145,7 @@ def extract_fitness_class(text):
     ):
         return "neutral"
     else:
-        return "unknown"
+        return "unparseable"
 
 
 def extract_genes_from_output(text, direction="up"):
@@ -208,9 +208,11 @@ def evaluate_crispr(predictions, ground_truth_records):
     gt = {
         r["metadata"]["gene"]: r["metadata"]["fitness_class"]
         for r in ground_truth_records
+        if "fitness_class" in r["metadata"]
     }
 
     correct = 0
+    unparseable = 0
     total = 0
     results = []
 
@@ -221,6 +223,8 @@ def evaluate_crispr(predictions, ground_truth_records):
 
         true_class = gt[gene]
         pred_class = pred["predicted_class"]
+        if pred_class == "unparseable":
+            unparseable += 1
         is_correct = pred_class == true_class
 
         correct += int(is_correct)
@@ -242,6 +246,8 @@ def evaluate_crispr(predictions, ground_truth_records):
         "n_evaluated": total,
         "accuracy": round(accuracy, 4),
         "correct": correct,
+        "unparseable": unparseable,
+        "unparseable_pct": round(100 * unparseable / total, 1) if total > 0 else 0,
     }, results
 
 
@@ -336,14 +342,15 @@ def main():
         log.info(f"  Predicted class: {pred_class}")
         log.info(f"  Generated: {generated[:100]}...")
 
-    if "CRISPR" in first_modality:
-        metrics, results = evaluate_crispr(predictions, test_records)
-        metric_display = f"Accuracy: {metrics['accuracy']:.4f} ({metrics['correct']}/{metrics['n_evaluated']})"
-    else:
-        metrics, results = evaluate_dea(predictions, test_records)
-        metric_display = f"Mean overlap@k: {metrics.get('mean_overlap_at_k', 0):.4f}"
+    # Split predictions by modality
+    crispr_preds = [p for p in predictions if "CRISPR" in p["modality"]]
+    dea_preds    = [p for p in predictions if p["modality"] == "scPerturb-seq"]
+    gsea_preds   = [p for p in predictions if p["modality"] == "scPerturb-seq_GSEA"]
 
-    # Compute ROUGE-L for all modalities
+    crispr_records = [r for r in test_records if "CRISPR" in r["metadata"].get("modality","")]
+    dea_records    = [r for r in test_records if r["metadata"].get("modality","") == "scPerturb-seq"]
+    gsea_records   = [r for r in test_records if r["metadata"].get("modality","") == "scPerturb-seq_GSEA"]
+
     rouge_metrics = compute_rouge_l(predictions, test_records)
 
     print("\n" + "=" * 60)
@@ -351,13 +358,33 @@ def main():
     print("=" * 60)
     print(f"Model:        {args.model_name}")
     print(f"Adapter:      {args.adapter_dir}")
-    print(f"Modality:     {first_modality}")
-    print(f"Test records: {metrics['n_evaluated']}")
-    print(f"{metric_display}")
+    print(f"Total test records: {len(predictions)}")
     print(f"ROUGE-L mean: {rouge_metrics['rouge_l_mean']:.4f}")
     print(f"ROUGE-L median: {rouge_metrics['rouge_l_median']:.4f}")
-    print("=" * 60)
 
+    results = []
+    metrics = {"n_evaluated": len(predictions)}
+
+    if crispr_preds:
+        crispr_metrics, crispr_results = evaluate_crispr(crispr_preds, crispr_records)
+        print(f"\nCRISPR ({len(crispr_preds)} records):")
+        print(f"  Accuracy: {crispr_metrics['accuracy']:.4f} ({crispr_metrics['correct']}/{crispr_metrics['n_evaluated']})")
+        print(f"  Unparseable: {crispr_metrics.get('unparseable', 0)} ({crispr_metrics.get('unparseable_pct', 0):.1f}%)")
+        results.extend(crispr_results)
+
+    if dea_preds:
+        dea_metrics, dea_results = evaluate_dea(dea_preds, dea_records)
+        print(f"\nDEA ({len(dea_preds)} records):")
+        print(f"  Mean overlap@k: {dea_metrics.get('mean_overlap_at_k', dea_metrics.get('mean_overlap_both', 0)):.4f}")
+        results.extend(dea_results)
+
+    if gsea_preds:
+        gsea_metrics, gsea_results = evaluate_dea(gsea_preds, gsea_records)
+        print(f"\nGSEA ({len(gsea_preds)} records):")
+        print(f"  Mean overlap@k: {gsea_metrics.get('mean_overlap_at_k', gsea_metrics.get('mean_overlap_both', 0)):.4f}")
+        results.extend(gsea_results)
+
+    print("=" * 60)
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         with open(args.output, "w") as f:
