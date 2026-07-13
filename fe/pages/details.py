@@ -934,12 +934,12 @@ def _fetch_section_payload(
     if config["id"] == "perturb_seq_perturbed" and gene_search:
         cleaned_gene = gene_search.strip()
         if cleaned_gene:
-            filters["effect_gene_query"] = cleaned_gene
+            filters["effect_gene_name"] = cleaned_gene
     # Add perturbed target query filter for Perturb-Seq (Affected) section
     if config["id"] == "perturb_seq_affected" and perturbed_gene_search:
         cleaned_perturbed_gene = perturbed_gene_search.strip()
         if cleaned_perturbed_gene:
-            filters["perturbed_target_query"] = cleaned_perturbed_gene
+            filters["perturbation_gene_name"] = cleaned_perturbed_gene
     # For MAVE, add effect_score_name and perturbation_position
     if config["modality"] == "mave":
         filters["effect_score_name"] = "score"

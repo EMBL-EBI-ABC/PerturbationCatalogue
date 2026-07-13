@@ -78,14 +78,14 @@ PG_MAPPINGS = {
 }
 
 TARGET_QUERY_FIELDS = {
-    "perturbed_target_query": "perturbed_target_ensg",
-    "effect_gene_query": "effect_gene_ensg",
+    "perturbation_gene_name": "perturbed_target_ensg",
+    "effect_gene_name": "effect_gene_ensg",
 }
 
 MODALITY_TARGET_QUERY_FIELDS = {
-    "perturb-seq": set(TARGET_QUERY_FIELDS.keys()),
-    "crispr-screen": {"perturbed_target_query"},
-    "mave": {"perturbed_target_query"},
+    "perturb-seq": {"perturbation_gene_name", "effect_gene_name"},
+    "crispr-screen": {"perturbation_gene_name"},
+    "mave": {"perturbation_gene_name"},
 }
 
 # Numeric field mappings: "int" for integer fields, "float" for float fields
@@ -309,12 +309,8 @@ class CommonDatasetSearchParams:
 class MaveParams:
     def __init__(
         self,
-        perturbed_target_ensg: Optional[str] = Query(
-            None, description="Filter by perturbed target Ensembl gene ID"
-        ),
-        perturbed_target_query: Optional[str] = Query(
-            None,
-            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name (symbol or Ensembl ID)"
         ),
         perturbation_name: Optional[str] = Query(
             None, description="Filter by perturbation name"
@@ -336,8 +332,7 @@ class MaveParams:
             None, description="Filter by target amino acid"
         ),
     ):
-        self.perturbed_target_ensg = perturbed_target_ensg
-        self.perturbed_target_query = perturbed_target_query
+        self.perturbation_gene_name = perturbation_gene_name
         self.perturbation_name = perturbation_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
@@ -352,12 +347,8 @@ class MaveParams:
 class CrisprScreenParams:
     def __init__(
         self,
-        perturbed_target_ensg: Optional[str] = Query(
-            None, description="Filter by perturbed target Ensembl gene ID"
-        ),
-        perturbed_target_query: Optional[str] = Query(
-            None,
-            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name (symbol or Ensembl ID)"
         ),
         effect_score_name: Optional[str] = Query(
             None, description="Filter by effect score name"
@@ -372,8 +363,7 @@ class CrisprScreenParams:
             None, description="Filter by effect significance criteria"
         ),
     ):
-        self.perturbed_target_ensg = perturbed_target_ensg
-        self.perturbed_target_query = perturbed_target_query
+        self.perturbation_gene_name = perturbation_gene_name
         self.effect_score_name = effect_score_name
         self.effect_score_value = effect_score_value
         self.effect_significant = effect_significant
@@ -386,19 +376,11 @@ class CrisprScreenParams:
 class PerturbSeqParams:
     def __init__(
         self,
-        perturbed_target_ensg: Optional[str] = Query(
-            None, description="Filter by perturbed target Ensembl gene ID"
+        perturbation_gene_name: Optional[str] = Query(
+            None, description="Filter by perturbation gene name (symbol or Ensembl ID)"
         ),
-        perturbed_target_query: Optional[str] = Query(
-            None,
-            description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
-        ),
-        effect_gene_ensg: Optional[str] = Query(
-            None, description="Filter by effect Ensembl gene ID"
-        ),
-        effect_gene_query: Optional[str] = Query(
-            None,
-            description="Search effect gene by Ensembl ID, symbol, synonym, or name",
+        effect_gene_name: Optional[str] = Query(
+            None, description="Filter by effect gene name (symbol or Ensembl ID)"
         ),
         effect_log2fc: Optional[str] = Query(
             None, description="Filter by effect log2fc (supports ranges)"
@@ -420,10 +402,8 @@ class PerturbSeqParams:
             None, description="Filter GSEA by sidak (supports ranges)"
         ),
     ):
-        self.perturbed_target_ensg = perturbed_target_ensg
-        self.perturbed_target_query = perturbed_target_query
-        self.effect_gene_ensg = effect_gene_ensg
-        self.effect_gene_query = effect_gene_query
+        self.perturbation_gene_name = perturbation_gene_name
+        self.effect_gene_name = effect_gene_name
         self.effect_log2fc = effect_log2fc
         self.effect_padj = effect_padj
         self.effect_score_name = effect_score_name
@@ -568,11 +548,19 @@ async def build_pg_filters(
             continue
 
         db_field = TARGET_QUERY_FIELDS[key]
-        ensg_ids = await resolve_target_query_to_ensg(value)
+        parts = [p.strip() for p in value.split("|") if p.strip()]
+        if not parts:
+            continue
 
-        # Include raw values in case it's a control or exact ID not found in ES
-        raw_values = [v.strip() for v in value.split("|") if v.strip()]
-        search_terms = list(set(ensg_ids + raw_values))
+        # Detect whether the query contains Ensembl gene IDs
+        if all(p.upper().startswith("ENSG") for p in parts):
+            # Strict Ensembl gene ID lookup (no ES query)
+            search_terms = parts
+        else:
+            # Gene symbol query (resolve via ES)
+            ensg_ids = await resolve_target_query_to_ensg(value)
+            # Include raw values in case it's a control or exact ID not found in ES
+            search_terms = list(set(ensg_ids + parts))
 
         if not search_terms:
             has_empty_target_resolution = True
@@ -1228,19 +1216,15 @@ async def search_perturb_seq_dataset(
 )
 async def get_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_target_ensg: Optional[str] = Query(
-        None, description="Perturbed target Ensembl gene ID"
-    ),
-    perturbed_target_query: Optional[str] = Query(
-        None,
-        description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+    perturbation_gene_name: Optional[str] = Query(
+        None, description="Perturbed target gene symbol or Ensembl ID"
     ),
 ):
     """Retrieve GSEA results for a specific perturbed target in a dataset."""
-    if not perturbed_target_ensg and not perturbed_target_query:
+    if not perturbation_gene_name:
         raise HTTPException(
             status_code=400,
-            detail="Either perturbed_target_ensg or perturbed_target_query is required",
+            detail="perturbation_gene_name is required",
         )
 
     pg_pool = db_pools.get("pg")
@@ -1251,8 +1235,7 @@ async def get_perturb_seq_gsea(
             conn,
             dataset_id,
             {
-                "perturbed_target_ensg": perturbed_target_ensg,
-                "perturbed_target_query": perturbed_target_query,
+                "perturbation_gene_name": perturbation_gene_name,
             },
         )
         if not rows:
@@ -1368,10 +1351,8 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
 async def download_modality_data(
     modality: MODALITIES,
     common: CommonModalitySearchParams = Depends(),
-    perturbed_target_ensg: Optional[str] = Query(None),
-    perturbed_target_query: Optional[str] = Query(None),
-    effect_gene_ensg: Optional[str] = Query(None),
-    effect_gene_query: Optional[str] = Query(None),
+    perturbation_gene_name: Optional[str] = Query(None),
+    effect_gene_name: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1390,10 +1371,8 @@ async def download_modality_data(
 
     # Add modality-specific params
     modality_params = {
-        "perturbed_target_ensg": perturbed_target_ensg,
-        "perturbed_target_query": perturbed_target_query,
-        "effect_gene_ensg": effect_gene_ensg,
-        "effect_gene_query": effect_gene_query,
+        "perturbation_gene_name": perturbation_gene_name,
+        "effect_gene_name": effect_gene_name,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1422,13 +1401,7 @@ async def download_modality_data(
     csv_content = _results_to_csv(all_results, modality)
 
     # Generate filename
-    gene_id = (
-        perturbed_target_ensg
-        or perturbed_target_query
-        or effect_gene_ensg
-        or effect_gene_query
-        or "all"
-    )
+    gene_id = perturbation_gene_name or effect_gene_name or "all"
     filename = f"{modality}_{gene_id}_data.csv"
 
     return StreamingResponse(
@@ -1481,10 +1454,8 @@ async def download_dataset_data(
     offset: int = Query(0, description="Offset for rows"),
     sort: Optional[str] = Query(None, description="Sort order"),
     # Perturb-seq params
-    perturbed_target_ensg: Optional[str] = Query(None),
-    perturbed_target_query: Optional[str] = Query(None),
-    effect_gene_ensg: Optional[str] = Query(None),
-    effect_gene_query: Optional[str] = Query(None),
+    perturbation_gene_name: Optional[str] = Query(None),
+    effect_gene_name: Optional[str] = Query(None),
     effect_log2fc: Optional[str] = Query(None),
     effect_padj: Optional[str] = Query(None),
     effect_score_name: Optional[str] = Query(None),
@@ -1510,10 +1481,8 @@ async def download_dataset_data(
 
     # Add modality-specific params
     modality_params = {
-        "perturbed_target_ensg": perturbed_target_ensg,
-        "perturbed_target_query": perturbed_target_query,
-        "effect_gene_ensg": effect_gene_ensg,
-        "effect_gene_query": effect_gene_query,
+        "perturbation_gene_name": perturbation_gene_name,
+        "effect_gene_name": effect_gene_name,
         "effect_log2fc": effect_log2fc,
         "effect_padj": effect_padj,
         "effect_score_name": effect_score_name,
@@ -1544,19 +1513,15 @@ async def download_dataset_data(
 @router.get("/v1/perturb-seq-gsea/download")
 async def download_perturb_seq_gsea(
     dataset_id: str = Query(..., description="Mandatory dataset ID"),
-    perturbed_target_ensg: Optional[str] = Query(
-        None, description="Perturbed target Ensembl gene ID"
-    ),
-    perturbed_target_query: Optional[str] = Query(
-        None,
-        description="Search perturbed target by Ensembl ID, symbol, synonym, or name",
+    perturbation_gene_name: Optional[str] = Query(
+        None, description="Perturbed target gene symbol or Ensembl ID"
     ),
 ):
     """Download GSEA data for a specific perturbed target in a dataset as CSV."""
-    if not perturbed_target_ensg and not perturbed_target_query:
+    if not perturbation_gene_name:
         raise HTTPException(
             status_code=400,
-            detail="Either perturbed_target_ensg or perturbed_target_query is required",
+            detail="perturbation_gene_name is required",
         )
 
     # Reuse the existing GSEA endpoint logic
@@ -1569,13 +1534,13 @@ async def download_perturb_seq_gsea(
             conn,
             dataset_id,
             {
-                "perturbed_target_ensg": perturbed_target_ensg,
-                "perturbed_target_query": perturbed_target_query,
+                "perturbation_gene_name": perturbation_gene_name,
             },
         )
 
         if not rows:
             csv_content = _gsea_results_to_csv([])
+            target_label = perturbation_gene_name
         else:
             # Build results in the same format as the main GSEA endpoint
             gsea_by_pert = defaultdict(list)
@@ -1595,8 +1560,10 @@ async def download_perturb_seq_gsea(
                 for pert_target_ensg, effects in gsea_by_pert.items()
             ]
             csv_content = _gsea_results_to_csv(results)
+            target_label = (
+                list(gsea_by_pert.keys())[0] if gsea_by_pert else perturbation_gene_name
+            )
 
-    target_label = perturbed_target_ensg or perturbed_target_query
     filename = f"gsea_{target_label}_{dataset_id}_data.csv"
 
     return StreamingResponse(

@@ -296,16 +296,13 @@ def fetch_dataset(dataset_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[s
 
 def fetch_perturb_seq_gsea(
     dataset_id: str,
-    perturbed_target_ensg: Optional[str] = None,
-    perturbed_target_query: Optional[str] = None,
+    perturbation_gene_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Fetch GSEA results for a perturbed target in a dataset."""
     try:
         params = {"dataset_id": dataset_id}
-        if perturbed_target_ensg:
-            params["perturbed_target_ensg"] = perturbed_target_ensg
-        if perturbed_target_query:
-            params["perturbed_target_query"] = perturbed_target_query
+        if perturbation_gene_name:
+            params["perturbation_gene_name"] = perturbation_gene_name
         response = requests.get(
             f"{BACKEND_URL}/v1/perturb-seq-gsea",
             params=params,
@@ -314,7 +311,7 @@ def fetch_perturb_seq_gsea(
         response.raise_for_status()
         return {"results": response.json(), "error": None}
     except Exception as exc:
-        target = perturbed_target_ensg or perturbed_target_query or "target"
+        target = perturbation_gene_name or "target"
         error_message = f"Error fetching GSEA data for {target}: {exc}"
         print(error_message)
         return {"results": [], "error": error_message}

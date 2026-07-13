@@ -835,9 +835,9 @@ def _fetch_data_rows(store_data: Dict[str, Any]) -> Dict[str, Any]:
             perturbation_gene = store_data.get("perturbation_gene_search", "").strip()
             effect_gene = store_data.get("effect_gene_search", "").strip()
             if perturbation_gene:
-                filters["perturbed_target_query"] = perturbation_gene
+                filters["perturbation_gene_name"] = perturbation_gene
             if effect_gene:
-                filters["effect_gene_query"] = effect_gene
+                filters["effect_gene_name"] = effect_gene
 
         # Add CRISPR search filters
         if modality == "crispr-screen":
@@ -845,7 +845,7 @@ def _fetch_data_rows(store_data: Dict[str, Any]) -> Dict[str, Any]:
                 "crispr_perturbation_gene_search", ""
             ).strip()
             if crispr_perturbation_gene:
-                filters["perturbed_target_query"] = crispr_perturbation_gene
+                filters["perturbation_gene_name"] = crispr_perturbation_gene
 
         response = fetch_dataset_rows(
             modality,
@@ -1154,15 +1154,15 @@ def download_dataset_data(n_clicks, store_data):
         perturbation_gene = store_data.get("perturbation_gene_search", "").strip()
         effect_gene = store_data.get("effect_gene_search", "").strip()
         if perturbation_gene:
-            params["perturbed_target_query"] = perturbation_gene
+            params["perturbation_gene_name"] = perturbation_gene
         if effect_gene:
-            params["effect_gene_query"] = effect_gene
+            params["effect_gene_name"] = effect_gene
     elif modality == "crispr-screen":
         crispr_perturbation_gene = store_data.get(
             "crispr_perturbation_gene_search", ""
         ).strip()
         if crispr_perturbation_gene:
-            params["perturbed_target_query"] = crispr_perturbation_gene
+            params["perturbation_gene_name"] = crispr_perturbation_gene
 
     try:
         import requests
