@@ -36,7 +36,7 @@ with
             perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_crispr,
             countif(significant = 'True') as n_sig_crispr
-        from {{ ref("crispr_data") }}
+        from {{ source("crispr", "data") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -47,7 +47,7 @@ with
         select
             perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_mave
-        from {{ ref("mave_data") }}
+        from {{ source("mave", "data") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")

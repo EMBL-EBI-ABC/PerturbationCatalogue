@@ -555,7 +555,7 @@ async def build_pg_filters(
         # Detect whether the query contains Ensembl gene IDs
         if all(p.upper().startswith("ENSG") for p in parts):
             # Strict Ensembl gene ID lookup (no ES query)
-            search_terms = parts
+            search_terms = [p.upper() for p in parts]
         else:
             # Gene symbol query (resolve via ES)
             ensg_ids = await resolve_target_query_to_ensg(value)

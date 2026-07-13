@@ -46,25 +46,25 @@ SECTION_CONFIGS = [
         "id": "crispr",
         "title": "CRISPR screen data",
         "modality": "crispr-screen",
-        "filter_field": "perturbed_target_ensg",
+        "filter_field": "perturbation_gene_name",
     },
     {
         "id": "mave",
         "title": "MAVE data",
         "modality": "mave",
-        "filter_field": "perturbed_target_ensg",
+        "filter_field": "perturbation_gene_name",
     },
     {
         "id": "perturb_seq_perturbed",
         "title": "Perturb-Seq (Perturbed)",
         "modality": "perturb-seq",
-        "filter_field": "perturbed_target_ensg",
+        "filter_field": "perturbation_gene_name",
     },
     {
         "id": "perturb_seq_affected",
         "title": "Perturb-Seq (Affected)",
         "modality": "perturb-seq",
-        "filter_field": "effect_gene_ensg",
+        "filter_field": "effect_gene_name",
     },
 ]
 SECTION_LOOKUP = {config["id"]: config for config in SECTION_CONFIGS}
@@ -1096,7 +1096,7 @@ def _paginate_dataset_rows(
         # Build filters for MAVE
         filters = (
             {
-                config.get("filter_field", "perturbed_target_ensg"): target_ensg,
+                config.get("filter_field", "perturbation_gene_name"): target_ensg,
                 "effect_score_name": "score",
                 "perturbation_position": new_position_range,
             }
@@ -1137,9 +1137,9 @@ def _paginate_dataset_rows(
             return updated_store
 
         filter_field = (
-            config.get("filter_field", "perturbed_target_ensg")
+            config.get("filter_field", "perturbation_gene_name")
             if config
-            else "perturbed_target_ensg"
+            else "perturbation_gene_name"
         )
 
         # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_ensg}&limit=5&offset=X

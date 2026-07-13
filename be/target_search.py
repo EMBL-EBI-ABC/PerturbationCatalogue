@@ -121,11 +121,6 @@ def build_target_fuzzy_query(
                 if safe_term:
                     wildcard_terms.append(f"*{safe_term}*")
 
-            if not wildcard_terms:
-                safe_term = escape_wildcard(cleaned_query.lower())
-                if safe_term:
-                    wildcard_terms.append(f"*{safe_term}*")
-
             for wildcard_value in wildcard_terms:
                 for field in TARGET_SEARCHABLE_FIELDS:
                     should_clauses.append(
@@ -141,4 +136,3 @@ def build_target_fuzzy_query(
                     )
 
     return _bool_or_match_all(should_clauses, filter_clauses)
-
