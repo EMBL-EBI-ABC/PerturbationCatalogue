@@ -92,7 +92,16 @@ def create_csv_from_curated_metadata_json(
     output_csv_path: str | Path,
     log_file: str | Path | None = None,
 ) -> Path:
-    """Flatten curated clean-metadata JSON outputs into a single CSV file."""
+    """
+    Flatten curated clean-metadata JSON outputs into a single CSV file.
+    ---
+    Parameters:
+        input_dir: Directory containing curated clean-metadata JSON files.
+        output_csv_path: Path to write the resulting CSV file.
+        log_file: Optional path to a log file for status messages.
+    Returns:
+        Path to the created CSV file.
+    """
     input_dir = Path(input_dir).resolve()
     output_csv_path = Path(output_csv_path).resolve()
 
