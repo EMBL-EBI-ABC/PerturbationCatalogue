@@ -188,7 +188,7 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
-The target summary projection reads `target_summary_ensg` and writes to the
+The target summary projection reads `target_summary` and writes to the
 configured `ES_TARGET_SUMMARY` Elasticsearch alias, for example
 `target-summary-ensg-dev`.
 

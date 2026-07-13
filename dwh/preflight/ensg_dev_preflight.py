@@ -29,7 +29,7 @@ BQ_TABLES_TO_REPORT = [
     "perturb_seq_dea",
     "perturb_seq_gsea",
     "dataset_summary",
-    "target_summary_ensg",
+    "target_summary",
     "landing_page_summary",
 ]
 PG_TABLES_TO_REPORT = {

@@ -3,7 +3,7 @@
 Projector: BigQuery -> Elasticsearch (Python client).
 
 Reads rows from:
-  <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary_ensg|landing_page_summary>
+  <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary|landing_page_summary>
 
 Writes to ES index:
   <dataset-summary|target-summary-ensg|landing-page-summary>
@@ -32,10 +32,10 @@ TABLE_CONFIG = {
         "key_field": "dataset_id",
         "prefix": "dataset",
     },
-    "target_summary_ensg": {
+    "target_summary": {
         "index_base": os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg"),
         "key_field": "ensembl_gene_id",
-        "prefix": "target-ensg",
+        "prefix": "target",
     },
     "landing_page_summary": {
         "index_base": os.getenv("ES_LANDING_PAGE_SUMMARY", "landing-page-summary"),
