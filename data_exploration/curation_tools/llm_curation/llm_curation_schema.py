@@ -32,6 +32,30 @@ class CurationSchema(BaseModel):
         default=...,
         description="Perturbation type ontology term label of the investigated sample.",
     )
+    
+    timepoint_post_transfection_evidence: str | None = Field(
+        default=None,
+    )
+    timepoint_post_transfection: str | None = Field(
+        default=None,
+        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection. Example: P1DT12H30M15S",
+    )
+
+    differentiation_timepoint_evidence: str | None = Field(
+        default=None,
+    )
+    differentiation_timepoint: str | None = Field(
+        default=None,
+        description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: P1DT12H30M15S",
+    )
+
+    treatment_label_evidence: str | None = Field(
+        default=None,
+    )
+    treatment_label: str | None = Field(
+        default=...,
+        description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
+    )
 
     model_system_label_evidence: str | None = Field(
         default=None,
