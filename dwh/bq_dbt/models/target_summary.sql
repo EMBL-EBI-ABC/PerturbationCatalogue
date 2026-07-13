@@ -60,7 +60,7 @@ with
             count(distinct dataset_id) as n_perturb_seq,
             countif(padj <= 0.05 and log2foldchange > 0) as n_sig_perturb_pairs_up,
             countif(padj <= 0.05 and log2foldchange < 0) as n_sig_perturb_pairs_down
-        from {{ ref("perturb_seq_dea") }}
+        from {{ source("perturb_seq", "pertpy_dea") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -75,7 +75,7 @@ with
             row_number() over (
                 partition by perturbed_target_ensg order by sidak asc
             ) as rn
-        from {{ ref("perturb_seq_gsea") }}
+        from {{ source("perturb_seq", "pertpy_gsea") }}
         where
             perturbed_target_ensg is not null
             and starts_with(perturbed_target_ensg, "ENSG")
@@ -93,7 +93,7 @@ with
 
     effect_targets as (
         select distinct effect_gene_ensg as ensembl_gene_id
-        from {{ ref("perturb_seq_dea") }}
+        from {{ source("perturb_seq", "pertpy_dea") }}
         where
             effect_gene_ensg is not null
             and starts_with(effect_gene_ensg, "ENSG")

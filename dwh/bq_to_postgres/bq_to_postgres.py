@@ -95,12 +95,12 @@ SYNC_QUERIES = {
                 score_value,
                 cell_type,
                 max_ingested_at
-            FROM `{project}.{bq_dataset}.perturb_seq_dea`
+            FROM `{project}.perturb_seq.pertpy_dea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.{bq_dataset}.perturb_seq_dea`
+            FROM `{project}.perturb_seq.pertpy_dea`
             GROUP BY dataset_id
         """,
     },
@@ -119,12 +119,12 @@ SYNC_QUERIES = {
                 leading_edge,
                 cell_type,
                 max_ingested_at
-            FROM `{project}.{bq_dataset}.perturb_seq_gsea`
+            FROM `{project}.perturb_seq.pertpy_gsea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
             SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
-            FROM `{project}.{bq_dataset}.perturb_seq_gsea`
+            FROM `{project}.perturb_seq.pertpy_gsea`
             GROUP BY dataset_id
         """,
     },

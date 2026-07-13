@@ -26,8 +26,6 @@ PRODUCTION_ES_ALIASES = {
 BQ_TABLES_TO_REPORT = [
     "crispr_data",
     "mave_data",
-    "perturb_seq_dea",
-    "perturb_seq_gsea",
     "dataset_summary",
     "target_summary",
     "landing_page_summary",
