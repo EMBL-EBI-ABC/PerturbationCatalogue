@@ -595,6 +595,22 @@ class CurationSchema(BaseModel):
         description="Ontology term label for the reference genome.",
     )
 
+    significance_criteria_evidence: str | None = Field(
+        default=None,
+    )
+    significance_criteria: str | None = Field(
+        default=...,
+        description="Criteria used to determine significance, e.g., FDR < 0.05.",
+    )
+
+    score_interpretation_evidence: str | None = Field(
+        default=None,
+    )
+    score_interpretation: str | None = Field(
+        default=...,
+        description="Interpretation of the perturbation effect score, e.g. negative values = depletion; positive values = enrichment, or negative values = decreased phosphatase activity; positive values = increased phosphatase activity",
+    )
+
     associated_datasets_evidence: str | None = Field(
         default=None,
     )
