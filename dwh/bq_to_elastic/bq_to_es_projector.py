@@ -6,7 +6,7 @@ Reads rows from:
   <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary|landing_page_summary>
 
 Writes to ES index:
-  <dataset-summary|target-summary-ensg|landing-page-summary>
+  <dataset-summary|target-summary|landing-page-summary><ES_INDEX_SET>
 """
 
 import os
@@ -25,20 +25,21 @@ from tqdm import tqdm
 # ---------------- Config ----------------
 BQ_PROJECT = os.getenv("GCLOUD_PROJECT")
 BQ_DATASET = os.getenv("BQ_DATASET")
+ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
 
 TABLE_CONFIG = {
     "dataset_summary": {
-        "index_base": os.getenv("ES_DATASET_SUMMARY", "dataset-summary"),
+        "index_base": "dataset-summary",
         "key_field": "dataset_id",
         "prefix": "dataset",
     },
     "target_summary": {
-        "index_base": os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg"),
+        "index_base": "target-summary",
         "key_field": "ensembl_gene_id",
         "prefix": "target",
     },
     "landing_page_summary": {
-        "index_base": os.getenv("ES_LANDING_PAGE_SUMMARY", "landing-page-summary"),
+        "index_base": "landing-page-summary",
         "key_field": "summary",
         "prefix": "landing-page",
     },
@@ -257,6 +258,17 @@ def actions_generator(
             pass
 
 
+def destination_index(base: str, date: str, index_set: str) -> str:
+    """Return the dated default index or a standalone suffixed index.
+
+    >>> destination_index("target-summary", "2026-07-13", "")
+    '2026-07-13-target-summary'
+    >>> destination_index("target-summary", "2026-07-13", "-ensg-dev")
+    'target-summary-ensg-dev'
+    """
+    return f"{base}{index_set}" if index_set else f"{date}-{base}"
+
+
 def prune_old_indexes(es: Elasticsearch) -> None:
     """
     Prune indexes for the summary families.
@@ -293,10 +305,11 @@ def prune_old_indexes(es: Elasticsearch) -> None:
         if not live_index:
             logging.warning("No live index found for alias %s", base)
 
-        # Since live is the latest, we keep it + 2 previous versions (first 3 in sorted list)
-        to_keep = set(index_names[:3])
-        if live_index:
-            to_keep.add(live_index)
+        to_keep = {live_index} if live_index in index_names else set()
+        for name in index_names:
+            if len(to_keep) == 3:
+                break
+            to_keep.add(name)
 
         to_delete = [idx for idx in index_names if idx not in to_keep]
 
@@ -345,7 +358,7 @@ def main() -> int:
         prefix = cfg["prefix"]
         key_field = cfg["key_field"]
 
-        es_index = f"{date_str}-{base}"
+        es_index = destination_index(base, date_str, ES_INDEX_SET)
 
         logging.info("Starting sync for %s -> %s", table, es_index)
 
@@ -358,9 +371,7 @@ def main() -> int:
 
             # If current date index already exists, delete it first
             if es.indices.exists(index=es_index):
-                logging.info(
-                    "Index %s already exists for today. Deleting it first...", es_index
-                )
+                logging.info("Index %s already exists. Deleting it first...", es_index)
                 es.indices.delete(index=es_index)
 
             ensure_index(es, es_index, mapping)
@@ -412,8 +423,8 @@ def main() -> int:
             logging.error("Failed to sync table %s: %s", table, e)
             return 1
 
-    # If all successful, move aliases
-    if len(sync_results) == len(TABLE_CONFIG):
+    # Suffixed index sets are standalone indexes, not aliases or retained history.
+    if not ES_INDEX_SET and len(sync_results) == len(TABLE_CONFIG):
         logging.info("All tables synced successfully. Moving aliases...")
         actions = []
         for base, new_index in sync_results.items():

@@ -20,8 +20,7 @@ db_pools: Dict[str, Any] = {}
 router = APIRouter()
 
 # --- Constants and Mappings ---
-ES_DATASET_SUMMARY = os.getenv("ES_DATASET_SUMMARY", "dataset-summary")
-ES_TARGET_SUMMARY = os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg")
+ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
 TARGET_QUERY_RESOLUTION_LIMIT = 25
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
@@ -471,7 +470,9 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
 
     es_client = db_pools.get("es")
     if not es_client:
-        raise HTTPException(status_code=500, detail="Elasticsearch pool not initialized")
+        raise HTTPException(
+            status_code=500, detail="Elasticsearch pool not initialized"
+        )
 
     search_body = {
         "_source": ["ensembl_gene_id"],
@@ -481,7 +482,7 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     }
 
     response = await es_client.search(
-        index=ES_TARGET_SUMMARY,
+        index=f"target-summary{ES_INDEX_SET}",
         body={**search_body, "query": build_target_fuzzy_query(cleaned_query)},
     )
 
@@ -545,9 +546,7 @@ def _result_field_name(api_field: str) -> str:
 
 
 def _is_perturbation_field(api_field: str) -> bool:
-    return api_field == "perturbed_target_ensg" or api_field.startswith(
-        "perturbation_"
-    )
+    return api_field == "perturbed_target_ensg" or api_field.startswith("perturbation_")
 
 
 async def build_pg_filters(
@@ -570,11 +569,11 @@ async def build_pg_filters(
 
         db_field = TARGET_QUERY_FIELDS[key]
         ensg_ids = await resolve_target_query_to_ensg(value)
-        
+
         # Include raw values in case it's a control or exact ID not found in ES
         raw_values = [v.strip() for v in value.split("|") if v.strip()]
         search_terms = list(set(ensg_ids + raw_values))
-        
+
         if not search_terms:
             has_empty_target_resolution = True
             filters.append("FALSE")
@@ -618,7 +617,9 @@ async def build_pg_filters(
                         continue
                 else:
                     params.append([value])
-                filters.append(f"string_to_array({db_field}, '|') && ${len(params)}::text[]")
+                filters.append(
+                    f"string_to_array({db_field}, '|') && ${len(params)}::text[]"
+                )
             else:
                 filters.append(f"{db_field} = ${len(params) + 1}")
                 params.append(value)
@@ -874,7 +875,7 @@ async def _search_modality_impl(
             ]
 
     es_result = await es_client.search(
-        index=ES_DATASET_SUMMARY,
+        index=f"dataset-summary{ES_INDEX_SET}",
         body=es_query_body,
         size=10000,  # Get all matching datasets to apply pagination later
     )
@@ -1045,8 +1046,7 @@ async def _search_dataset_impl(
     )
     if modality == "perturb-seq" and no_user_filters:
         count_query = (
-            "SELECT n_total FROM perturb_seq_summary_dataset "
-            "WHERE dataset_id = $1"
+            "SELECT n_total FROM perturb_seq_summary_dataset " "WHERE dataset_id = $1"
         )
         count_params = [dataset_id]
     else:

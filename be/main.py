@@ -37,9 +37,7 @@ load_dotenv()
 
 
 # Elastic indexes to use.
-ES_LANDING_PAGE_SUMMARY = os.getenv("ES_LANDING_PAGE_SUMMARY", "landing-page-summary")
-ES_TARGET_SUMMARY = os.getenv("ES_TARGET_SUMMARY", "target-summary-ensg")
-ES_DATASET_SUMMARY = os.getenv("ES_DATASET_SUMMARY", "dataset-summary")
+ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
 
 
 # Configuration
@@ -150,6 +148,7 @@ DATASET_SEARCHABLE_FIELDS = [
     "license_labels",
     "library_perturbation_type_labels",
 ]
+
 
 # Elasticsearch helper functions
 def _escape_wildcard(value: str) -> str:
@@ -355,12 +354,12 @@ async def perform_search(
     if is_dataset_mode:
         es_query = build_dataset_elasticsearch_query(query, filters)
         facet_fields = DATASET_FACET_FIELDS
-        es_index = ES_DATASET_SUMMARY
+        es_index = f"dataset-summary{ES_INDEX_SET}"
         sort_field = "dataset_id"
     else:
         es_query = build_target_fuzzy_query(query, filters, FACET_FIELDS)
         facet_fields = FACET_FIELDS
-        es_index = ES_TARGET_SUMMARY
+        es_index = f"target-summary{ES_INDEX_SET}"
         sort_field = "approved_symbol"
 
     aggs = build_aggregations(facet_fields)
@@ -496,7 +495,11 @@ async def health_check():
     overall_status = "healthy" if es_status == "connected" else "unhealthy"
 
     return {
-        "status": overall_status + ". Check the logs" if overall_status == "unhealthy" else overall_status,
+        "status": (
+            overall_status + ". Check the logs"
+            if overall_status == "unhealthy"
+            else overall_status
+        ),
         "elasticsearch": {
             "status": es_status,
             "error": es_error,
@@ -510,7 +513,9 @@ async def get_landing_page_summary():
     Retrieve the landing page summary document from Elasticsearch.
     """
     try:
-        response = await db_pools["es"].get(index=ES_LANDING_PAGE_SUMMARY, id="summary")
+        response = await db_pools["es"].get(
+            index=f"landing-page-summary{ES_INDEX_SET}", id="summary"
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {exc}"
@@ -650,7 +655,7 @@ async def get_dataset(dataset_id: str):
     try:
         # Search for the dataset by dataset_id field
         response = await db_pools["es"].search(
-            index=ES_DATASET_SUMMARY,
+            index=f"dataset-summary{ES_INDEX_SET}",
             query={"term": {"dataset_id": dataset_id}},
             size=1,
         )

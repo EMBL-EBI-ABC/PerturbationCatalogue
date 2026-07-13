@@ -40,9 +40,11 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_DATASET_SUMMARY`, `ES_TARGET_SUMMARY`, `ES_LANDING_PAGE_SUMMARY`.
+The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
 
-`OPENTARGETS_RELEASE` is optional and defaults to `26.03`.
+`OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
+optional and defaults to empty. Its value is appended directly to all three
+Elasticsearch index names.
 
 ### 4. Grant IAM permissions to Cloud Build service account
 
@@ -122,9 +124,9 @@ pip install -r requirements.txt
 python3 preflight/ensg_dev_preflight.py
 ```
 
-The preflight step fails if configured BQ datasets, PG objects, or ES aliases do
-not use the ENSG dev namespace, or if they point to legacy `gene_id_migration`
-assets. It only uses read-only metadata/count APIs.
+The preflight step validates the configured BQ dataset and reports the selected
+Elasticsearch aliases or standalone suffixed indexes. It only uses read-only
+metadata/count APIs.
 When running locally outside the Cloud SQL VPC path, use `--skip-pg` or set a
 reachable PostgreSQL connection string; Cloud Build uses `PG_CONN_INTERNAL`.
 
@@ -188,9 +190,12 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
-The target summary projection reads `target_summary` and writes to the
-configured `ES_TARGET_SUMMARY` Elasticsearch alias, for example
-`target-summary-ensg-dev`.
+With an empty `ES_INDEX_SET`, projections use dated indexes and update the
+`dataset-summary`, `target-summary`, and `landing-page-summary` aliases, keeping
+the three newest dated indexes in each family. With a custom suffix, for example
+`-ensg-dev`, projections overwrite the standalone `dataset-summary-ensg-dev`,
+`target-summary-ensg-dev`, and `landing-page-summary-ensg-dev` indexes without
+updating aliases or pruning old indexes.
 
 ## Creating the PostgreSQL instance
 

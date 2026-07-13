@@ -9,8 +9,8 @@
 #   - gcloud CLI installed and authenticated
 #   - Environment variables set (via dev_secrets or equivalent):
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
-#       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD, ES_*_SUMMARY
-#       Optional: OPENTARGETS_RELEASE (defaults to 26.03)
+#       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
+#       Optional: ES_INDEX_SET (defaults to empty), OPENTARGETS_RELEASE (defaults to 26.03)
 #
 
 set -euo pipefail
@@ -52,9 +52,6 @@ REQUIRED_VARS=(
     ES_URL
     ES_USERNAME
     ES_PASSWORD
-    ES_DATASET_SUMMARY
-    ES_TARGET_SUMMARY
-    ES_LANDING_PAGE_SUMMARY
 )
 
 missing=()
@@ -73,6 +70,7 @@ if [[ ${#missing[@]} -gt 0 ]]; then
 fi
 
 OPENTARGETS_RELEASE="${OPENTARGETS_RELEASE:-26.03}"
+ES_INDEX_SET="${ES_INDEX_SET:-}"
 
 # ---------------------------------------------------------------------------
 # Resolve paths
@@ -100,7 +98,7 @@ echo "  BQ Reference:       $BQ_DATASET.opentargets_targets"
 echo "  OT Release:         $OPENTARGETS_RELEASE"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
-echo "  ES Aliases:         $ES_DATASET_SUMMARY, $ES_TARGET_SUMMARY, $ES_LANDING_PAGE_SUMMARY"
+echo "  ES Index Set:       ${ES_INDEX_SET:-<default>}"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
 echo "  Force PG Tables:    ${FORCE_PG_TABLES:-<none>}"
 echo "============================================"
@@ -122,9 +120,7 @@ _PG_CONN_INTERNAL=$PG_CONN_INTERNAL|\
 _ES_URL=$ES_URL|\
 _ES_USERNAME=$ES_USERNAME|\
 _ES_PASSWORD=$ES_PASSWORD|\
-_ES_DATASET_SUMMARY=$ES_DATASET_SUMMARY|\
-_ES_TARGET_SUMMARY=$ES_TARGET_SUMMARY|\
-_ES_LANDING_PAGE_SUMMARY=$ES_LANDING_PAGE_SUMMARY|\
+_ES_INDEX_SET=$ES_INDEX_SET|\
 _SUPPRESS_DATASETS=$SUPPRESS_DATASETS|\
 _FORCE_PG_TABLES=$FORCE_PG_TABLES" \
     --async \

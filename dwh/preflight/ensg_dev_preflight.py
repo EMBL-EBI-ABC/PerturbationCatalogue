@@ -59,7 +59,8 @@ class PipelineConfig:
     es_url: str
     es_username: str
     es_password: str
-    es_aliases: dict[str, str]
+    es_index_set: str
+    es_indexes: dict[str, str]
 
 
 def required_env(name: str) -> str:
@@ -99,14 +100,9 @@ def require_name_contains(value: str, expected: str, label: str) -> None:
         raise RuntimeError(f"{label} must contain {expected!r}: {value!r}")
 
 
-def require_name_suffix(value: str, suffix: str, label: str) -> None:
-    """Require a dev namespace suffix in a configured object name."""
-    if not value.endswith(suffix):
-        raise RuntimeError(f"{label} must end with {suffix!r}: {value!r}")
-
-
 def load_config() -> PipelineConfig:
     """Load target names from the environment."""
+    es_index_set = os.getenv("ES_INDEX_SET", "")
     return PipelineConfig(
         project=required_env("GCLOUD_PROJECT"),
         bq_location=os.getenv("BQ_LOCATION", "EU"),
@@ -116,10 +112,11 @@ def load_config() -> PipelineConfig:
         es_url=required_env("ES_URL").rstrip("/"),
         es_username=required_env("ES_USERNAME"),
         es_password=required_env("ES_PASSWORD"),
-        es_aliases={
-            "dataset_summary": required_env("ES_DATASET_SUMMARY"),
-            "target_summary": required_env("ES_TARGET_SUMMARY"),
-            "landing_page_summary": required_env("ES_LANDING_PAGE_SUMMARY"),
+        es_index_set=es_index_set,
+        es_indexes={
+            "dataset_summary": f"dataset-summary{es_index_set}",
+            "target_summary": f"target-summary{es_index_set}",
+            "landing_page_summary": f"landing-page-summary{es_index_set}",
         },
     )
 
@@ -141,11 +138,8 @@ def validate_dev_targets(config: PipelineConfig) -> list[str]:
 
     checked.append("PG_CONN_INTERNAL=<set>")
 
-    for label, value in config.es_aliases.items():
+    for label, value in config.es_indexes.items():
         reject_legacy_migration_name(value, f"ES {label}")
-        require_name_suffix(value, "-ensg-dev", f"ES {label}")
-        if value in PRODUCTION_ES_ALIASES:
-            raise RuntimeError(f"ES {label} points at production alias: {value}")
         checked.append(f"ES {label}={value}")
 
     return checked
@@ -295,6 +289,15 @@ def es_alias_state(es: Elasticsearch, alias: str) -> dict[str, Any]:
     return result
 
 
+def es_index_state(es: Elasticsearch, index: str) -> dict[str, Any]:
+    """Return Elasticsearch standalone index state using read-only APIs."""
+    exists = bool(es.indices.exists(index=index))
+    result: dict[str, Any] = {"exists": exists, "index": index}
+    if exists:
+        result["docs"] = es.count(index=index)["count"]
+    return result
+
+
 def check_es(config: PipelineConfig) -> dict[str, Any]:
     """Report Elasticsearch dev aliases and production baselines."""
     es = Elasticsearch(
@@ -303,9 +306,11 @@ def check_es(config: PipelineConfig) -> dict[str, Any]:
         request_timeout=30,
         verify_certs=True,
     )
-    result: dict[str, Any] = {"dev_aliases": {}, "production_baseline": {}}
-    for logical_name, alias in config.es_aliases.items():
-        result["dev_aliases"][logical_name] = es_alias_state(es, alias)
+    target_kind = "indexes" if config.es_index_set else "aliases"
+    result: dict[str, Any] = {target_kind: {}, "production_baseline": {}}
+    state = es_index_state if config.es_index_set else es_alias_state
+    for logical_name, index in config.es_indexes.items():
+        result[target_kind][logical_name] = state(es, index)
     for alias in sorted(PRODUCTION_ES_ALIASES):
         result["production_baseline"][alias] = es_alias_state(es, alias)
     return result
