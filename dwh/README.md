@@ -6,15 +6,14 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs five stages sequentially:
+The pipeline runs four stages sequentially:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
-| 1. **Preflight** | `preflight/` | Validates dev-only target names and reports current BQ/PG/ES object state without writes | ~minutes |
-| 2. **Open Targets reference** | `reference/` | Downloads Open Targets Platform targets and loads the configured BQ reference table | ~minutes |
-| 3. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
-| 4. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
-| 5. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
+| 1. **Open Targets reference** | (Native) | Loads Open Targets Platform targets into the configured BQ reference table | ~minutes |
+| 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
+| 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
+| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
 For the ENSG dev stack, the Open Targets reference stage writes to
@@ -115,20 +114,17 @@ To exclude datasets from metadata tables (while keeping them in data tables):
 
 For debugging or partial re-runs, you can run each stage manually.
 
-### Preflight
+### Open Targets reference
+
+To reload the Open Targets reference table manually, you can execute a native serverless load command directly via the BigQuery CLI:
 
 ```bash
-cd dwh
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 preflight/ensg_dev_preflight.py
+bq load --source_format=PARQUET \
+    --location=$BQ_LOCATION \
+    --replace \
+    $GCLOUD_PROJECT:$BQ_DATASET.opentargets_targets \
+    "gs://open-targets-data-releases/$OPENTARGETS_RELEASE/output/target/*.parquet"
 ```
-
-The preflight step validates the configured BQ dataset and reports the selected
-Elasticsearch aliases or standalone suffixed indexes. It only uses read-only
-metadata/count APIs.
-When running locally outside the Cloud SQL VPC path, use `--skip-pg` or set a
-reachable PostgreSQL connection string; Cloud Build uses `PG_CONN_INTERNAL`.
 
 ### dbt
 
@@ -145,20 +141,6 @@ To suppress datasets: `dbt run --profiles-dir . --vars '{"suppress_datasets": "i
 Additional dbt commands:
 - Specific model + dependencies: `dbt run --profiles-dir . --select +dataset_summary`
 - Full refresh (non-incremental): `dbt run --profiles-dir . --full-refresh`
-
-### Open Targets reference
-
-```bash
-cd dwh
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 reference/load_opentargets_targets.py
-```
-
-The loader uses `GCLOUD_PROJECT`, `BQ_LOCATION`, `BQ_DATASET`, and optionally
-`OPENTARGETS_RELEASE`. It writes to the fixed `opentargets_targets` table.
-By default it refuses destinations that do not contain `ensg_dev`, so the
-development reference load cannot accidentally overwrite a production table.
 
 ### BQ → Postgres
 

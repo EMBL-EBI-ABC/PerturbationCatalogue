@@ -69,6 +69,11 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     exit 1
 fi
 
+if [[ "$GCLOUD_PROJECT" == *"prod"* ]]; then
+    echo "ERROR: Refusing to run the pipeline in a production environment: $GCLOUD_PROJECT" >&2
+    exit 1
+fi
+
 OPENTARGETS_RELEASE="${OPENTARGETS_RELEASE:-26.03}"
 ES_INDEX_SET="${ES_INDEX_SET:-}"
 

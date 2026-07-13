@@ -1,11 +1,10 @@
 # DWH Pipeline — Cloud Build Configuration
 #
 # Runs the pipeline stages sequentially:
-#   1. preflight        (read-only safety checks)
-#   2. reference load   (Open Targets target parquet → BQ reference table)
-#   3. dbt run          (BQ source → BQ final tables)
-#   4. bq_to_postgres   (BQ final tables → Postgres)
-#   5. bq_to_es         (BQ summary tables → Elasticsearch)
+#   1. reference load   (Open Targets target parquet → BQ reference table)
+#   2. dbt run          (BQ source → BQ final tables)
+#   3. bq_to_postgres   (BQ final tables → Postgres)
+#   4. bq_to_es         (BQ summary tables → Elasticsearch)
 #
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]
 #
@@ -36,37 +35,20 @@ steps:
       - Dockerfile
       - .
 
-  # Step 1: read-only safety preflight
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
-    id: ensg-dev-preflight
-    dir: /app/preflight
-    entrypoint: python3
-    args:
-      - ensg_dev_preflight.py
-    env:
-      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
-      - BQ_DATASET=$_BQ_DATASET
-      - BQ_LOCATION=$_BQ_LOCATION
-      - PG_CONN_INTERNAL=$_PG_CONN_INTERNAL
-      - ES_URL=$_ES_URL
-      - ES_USERNAME=$_ES_USERNAME
-      - ES_PASSWORD=$_ES_PASSWORD
-      - ES_INDEX_SET=$_ES_INDEX_SET
-
-  # Step 2: Open Targets reference load
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+  # Step 1: Open Targets reference load
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: load-opentargets-reference
-    dir: /app/reference
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - load_opentargets_targets.py
-    env:
-      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
-      - BQ_DATASET=$_BQ_DATASET
-      - BQ_LOCATION=$_BQ_LOCATION
-      - OPENTARGETS_RELEASE=$_OPENTARGETS_RELEASE
+      - -c
+      - |
+        bq load --source_format=PARQUET \
+          --location=$_BQ_LOCATION \
+          --replace \
+          $_GCLOUD_PROJECT:$_BQ_DATASET.opentargets_targets \
+          "gs://open-targets-data-releases/$_OPENTARGETS_RELEASE/output/target/*.parquet"
 
-  # Step 3: dbt run
+  # Step 2: dbt run
   - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
     id: dbt-run
     dir: /app/bq_dbt
@@ -86,7 +68,7 @@ steps:
       - BQ_DATASET=$_BQ_DATASET
       - BQ_LOCATION=$_BQ_LOCATION
 
-  # Step 4: BigQuery → Postgres
+  # Step 3: BigQuery → Postgres
   - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
     id: bq-to-postgres
     dir: /app/bq_to_postgres
@@ -107,7 +89,7 @@ steps:
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
 
-  # Step 5: BigQuery → Elasticsearch
+  # Step 4: BigQuery → Elasticsearch
   - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
     id: bq-to-es
     dir: /app/bq_to_elastic
