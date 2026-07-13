@@ -435,10 +435,10 @@ class CurationSchema(BaseModel):
     readout_technology_label_evidence: str | None = Field(
         default=None,
     )
-    readout_measurment_label_evidence: str | None = Field(
+    readout_measurement_label_evidence: str | None = Field(
         default=None,
     )
-    readout_measurment_label: (
+    readout_measurement_label: (
         Literal[
             "surface protein expression",
             "cell viability",
