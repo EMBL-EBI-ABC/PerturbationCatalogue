@@ -102,6 +102,10 @@ def create_csv_from_curated_metadata_json(
     json_paths = sorted(input_dir.glob("*.json"))
     if not json_paths:
         raise FileNotFoundError(f"No curated metadata JSON files found in: {input_dir}")
+    if not output_csv_path:
+        raise ValueError("Output CSV path must be specified.")
+    if output_csv_path.is_dir():
+        raise ValueError(f"Output CSV path must be a file, not a directory: {output_csv_path}")
 
     rows: list[dict[str, str]] = []
     fieldnames: list[str] = ["source_json_file"]
