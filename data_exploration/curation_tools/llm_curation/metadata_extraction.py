@@ -425,7 +425,7 @@ def bulk_extract_metadata_from_publications(
     max_workers: int = DEFAULT_DOWNLOAD_MAX_WORKERS,
     overwrite: bool = False,
     model_name: str = DEFAULT_LLM_MODEL_NAME,
-    create_csv: bool = False,
+    create_csv: bool = True,
     excluded_publication_files: set[str] | frozenset[str] | None = None,
     prompt_context_builder=None,
     prompt_context_formatter=format_prompt_context_as_json,
