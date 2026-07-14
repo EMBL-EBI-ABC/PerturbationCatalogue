@@ -441,8 +441,8 @@ def curate_mavedb(
     cur_data.standardize_genes(
         slot="obs",
         input_column="perturbed_target_symbol",
-        input_column_type="gene_symbol",
         multiple_entries=False,
+        keep_unmapped=False
     )
 
     # count number of perturbations in each sample
