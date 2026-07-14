@@ -1062,6 +1062,12 @@ class CuratedDataset:
                 "ensembl_gene_id": "ensembl_gene_id",
                 "gene_symbol": "gene_symbol",
             }
+        
+        # if somehow the new column names already exist in the DataFrame, rename them to avoid conflicts
+        for new_col in new_colnames_map.values():
+            if new_col in conv_df.columns:
+                conv_df = conv_df.rename(columns={new_col: f"original_{new_col}"})
+                print(f"Renamed existing column {new_col} to original_{new_col} to avoid conflicts.")
 
         conv_df = conv_df.rename(columns=new_colnames_map)
         conv_df = conv_df.replace("None", None)
