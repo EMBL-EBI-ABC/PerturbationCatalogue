@@ -1,3 +1,5 @@
+"""Pipeline for MaveDB publication text collection and prompt context preparation."""
+
 import argparse
 import json
 import os
