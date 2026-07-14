@@ -188,6 +188,52 @@ TABLE_MATERIALIZED_VIEWS = {
     ],
 }
 
+MATERIALIZED_VIEW_DEFINITIONS = {
+    "perturb_seq_summary_perturbation": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
+            SELECT
+                dataset_id,
+                perturbed_target_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+            FROM perturb_seq_dea
+            WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
+            GROUP BY dataset_id, perturbed_target_ensg;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);",
+    },
+    "perturb_seq_summary_effect": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
+            SELECT
+                dataset_id,
+                effect_gene_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+                AVG(score_value) AS avg_score
+            FROM perturb_seq_dea
+            WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id, effect_gene_ensg;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);",
+    },
+    "perturb_seq_summary_dataset": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
+            SELECT
+                dataset_id,
+                COUNT(*) AS n_total
+            FROM perturb_seq_dea
+            WHERE effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
+    },
+}
+
 # Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
 GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
 
@@ -231,18 +277,108 @@ def get_pg_type(field):
     return pg_type
 
 
-def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
-    """Gets the current sync state for all tables and datasets from Postgres."""
+def get_partition_table_name(table_name: str, dataset_id: str) -> str:
+    """Returns a safe, unique, and deterministic Postgres partition table name under 63 bytes."""
+    # ponytail: clean string, use md5 hash suffix if exceeding 63 bytes
+    safe_ds = "".join(c if c.isalnum() else "_" for c in dataset_id)
+    name = f"{table_name}_{safe_ds}"
+    if len(name) > 63:
+        import hashlib
+
+        h = hashlib.md5(dataset_id.encode()).hexdigest()[:8]
+        name = f"{table_name[:45]}_{safe_ds[:8]}_{h}"
+    return name
+
+
+def check_sync_state_schema_is_valid(cursor) -> bool:
+    """Checks if the sync_state table exists and has the expected schema and primary key."""
+    cursor.execute(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sync_state')"
+    )
+    if not cursor.fetchone()[0]:
+        return False
+
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS sync_state (
-            table_name TEXT NOT NULL,
-            dataset_id TEXT NOT NULL,
-            last_synced_at TIMESTAMP WITHOUT TIME ZONE,
-            PRIMARY KEY (table_name, dataset_id)
-        );
-    """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'sync_state'
+        ORDER BY column_name;
+        """
     )
+    cols = {row[0].lower(): row[1].upper() for row in cursor.fetchall()}
+    expected = {
+        "table_name": "TEXT",
+        "dataset_id": "TEXT",
+        "last_synced_at": "TIMESTAMP WITHOUT TIME ZONE",
+    }
+    for col, expected_type in expected.items():
+        if col not in cols:
+            logging.info(f"sync_state schema mismatch: column {col} missing.")
+            return False
+        pg_type = cols[col]
+        if col in ("table_name", "dataset_id"):
+            if "CHAR" not in pg_type and "TEXT" not in pg_type:
+                logging.info(
+                    f"sync_state schema mismatch: column {col} type {pg_type} is not TEXT."
+                )
+                return False
+        elif col == "last_synced_at":
+            if "TIMESTAMP" not in pg_type:
+                logging.info(
+                    f"sync_state schema mismatch: column {col} type {pg_type} is not TIMESTAMP."
+                )
+                return False
+
+    cursor.execute(
+        """
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_name = 'sync_state'
+          AND tc.constraint_type = 'PRIMARY KEY';
+        """
+    )
+    pk_cols = {row[0].lower() for row in cursor.fetchall()}
+    if pk_cols != {"table_name", "dataset_id"}:
+        logging.info(
+            f"sync_state schema mismatch: primary key columns are {pk_cols} != (table_name, dataset_id)."
+        )
+        return False
+
+    return True
+
+
+def ensure_sync_state_exists(cursor):
+    """Ensures sync_state table exists with correct schema. If it exists but schema is invalid, drops and recreates it and wipes everything."""
+    if not check_sync_state_schema_is_valid(cursor):
+        logging.warning(
+            "sync_state table does not exist or has an invalid schema. Wiping all synced tables and recreating sync_state."
+        )
+        for table_name in TABLES_TO_SYNC:
+            cursor.execute(
+                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                    sql.Identifier(table_name)
+                )
+            )
+        cursor.execute("DROP TABLE IF EXISTS sync_state CASCADE;")
+        cursor.execute(
+            """
+            CREATE TABLE sync_state (
+                table_name TEXT NOT NULL,
+                dataset_id TEXT NOT NULL,
+                last_synced_at TIMESTAMP WITHOUT TIME ZONE,
+                PRIMARY KEY (table_name, dataset_id)
+            );
+            """
+        )
+
+
+def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
+    """Gets the current sync state for all tables and datasets from Postgres."""
+    ensure_sync_state_exists(cursor)
     states = {}
     cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
@@ -419,13 +555,13 @@ def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
-    """Deletes all rows for a given dataset_id from a Postgres table."""
-    logging.info(f"        Deleting {dataset_id} from {pg_table}...")
+    """Drops the partition table for a given dataset_id from Postgres (extremely fast delete)."""
+    partition_name = get_partition_table_name(pg_table, dataset_id)
+    logging.info(
+        f"        Dropping partition {partition_name} of {pg_table} if exists..."
+    )
     cursor.execute(
-        sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
-            sql.Identifier(pg_table)
-        ),
-        (dataset_id,),
+        sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
     )
 
 
@@ -443,145 +579,179 @@ def update_sync_state(cursor, pg_table, dataset_id, timestamp):
 
 
 def ensure_pg_table_exists(cursor, pg_table, bq_schema):
-    """Ensures the target table exists in Postgres, creating it if necessary."""
+    """Ensures the target table exists in Postgres as a partitioned table, creating it if necessary."""
     cursor.execute(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
         (pg_table,),
     )
     if not cursor.fetchone()[0]:
-        logging.info(f"Table {pg_table} does not exist. Creating.")
+        logging.info(
+            f"Table {pg_table} does not exist. Creating as partitioned by dataset_id."
+        )
         columns = [f"{field.name} {get_pg_type(field)}" for field in bq_schema]
         cursor.execute(
-            sql.SQL("CREATE TABLE {} ({})").format(
+            sql.SQL("CREATE TABLE {} ({}) PARTITION BY LIST (dataset_id)").format(
                 sql.Identifier(pg_table),
                 sql.SQL(", ").join(map(sql.SQL, columns)),
             )
         )
 
 
-def drop_indexes(cursor, table_name):
-    """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
-        return
-    logging.info(f"    Dropping indexes for {table_name}...")
-    for index_name, _ in INDEX_DEFINITIONS[table_name]:
-        idx = index_name
-        logging.info(f"        Dropping {idx}...")
+def ensure_partition_exists(cursor, table_name, dataset_id):
+    """Ensures a LIST partition exists on the parent partitioned table for dataset_id."""
+    partition_name = get_partition_table_name(table_name, dataset_id)
+    cursor.execute(
+        "SELECT EXISTS (SELECT FROM pg_class WHERE relname = %s);",
+        (partition_name,),
+    )
+    if not cursor.fetchone()[0]:
+        logging.info(
+            f"Creating partition {partition_name} of {table_name} for dataset_id='{dataset_id}'"
+        )
+        cursor.execute(
+            sql.SQL(
+                "CREATE TABLE IF NOT EXISTS {} PARTITION OF {} FOR VALUES IN (%s)"
+            ).format(
+                sql.Identifier(partition_name),
+                sql.Identifier(table_name),
+            ),
+            (dataset_id,),
+        )
+
+
+def check_pg_schema_matches_bq(cursor, pg_table, bq_schema) -> bool:
+    """Checks if the existing Postgres table schema matches BQ schema."""
+    cursor.execute(
+        """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = %s
+        ORDER BY column_name;
+        """,
+        (pg_table,),
+    )
+    pg_cols = {row[0].lower(): row[1].upper() for row in cursor.fetchall()}
+    if not pg_cols:
+        return False
+
+    expected_cols = {}
+    for field in bq_schema:
+        col_name = field.name.lower()
+        expected_type = get_pg_type(field).upper()
+        if "TIMESTAMP" in expected_type:
+            expected_type = "TIMESTAMP WITHOUT TIME ZONE"
+        elif "DOUBLE" in expected_type:
+            expected_type = "DOUBLE PRECISION"
+        elif "TEXT[]" in expected_type:
+            expected_type = "ARRAY"
+        expected_cols[col_name] = expected_type
+
+    if set(pg_cols.keys()) != set(expected_cols.keys()):
+        logging.info(f"Schema mismatch for {pg_table}: column sets differ.")
+        return False
+
+    for col, expected_type in expected_cols.items():
+        pg_type = pg_cols[col]
+        if pg_type != expected_type:
+            if pg_type == "ARRAY" and "[]" in get_pg_type(
+                next(f for f in bq_schema if f.name.lower() == col)
+            ):
+                continue
+            logging.info(
+                f"Schema mismatch for {pg_table}.{col}: PG type {pg_type} != BQ type {expected_type}"
+            )
+            return False
+
+    return True
+
+
+def check_pg_table_is_partitioned(cursor, pg_table) -> bool:
+    """Checks if the existing Postgres table is partitioned by LIST on dataset_id."""
+    cursor.execute(
+        """
+        SELECT pt.partstrat, pg_get_partkeydef(c.oid)
+        FROM pg_partitioned_table pt
+        JOIN pg_class c ON pt.partrelid = c.oid
+        WHERE c.relname = %s;
+        """,
+        (pg_table,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        logging.info(f"Table {pg_table} is not partitioned in Postgres.")
+        return False
+    strat, key_def = row
+    is_valid = strat == "l" and "dataset_id" in key_def.lower()
+    if not is_valid:
+        logging.info(
+            f"Table {pg_table} is partitioned, but not by LIST on dataset_id (strat: {strat}, key: {key_def})."
+        )
+    return is_valid
+
+
+def drop_dependent_views_and_indexes(cursor, table_name):
+    """Finds and drops all materialized views and indexes depending on the table."""
+    # 1. Find all dependent materialized views
+    cursor.execute(
+        """
+        SELECT DISTINCT dependee.relname AS mv_name
+        FROM pg_depend d
+        JOIN pg_rewrite r ON d.objid = r.oid
+        JOIN pg_class dependee ON r.ev_class = dependee.oid
+        JOIN pg_class dependent ON d.refobjid = dependent.oid
+        WHERE dependent.relname = %s AND dependee.relkind = 'm';
+        """,
+        (table_name,),
+    )
+    mvs = [row[0] for row in cursor.fetchall()]
+    for mv in mvs:
+        logging.info(f"    Dropping dependent materialized view {mv}...")
+        cursor.execute(
+            sql.SQL("DROP MATERIALIZED VIEW IF EXISTS {} CASCADE").format(
+                sql.Identifier(mv)
+            )
+        )
+
+    # 2. Find and drop all indexes
+    cursor.execute(
+        """
+        SELECT c.relname AS index_name
+        FROM pg_index i
+        JOIN pg_class c ON c.oid = i.indexrelid
+        JOIN pg_class t ON t.oid = i.indrelid
+        WHERE t.relname = %s AND i.indisprimary = FALSE;
+        """,
+        (table_name,),
+    )
+    indexes = [row[0] for row in cursor.fetchall()]
+    for idx in indexes:
+        logging.info(f"    Dropping index {idx}...")
         cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
-def create_indexes(cursor, table_name):
-    """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
-        return
-    logging.info(
-        f"      - Creating indexes for {table_name} (this may take a while)..."
-    )
-    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
-        idx = index_name
-        logging.info(f"        Creating {idx}...")
-        index_sql = index_sql_template.format(
-            idx=sql.Identifier(idx).as_string(cursor.connection),
-            table=sql.Identifier(table_name).as_string(cursor.connection),
-        )
-        cursor.execute(index_sql)
-
-
-def ensure_perturb_seq_summary_views(cursor):
-    """Create ENSG summary materialized views and unique indexes when missing."""
-    cursor.execute(
-        sql.SQL(
-            """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_perturbation AS
-            SELECT
-                dataset_id,
-                perturbed_target_ensg,
-                COUNT(*) AS n_total,
-                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
-                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
-            FROM perturb_seq_dea
-            WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
-            GROUP BY dataset_id, perturbed_target_ensg
-            """
-        )
-    )
-    cursor.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_perturbation_pk
-        ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg)
-        """
-    )
-
-    cursor.execute(
-        sql.SQL(
-            """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_effect AS
-            SELECT
-                dataset_id,
-                effect_gene_ensg,
-                COUNT(*) AS n_total,
-                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
-                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
-                AVG(score_value) AS avg_score
-            FROM perturb_seq_dea
-            WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
-            GROUP BY dataset_id, effect_gene_ensg
-            """
-        )
-    )
-    cursor.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_effect_pk
-        ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg)
-        """
-    )
-
-    cursor.execute(
-        sql.SQL(
-            """
-            CREATE MATERIALIZED VIEW IF NOT EXISTS perturb_seq_summary_dataset AS
-            SELECT dataset_id, COUNT(*) AS n_total
-            FROM perturb_seq_dea
-            WHERE effect_gene_ensg IS NOT NULL
-            GROUP BY dataset_id
-            """
-        )
-    )
-    cursor.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_dataset_pk
-        ON perturb_seq_summary_dataset (dataset_id)
-        """
-    )
-
-
-def refresh_materialized_views(cursor, table_name, concurrently=False):
-    """Refreshes materialized views associated with the table."""
-    if table_name not in TABLE_MATERIALIZED_VIEWS:
-        return
-    if table_name == "perturb_seq_dea":
-        ensure_perturb_seq_summary_views(cursor)
-    for view_name in TABLE_MATERIALIZED_VIEWS[table_name]:
-        logging.info(f"      - Refreshing materialized view {view_name}...")
-        conc_clause = "CONCURRENTLY " if concurrently else ""
-        try:
-            cursor.execute(
-                sql.SQL("REFRESH MATERIALIZED VIEW {}{}").format(
-                    sql.SQL(conc_clause), sql.Identifier(view_name)
-                )
+def create_defined_indexes_and_views(cursor, table_name):
+    """Recreates only the indexes and materialized views defined in DWH pipeline configs."""
+    # 1. Recreate indexes
+    if table_name in INDEX_DEFINITIONS:
+        logging.info(f"    Creating defined indexes for {table_name}...")
+        for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+            logging.info(f"        Creating index {index_name}...")
+            index_sql = index_sql_template.format(
+                idx=sql.Identifier(index_name).as_string(cursor.connection),
+                table=sql.Identifier(table_name).as_string(cursor.connection),
             )
-        except psycopg2.Error as e:
-            logging.warning(
-                f"        Failed to refresh {view_name} {conc_clause.strip()}: {e}. Trying without CONCURRENTLY."
-            )
-            if concurrently:
-                # If we were in a transaction block, we can't retry easily without rollback.
-                # Assuming this runs in a state where we can retry (autocommit=True for MV refresh).
-                cursor.execute(
-                    sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
-                        sql.Identifier(view_name)
-                    )
-                )
+            cursor.execute(index_sql)
+
+    # 2. Recreate materialized views
+    if table_name in TABLE_MATERIALIZED_VIEWS:
+        logging.info(f"    Creating defined materialized views for {table_name}...")
+        for mv_name in TABLE_MATERIALIZED_VIEWS[table_name]:
+            if mv_name in MATERIALIZED_VIEW_DEFINITIONS:
+                logging.info(f"        Creating materialized view {mv_name}...")
+                mv_def = MATERIALIZED_VIEW_DEFINITIONS[mv_name]
+                cursor.execute(mv_def["create_sql"])
+                if mv_def.get("index_sql"):
+                    cursor.execute(mv_def["index_sql"])
 
 
 # ------------------------------------------------------------------------------
@@ -644,6 +814,7 @@ class TableSynchronizer:
                 ds_id,
             )
             delete_dataset_from_pg(cursor, pg_table, ds_id)
+            ensure_partition_exists(cursor, pg_table, ds_id)
             load_parquet_from_gcs_to_pg(
                 cursor,
                 pg_table,
@@ -659,16 +830,15 @@ class TableSynchronizer:
         """
         Unified Sync Mode:
         - Single transaction for:
-            1. (Optional) Drop Indexes
-            2. Data Updates (Delete + Insert) for all datasets
-            3. (Optional) Recreate Indexes
+            1. Drop dependent materialized views and indexes (if requested or mandatory)
+            2. Data Updates (Drop dataset partition + create empty partition + COPY) for all datasets
+            3. Recreate defined indexes and materialized views
             4. Update sync_state
-        - (Separate) Refresh MVs concurrently.
         """
         bq_schema = self._get_bq_schema(table_name)
         datasets = sorted(plan["to_update"] + plan["to_insert"])
 
-        # 1. Main Transaction Block
+        # Main Transaction Block
         with psycopg2.connect(self.pg_conn_str) as conn:
             with conn.cursor() as cursor:
                 ensure_pg_table_exists(cursor, table_name, bq_schema)
@@ -677,9 +847,8 @@ class TableSynchronizer:
                     f"    Starting transaction for {len(datasets)} datasets..."
                 )
 
-                # A. Drop Indexes (if requested)
-                if self.drop_and_recreate_indexes:
-                    drop_indexes(cursor, table_name)
+                # A. Drop dependent Views and Indexes
+                drop_dependent_views_and_indexes(cursor, table_name)
 
                 # B. Ingest Loop
                 for ds_id in tqdm(
@@ -694,18 +863,8 @@ class TableSynchronizer:
                     bq_ts = plan["bq_info"][ds_id][0]
                     update_sync_state(cursor, table_name, ds_id, bq_ts)
 
-                # C. Recreate Indexes (if requested)
-                if self.drop_and_recreate_indexes:
-                    create_indexes(cursor, table_name)
-
-        # 2. Materialized View Refresh (concurrently, separate connection)
-        # Only if we successfully committed the transaction above.
-        with psycopg2.connect(self.pg_conn_str) as conn:
-            conn.autocommit = (
-                True  # Required for REFRESH MATERIALIZED VIEW CONCURRENTLY
-            )
-            with conn.cursor() as cursor:
-                refresh_materialized_views(cursor, table_name, concurrently=True)
+                # C. Recreate only defined Indexes and Materialized Views
+                create_defined_indexes_and_views(cursor, table_name)
 
 
 # ------------------------------------------------------------------------------
@@ -795,12 +954,38 @@ def main():
                     )
                     continue
 
+                # Schema and partition validations
+                bq_schema = synchronizer._get_bq_schema(table_name)
+                schema_matches = check_pg_schema_matches_bq(
+                    cursor, table_name, bq_schema
+                )
+                is_partitioned = check_pg_table_is_partitioned(cursor, table_name)
+
+                # Determine if hard reset is required
+                hard_reset_required = not schema_matches or not is_partitioned
+
                 # 2. Compare with PG state
                 pg_info = pg_states.get(table_name, {})
                 to_insert = []
                 to_update = []
 
-                if table_name in force_pg_tables:
+                if hard_reset_required:
+                    logging.warning(
+                        f"  Hard reset triggered for {table_name}: schema matches BQ={schema_matches}, partitioned={is_partitioned}."
+                    )
+                    # Dropping table with CASCADE drops it completely along with partitions and dependent views
+                    cursor.execute(
+                        sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                            sql.Identifier(table_name)
+                        )
+                    )
+                    # Clear sync state records for this table
+                    cursor.execute(
+                        "DELETE FROM sync_state WHERE table_name = %s", (table_name,)
+                    )
+                    # Reimport all datasets
+                    to_insert = list(bq_info.keys())
+                elif table_name in force_pg_tables:
                     logging.info(
                         f"  Force reload requested for {table_name}; all BigQuery datasets will be reloaded."
                     )
