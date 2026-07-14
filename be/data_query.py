@@ -518,11 +518,7 @@ def _result_field_name(api_field: str) -> str:
     """Map API filter fields to nested response keys."""
     if api_field in {"perturbed_target_ensg", "effect_gene_ensg"}:
         return api_field
-    if api_field.startswith("perturbation_"):
-        return api_field.replace("perturbation_", "", 1)
-    if api_field.startswith("effect_"):
-        return api_field.replace("effect_", "", 1)
-    return api_field
+    return api_field.removeprefix("perturbation_").removeprefix("effect_")
 
 
 def _is_perturbation_field(api_field: str) -> bool:
@@ -595,7 +591,7 @@ async def build_pg_filters(
                 else:  # float
                     params.append(float(value))
         # Simple string filter
-        elif isinstance(value, str) and "_" not in value:
+        elif isinstance(value, str):
             if db_field in ["perturbed_target_ensg", "effect_gene_ensg"]:
                 if "|" in value:
                     values = [v.strip() for v in value.split("|") if v.strip()]
@@ -611,14 +607,6 @@ async def build_pg_filters(
             else:
                 filters.append(f"{db_field} = ${len(params) + 1}")
                 params.append(value)
-        # Numeric range filter (for fields not explicitly in NUMERIC_FIELDS but using range syntax)
-        elif isinstance(value, str):
-            condition, condition_params = parse_numeric_filter(db_field, value)
-            condition = condition.replace("$...", f"${len(params) + 1}", 1)
-            if " AND " in condition:
-                condition = condition.replace("$...", f"${len(params) + 2}", 1)
-            filters.append(condition)
-            params.extend(condition_params)
 
     return filters, params, has_empty_target_resolution
 
