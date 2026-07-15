@@ -1,13 +1,9 @@
 import argparse
-import concurrent.futures
-import contextlib
-import enum
 import io
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor
+from datetime import timezone
 from typing import List, Dict, Tuple, Optional, Any, Set
 
 import psycopg2
@@ -239,9 +235,6 @@ MATERIALIZED_VIEW_DEFINITIONS = {
         "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
     },
 }
-
-# Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
-GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
 
 
 def parse_force_pg_tables(raw_tables: Optional[str]) -> Set[str]:
@@ -505,25 +498,14 @@ def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
-    """Deletes the dataset_id data from Postgres (drops partition or deletes rows)."""
-    if pg_table in PARTITIONED_TABLES:
-        partition_name = get_partition_table_name(pg_table, dataset_id)
-        logging.info(
-            f"        Dropping partition {partition_name} of {pg_table} if exists..."
-        )
-        cursor.execute(
-            sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
-        )
-    else:
-        logging.info(
-            f"        Deleting rows with dataset_id='{dataset_id}' from {pg_table}..."
-        )
-        cursor.execute(
-            sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
-                sql.Identifier(pg_table)
-            ),
-            (dataset_id,),
-        )
+    """Drops the partition table for a given dataset_id from Postgres (extremely fast delete)."""
+    partition_name = get_partition_table_name(pg_table, dataset_id)
+    logging.info(
+        f"        Dropping partition {partition_name} of {pg_table} if exists..."
+    )
+    cursor.execute(
+        sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
+    )
 
 
 def update_sync_state(cursor, pg_table, dataset_id, timestamp):
@@ -809,8 +791,8 @@ class TableSynchronizer:
         if tsv_buf is None:
             return
 
-        delete_dataset_from_pg(cursor, pg_table, ds_id)
         if pg_table in PARTITIONED_TABLES:
+            delete_dataset_from_pg(cursor, pg_table, ds_id)
             ensure_partition_exists(cursor, pg_table, ds_id)
 
         copy_sql = sql.SQL(
@@ -973,6 +955,25 @@ def main():
                 pg_info = pg_states.get(table_name, {})
                 to_insert = []
                 to_update = []
+
+                if not hard_reset_required and table_name not in PARTITIONED_TABLES:
+                    # Check if any dataset is new or updated compared to pg_info
+                    any_changes = False
+                    for ds_id, (bq_ts, bq_count) in bq_info.items():
+                        if ds_id not in pg_info:
+                            any_changes = True
+                            break
+                        pg_ts = pg_info[ds_id]
+                        if pg_ts and pg_ts.tzinfo is None:
+                            pg_ts = pg_ts.replace(tzinfo=timezone.utc)
+                        if bq_ts > pg_ts:
+                            any_changes = True
+                            break
+                    if any_changes:
+                        logging.info(
+                            f"  Changes detected in non-partitioned {table_name}. Triggering full table reload."
+                        )
+                        hard_reset_required = True
 
                 if hard_reset_required:
                     logging.warning(
