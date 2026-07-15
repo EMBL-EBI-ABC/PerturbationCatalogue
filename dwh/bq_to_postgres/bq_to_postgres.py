@@ -491,10 +491,17 @@ def _prepare_table_for_copy(table, bq_schema):
 def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
     """Removes temporary files from GCS."""
     logging.info(f"      - Cleaning up GCS files...")
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-    for blob in blobs:
-        blob.delete()
+    try:
+        bucket = gcs_client.get_bucket(gcs_bucket)
+        blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+        for blob in blobs:
+            try:
+                blob.delete()
+            except Exception as e:
+                # ponytail: ignore if file is already deleted or can't be found
+                logging.warning(f"        Could not delete blob {blob.name}: {e}")
+    except Exception as e:
+        logging.warning(f"        GCS cleanup failed for prefix {gcs_prefix}: {e}")
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
