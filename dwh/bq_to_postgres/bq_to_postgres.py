@@ -918,6 +918,13 @@ def main():
     conn = psycopg2.connect(args.pg_conn)
     conn.autocommit = True
 
+    # ponytail: unconditionally terminate any other backend processes to prevent hanging locks.
+    logging.info("Terminating other database sessions to prevent locks...")
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != pg_backend_pid() AND datname = current_database();"
+        )
+
     try:
         with conn.cursor() as cursor:
             # fetch current state
