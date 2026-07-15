@@ -29,6 +29,7 @@ steps:
     id: build-image
     args:
       - build
+      - -q
       - -t
       - gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
       - -f
