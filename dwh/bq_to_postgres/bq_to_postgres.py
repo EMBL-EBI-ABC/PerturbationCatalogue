@@ -36,6 +36,12 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+# ponytail: only perturb-seq is partitioned to avoid table clutter from 1000s of small datasets.
+PARTITIONED_TABLES = {
+    "perturb_seq_dea",
+    "perturb_seq_gsea",
+}
+
 SYNC_QUERIES = {
     "crispr_data": {
         "export_query": r"""
@@ -499,14 +505,25 @@ def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
-    """Drops the partition table for a given dataset_id from Postgres (extremely fast delete)."""
-    partition_name = get_partition_table_name(pg_table, dataset_id)
-    logging.info(
-        f"        Dropping partition {partition_name} of {pg_table} if exists..."
-    )
-    cursor.execute(
-        sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
-    )
+    """Deletes the dataset_id data from Postgres (drops partition or deletes rows)."""
+    if pg_table in PARTITIONED_TABLES:
+        partition_name = get_partition_table_name(pg_table, dataset_id)
+        logging.info(
+            f"        Dropping partition {partition_name} of {pg_table} if exists..."
+        )
+        cursor.execute(
+            sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
+        )
+    else:
+        logging.info(
+            f"        Deleting rows with dataset_id='{dataset_id}' from {pg_table}..."
+        )
+        cursor.execute(
+            sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
+                sql.Identifier(pg_table)
+            ),
+            (dataset_id,),
+        )
 
 
 def update_sync_state(cursor, pg_table, dataset_id, timestamp):
@@ -523,22 +540,33 @@ def update_sync_state(cursor, pg_table, dataset_id, timestamp):
 
 
 def ensure_pg_table_exists(cursor, pg_table, bq_schema):
-    """Ensures the target table exists in Postgres as a partitioned table, creating it if necessary."""
+    """Ensures the target table exists in Postgres as a partitioned or normal table, creating it if necessary."""
     cursor.execute(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
         (pg_table,),
     )
     if not cursor.fetchone()[0]:
-        logging.info(
-            f"Table {pg_table} does not exist. Creating as partitioned by dataset_id."
-        )
         columns = [f"{field.name} {get_pg_type(field)}" for field in bq_schema]
-        cursor.execute(
-            sql.SQL("CREATE TABLE {} ({}) PARTITION BY LIST (dataset_id)").format(
-                sql.Identifier(pg_table),
-                sql.SQL(", ").join(map(sql.SQL, columns)),
+        if pg_table in PARTITIONED_TABLES:
+            logging.info(
+                f"Table {pg_table} does not exist. Creating as partitioned by dataset_id."
             )
-        )
+            cursor.execute(
+                sql.SQL("CREATE TABLE {} ({}) PARTITION BY LIST (dataset_id)").format(
+                    sql.Identifier(pg_table),
+                    sql.SQL(", ").join(map(sql.SQL, columns)),
+                )
+            )
+        else:
+            logging.info(
+                f"Table {pg_table} does not exist. Creating as standard table."
+            )
+            cursor.execute(
+                sql.SQL("CREATE TABLE {} ({})").format(
+                    sql.Identifier(pg_table),
+                    sql.SQL(", ").join(map(sql.SQL, columns)),
+                )
+            )
 
 
 def ensure_partition_exists(cursor, table_name, dataset_id):
@@ -777,12 +805,13 @@ class TableSynchronizer:
             cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
 
     def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_buf):
-        """Loads a prepared TSV buffer into the Postgres partition for ds_id."""
+        """Loads a prepared TSV buffer into the Postgres table (partition or standard table) for ds_id."""
         if tsv_buf is None:
             return
 
         delete_dataset_from_pg(cursor, pg_table, ds_id)
-        ensure_partition_exists(cursor, pg_table, ds_id)
+        if pg_table in PARTITIONED_TABLES:
+            ensure_partition_exists(cursor, pg_table, ds_id)
 
         copy_sql = sql.SQL(
             "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
@@ -793,10 +822,10 @@ class TableSynchronizer:
 
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
-        Unified Sync Mode:
+        Unified Sync Mode (strictly sequential):
         - Single transaction for:
             1. Drop dependent materialized views and indexes (if requested or mandatory)
-            2. Data Updates (Drop dataset partition + create empty partition + COPY) for all datasets
+            2. Data Updates (Delete old rows/partition + create empty partition if partitioned + COPY) for all datasets
             3. Recreate defined indexes and materialized views
             4. Update sync_state
         """
@@ -815,42 +844,26 @@ class TableSynchronizer:
                 # A. Drop dependent Views and Indexes
                 drop_dependent_views_and_indexes(cursor, table_name)
 
-                # B. Ingest Loop
-                workers = 4
-                logging.info(
-                    f"    Running parallel dataset preparation with {workers} workers..."
+                # B. Ingest Loop (strictly sequential)
+                logging.info("    Running sequential dataset preparation and load...")
+
+                pbar = tqdm(
+                    datasets,
+                    desc=f"    Syncing {table_name}",
+                    unit="dataset",
                 )
-
-                with ThreadPoolExecutor(max_workers=workers) as executor:
-                    future_to_ds = {
-                        executor.submit(
-                            self._export_and_prepare_dataset,
-                            table_name,
-                            ds_id,
-                            bq_schema,
-                        ): ds_id
-                        for ds_id in datasets
-                    }
-
-                    pbar = tqdm(
-                        concurrent.futures.as_completed(future_to_ds),
-                        total=len(datasets),
-                        desc=f"    Syncing {table_name}",
-                        unit="dataset",
-                    )
-                    for future in pbar:
-                        ds_id = future_to_ds[future]
-                        try:
-                            _, tsv_buf = future.result()
-                            self._load_tsv_to_pg(cursor, table_name, ds_id, tsv_buf)
-                            bq_ts = plan["bq_info"][ds_id][0]
-                            update_sync_state(cursor, table_name, ds_id, bq_ts)
-                        except Exception as e:
-                            logging.error(f"Failed to process dataset {ds_id}: {e}")
-                            for f in future_to_ds:
-                                f.cancel()
-                            raise e
-                    pbar.close()
+                for ds_id in pbar:
+                    try:
+                        _, tsv_buf = self._export_and_prepare_dataset(
+                            table_name, ds_id, bq_schema
+                        )
+                        self._load_tsv_to_pg(cursor, table_name, ds_id, tsv_buf)
+                        bq_ts = plan["bq_info"][ds_id][0]
+                        update_sync_state(cursor, table_name, ds_id, bq_ts)
+                    except Exception as e:
+                        logging.error(f"Failed to process dataset {ds_id}: {e}")
+                        raise e
+                pbar.close()
 
                 # C. Recreate only defined Indexes and Materialized Views
                 create_defined_indexes_and_views(cursor, table_name)
@@ -949,9 +962,12 @@ def main():
                     cursor, table_name, bq_schema
                 )
                 is_partitioned = check_pg_table_is_partitioned(cursor, table_name)
+                should_be_partitioned = table_name in PARTITIONED_TABLES
 
                 # Determine if hard reset is required
-                hard_reset_required = not schema_matches or not is_partitioned
+                hard_reset_required = not schema_matches or (
+                    is_partitioned != should_be_partitioned
+                )
 
                 # 2. Compare with PG state
                 pg_info = pg_states.get(table_name, {})
@@ -960,7 +976,7 @@ def main():
 
                 if hard_reset_required:
                     logging.warning(
-                        f"  Hard reset triggered for {table_name}: schema matches BQ={schema_matches}, partitioned={is_partitioned}."
+                        f"  Hard reset triggered for {table_name}: schema matches BQ={schema_matches}, partitioned={is_partitioned} (should be partitioned={should_be_partitioned})."
                     )
                     # Dropping table with CASCADE drops it completely along with partitions and dependent views
                     cursor.execute(
