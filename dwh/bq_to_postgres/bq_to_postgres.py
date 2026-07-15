@@ -754,8 +754,11 @@ class TableSynchronizer:
         return result.schema
 
     def _export_and_prepare_dataset(self, table_name, ds_id, bq_schema):
-        """Exports a dataset to GCS, downloads and converts shards to a single TSV buffer, and cleans up GCS."""
+        """Exports a dataset to GCS, downloads and converts shards to a single TSV file on disk, and cleans up GCS."""
         gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
+        import tempfile
+
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
         try:
             export_dataset_to_gcs(
                 self.bq_client,
@@ -771,36 +774,58 @@ class TableSynchronizer:
             blobs = list(bucket.list_blobs(prefix=gcs_prefix))
 
             if not blobs:
+                tmp_file.close()
+                try:
+                    os.unlink(tmp_file.name)
+                except Exception:
+                    pass
                 return ds_id, None
 
-            tsv_buf = io.BytesIO()
             for blob in blobs:
-                data = blob.download_as_bytes()
-                table = pq.read_table(io.BytesIO(data))
-                chunk_buf = _prepare_table_for_copy(table, bq_schema)
-                tsv_buf.write(chunk_buf.getvalue())
-                chunk_buf.close()
+                with tempfile.NamedTemporaryFile() as shard_file:
+                    blob.download_to_file(shard_file)
+                    shard_file.seek(0)
+                    table = pq.read_table(shard_file.name)
 
-            tsv_buf.seek(0)
-            return ds_id, tsv_buf
+                    chunk_buf = _prepare_table_for_copy(table, bq_schema)
+                    tmp_file.write(chunk_buf.getvalue())
+                    chunk_buf.close()
+
+            tmp_file.seek(0)
+            return ds_id, tmp_file
+        except BaseException as e:
+            tmp_file.close()
+            if os.path.exists(tmp_file.name):
+                try:
+                    os.unlink(tmp_file.name)
+                except Exception:
+                    pass
+            raise e
         finally:
             cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
 
-    def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_buf):
-        """Loads a prepared TSV buffer into the Postgres table (partition or standard table) for ds_id."""
-        if tsv_buf is None:
+    def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_file):
+        """Loads a prepared TSV file into the Postgres table (partition or standard table) for ds_id."""
+        if tsv_file is None:
             return
 
-        if pg_table in PARTITIONED_TABLES:
-            delete_dataset_from_pg(cursor, pg_table, ds_id)
-            ensure_partition_exists(cursor, pg_table, ds_id)
+        try:
+            if pg_table in PARTITIONED_TABLES:
+                delete_dataset_from_pg(cursor, pg_table, ds_id)
+                ensure_partition_exists(cursor, pg_table, ds_id)
 
-        copy_sql = sql.SQL(
-            "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
-        ).format(sql.Identifier(pg_table))
+            copy_sql = sql.SQL(
+                "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
+            ).format(sql.Identifier(pg_table))
 
-        cursor.copy_expert(copy_sql, tsv_buf)
-        tsv_buf.close()
+            cursor.copy_expert(copy_sql, tsv_file)
+        finally:
+            tsv_file.close()
+            if hasattr(tsv_file, "name") and os.path.exists(tsv_file.name):
+                try:
+                    os.unlink(tsv_file.name)
+                except Exception:
+                    pass
 
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
