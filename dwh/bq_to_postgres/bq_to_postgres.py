@@ -279,7 +279,6 @@ def get_pg_type(field):
 
 def get_partition_table_name(table_name: str, dataset_id: str) -> str:
     """Returns a safe, unique, and deterministic Postgres partition table name under 63 bytes."""
-    # ponytail: clean string, use md5 hash suffix if exceeding 63 bytes
     safe_ds = "".join(c if c.isalnum() else "_" for c in dataset_id)
     name = f"{table_name}_{safe_ds}"
     if len(name) > 63:
@@ -488,61 +487,6 @@ def _prepare_table_for_copy(table, bq_schema):
     pa_csv.write_csv(table, buf, write_options=write_options)
     buf.seek(0)
     return buf
-
-
-def _download_and_convert_blob(blob, bq_schema):
-    """Download a single Parquet shard and convert to a TSV buffer."""
-    data = blob.download_as_bytes()
-    table = pq.read_table(io.BytesIO(data))
-    return _prepare_table_for_copy(table, bq_schema)
-
-
-def load_parquet_from_gcs_to_pg(
-    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, gcs_client
-):
-    """Loads Parquet files from GCS into Postgres using COPY."""
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    logging.info(f"        Listing blobs in {gcs_prefix}...")
-    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-
-    if not blobs:
-        return
-
-    copy_sql = sql.SQL(
-        "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
-    ).format(sql.Identifier(pg_table))
-
-    max_workers = GCS_DOWNLOAD_WORKERS
-    blob_iter = iter(blobs)
-    pbar = tqdm(total=len(blobs), desc="        Loading shards", leave=False)
-
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        pending = {}
-        for blob in iter(lambda: next(blob_iter, None), None):
-            fut = pool.submit(_download_and_convert_blob, blob, bq_schema)
-            pending[fut] = blob
-            if len(pending) >= max_workers:
-                break
-
-        while pending:
-            done, _ = concurrent.futures.wait(
-                pending, return_when=concurrent.futures.FIRST_COMPLETED
-            )
-            for fut in done:
-                tsv_buf = fut.result()
-                cursor.copy_expert(copy_sql, tsv_buf)
-                tsv_buf.close()
-                del pending[fut]
-                pbar.update(1)
-
-                next_blob = next(blob_iter, None)
-                if next_blob is not None:
-                    new_fut = pool.submit(
-                        _download_and_convert_blob, next_blob, bq_schema
-                    )
-                    pending[new_fut] = next_blob
-
-    pbar.close()
 
 
 def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
@@ -799,10 +743,9 @@ class TableSynchronizer:
         result = job.result()
         return result.schema
 
-    def _ingest_dataset_logic(self, cursor, pg_table, table_name, ds_id, bq_schema):
-        """Standard ingestion: export, delete, copy."""
+    def _export_and_prepare_dataset(self, table_name, ds_id, bq_schema):
+        """Exports a dataset to GCS, downloads and converts shards to a single TSV buffer, and cleans up GCS."""
         gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
-        logging.info(f"    Processing {ds_id}...")
         try:
             export_dataset_to_gcs(
                 self.bq_client,
@@ -813,18 +756,40 @@ class TableSynchronizer:
                 gcs_prefix,
                 ds_id,
             )
-            delete_dataset_from_pg(cursor, pg_table, ds_id)
-            ensure_partition_exists(cursor, pg_table, ds_id)
-            load_parquet_from_gcs_to_pg(
-                cursor,
-                pg_table,
-                self.gcs_bucket,
-                gcs_prefix,
-                bq_schema,
-                self.gcs_client,
-            )
+
+            bucket = self.gcs_client.get_bucket(self.gcs_bucket)
+            blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+
+            if not blobs:
+                return ds_id, None
+
+            tsv_buf = io.BytesIO()
+            for blob in blobs:
+                data = blob.download_as_bytes()
+                table = pq.read_table(io.BytesIO(data))
+                chunk_buf = _prepare_table_for_copy(table, bq_schema)
+                tsv_buf.write(chunk_buf.getvalue())
+                chunk_buf.close()
+
+            tsv_buf.seek(0)
+            return ds_id, tsv_buf
         finally:
             cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
+
+    def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_buf):
+        """Loads a prepared TSV buffer into the Postgres partition for ds_id."""
+        if tsv_buf is None:
+            return
+
+        delete_dataset_from_pg(cursor, pg_table, ds_id)
+        ensure_partition_exists(cursor, pg_table, ds_id)
+
+        copy_sql = sql.SQL(
+            "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
+        ).format(sql.Identifier(pg_table))
+
+        cursor.copy_expert(copy_sql, tsv_buf)
+        tsv_buf.close()
 
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
@@ -851,17 +816,41 @@ class TableSynchronizer:
                 drop_dependent_views_and_indexes(cursor, table_name)
 
                 # B. Ingest Loop
-                for ds_id in tqdm(
-                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
-                ):
-                    # Data Ingestion
-                    self._ingest_dataset_logic(
-                        cursor, table_name, table_name, ds_id, bq_schema
-                    )
+                workers = 4
+                logging.info(
+                    f"    Running parallel dataset preparation with {workers} workers..."
+                )
 
-                    # Update sync state
-                    bq_ts = plan["bq_info"][ds_id][0]
-                    update_sync_state(cursor, table_name, ds_id, bq_ts)
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    future_to_ds = {
+                        executor.submit(
+                            self._export_and_prepare_dataset,
+                            table_name,
+                            ds_id,
+                            bq_schema,
+                        ): ds_id
+                        for ds_id in datasets
+                    }
+
+                    pbar = tqdm(
+                        concurrent.futures.as_completed(future_to_ds),
+                        total=len(datasets),
+                        desc=f"    Syncing {table_name}",
+                        unit="dataset",
+                    )
+                    for future in pbar:
+                        ds_id = future_to_ds[future]
+                        try:
+                            _, tsv_buf = future.result()
+                            self._load_tsv_to_pg(cursor, table_name, ds_id, tsv_buf)
+                            bq_ts = plan["bq_info"][ds_id][0]
+                            update_sync_state(cursor, table_name, ds_id, bq_ts)
+                        except Exception as e:
+                            logging.error(f"Failed to process dataset {ds_id}: {e}")
+                            for f in future_to_ds:
+                                f.cancel()
+                            raise e
+                    pbar.close()
 
                 # C. Recreate only defined Indexes and Materialized Views
                 create_defined_indexes_and_views(cursor, table_name)
