@@ -6,7 +6,7 @@ from pathlib import Path
 from curation_tools.llm_curation.metadata_extraction import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
     DEFAULT_LLM_MODEL_NAME,
-    bulk_extract_metadata_from_publications,
+    bulk_extract_evidence_from_publications,
 )
 from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.mavedb.processing import (
@@ -98,7 +98,7 @@ def main() -> None:
 
     extraction_schema = load_extraction_schema(args.extraction_schema)
 
-    bulk_extract_metadata_from_publications(
+    bulk_extract_evidence_from_publications(
         publication_full_text_paths=[
             str(path) for path in args.publication_full_text_dir.glob("*.md")
         ],
