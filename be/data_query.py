@@ -564,7 +564,7 @@ async def build_pg_filters(
             continue
 
         params.append(search_terms)
-        filters.append(f"string_to_array({db_field}, '|') && ${len(params)}::text[]")
+        filters.append(f"{db_field} = ANY(${len(params)}::text[])")
 
     for key, value in query_params.items():
         if key not in api_to_db:
@@ -601,9 +601,7 @@ async def build_pg_filters(
                         continue
                 else:
                     params.append([value])
-                filters.append(
-                    f"string_to_array({db_field}, '|') && ${len(params)}::text[]"
-                )
+                filters.append(f"{db_field} = ANY(${len(params)}::text[])")
             else:
                 filters.append(f"{db_field} = ${len(params) + 1}")
                 params.append(value)
@@ -874,9 +872,8 @@ async def _search_modality_impl(
     # 3. Paginate Datasets
     paginated_datasets = es_datasets[dataset_offset : dataset_offset + dataset_limit]
 
-    # 4. Fetch Data (Postgres)
-    final_datasets = []
-    for es_dataset in paginated_datasets:
+    # 4. Fetch Data (Postgres) in Parallel
+    async def fetch_and_assemble_dataset(es_dataset):
         dataset_id = es_dataset["dataset_id"]
 
         # Re-apply filters for this specific dataset
@@ -958,7 +955,11 @@ async def _search_modality_impl(
             val = es_dataset.get(f["es_field"])
             dataset_meta[f["api_name"]] = val
 
-        final_datasets.append({"dataset": dataset_meta, "results": results})
+        return {"dataset": dataset_meta, "results": results}
+
+    final_datasets = await asyncio.gather(
+        *(fetch_and_assemble_dataset(es_dataset) for es_dataset in paginated_datasets)
+    )
 
     return {
         "total_datasets_count": total_datasets_count,
