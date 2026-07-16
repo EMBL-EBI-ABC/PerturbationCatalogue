@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Type
 
 import instructor
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel
 from tqdm import tqdm
 
 from curation_tools.llm_curation.logging_utils import (
