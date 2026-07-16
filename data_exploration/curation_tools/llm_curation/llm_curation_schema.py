@@ -456,9 +456,6 @@ class CurationSchema(BaseModel):
         description="Ontology term label associated with the technology used in the readout assay.",
     )
 
-    readout_technology_label_evidence: str | None = Field(
-        default=None,
-    )
     readout_measurement_label_evidence: str | None = Field(
         default=None,
     )
