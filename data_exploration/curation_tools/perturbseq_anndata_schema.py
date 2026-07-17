@@ -100,6 +100,44 @@ class ObsSchema(DataFrameModel):
         str_contains=":",
         description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
     )
+    treatment_dose: Series[Float32] = Field(
+        nullable=True,
+        coerce=True,
+        description="Treatment/compound dose used to stimulate the investigated sample.",
+    )
+    treatment_unit: Series[String] = Field(
+        nullable=True,
+        description="Treatment/compound unit used to stimulate the investigated sample. Use 'u' for micro (e.g., 'uM' instead of 'μM').",
+        isin=[
+            # Concentration (molar)
+            "pM",
+            "nM",
+            "uM",
+            "mM",
+            "M",
+            # Mass/volume concentration
+            "pg/mL",
+            "ng/mL",
+            "ug/mL",
+            "mg/mL",
+            "g/mL",
+            # Mass/mass concentration
+            "pg/kg",
+            "ug/kg",
+            "mg/kg",
+            "g/kg",
+            # Count-based
+            "cells/uL",
+            "cells/mL",
+            "MOI",
+            # Volume
+            "uL",
+            "mL",
+            # Other
+            "%",
+            "IU/mL",
+        ],
+    )
     technical_replicate: Series[String] = Field(
         nullable=True, description="Technical replicate id."
     )
@@ -110,7 +148,7 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[String] = Field(
         nullable=False,
         description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid", "yeast"],
+        isin=["cell_line", "primary_cell", "organoid", "yeast", "bacteria", "Other"],
     )
     model_system_id: Series[String] = Field(
         nullable=True,
@@ -326,7 +364,7 @@ class ObsSchema(DataFrameModel):
     library_expression_control_id: Series[String] = Field(
         nullable=True, description="Library expression control ontology term ID."
     )
-    method_name_label: Series[String] = Field(
+    library_expression_control_label: Series[String] = Field(
         nullable=True,
         description="Library expression control ontology term label.",
         isin=[
@@ -477,7 +515,7 @@ class ObsSchema(DataFrameModel):
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
             "GEM-X Flex Gene Expression Human n-plex kit",
-            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
         ],
     )
     sequencing_platform_id: Series[String] = Field(
@@ -550,10 +588,20 @@ class ObsSchema(DataFrameModel):
     license_label: Series[String] = Field(
         nullable=False,
         description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+        isin=["CC0", "CC BY", "CC BY-SA", "CC BY-NC", "CC BY-ND"],
     )
     license_id: Series[String] = Field(
         nullable=True,
         description="License ontology term ID for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+    )
+    curation_agent_type: Series[String] = Field(
+        nullable=False,
+        description="Type of agent that curated this dataset: 'human' for manual curation, 'LLM' for automated curation by a language model.",
+        isin=["human", "LLM"],
+    )
+    curation_agent_name: Series[String] = Field(
+        nullable=False,
+        description="Name or identifier of the curator. For humans: full name (e.g., 'John Doe'). For LLMs: model identifier (e.g., 'google/gemini-3.5-flash').",
     )
 
     class Config:
