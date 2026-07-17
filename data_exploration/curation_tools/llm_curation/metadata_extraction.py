@@ -388,9 +388,6 @@ def extract_evidence_from_publication(
         raise
 
 
-run_step1_evidence_extraction = extract_evidence_from_publication
-
-
 def bulk_extract_evidence_from_publications(
     publication_full_text_paths: list[str | Path],
     extraction_schema: Type[BaseModel],
