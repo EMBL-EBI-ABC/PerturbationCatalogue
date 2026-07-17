@@ -673,6 +673,15 @@ class CurationSchema(BaseModel):
         description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
     )
 
+    curation_agent_type: Literal["human", "LLM"] = Field(
+        default=...,
+        description="Type of agent that curated this dataset: 'human' for manual curation, 'LLM' for automated curation by a language model.",
+    )
+    curation_agent_name: str = Field(
+        default=...,
+        description="Name or identifier of the curator. For humans: full name (e.g., 'John Doe'). For LLMs: model identifier (e.g., 'google/gemini-3.5-flash').",
+    )
+
 
 class EvidenceExtractionSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
