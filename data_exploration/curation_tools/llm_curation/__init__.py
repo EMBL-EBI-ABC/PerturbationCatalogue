@@ -8,6 +8,10 @@ from curation_tools.llm_curation.metadata_extraction import (
 from curation_tools.llm_curation.llm_curation_schema import (
     EvidenceExtractionSchema,
     CurationSchema,
+    SpecificTermExtractionSchema,
+)
+from curation_tools.llm_curation.specific_term_extraction import (
+    normalize_evidence_artifacts,
 )
 from curation_tools.llm_curation.publication_text import (
     bulk_convert_full_texts_to_md,
@@ -15,7 +19,6 @@ from curation_tools.llm_curation.publication_text import (
     convert_pub_full_text_to_md,
     retrieve_pub_full_text,
 )
-
 
 __all__ = [
     "build_metadata_extraction_prompt",
@@ -25,9 +28,10 @@ __all__ = [
     "bulk_extract_evidence_from_publications",
     "EvidenceExtractionSchema",
     "CurationSchema",
+    "SpecificTermExtractionSchema",
+    "normalize_evidence_artifacts",
     "retrieve_pub_full_text",
     "convert_pub_full_text_to_md",
     "bulk_download_pub_full_texts",
     "bulk_convert_full_texts_to_md",
 ]
-
