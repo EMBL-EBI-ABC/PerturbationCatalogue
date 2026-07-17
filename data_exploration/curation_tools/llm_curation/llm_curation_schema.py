@@ -34,6 +34,11 @@ class CurationSchema(BaseModel):
         description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: P1DT12H30M15S",
     )
 
+    experimental_timepoint: str | None = Field(
+        default=None,
+        description="Experimental timepoint of the investigated sample in ISO 8601 format, starting from the moment the main experiment began. Example: P1DT12H30M15S",
+    )
+
     treatment_label: str | None = Field(
         default=...,
         description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
