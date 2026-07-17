@@ -108,7 +108,7 @@ class CurationSchema(BaseModel):
         default=None,
     )
     model_system_label: Literal[
-        "cell_line", "primary_cell", "organoid", "yeast", "Other"
+        "cell_line", "primary_cell", "organoid", "yeast", "bacteria", "Other"
     ] = Field(
         default=...,
         description="Model system ontology term label of the investigated sample.",
