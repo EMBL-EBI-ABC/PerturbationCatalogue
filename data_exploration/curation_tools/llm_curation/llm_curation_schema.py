@@ -125,7 +125,7 @@ class CurationSchema(BaseModel):
         | None
     ) = Field(
         default=...,
-        description="Developmental stage ontology term label of the investigated sample.",
+        description="Developmental stage ontology term label of the investigated sample. Age brackets: embryonic - upto 8th week of gestation; fetal - 8th week - 40 weeks of gestation; child (0-12 years old); adolescent (13-18 years old); adult (19-59 years old); senior adult (60+ years old).",
     )
 
     disease_label: str | None = Field(
