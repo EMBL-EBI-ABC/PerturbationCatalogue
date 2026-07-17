@@ -706,9 +706,21 @@ class EvidenceExtractionSchema(BaseModel):
         default=None,
         description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: On day 5 of differentiation, cells were collected to evaluate lineage markers.",
     )
+    experimental_timepoint_evidence: str | None = Field(
+        default=None,
+        description="Experimental timepoint of the investigated sample. Example: Cells were collected at 24 hours post-treatment to assess early transcriptional responses. or Example: Samples were harvested at 48 hours post-infection to evaluate viral replication dynamics.",
+    )
     treatment_label_evidence: str | None = Field(
         default=None,
         description="Treatment/compound used to stimulate the investigated sample. Use 'untreated control' for untreated samples where other samples were treated. Example: The engineered cell lines were treated with cisplatin for a duration of 48 hours.",
+    )
+    treatment_dose_evidence: str | None = Field(
+        default=None,
+        description="Treatment/compound dose (numeric value) used to stimulate the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
+    )
+    treatment_unit_evidence: str | None = Field(
+        default=None,
+        description="Treatment/compound unit used to stimulate the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
     )
     model_system_label_evidence: str | None = Field(
         default=None,
