@@ -64,18 +64,16 @@ def _filter_bulk_publication_paths(
     return included_paths, excluded_paths
 
 
-def get_metadata_output_paths(
+def get_evidence_output_path(
     publication_full_text_path: str | Path,
     output_dir: str | Path,
     suffix: str = "",
-) -> tuple[Path, Path]:
-    """Return the with-evidence and clean JSON output paths for a publication."""
+) -> Path:
+    """Return the Step 1 evidence JSON output path for a publication."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
     publication_stem = publication_full_text_path.stem
     output_dir = Path(output_dir).resolve()
-    with_evidence_path = output_dir / "with_evidence" / f"{publication_stem}{suffix}.json"
-    clean_path = output_dir / "clean" / f"{publication_stem}{suffix}.json"
-    return with_evidence_path, clean_path
+    return output_dir / "step1_evidence" / f"{publication_stem}{suffix}.json"
 
 
 def _format_metadata_csv_cell(value: object) -> str:
@@ -93,10 +91,10 @@ def create_csv_from_curated_metadata_json(
     log_file: str | Path | None = None,
 ) -> Path:
     """
-    Flatten curated clean-metadata JSON outputs into a single CSV file.
+    Flatten curated evidence JSON outputs into a single CSV file.
     ---
     Parameters:
-        input_dir: Directory containing curated clean-metadata JSON files.
+        input_dir: Directory containing evidence JSON files.
         output_csv_path: Path to write the resulting CSV file.
         log_file: Optional path to a log file for status messages.
     Returns:
@@ -106,11 +104,11 @@ def create_csv_from_curated_metadata_json(
     output_csv_path = Path(output_csv_path).resolve()
 
     if not input_dir.is_dir():
-        raise FileNotFoundError(f"Curated metadata directory not found: {input_dir}")
+        raise FileNotFoundError(f"Evidence directory not found: {input_dir}")
 
     json_paths = sorted(input_dir.glob("*.json"))
     if not json_paths:
-        raise FileNotFoundError(f"No curated metadata JSON files found in: {input_dir}")
+        raise FileNotFoundError(f"No evidence JSON files found in: {input_dir}")
     if not output_csv_path:
         raise ValueError("Output CSV path must be specified.")
     if output_csv_path.is_dir():
@@ -139,7 +137,7 @@ def create_csv_from_curated_metadata_json(
     if log_file is not None:
         print_status_block(
             log_file,
-            "Curated metadata CSV created",
+            "Step 1 Evidence CSV created",
             f"Input directory: {input_dir}",
             f"JSON files processed: {len(json_paths)}",
             f"CSV output: {output_csv_path}",
@@ -147,77 +145,42 @@ def create_csv_from_curated_metadata_json(
     return output_csv_path
 
 
-def save_metadata_outputs(
+def save_evidence_outputs(
     publication_full_text_path: str | Path,
-    extraction_result_with_evidence: BaseModel,
-    clean_result: BaseModel,
+    evidence_result: BaseModel,
     output_dir: str | Path,
     log_file: str | Path,
     suffix: str = "",
     prompt_context: PromptContext | None = None,
     output_metadata_builder=build_default_output_metadata,
-) -> tuple[Path, Path]:
-    """Persist metadata extraction results in both evidence-rich and clean forms."""
+) -> Path:
+    """Persist Step 1 evidence extraction results."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
     output_dir = Path(output_dir).resolve()
     log_file = _ensure_log_file(log_file)
-    with_evidence_path, clean_path = get_metadata_output_paths(
+    
+    output_path = get_evidence_output_path(
         publication_full_text_path=publication_full_text_path,
         output_dir=output_dir,
         suffix=suffix,
     )
-    with_evidence_path.parent.mkdir(parents=True, exist_ok=True)
-    clean_path.parent.mkdir(parents=True, exist_ok=True)
-
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
     output_metadata = output_metadata_builder(prompt_context)
-    with_evidence_payload = extraction_result_with_evidence.model_dump()
-    clean_payload = clean_result.model_dump()
-    with_evidence_payload.update(output_metadata)
-    clean_payload.update(output_metadata)
-
-    with_evidence_path.write_text(
-        json.dumps(with_evidence_payload, indent=JSON_INDENT),
-        encoding="utf-8",
-    )
-    clean_path.write_text(
-        json.dumps(clean_payload, indent=JSON_INDENT),
+    evidence_payload = evidence_result.model_dump()
+    evidence_payload.update(output_metadata)
+    
+    output_path.write_text(
+        json.dumps(evidence_payload, indent=JSON_INDENT),
         encoding="utf-8",
     )
     print_status_block(
         log_file,
-        "Metadata outputs saved",
+        "Step 1 Evidence outputs saved",
         f"Publication text: {publication_full_text_path}",
-        f"With evidence: {with_evidence_path}",
-        f"Clean output: {clean_path}",
+        f"Step 1 Evidence output: {output_path}",
     )
-    return with_evidence_path, clean_path
-
-
-def to_final_metadata_schema(
-    extraction_result_with_evidence: BaseModel,
-    extraction_schema: Type[BaseModel],
-) -> BaseModel:
-    """Drop evidence fields and validate the remaining payload against the final schema."""
-    final_payload = {
-        field_name: field_value
-        for field_name, field_value in extraction_result_with_evidence.model_dump().items()
-        if not field_name.endswith("_evidence")
-    }
-    if not any(
-        field_name.endswith("_evidence")
-        for field_name in extraction_schema.model_fields
-    ):
-        return extraction_schema.model_validate(final_payload)
-
-    no_evidence_schema = create_model(
-        f"{extraction_schema.__name__}NoEvidence",
-        **{
-            field_name: (field_info.annotation, field_info)
-            for field_name, field_info in extraction_schema.model_fields.items()
-            if not field_name.endswith("_evidence")
-        },
-    )
-    return no_evidence_schema.model_validate(final_payload)
+    return output_path
 
 
 def build_metadata_extraction_prompt(
@@ -227,7 +190,7 @@ def build_metadata_extraction_prompt(
     prompt_context: PromptContext | None = None,
     prompt_context_formatter=format_prompt_context_as_json,
 ) -> str:
-    """Render the metadata extraction prompt for a publication and optional context."""
+    """Render the metadata/evidence extraction prompt for a publication and optional context."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
     prompt_template_file = Path(prompt_template_file).resolve()
     log_file = _ensure_log_file(log_file)
@@ -245,7 +208,7 @@ def build_metadata_extraction_prompt(
     )
 
 
-def _extract_metadata_for_prompt_context(
+def _extract_evidence_for_prompt_context(
     publication_full_text_path: Path,
     output_dir: str | Path,
     log_file: str | Path,
@@ -258,25 +221,24 @@ def _extract_metadata_for_prompt_context(
     prompt_context_formatter,
     output_metadata_builder,
 ) -> BaseModel:
-    """Extract metadata for one publication under a single prompt context."""
+    """Extract evidence for one publication under a single prompt context (Step 1)."""
     output_dir = Path(output_dir).resolve()
     log_file = _ensure_log_file(log_file)
-    with_evidence_output_path, clean_output_path = get_metadata_output_paths(
+    output_path = get_evidence_output_path(
         publication_full_text_path=publication_full_text_path,
         output_dir=output_dir,
         suffix=output_suffix,
     )
 
-    if not overwrite and clean_output_path.is_file():
+    if not overwrite and output_path.is_file():
         print_status_block(
             log_file,
-            "Metadata extraction skipped - clean output already exists",
+            "Step 1 evidence extraction skipped - output already exists",
             f"Publication text: {publication_full_text_path}",
-            f"Clean output: {clean_output_path}",
-            f"Output with evidence: {with_evidence_output_path}",
+            f"Evidence output: {output_path}",
         )
         return extraction_schema.model_validate_json(
-            clean_output_path.read_text(encoding="utf-8")
+            output_path.read_text(encoding="utf-8")
         )
 
     prompt = build_metadata_extraction_prompt(
@@ -288,7 +250,7 @@ def _extract_metadata_for_prompt_context(
     )
     append_log_line(
         log_file,
-        f"Built metadata extraction prompt for {publication_full_text_path}; characters: {len(prompt)}; output suffix: '{output_suffix or '[default]'}'",
+        f"Built Step 1 evidence extraction prompt for {publication_full_text_path}; characters: {len(prompt)}; output suffix: '{output_suffix or '[default]'}'",
     )
 
     client = instructor.from_provider(
@@ -300,11 +262,10 @@ def _extract_metadata_for_prompt_context(
         response_model=extraction_schema,
         messages=[{"role": "user", "content": prompt}],
     )
-    response = to_final_metadata_schema(extraction_response, extraction_schema)
-    with_evidence_output_path, clean_output_path = save_metadata_outputs(
+    
+    save_evidence_outputs(
         publication_full_text_path=publication_full_text_path,
-        extraction_result_with_evidence=extraction_response,
-        clean_result=response,
+        evidence_result=extraction_response,
         output_dir=output_dir,
         log_file=log_file,
         suffix=output_suffix,
@@ -312,25 +273,20 @@ def _extract_metadata_for_prompt_context(
         output_metadata_builder=output_metadata_builder,
     )
     extracted_field_count = sum(
-        field_value is not None for field_value in response.model_dump().values()
-    )
-    other_field_count = sum(
-        field_value == "Other" for field_value in response.model_dump().values()
+        field_value is not None for field_value in extraction_response.model_dump().values()
     )
     print_status_block(
         log_file,
-        "Metadata extraction complete",
+        "Step 1 evidence extraction complete",
         f"Publication text: {publication_full_text_path}",
-        f"Extracted non-null fields: {extracted_field_count}",
-        f"Extracted 'Other' fields: {other_field_count}",
-        f"Output with evidence: {with_evidence_output_path}",
-        f"Clean output: {clean_output_path}",
+        f"Extracted evidence fields: {extracted_field_count}",
+        f"Output: {output_path}",
         f"Log file: {log_file}",
     )
-    return response
+    return extraction_response
 
 
-def extract_metadata_from_publication(
+def extract_evidence_from_publication(
     publication_full_text_path: str | Path,
     extraction_schema: Type[BaseModel],
     output_dir: str | Path,
@@ -343,7 +299,7 @@ def extract_metadata_from_publication(
     context_output_suffix_builder=build_default_context_output_suffix,
     output_metadata_builder=build_default_output_metadata,
 ) -> None:
-    """Extract metadata for one publication and write the resulting JSON outputs."""
+    """Extract evidence for one publication and write the resulting JSON output (Step 1)."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
     output_dir = Path(output_dir).resolve()
     log_file = _ensure_log_file(log_file)
@@ -357,7 +313,7 @@ def extract_metadata_from_publication(
 
     print_status_block(
         log_file,
-        "Starting metadata extraction",
+        "Starting Step 1 evidence extraction",
         f"Publication text: {publication_full_text_path}",
         f"Output directory: {output_dir}",
         f"Model: {model_name}",
@@ -368,7 +324,7 @@ def extract_metadata_from_publication(
 
     try:
         if not prompt_contexts:
-            _extract_metadata_for_prompt_context(
+            _extract_evidence_for_prompt_context(
                 publication_full_text_path=publication_full_text_path,
                 output_dir=output_dir,
                 log_file=log_file,
@@ -395,7 +351,7 @@ def extract_metadata_from_publication(
                 f" for {publication_full_text_path}; context {context_index}/{len(prompt_contexts)};"
                 f" output suffix: '{output_suffix or '[default]'}'",
             )
-            _extract_metadata_for_prompt_context(
+            _extract_evidence_for_prompt_context(
                 publication_full_text_path=publication_full_text_path,
                 output_dir=output_dir,
                 log_file=log_file,
@@ -412,7 +368,7 @@ def extract_metadata_from_publication(
         if len(prompt_contexts) > 1:
             print_status_block(
                 log_file,
-                "Multiple metadata extraction contexts processed",
+                "Multiple evidence extraction contexts processed",
                 f"Publication text: {publication_full_text_path}",
                 f"Distinct prompt contexts: {len(prompt_contexts)}",
                 "Separate output files were written with context suffixes.",
@@ -420,7 +376,7 @@ def extract_metadata_from_publication(
     except Exception as exc:
         print_status_block(
             log_file,
-            "Metadata extraction failed",
+            "Step 1 evidence extraction failed",
             f"Publication text: {publication_full_text_path}",
             f"Output directory: {output_dir}",
             f"Error: {exc}",
@@ -429,7 +385,10 @@ def extract_metadata_from_publication(
         raise
 
 
-def bulk_extract_metadata_from_publications(
+run_step1_evidence_extraction = extract_evidence_from_publication
+
+
+def bulk_extract_evidence_from_publications(
     publication_full_text_paths: list[str | Path],
     extraction_schema: Type[BaseModel],
     output_dir: str | Path,
@@ -445,7 +404,7 @@ def bulk_extract_metadata_from_publications(
     context_output_suffix_builder=build_default_context_output_suffix,
     output_metadata_builder=build_default_output_metadata,
 ) -> list[Path]:
-    """Extract metadata for many publication files in parallel."""
+    """Extract evidence for many publication files in parallel."""
     if max_workers < 1:
         raise ValueError("max_workers must be at least 1")
     output_dir = Path(output_dir).resolve()
@@ -458,7 +417,7 @@ def bulk_extract_metadata_from_publications(
     )
     print_status_block(
         log_file,
-        "Starting bulk metadata extraction",
+        "Starting bulk evidence extraction",
         f"Publications queued: {len(publication_paths)}",
         f"Output directory: {output_dir}",
         f"Model: {model_name}",
@@ -470,7 +429,7 @@ def bulk_extract_metadata_from_publications(
     for excluded_path in excluded_paths:
         append_log_line(
             log_file,
-            f"Bulk metadata extraction excluded publication: {excluded_path}",
+            f"Bulk evidence extraction excluded publication: {excluded_path}",
         )
 
     extracted_by_index: dict[int, Path] = {}
@@ -478,7 +437,7 @@ def bulk_extract_metadata_from_publications(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_index = {
             executor.submit(
-                extract_metadata_from_publication,
+                extract_evidence_from_publication,
                 publication_full_text_path=publication_path,
                 output_dir=output_dir,
                 log_file=log_file,
@@ -497,7 +456,7 @@ def bulk_extract_metadata_from_publications(
         for future in tqdm(
             as_completed(future_to_index),
             total=len(future_to_index),
-            desc="Extracting publication metadata",
+            desc="Extracting publication evidence",
             unit="publication",
         ):
             index = future_to_index[future]
@@ -508,17 +467,17 @@ def bulk_extract_metadata_from_publications(
                 completed_publications += 1
                 append_log_line(
                     log_file,
-                    f"Bulk metadata extraction progress: {completed_publications}/{len(publication_paths)} publications processed; latest file: {publication_path}; status: ok",
+                    f"Bulk evidence extraction progress: {completed_publications}/{len(publication_paths)} publications processed; latest file: {publication_path}; status: ok",
                 )
             except Exception as exc:
                 completed_publications += 1
                 append_log_line(
                     log_file,
-                    f"Bulk metadata extraction progress: {completed_publications}/{len(publication_paths)} publications processed; latest file: {publication_path}; status: error; error: {exc}",
+                    f"Bulk evidence extraction progress: {completed_publications}/{len(publication_paths)} publications processed; latest file: {publication_path}; status: error; error: {exc}",
                 )
                 print_status_block(
                     log_file,
-                    "Bulk metadata extraction item failed",
+                    "Bulk evidence extraction item failed",
                     f"Publication text: {publication_path}",
                     f"Error: {exc}",
                 )
@@ -528,7 +487,7 @@ def bulk_extract_metadata_from_publications(
     ]
     print_status_block(
         log_file,
-        "Bulk metadata extraction complete",
+        "Bulk evidence extraction complete",
         f"Publications queued: {len(publication_paths)}",
         f"Publications extracted: {len(extracted_publication_paths)}",
         f"Publications failed: {len(publication_paths) - len(extracted_publication_paths)}",
@@ -538,9 +497,10 @@ def bulk_extract_metadata_from_publications(
 
     if create_csv:
         create_csv_from_curated_metadata_json(
-            input_dir=output_dir / "clean",
-            output_csv_path=output_dir / "clean_metadata.csv",
+            input_dir=output_dir / "step1_evidence",
+            output_csv_path=output_dir / "step1_evidence.csv",
             log_file=log_file,
         )
 
     return extracted_publication_paths
+
