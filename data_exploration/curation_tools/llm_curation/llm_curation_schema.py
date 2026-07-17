@@ -57,6 +57,53 @@ class CurationSchema(BaseModel):
         description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
     )
 
+    treatment_dose_evidence: str | None = Field(
+        default=None,
+    )
+    treatment_dose: float | None = Field(
+        default=None,
+        description="Treatment/compound dose used to stimulate the investigated sample.",
+    )
+
+    treatment_unit_evidence: str | None = Field(
+        default=None,
+    )
+    treatment_unit: (
+        Literal[
+            # Concentration (molar)
+            "pM",
+            "nM",
+            "uM",
+            "mM",
+            "M",
+            # Mass/volume concentration
+            "pg/mL",
+            "ng/mL",
+            "ug/mL",
+            "mg/mL",
+            "g/mL",
+            # Mass/mass concentration
+            "pg/kg",
+            "ug/kg",
+            "mg/kg",
+            "g/kg",
+            # Count-based
+            "cells/uL",
+            "cells/mL",
+            "MOI",
+            # Volume
+            "uL",
+            "mL",
+            # Other
+            "%",
+            "IU/mL",
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description="Treatment/compound unit used to stimulate the investigated sample. Use 'u' for micro (e.g., 'uM' instead of 'μM').",
+    )
+
     model_system_label_evidence: str | None = Field(
         default=None,
     )
