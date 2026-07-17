@@ -32,7 +32,7 @@ class CurationSchema(BaseModel):
         default=...,
         description="Perturbation type ontology term label of the investigated sample.",
     )
-    
+
     timepoint_post_transfection_evidence: str | None = Field(
         default=None,
     )
