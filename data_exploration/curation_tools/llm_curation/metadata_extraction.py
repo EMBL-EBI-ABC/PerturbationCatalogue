@@ -150,6 +150,7 @@ def save_evidence_outputs(
     evidence_result: BaseModel,
     output_dir: str | Path,
     log_file: str | Path,
+    model_name: str,
     suffix: str = "",
     prompt_context: PromptContext | None = None,
     output_metadata_builder=build_default_output_metadata,
@@ -169,6 +170,10 @@ def save_evidence_outputs(
     output_metadata = output_metadata_builder(prompt_context)
     evidence_payload = evidence_result.model_dump()
     evidence_payload.update(output_metadata)
+    
+    # Add Curation Agent Metadata
+    evidence_payload["curation_agent_type"] = "LLM"
+    evidence_payload["curation_agent_name"] = model_name
     
     output_path.write_text(
         json.dumps(evidence_payload, indent=JSON_INDENT),
@@ -271,6 +276,7 @@ def _extract_evidence_for_prompt_context(
         evidence_result=extraction_response,
         output_dir=output_dir,
         log_file=log_file,
+        model_name=model_name,
         suffix=output_suffix,
         prompt_context=prompt_context,
         output_metadata_builder=output_metadata_builder,
