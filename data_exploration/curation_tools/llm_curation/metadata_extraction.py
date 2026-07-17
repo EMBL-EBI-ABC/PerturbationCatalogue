@@ -261,6 +261,9 @@ def _extract_evidence_for_prompt_context(
     extraction_response = client.create(
         response_model=extraction_schema,
         messages=[{"role": "user", "content": prompt}],
+        thinking_config={
+            "thinking_level": "high",
+        },
     )
     
     save_evidence_outputs(
