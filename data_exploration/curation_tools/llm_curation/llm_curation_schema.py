@@ -574,7 +574,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     cell_line_label_evidence: str | None = Field(
         default=None,
-        description="Cell line of the investigated sample. Example: All expression constructs were stably transfected into HEK293T cells.",
+        description="Cell line of the investigated sample. Only relevant for experiments where model system is a cell line. Example: All expression constructs were stably transfected into HEK293T cells.",
     )
     sex_label_evidence: str | None = Field(
         default=None,
@@ -654,7 +654,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     library_uri_evidence: str | None = Field(
         default=None,
-        description="URI/accession of the perturbation library. Example: The physical plasmids were obtained from Addgene under catalog number #1000000019.",
+        description="URI/accession of the perturbation library. Only relevant for libraries that have been made public through repositories such as Addgene. Example: The physical plasmids were obtained from Addgene under catalog number #1000000019.",
     )
     library_format_label_evidence: str | None = Field(
         default=None,
@@ -686,7 +686,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     library_total_variants_evidence: str | None = Field(
         default=None,
-        description="Only for MAVE studies; Total number of variants in the library. Example: A total of 1,427 single-residue variants were assessed in the reporter assay.",
+        description="Only for MAVE studies; Total number of variants in the library. Extract from the MAVE DB metadata or from the evidence. Example: A total of 1,427 single-residue variants were assessed in the reporter assay.",
     )
     readout_dimensionality_label_evidence: str | None = Field(
         default=None,
@@ -917,12 +917,12 @@ class SpecificTermExtractionSchema(BaseModel):
 
     experiment_title: str | None = Field(
         default=None,
-        description="Title of the specific experiment.",
+        description="Title of the specific experiment. Extract from the MAVE DB metadata or from the evidence.",
     )
 
     experiment_summary: str | None = Field(
         default=None,
-        description="Summary of the specific experiment.",
+        description="Summary of the specific experiment. Extract from the MAVE DB metadata or from the evidence.",
     )
 
     library_generation_type_label: (
