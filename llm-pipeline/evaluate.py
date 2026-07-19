@@ -236,6 +236,8 @@ def evaluate_crispr(predictions, ground_truth_records):
                 "true_class": true_class,
                 "predicted_class": pred_class,
                 "correct": is_correct,
+                "predicted_text": pred["predicted_text"],
+                "true_output": pred["true_output"],
             }
         )
 
@@ -376,13 +378,13 @@ def main():
         dea_metrics, dea_results = evaluate_dea(dea_preds, dea_records)
         print(f"\nDEA ({len(dea_preds)} records):")
         print(f"  Mean overlap@k: {dea_metrics.get('mean_overlap_at_k', dea_metrics.get('mean_overlap_both', 0)):.4f}")
-        results.extend(dea_results)
+        results.extend(dea_results.to_dict("records") if hasattr(dea_results, "to_dict") else dea_results)
 
     if gsea_preds:
         gsea_metrics, gsea_results = evaluate_dea(gsea_preds, gsea_records)
         print(f"\nGSEA ({len(gsea_preds)} records):")
         print(f"  Mean overlap@k: {gsea_metrics.get('mean_overlap_at_k', gsea_metrics.get('mean_overlap_both', 0)):.4f}")
-        results.extend(gsea_results)
+        results.extend(gsea_results.to_dict("records") if hasattr(gsea_results, "to_dict") else gsea_results)
 
     print("=" * 60)
     if args.output:

@@ -228,7 +228,8 @@ def build_lora_model(
     if use_qlora:
         model = prepare_model_for_kbit_training(model)
 
-    if any(name in model_name.lower() for name in ["gpt2", "gpt-2"]):
+    # BioMedLM is GPT-2 architecture — uses c_attn/c_proj not q_proj/k_proj
+    if any(name in model_name.lower() for name in ["gpt2", "gpt-2", "biomedlm"]):
         target_modules = ["c_attn", "c_proj"]
     else:
         target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
