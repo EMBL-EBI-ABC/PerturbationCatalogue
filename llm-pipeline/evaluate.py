@@ -43,7 +43,8 @@ def load_model(adapter_dir, model_name):
     log.info(f"Loading base model {model_name}...")
     base_model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+        device_map="auto" if torch.cuda.is_available() else None,
         trust_remote_code=True,
     )
 
