@@ -534,11 +534,11 @@ class EvidenceExtractionSchema(BaseModel):
     )
     timepoint_post_transfection_evidence: str | None = Field(
         default=None,
-        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection into the model system. Example: Cells were harvested 72 hours post-transfection for downstream analysis.",
+        description="Timepoint of the investigated sample, starting from the time of library transfection (or bacterial transformation, for bacterial systems) into the model system. Example: Cells were harvested 72 hours post-transfection for downstream analysis.",
     )
     differentiation_timepoint_evidence: str | None = Field(
         default=None,
-        description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: On day 5 of differentiation, cells were collected to evaluate lineage markers.",
+        description="Differentiation timepoint of the investigated sample, starting from the moment the induction of differentiation began. Example: On day 5 of differentiation, cells were collected to evaluate lineage markers.",
     )
     experimental_timepoint_evidence: str | None = Field(
         default=None,
@@ -546,15 +546,15 @@ class EvidenceExtractionSchema(BaseModel):
     )
     treatment_label_evidence: str | None = Field(
         default=None,
-        description="Treatment/compound used to stimulate the investigated sample. Use 'untreated control' for untreated samples where other samples were treated. Example: The engineered cell lines were treated with cisplatin for a duration of 48 hours.",
+        description="Extrinsic chemical/biological/physical experimental treatment used to stimulate/perturb the investigated sample. These may include e.g. drugs, growth factors, cytokines, or physical stimuli used as an experimental intervention, and should not include typical components of the culture medium or incubation conditions. Example: The engineered cell lines were treated with cisplatin for a duration of 48 hours.",
     )
     treatment_dose_evidence: str | None = Field(
         default=None,
-        description="Treatment/compound dose (numeric value) used to stimulate the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
+        description="Treatment/compound dose (numeric value) used to stimulate/perturb the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
     )
     treatment_unit_evidence: str | None = Field(
         default=None,
-        description="Treatment/compound unit used to stimulate the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
+        description="Treatment/compound unit used to stimulate/perturb the investigated sample. Example: Cells were stimulated with 10 uM of TNFalpha for 24 hours. or Example: The engineered cell lines were treated with 25 ug/mL of Amyloid-beta peptide for 12 hours.",
     )
     model_system_label_evidence: str | None = Field(
         default=None,
@@ -594,11 +594,11 @@ class EvidenceExtractionSchema(BaseModel):
     )
     study_uri_evidence: str | None = Field(
         default=None,
-        description="URI/DOI of the study/publication. Example: The peer-reviewed paper is available online via https://doi.org/10.1016/j.ajhg.2022.01.019.",
+        description="URI/DOI of the study/publication. Extract from the MAVE DB metadata or from the evidence. Example: The peer-reviewed paper is available online via https://doi.org/10.1016/j.ajhg.2022.01.019.",
     )
     study_year_evidence: str | None = Field(
         default=None,
-        description="Publication year of the study/publication. Example: First published online in January 2022.",
+        description="Publication year of the study/publication. Extract from the MAVE DB metadata or from the evidence. Example: First published online in January 2022.",
     )
     first_author_evidence: str | None = Field(
         default=None,
@@ -750,7 +750,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     license_label_evidence: str | None = Field(
         default=None,
-        description="License type for data usage and distribution. Example: All datasets are distributed under the Creative Commons Attribution CC BY International License.",
+        description="License type for data usage and distribution. Extract from the MAVE DB metadata or from the evidence. Example: All datasets are distributed under the Creative Commons Attribution CC BY International License.",
     )
 
 
@@ -777,7 +777,7 @@ class SpecificTermExtractionSchema(BaseModel):
 
     timepoint_post_transfection: str | None = Field(
         default=None,
-        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection. Example: P1DT12H30M15S",
+        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection (or bacterial transformation, for bacterial systems) into the model system. Example: P1DT12H30M15S",
     )
 
     differentiation_timepoint: str | None = Field(
