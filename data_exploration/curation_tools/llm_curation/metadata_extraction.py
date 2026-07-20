@@ -282,6 +282,9 @@ def _extract_evidence_for_prompt_context(
         thinking_config={
             "thinking_level": "high",
         },
+        generation_config={
+            "temperature": 0.2,
+        }
     )
     
     save_evidence_outputs(
