@@ -350,13 +350,30 @@ def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, obj
             if gene.get("name")
         }
     )
+    primary_publications = entry_payload.get("primaryPublicationIdentifiers", [])
     publication_titles = sorted(
         {
             publication.get("title")
-            for publication in entry_payload.get("primaryPublicationIdentifiers", [])
+            for publication in primary_publications
             if publication.get("title")
         }
     )
+    publication_years = sorted(
+        {
+            publication.get("publicationYear")
+            for publication in primary_publications
+            if publication.get("publicationYear")
+        }
+    )
+    publication_dois = sorted(
+        {
+            publication.get("doi")
+            for publication in primary_publications
+            if publication.get("doi")
+        }
+    )
+    license_info = entry_payload.get("license") or {}
+    license_short_name = license_info.get("shortName")
 
     curated_metadata: dict[str, object] = {
         "score_set_title": normalize_prompt_text(entry_payload.get("title")),
@@ -379,6 +396,10 @@ def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, obj
         "score_columns": entry_payload.get("datasetColumns", {}).get("scoreColumns")
         or None,
         "primary_publication_titles": publication_titles or None,
+        "primary_publication_years": publication_years or None,
+        "total_variants": entry_payload.get("numVariants"),
+        "primary_publication_dois": publication_dois or None,
+        "license": license_short_name,
     }
     return {
         field_name: field_value
