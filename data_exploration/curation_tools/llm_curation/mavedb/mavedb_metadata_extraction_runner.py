@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Create a single CSV from the curated clean metadata JSON outputs.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print and log the full prompt, MaveDB metadata, and publication full text for each item.",
+    )
     return parser
 
 
@@ -110,6 +115,7 @@ def main() -> None:
         overwrite=args.overwrite,
         model_name=args.llm_model,
         create_csv=args.create_csv,
+        verbose=args.verbose,
         excluded_publication_files=DEFAULT_BULK_EXCLUDED_PUBLICATION_FILES,
         prompt_context_builder=prompt_context_builder,
         prompt_context_formatter=format_supplementary_mavedb_metadata,

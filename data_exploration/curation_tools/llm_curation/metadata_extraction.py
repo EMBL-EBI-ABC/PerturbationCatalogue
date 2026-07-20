@@ -206,6 +206,7 @@ def build_metadata_extraction_prompt(
     )
     prompt_template = prompt_template_file.read_text(encoding="utf-8")
     supplementary_metadata = prompt_context_formatter(prompt_context)
+
     return prompt_template.format(
         supplementary_metadata=supplementary_metadata,
         supplementary_mavedb_metadata=supplementary_metadata,
@@ -225,6 +226,7 @@ def _extract_evidence_for_prompt_context(
     output_suffix: str,
     prompt_context_formatter,
     output_metadata_builder,
+    verbose: bool = False,
 ) -> BaseModel:
     """Extract evidence for one publication under a single prompt context (Step 1)."""
     output_dir = Path(output_dir).resolve()
@@ -257,6 +259,17 @@ def _extract_evidence_for_prompt_context(
         log_file,
         f"Built Step 1 evidence extraction prompt for {publication_full_text_path}; characters: {len(prompt)}; output suffix: '{output_suffix or '[default]'}'",
     )
+
+    if verbose:
+        print_status_block(
+            log_file,
+            "[VERBOSE] Step 1 full prompt, MaveDB metadata, and publication full text",
+            f"Publication text: {publication_full_text_path}",
+            f"Output suffix: '{output_suffix or '[default]'}'",
+            "----- PROMPT START -----",
+            prompt,
+            "----- PROMPT END -----",
+        )
 
     client = instructor.from_provider(
         model_name,
@@ -307,6 +320,7 @@ def extract_evidence_from_publication(
     prompt_context_formatter=format_prompt_context_as_json,
     context_output_suffix_builder=build_default_context_output_suffix,
     output_metadata_builder=build_default_output_metadata,
+    verbose: bool = False,
 ) -> None:
     """Extract evidence for one publication and write the resulting JSON output (Step 1)."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
@@ -343,6 +357,7 @@ def extract_evidence_from_publication(
                 extraction_schema=extraction_schema,
                 prompt_context=None,
                 output_suffix="",
+                verbose=verbose,
                 prompt_context_formatter=prompt_context_formatter,
                 output_metadata_builder=output_metadata_builder,
             )
@@ -370,6 +385,7 @@ def extract_evidence_from_publication(
                 extraction_schema=extraction_schema,
                 prompt_context=prompt_context,
                 output_suffix=output_suffix,
+                verbose=verbose,
                 prompt_context_formatter=prompt_context_formatter,
                 output_metadata_builder=output_metadata_builder,
             )
@@ -404,6 +420,7 @@ def bulk_extract_evidence_from_publications(
     overwrite: bool = False,
     model_name: str = DEFAULT_LLM_MODEL_NAME,
     create_csv: bool = True,
+    verbose: bool = False,
     excluded_publication_files: set[str] | frozenset[str] | None = None,
     prompt_context_builder=None,
     prompt_context_formatter=format_prompt_context_as_json,
@@ -455,6 +472,7 @@ def bulk_extract_evidence_from_publications(
                 prompt_context_formatter=prompt_context_formatter,
                 context_output_suffix_builder=context_output_suffix_builder,
                 output_metadata_builder=output_metadata_builder,
+                verbose=verbose,
             ): index
             for index, publication_path in enumerate(publication_paths)
         }
