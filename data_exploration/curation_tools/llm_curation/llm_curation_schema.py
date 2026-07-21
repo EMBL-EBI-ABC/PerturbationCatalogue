@@ -1216,7 +1216,8 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     software_counts_label: (
-        Literal["custom", "MaGeCK", "CellRanger", "Drop-seq Tools", "Enrich2", "Other"] | None
+        Literal["custom", "MaGeCK", "CellRanger", "Drop-seq Tools", "Enrich2", "Other"]
+        | None
     ) = Field(
         default=None,
         description="Ontology term label for the software used for generating counts.",
@@ -1224,7 +1225,15 @@ class SpecificTermExtractionSchema(BaseModel):
 
     software_analysis_label: (
         Literal[
-            "custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST", "scanpy", "Enrich2", "Other"
+            "custom",
+            "MAGeCK",
+            "Achilles",
+            "TRADE",
+            "Seurat",
+            "MAST",
+            "scanpy",
+            "Enrich2",
+            "Other",
         ]
         | None
     ) = Field(
