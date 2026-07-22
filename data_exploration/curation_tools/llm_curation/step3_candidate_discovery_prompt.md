@@ -4,7 +4,7 @@ Name: {field_name}
 ### Existing Controlled Vocabulary (Allowed Terms)
 {controlled_vocabulary}
 
-### Unmapped Verbatim Evidence Strings (Classified as "Other")
+### Unmapped Verbatim Evidence Strings (Classified as "Other") and Their Source Files
 {evidence_list}
 
 ---
@@ -21,7 +21,7 @@ For this field, synthesize the evidence strings into a few concise, reusable ont
    - Avoid highly specific protocol names, manufacturer details, or raw numeric parameters unless they form a distinct ontological class.
 3. **Draft Quality Rationales and Evidence:**
    - For each proposed term, provide a clear rationale explaining why this concept should be added to the ontology.
-   - List a few direct quotes from the input evidence supporting this concept.
-   - Count the number of distinct evidence snippets supporting this concept.
+   - List the direct quotes from the input evidence supporting this concept.
+   - Provide the source file for each piece of supporting evidence.
 
 Your output must strictly conform to the FieldCandidates schema.
