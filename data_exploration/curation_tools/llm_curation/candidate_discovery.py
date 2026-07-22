@@ -57,9 +57,9 @@ def aggregate_unmapped_evidence(
     step1_dir: Path,
     step2_dir: Path,
     log_file: Path,
-) -> dict[str, list[str]]:
+) -> dict[str, list[dict[str, str]]]:
     """Iterate over Step 2 normalized artifacts, find fields with value "Other", and retrieve their original verbatim evidence string from corresponding Step 1 files."""
-    unmapped_evidence_map: dict[str, list[str]] = {}
+    unmapped_evidence_map: dict[str, list[dict[str, str]]] = {}
 
     step1_dir = Path(step1_dir).resolve()
     step2_dir = Path(step2_dir).resolve()
@@ -114,7 +114,10 @@ def aggregate_unmapped_evidence(
                         "",
                     ):
                         unmapped_evidence_map.setdefault(field_name, []).append(
-                            cleaned_evidence
+                            {
+                                "evidence": cleaned_evidence,
+                                "source_file": s2_file.name,
+                            }
                         )
 
     return unmapped_evidence_map
