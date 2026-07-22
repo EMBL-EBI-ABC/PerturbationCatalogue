@@ -113,11 +113,6 @@ def aggregate_unmapped_evidence(
                             cleaned_evidence
                         )
 
-    # Deduplicate evidence lists
-    for field_name in list(unmapped_evidence_map.keys()):
-        unique_evidence = list(dict.fromkeys(unmapped_evidence_map[field_name]))
-        unmapped_evidence_map[field_name] = unique_evidence
-
     return unmapped_evidence_map
 
 
