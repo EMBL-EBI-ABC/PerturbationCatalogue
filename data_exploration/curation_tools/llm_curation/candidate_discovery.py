@@ -183,12 +183,10 @@ def discover_candidates(
         else:
             controlled_vocab_str += "Allowed Terms: [No controlled vocabulary list defined, open text mapping expected]"
 
-        evidence_list_str = "\n".join(f'- "{ev}"' for ev in evidence_list)
-
         prompt = prompt_template.format(
             field_name=field_name,
             controlled_vocabulary=controlled_vocab_str,
-            evidence_list=evidence_list_str,
+            evidence_list=evidence_list,
         )
 
         if verbose:
@@ -209,14 +207,18 @@ def discover_candidates(
                     "temperature": 0.2,
                 },
             )
+            
+            # Validate and store the results
+            if isinstance(response, FieldCandidates):
+                results[field_name] = [
+                    {
+                        "proposed_new_term": candidate.proposed_new_term,
+                        "supporting_evidence": [c.model_dump() for c in candidate.supporting_evidence],
+                        "rationale": candidate.rationale,
+                    }
+                    for candidate in response.candidates
+                ]
 
-            field_candidates = [c.model_dump() for c in response.candidates]
-            results[field_name] = field_candidates
-
-            append_log_line(
-                log_file,
-                f"Successfully retrieved {len(field_candidates)} ontology candidates for field '{field_name}'.",
-            )
         except Exception as e:
             append_log_line(
                 log_file,
