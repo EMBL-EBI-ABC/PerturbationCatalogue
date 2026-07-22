@@ -1268,19 +1268,22 @@ class SpecificTermExtractionSchema(BaseModel):
         description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
     )
 
+class SupportingEvidence(BaseModel):
+    evidence_statement: str = Field(
+        description="A direct quote from the study/publication that supports the proposed ontology term."
+    )
+    source_file: str = Field(
+        description="The source file containing the evidence."
+    )
 
 class OntologyCandidate(BaseModel):
-    proposed_label: str = Field(description="A concise, reusable ontology term label.")
-    representative_evidence: list[str] = Field(
-        description="A few direct quotes supporting this concept."
+    proposed_new_term: str = Field(description="A concise, reusable new proposed ontology term label.")
+    supporting_evidence: list[SupportingEvidence] = Field(
+        description="A list of supporting evidence statements that justify the proposed new ontology term."
     )
     rationale: str = Field(
         description="Explanation of why this concept should be added to the ontology."
     )
-    supporting_examples: int = Field(
-        description="The number of distinct evidence snippets supporting this concept."
-    )
-
 
 class FieldCandidates(BaseModel):
     candidates: list[OntologyCandidate] = Field(
