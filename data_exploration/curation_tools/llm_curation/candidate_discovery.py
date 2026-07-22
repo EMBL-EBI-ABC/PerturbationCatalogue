@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Type, get_args, get_origin
 
 import instructor
+from instructor.cache import DiskCache
 from pydantic import BaseModel
 
 from curation_tools.llm_curation.llm_curation_schema import (
@@ -21,6 +22,9 @@ from curation_tools.llm_curation.logging_utils import (
     append_log_line,
     print_status_block,
 )
+
+# Persistent disk-based instructor cache
+cache = DiskCache(directory=".instructor_cache")
 
 DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.5-flash")
 JSON_INDENT = 2
@@ -159,6 +163,7 @@ def discover_candidates(
         model_name,
         location="global",
         vertexai=True,
+        cache=cache,
     )
 
     results: dict[str, list[dict[str, Any]]] = {}
