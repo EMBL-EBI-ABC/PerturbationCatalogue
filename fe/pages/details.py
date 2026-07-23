@@ -26,9 +26,11 @@ from components.target_data_table import TargetDataTable
 from utils import (
     BACKEND_URL,
     COLORS,
+    STRICT_GENE_FILTER_NOTE,
     fetch_dataset_rows,
     fetch_modality_datasets,
     fetch_perturb_seq_gsea,
+    fetch_target_identity,
     format_number,
 )
 
@@ -111,7 +113,8 @@ def layout(target_name: Optional[str] = None, **kwargs):
         for config in SECTION_CONFIGS
     )
 
-    heading = target_name or "Target"
+    target = fetch_target_identity(target_name) if target_name else {}
+    heading = target.get("approved_symbol") or target_name or "Target"
 
     sections = []
     for config in SECTION_CONFIGS:
@@ -241,10 +244,23 @@ def layout(target_name: Optional[str] = None, **kwargs):
                                     else {}
                                 ),
                             ),
+                            *(
+                                [
+                                    html.Small(
+                                        STRICT_GENE_FILTER_NOTE,
+                                        className="text-muted",
+                                    )
+                                ]
+                                if config["id"]
+                                in ("perturb_seq_perturbed", "perturb_seq_affected")
+                                else []
+                            ),
                         ],
                         style={
                             "display": "flex",
                             "alignItems": "center",
+                            "flexWrap": "wrap",
+                            "gap": "0.5rem",
                             "marginBottom": "1rem",
                         },
                     ),
@@ -306,6 +322,16 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         f"Target: {heading}",
                         className="display-5 fw-bold mb-2 text-center",
                         style={"color": COLORS["primary"]},
+                    ),
+                    *(
+                        [
+                            html.Div(
+                                target_name,
+                                className="text-muted text-center small mb-2",
+                            )
+                        ]
+                        if target_name and target_name != heading
+                        else []
                     ),
                     html.P(
                         "Explore perturbation datasets across modalities.",

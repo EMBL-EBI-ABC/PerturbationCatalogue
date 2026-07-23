@@ -16,6 +16,7 @@ from components.target_data_table import crispr_table, mave_heatmap, perturb_seq
 from utils import (
     BACKEND_URL,
     COLORS,
+    STRICT_GENE_FILTER_NOTE,
     fetch_dataset,
     fetch_dataset_rows,
     reprocessed_badge,
@@ -600,8 +601,9 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     value="",
                     style={"display": "none"},
                 ),
+                html.Small(STRICT_GENE_FILTER_NOTE, className="text-muted ms-2"),
             ],
-            className="d-flex align-items-center mb-3",
+            className="d-flex align-items-center flex-wrap gap-2 mb-3",
         )
     elif is_crispr:
         search_controls = html.Div(
@@ -630,6 +632,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     debounce=True,
                     style={"width": "200px"},
                 ),
+                html.Small(STRICT_GENE_FILTER_NOTE, className="text-muted ms-2"),
                 # Hidden Perturb-seq inputs for callback compatibility
                 dbc.Input(
                     id=PERTURB_SEARCH_PERTURBATION_GENE,
@@ -644,7 +647,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     style={"display": "none"},
                 ),
             ],
-            className="d-flex align-items-center mb-3",
+            className="d-flex align-items-center flex-wrap gap-2 mb-3",
         )
     else:
         # Hidden inputs for callback compatibility (MAVE modality)

@@ -79,6 +79,17 @@ METADATA_FIELD_COLORS = {
 }
 
 
+def _gene_identity(gene: Dict[str, Any], ensg_field: str) -> html.Div:
+    ensg = gene.get(ensg_field) or "N/A"
+    symbol = gene.get("gene_symbol") or ensg
+    return html.Div(
+        [
+            html.Div(symbol, className="fw-bold"),
+            *([html.Div(ensg, className="small text-muted")] if ensg != symbol else []),
+        ]
+    )
+
+
 def TargetDataTable(
     data: Optional[List[Dict[str, Any]]],
     modality: str,
@@ -356,9 +367,6 @@ def _perturb_seq_effect(
     section_id: Optional[str] = None,
 ) -> html.Div:
     """Render a single Perturb-Seq result row (legacy card format for non-table sections)."""
-    perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
-    effect_gene_ensg = effect.get("effect_gene_ensg") or "N/A"
-
     log2fc_value = effect.get("log2fc")
     padj_value = _format_numeric(effect.get("padj"))
     base_mean_value = _format_numeric(effect.get("base_mean"))
@@ -395,19 +403,14 @@ def _perturb_seq_effect(
                 html.Div(
                     [
                         html.Span("Perturbation", className="fw-light text-muted me-2"),
-                        html.Span(
-                            perturbed_target_ensg,
-                            className="h4 fw-bold mb-0 text-break",
-                        ),
+                        _gene_identity(perturbation, "perturbed_target_ensg"),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
                 html.Div(
                     [
                         html.Span("Effect gene", className="fw-light text-muted me-2"),
-                        html.Span(
-                            effect_gene_ensg, className="h4 fw-bold mb-0 text-break"
-                        ),
+                        _gene_identity(effect, "effect_gene_ensg"),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
@@ -417,15 +420,17 @@ def _perturb_seq_effect(
     else:
         # For other sections, show only one identifier based on effect_gene_source
         if effect_gene_source == "perturbation":
-            identifier = perturbed_target_ensg
+            gene = perturbation
+            ensg_field = "perturbed_target_ensg"
             identifier_label = "Perturbed target"
         else:
-            identifier = effect_gene_ensg
-            identifier_label = "Effect gene ENSG"
+            gene = effect
+            ensg_field = "effect_gene_ensg"
+            identifier_label = "Effect gene"
         gene_section = html.Div(
             [
                 html.Span(identifier_label, className="fw-light text-muted me-2"),
-                html.Span(identifier, className="h4 fw-bold mb-0 text-break"),
+                _gene_identity(gene, ensg_field),
             ],
             className="d-flex flex-column flex-md-row gap-1 mb-2",
         )
@@ -458,7 +463,7 @@ def _perturb_seq_table(
     header_row = html.Tr(
         [
             html.Th("Perturbation", className="text-start"),
-            html.Th("Effect Gene ENSG", className="text-start"),
+            html.Th("Effect Gene", className="text-start"),
             html.Th("Log2FC", className="text-end"),
             html.Th("Padj", className="text-end"),
             html.Th("Statistical Score", className="text-start"),
@@ -471,9 +476,6 @@ def _perturb_seq_table(
     for result in results:
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
-
-        perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
-        effect_gene_ensg = effect.get("effect_gene_ensg") or "N/A"
 
         log2fc_value = effect.get("log2fc")
         log2fc_display = _format_numeric(log2fc_value)
@@ -525,11 +527,8 @@ def _perturb_seq_table(
         table_rows.append(
             html.Tr(
                 [
-                    html.Td(
-                        perturbed_target_ensg,
-                        className="text-start fw-semibold",
-                    ),
-                    html.Td(effect_gene_ensg, className="text-start fw-semibold"),
+                    html.Td(_gene_identity(perturbation, "perturbed_target_ensg")),
+                    html.Td(_gene_identity(effect, "effect_gene_ensg")),
                     log2fc_cell,
                     padj_cell,
                     html.Td(statistical_score, className="text-start"),
@@ -670,7 +669,6 @@ def _crispr_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbed_target_ensg = perturbation.get("perturbed_target_ensg") or "N/A"
         score_name = effect.get("score_name") or "N/A"
         score_value = _format_numeric(effect.get("score_value"))
         significant = effect.get("significant")
@@ -699,10 +697,7 @@ def _crispr_table(
         table_rows.append(
             html.Tr(
                 [
-                    html.Td(
-                        perturbed_target_ensg,
-                        className="text-start fw-semibold",
-                    ),
+                    html.Td(_gene_identity(perturbation, "perturbed_target_ensg")),
                     html.Td(score_name, className="text-start"),
                     html.Td(score_value, className="text-end"),
                     significant_cell,
@@ -758,7 +753,6 @@ def _crispr_table(
 def _score_effect(
     perturbation: Dict[str, Any], effect: Dict[str, Any], modality: str
 ) -> html.Div:
-    pert_gene = perturbation.get("perturbed_target_ensg") or "N/A"
     variant = perturbation.get("name")
     score_name = effect.get("score_name")
     score_value = _format_numeric(effect.get("score_value"))
@@ -769,7 +763,7 @@ def _score_effect(
         html.Div(
             [
                 html.Span("Perturbation", className="fw-light text-muted me-2"),
-                html.Span(pert_gene, className="h4 fw-bold mb-0 text-break"),
+                _gene_identity(perturbation, "perturbed_target_ensg"),
             ],
             className="d-flex flex-column flex-md-row gap-1",
         )

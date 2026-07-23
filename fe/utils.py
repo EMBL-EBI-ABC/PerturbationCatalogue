@@ -59,6 +59,10 @@ DATA_MODALITIES_COLOURS = {
     "MAVE": COLORS["red"],
 }
 
+STRICT_GENE_FILTER_NOTE = (
+    "Gene filters match exactly one canonical gene symbol or Ensembl Gene ID."
+)
+
 
 def reprocessed_badge(value: Any, class_name: str = "ms-2"):
     """Provenance badge for a dataset.
@@ -156,6 +160,19 @@ def fetch_search_results(
             "facets": {},
             "search_after": None,
         }
+
+
+def fetch_target_identity(ensembl_gene_id: str) -> Dict[str, Any]:
+    """Return the exact target record for an Ensembl gene ID."""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/v1/target/{ensembl_gene_id}", timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        print(f"Error fetching target {ensembl_gene_id}: {exc}")
+        return {}
 
 
 def fetch_all_search_results(

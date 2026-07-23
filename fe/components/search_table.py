@@ -179,7 +179,7 @@ def render_targets_table(results):
                                 [
                                     html.Div(
                                         approved_symbol,
-                                        className="fw-semibold",
+                                        className="fw-bold",
                                         style={"color": COLORS["primary"]},
                                     ),
                                     html.Div(

@@ -30,6 +30,26 @@ TARGET_SEARCHABLE_FIELDS = [
 ]
 
 
+def build_target_exact_query(query: str) -> Dict[str, Any]:
+    """Match one canonical symbol or Ensembl gene ID exactly."""
+    return {
+        "bool": {
+            "should": [
+                {
+                    "term": {
+                        field: {
+                            "value": query.strip(),
+                            "case_insensitive": True,
+                        }
+                    }
+                }
+                for field in ("ensembl_gene_id", "approved_symbol")
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def escape_wildcard(value: str) -> str:
     """Escape characters that have special meaning in wildcard queries."""
     return re.sub(r"([\\*?])", r"\\\1", value)

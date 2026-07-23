@@ -10,7 +10,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
-from target_search import build_target_fuzzy_query
+from target_search import build_target_exact_query
 
 
 # --- Database Connection Management ---
@@ -21,7 +21,6 @@ router = APIRouter()
 
 # --- Constants and Mappings ---
 ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
-TARGET_QUERY_RESOLUTION_LIMIT = 25
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
@@ -437,16 +436,13 @@ def parse_numeric_filter(param_name: str, value: str) -> Tuple[str, List[Any]]:
 
 
 async def resolve_target_query_to_ensg(query: str) -> List[str]:
-    """Resolve a user target query to ordered unique Ensembl gene IDs."""
+    """Resolve one exact canonical symbol or Ensembl gene ID."""
     cleaned_query = query.strip()
-    if not cleaned_query:
+    if not cleaned_query or "|" in cleaned_query:
         return []
 
-    if "|" in cleaned_query:
-        parts = [p.strip() for p in cleaned_query.split("|") if p.strip()]
-        if all(p.startswith("ENSG") for p in parts):
-            return parts
-        cleaned_query = cleaned_query.replace("|", " ")
+    if cleaned_query.upper().startswith("ENSG"):
+        return [cleaned_query.upper()]
 
     es_client = db_pools.get("es")
     if not es_client:
@@ -456,24 +452,50 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
 
     search_body = {
         "_source": ["ensembl_gene_id"],
-        "size": TARGET_QUERY_RESOLUTION_LIMIT,
-        "sort": [{"_score": "desc"}, {"approved_symbol": "asc"}],
-        "track_total_hits": True,
+        "size": 1,
+        "query": build_target_exact_query(cleaned_query),
     }
 
     response = await es_client.search(
         index=f"target-summary{ES_INDEX_SET}",
-        body={**search_body, "query": build_target_fuzzy_query(cleaned_query)},
+        body=search_body,
     )
 
-    ensg_ids = []
-    seen = set()
-    for hit in response.get("hits", {}).get("hits", []):
-        ensg_id = hit.get("_source", {}).get("ensembl_gene_id")
-        if ensg_id and ensg_id not in seen:
-            seen.add(ensg_id)
-            ensg_ids.append(ensg_id)
-    return ensg_ids
+    hits = response.get("hits", {}).get("hits", [])
+    ensg_id = hits[0].get("_source", {}).get("ensembl_gene_id") if hits else None
+    return [ensg_id] if ensg_id else []
+
+
+async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
+    """Add canonical symbols to nested result genes in one Elasticsearch query."""
+    genes = [
+        (result.get(part) or {}, field)
+        for result in results
+        for part, field in (
+            ("perturbation", "perturbed_target_ensg"),
+            ("effect", "effect_gene_ensg"),
+        )
+        if (result.get(part) or {}).get(field)
+    ]
+    ensg_ids = list({gene[field] for gene, field in genes})
+    if not ensg_ids:
+        return
+
+    response = await db_pools["es"].search(
+        index=f"target-summary{ES_INDEX_SET}",
+        body={
+            "_source": ["ensembl_gene_id", "approved_symbol"],
+            "size": len(ensg_ids),
+            "query": {"terms": {"ensembl_gene_id": ensg_ids}},
+        },
+    )
+    symbols = {
+        source["ensembl_gene_id"]: source.get("approved_symbol")
+        for hit in response.get("hits", {}).get("hits", [])
+        if (source := hit.get("_source", {})).get("ensembl_gene_id")
+    }
+    for gene, field in genes:
+        gene["gene_symbol"] = symbols.get(gene[field])
 
 
 def get_api_to_db_mapping(modality: MODALITIES) -> Dict[str, str]:
@@ -544,19 +566,7 @@ async def build_pg_filters(
             continue
 
         db_field = TARGET_QUERY_FIELDS[key]
-        parts = [p.strip() for p in value.split("|") if p.strip()]
-        if not parts:
-            continue
-
-        # Detect whether the query contains Ensembl gene IDs
-        if all(p.upper().startswith("ENSG") for p in parts):
-            # Strict Ensembl gene ID lookup (no ES query)
-            search_terms = [p.upper() for p in parts]
-        else:
-            # Gene symbol query (resolve via ES)
-            ensg_ids = await resolve_target_query_to_ensg(value)
-            # Include raw values in case it's a control or exact ID not found in ES
-            search_terms = list(set(ensg_ids + parts))
+        search_terms = await resolve_target_query_to_ensg(value)
 
         if not search_terms:
             has_empty_target_resolution = True
@@ -960,6 +970,9 @@ async def _search_modality_impl(
     final_datasets = await asyncio.gather(
         *(fetch_and_assemble_dataset(es_dataset) for es_dataset in paginated_datasets)
     )
+    await enrich_gene_symbols(
+        [result for dataset in final_datasets for result in dataset.get("results", [])]
+    )
 
     return {
         "total_datasets_count": total_datasets_count,
@@ -1100,6 +1113,7 @@ async def _search_dataset_impl(
             )
         results.append({"perturbation": perturbation, "effect": effect})
 
+    await enrich_gene_symbols(results)
     return {
         "total_rows_count": total_rows_count,
         "offset": offset,
@@ -1109,6 +1123,23 @@ async def _search_dataset_impl(
 
 
 # --- API Endpoints ---
+
+
+@router.get("/v1/target/{ensembl_gene_id}")
+async def get_target_identity(ensembl_gene_id: str):
+    """Return the canonical identity for one Ensembl gene ID."""
+    response = await db_pools["es"].search(
+        index=f"target-summary{ES_INDEX_SET}",
+        body={
+            "_source": ["ensembl_gene_id", "approved_symbol", "approved_name"],
+            "size": 1,
+            "query": build_target_exact_query(ensembl_gene_id),
+        },
+    )
+    hits = response.get("hits", {}).get("hits", [])
+    if not hits:
+        raise HTTPException(status_code=404, detail="Target not found")
+    return hits[0]["_source"]
 
 
 @router.get(
