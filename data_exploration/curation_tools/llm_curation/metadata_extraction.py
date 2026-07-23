@@ -112,14 +112,20 @@ def create_csv_from_curated_metadata_json(
     if not output_csv_path:
         raise ValueError("Output CSV path must be specified.")
     if output_csv_path.is_dir():
-        raise ValueError(f"Output CSV path must be a file, not a directory: {output_csv_path}")
+        raise ValueError(
+            f"Output CSV path must be a file, not a directory: {output_csv_path}"
+        )
 
     rows: list[dict[str, str]] = []
     fieldnames: list[str] = ["source_json_file"]
     seen_fieldnames = set(fieldnames)
 
     for json_path in json_paths:
+        if json_path.name.endswith("_audit.json"):
+            continue
         payload = json.loads(json_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            continue
         row = {"source_json_file": json_path.name}
         for field_name, field_value in payload.items():
             row[field_name] = _format_metadata_csv_cell(field_value)
