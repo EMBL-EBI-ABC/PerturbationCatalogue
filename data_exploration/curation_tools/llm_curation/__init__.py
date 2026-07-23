@@ -9,6 +9,7 @@ from curation_tools.llm_curation.llm_curation_schema import (
     EvidenceExtractionSchema,
     CurationSchema,
     SpecificTermExtractionSchema,
+    SupportingEvidence,
     OntologyCandidate,
     FieldCandidates,
 )
@@ -17,6 +18,9 @@ from curation_tools.llm_curation.specific_term_extraction import (
 )
 from curation_tools.llm_curation.candidate_discovery import (
     discover_candidates,
+)
+from curation_tools.llm_curation.backfill_terms import (
+    backfill_approved_terms,
 )
 from curation_tools.llm_curation.publication_text import (
     bulk_convert_full_texts_to_md,
@@ -34,10 +38,12 @@ __all__ = [
     "EvidenceExtractionSchema",
     "CurationSchema",
     "SpecificTermExtractionSchema",
+    "SupportingEvidence",
     "OntologyCandidate",
     "FieldCandidates",
     "normalize_evidence_artifacts",
     "discover_candidates",
+    "backfill_approved_terms",
     "retrieve_pub_full_text",
     "convert_pub_full_text_to_md",
     "bulk_download_pub_full_texts",
