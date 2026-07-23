@@ -38,6 +38,9 @@ load_dotenv()
 
 # Elastic indexes to use.
 ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
+ES_TARGET_SUMMARY = f"target-summary{ES_INDEX_SET}"
+ES_DATASET_SUMMARY = f"dataset-summary{ES_INDEX_SET}"
+ES_LANDING_PAGE_SUMMARY = f"landing-page-summary{ES_INDEX_SET}"
 
 
 # Configuration
@@ -354,12 +357,12 @@ async def perform_search(
     if is_dataset_mode:
         es_query = build_dataset_elasticsearch_query(query, filters)
         facet_fields = DATASET_FACET_FIELDS
-        es_index = f"dataset-summary{ES_INDEX_SET}"
+        es_index = ES_DATASET_SUMMARY
         sort_field = "dataset_id"
     else:
         es_query = build_target_fuzzy_query(query, filters, FACET_FIELDS)
         facet_fields = FACET_FIELDS
-        es_index = f"target-summary{ES_INDEX_SET}"
+        es_index = ES_TARGET_SUMMARY
         sort_field = "approved_symbol"
 
     aggs = build_aggregations(facet_fields)
@@ -513,9 +516,7 @@ async def get_landing_page_summary():
     Retrieve the landing page summary document from Elasticsearch.
     """
     try:
-        response = await db_pools["es"].get(
-            index=f"landing-page-summary{ES_INDEX_SET}", id="summary"
-        )
+        response = await db_pools["es"].get(index=ES_LANDING_PAGE_SUMMARY, id="summary")
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Elasticsearch error: {exc}"
@@ -655,7 +656,7 @@ async def get_dataset(dataset_id: str):
     try:
         # Search for the dataset by dataset_id field
         response = await db_pools["es"].search(
-            index=f"dataset-summary{ES_INDEX_SET}",
+            index=ES_DATASET_SUMMARY,
             query={"term": {"dataset_id": dataset_id}},
             size=1,
         )

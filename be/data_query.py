@@ -21,6 +21,8 @@ router = APIRouter()
 
 # --- Constants and Mappings ---
 ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
+ES_TARGET_SUMMARY = f"target-summary{ES_INDEX_SET}"
+ES_DATASET_SUMMARY = f"dataset-summary{ES_INDEX_SET}"
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
@@ -457,7 +459,7 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     }
 
     response = await es_client.search(
-        index=f"target-summary{ES_INDEX_SET}",
+        index=ES_TARGET_SUMMARY,
         body=search_body,
     )
 
@@ -482,7 +484,7 @@ async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
         return
 
     response = await db_pools["es"].search(
-        index=f"target-summary{ES_INDEX_SET}",
+        index=ES_TARGET_SUMMARY,
         body={
             "_source": ["ensembl_gene_id", "approved_symbol"],
             "size": len(ensg_ids),
@@ -604,13 +606,24 @@ async def build_pg_filters(
         elif isinstance(value, str):
             if db_field in ["perturbed_target_ensg", "effect_gene_ensg"]:
                 if "|" in value:
-                    values = [v.strip() for v in value.split("|") if v.strip()]
+                    values = [
+                        (
+                            v.strip().upper()
+                            if v.strip().upper().startswith("ENSG")
+                            else v.strip()
+                        )
+                        for v in value.split("|")
+                        if v.strip()
+                    ]
                     if values:
                         params.append(values)
                     else:
                         continue
                 else:
-                    params.append([value])
+                    norm_val = value.strip()
+                    if norm_val.upper().startswith("ENSG"):
+                        norm_val = norm_val.upper()
+                    params.append([norm_val])
                 filters.append(f"{db_field} = ANY(${len(params)}::text[])")
             else:
                 filters.append(f"{db_field} = ${len(params) + 1}")
@@ -709,6 +722,19 @@ async def enrich_perturb_seq_rows(
         row["effect_n_down"] = effect_summary.get("n_down")
 
     return rows
+
+
+def _group_gsea_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
+    """Group GSEA rows by perturbed target ENSG and map effect columns."""
+    gsea_by_pert = defaultdict(list)
+    for r in rows:
+        effect = {
+            k.replace("effect_", ""): r.get(v)
+            for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
+            if k.startswith("effect_")
+        }
+        gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
+    return gsea_by_pert
 
 
 async def _fetch_perturb_seq_gsea(
@@ -859,7 +885,7 @@ async def _search_modality_impl(
             ]
 
     es_result = await es_client.search(
-        index=f"dataset-summary{ES_INDEX_SET}",
+        index=ES_DATASET_SUMMARY,
         body=es_query_body,
         size=10000,  # Get all matching datasets to apply pagination later
     )
@@ -1129,7 +1155,7 @@ async def _search_dataset_impl(
 async def get_target_identity(ensembl_gene_id: str):
     """Return the canonical identity for one Ensembl gene ID."""
     response = await db_pools["es"].search(
-        index=f"target-summary{ES_INDEX_SET}",
+        index=ES_TARGET_SUMMARY,
         body={
             "_source": ["ensembl_gene_id", "approved_symbol", "approved_name"],
             "size": 1,
@@ -1262,14 +1288,7 @@ async def get_perturb_seq_gsea(
             return []
 
         # Group by perturbation
-        gsea_by_pert = defaultdict(list)
-        for r in rows:
-            effect = {
-                k.replace("effect_", ""): r.get(v)
-                for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
-                if k.startswith("effect_")
-            }
-            gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
+        gsea_by_pert = _group_gsea_rows(rows)
 
         # Enrich perturbations
         pert_summary_rows = await conn.fetch(
@@ -1562,16 +1581,7 @@ async def download_perturb_seq_gsea(
             csv_content = _gsea_results_to_csv([])
             target_label = perturbation_gene_name
         else:
-            # Build results in the same format as the main GSEA endpoint
-            gsea_by_pert = defaultdict(list)
-            for r in rows:
-                effect = {
-                    k.replace("effect_", ""): r.get(v)
-                    for k, v in PERTURB_SEQ_GSEA_PG_MAPPING.items()
-                    if k.startswith("effect_")
-                }
-                gsea_by_pert[r["perturbed_target_ensg"]].append(effect)
-
+            gsea_by_pert = _group_gsea_rows(rows)
             results = [
                 {
                     "perturbation": {"perturbed_target_ensg": pert_target_ensg},

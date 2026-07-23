@@ -71,16 +71,10 @@ with
         limit 10
     ),
     target_counts as (
-        select count(distinct target_ensg) as n_targets
-        from
-            (
-                select trim(target_ensg) as target_ensg
-                from
-                    base,
-                    unnest(split(cast(perturbed_target_ensg as string), "|")) as target_ensg
-                where perturbed_target_ensg is not null
-            )
-        where starts_with(target_ensg, "ENSG")
+        select count(distinct trim(target_ensg)) as n_targets
+        from base,
+        unnest(split(perturbed_target_ensg, "|")) as target_ensg
+        where starts_with(trim(target_ensg), "ENSG")
     ),
 
     landing_page_summary as (
