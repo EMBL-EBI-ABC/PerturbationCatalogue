@@ -1,4 +1,4 @@
-"""Pipeline for discovering ontology candidate terms from 'Other' evidence across the corpus (Step 3)."""
+"""Pipeline for discovering ontology candidate terms from 'Other' evidence across the corpus (Step 3a)."""
 
 import argparse
 import json
@@ -139,7 +139,7 @@ def discover_candidates(
 
     print_status_block(
         log_file,
-        "Starting Step 3 Ontology Candidate Discovery",
+        "Starting Step 3a Ontology Candidate Discovery",
         f"Step 1 Dir: {step1_dir}",
         f"Step 2 Dir: {step2_dir}",
         f"Output Dir: {output_dir}",
@@ -210,13 +210,15 @@ def discover_candidates(
                     "temperature": 0.2,
                 },
             )
-            
+
             # Validate and store the results
             if isinstance(response, FieldCandidates):
                 results[field_name] = [
                     {
                         "proposed_new_term": candidate.proposed_new_term,
-                        "supporting_evidence": [c.model_dump() for c in candidate.supporting_evidence],
+                        "supporting_evidence": [
+                            c.model_dump() for c in candidate.supporting_evidence
+                        ],
                         "rationale": candidate.rationale,
                     }
                     for candidate in response.candidates
@@ -242,9 +244,9 @@ def discover_candidates(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the command-line parser for Step 3 ontology candidate discovery."""
+    """Build the command-line parser for Step 3a ontology candidate discovery."""
     parser = argparse.ArgumentParser(
-        description="Analyze unmapped 'Other' evidence across Step 2 outputs to discover missing ontology candidates.",
+        description="Analyze unmapped 'Other' evidence across Step 2 outputs to discover missing ontology candidates (Step 3a).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
