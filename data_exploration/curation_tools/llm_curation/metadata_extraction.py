@@ -16,7 +16,6 @@ from curation_tools.llm_curation.logging_utils import (
     print_status_block,
 )
 
-
 DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.5-flash")
 DEFAULT_DOWNLOAD_MAX_WORKERS = min(32, (os.cpu_count() or 1) * 4)
 JSON_INDENT = 2
@@ -41,7 +40,9 @@ def build_default_context_output_suffix(
     return "" if total_contexts == 1 else f"__ctx_{context_index:02d}"
 
 
-def build_default_output_metadata(prompt_context: PromptContext | None) -> dict[str, object]:
+def build_default_output_metadata(
+    prompt_context: PromptContext | None,
+) -> dict[str, object]:
     """Return no extra metadata unless the caller provides a custom builder."""
     del prompt_context
     return {}
@@ -165,22 +166,22 @@ def save_evidence_outputs(
     publication_full_text_path = Path(publication_full_text_path).resolve()
     output_dir = Path(output_dir).resolve()
     log_file = _ensure_log_file(log_file)
-    
+
     output_path = get_evidence_output_path(
         publication_full_text_path=publication_full_text_path,
         output_dir=output_dir,
         suffix=suffix,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     output_metadata = output_metadata_builder(prompt_context)
     evidence_payload = evidence_result.model_dump()
     evidence_payload.update(output_metadata)
-    
+
     # Add Curation Agent Metadata
     evidence_payload["curation_agent_type"] = "LLM"
     evidence_payload["curation_agent_name"] = model_name
-    
+
     output_path.write_text(
         json.dumps(evidence_payload, indent=JSON_INDENT),
         encoding="utf-8",
@@ -290,9 +291,9 @@ def _extract_evidence_for_prompt_context(
         },
         generation_config={
             "temperature": 0.2,
-        }
+        },
     )
-    
+
     save_evidence_outputs(
         publication_full_text_path=publication_full_text_path,
         evidence_result=extraction_response,
@@ -304,7 +305,8 @@ def _extract_evidence_for_prompt_context(
         output_metadata_builder=output_metadata_builder,
     )
     extracted_field_count = sum(
-        field_value is not None for field_value in extraction_response.model_dump().values()
+        field_value is not None
+        for field_value in extraction_response.model_dump().values()
     )
     print_status_block(
         log_file,
@@ -536,4 +538,3 @@ def bulk_extract_evidence_from_publications(
         )
 
     return extracted_publication_paths
-
