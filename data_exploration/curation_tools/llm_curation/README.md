@@ -1,174 +1,82 @@
-# MaveDB LLM Metadata Extraction
+# MaveDB LLM Metadata Extraction & Curation Control Center
 
-This folder contains an analysis pipeline for deriving structured MaveDB experiment metadata from publications linked to MaveDB entries. The workflow has three main stages:
+This folder contains an analysis pipeline for deriving structured MaveDB experiment metadata from publications linked to MaveDB entries. The workflow consists of four main stages and a consolidated Streamlit Curation Control Center:
 
-1. Fetch MaveDB entry JSON and resolve linked publication DOIs.
-2. Download publication full text and convert it to Markdown.
-3. Use an LLM plus a user-provided Pydantic schema to extract normalized metadata into JSON and CSV outputs.
+1. **Step 1: Evidence Extraction** — Extracts verbatim quotes from publication text using LLM queries.
+2. **Step 2: Specific Term Normalization** — Maps verbatim evidence to controlled vocabularies (`SpecificTermExtractionSchema`).
+3. **Step 3a: Candidate Discovery** — Aggregates recurring `"Other"` evidence and synthesizes proposed ontology candidate terms.
+4. **Step 3b: Candidate Review & Schema Update** — Interactive review interface to approve/edit terms and inject them into `llm_curation_schema.py`.
+5. **Step 4: Approved Terms Backfill** — Copies normalized Step 2 JSON files to Step 4 and replaces `"Other"` values with approved terms.
 
-For now, this workflow has been designed primarily for MaveDB dataset curation. Work to further develop the workflow for CRISPR and Perturb-seq curation is ongoing.
+---
 
-For an example MaveDB curation workflow of an individual entry, see `data_exploration/MaveDB/mavedb_example.ipynb`.
+## Interactive Streamlit Curation Dashboard
 
-## Pipeline Overview
-
-### 1. Collect MaveDB entries and publication text
-
-`mavedb/processing.py`:
-
-- reads unique MaveDB URNs from the dump at `data_exploration/MaveDB/Dump/.../csv`
-- fetches the corresponding MaveDB API records
-- extracts publication DOIs from each entry
-- downloads publication full text with `paperscraper`
-- converts PDF/XML full text into Markdown
-
-By default it writes:
-
-- MaveDB entry JSON to `mavedb_metadata/`
-- URN-to-DOI mapping to `mavedb_urn_to_dois.json`
-- downloaded raw full text to `pub_full_text_raw/`
-- converted Markdown to `pub_full_text_md/`
-
-`mavedb/processing.py` exposes a small CLI for overriding the default paths used by the collection pipeline.
-
-Arguments:
-
-- `--dump-dir`: directory containing the MaveDB CSV dump
-- `--metadata-output-dir`: directory used to cache MaveDB entry metadata JSON files
-- `--urn-to-dois-output-file`: output file for the URN-to-DOI mapping JSON
-- `--doi-to-fulltext-output-file`: output file for the DOI-to-full-text mapping JSON
-- `--raw-output-dir`: directory used to cache downloaded publication full text files
-- `--markdown-output-dir`: directory used to write converted Markdown files
-
-The script uses the defaults shown in `processing.py` if you do not pass any arguments.
-
-Note: publication retrieval in this step uses `paperscraper`, which reads publisher API credentials from the repository root `.env` file. Add these variables to `.env` before running the collection pipeline:
+To launch the consolidated 5-tab Curation Control Center:
 
 ```bash
-WILEY_TDM_API_TOKEN=<WILEY_TOKEN>
-ELSEVIER_TDM_API_KEY=<ELSEVIER_TOKEN>
+PYTHONPATH=data_exploration ./.venv/bin/streamlit run data_exploration/curation_tools/llm_curation/review_gui.py
 ```
 
-Run it from the repository root:
+### Dashboard Tabs
+- **⚡ Step 1: Evidence Extraction:** Configure models/concurrency, inspect target `.md` file status, trigger bulk evidence extraction, and view live log streams.
+- **🏷️ Step 2: Term Normalization:** Inspect Step 1 evidence files and `"Other"` field counts, configure parameters, trigger normalization, and inspect mapped outputs.
+- **💡 Step 3a: Candidate Discovery:** Preview corpus-level `"Other"` evidence frequencies per field and run LLM candidate discovery.
+- **🔍 Step 3b: Candidate Review & Schema Diff:** Review candidate terms, edit labels, approve/reject candidates, preview live AST code diffs of `llm_curation_schema.py`, and apply approved terms to the schema.
+- **🔄 Step 4: Backfill Approved Terms:** View a live preview table of all planned `"Other"` replacements before writing, then execute backfill to generate Step 4 copies, audit JSON, and compiled CSV outputs.
 
+---
+
+## Command Line Execution
+
+### Step 1: Evidence Extraction
 ```bash
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing
-```
-
-For example, to override the input dump directory and the output location for cached Markdown:
-
-```bash
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing \
-  --dump-dir data_exploration/MaveDB/Dump/mavedb-dump.20250612164404/csv \
-  --markdown-output-dir data_exploration/MaveDB/llm_metadata_extraction/pub_full_text_md
-```
-
-### 2. Extract metadata with an LLM
-
-`mavedb/metadata_extraction_runner.py` reads Markdown files from `pub_full_text_md/` by default, augments the prompt with matching MaveDB entry metadata when available, and requests structured output using the Pydantic schema provided through `--extraction-schema`.
-
-Outputs are written to:
-
-- `extracted_metadata/clean/`: JSON with only the normalized fields
-- `extracted_metadata/with_evidence/`: JSON including evidence quotes for each normalized field (mainly for debugging and sanity checks)
-- `extracted_metadata/clean_metadata.csv`: optional flattened CSV built from the clean JSON files
-
-Run:
-
-```bash
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadata_extraction_runner \
-  --extraction-schema path/to/schema.py:MyMetadataExtractionSchema
-```
-
-Useful flags:
-
-```bash
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadata_extraction_runner \
-  --extraction-schema path/to/schema.py:MyMetadataExtractionSchema \
-  --publication-full-text-dir data_exploration/curation_tools/llm_curation/mavedb/pub_full_text_md \
-  --output-dir data_exploration/MaveDB/llm_metadata_extraction/extracted_metadata \
-  --prompt-template-file data_exploration/curation_tools/llm_curation/mavedb_metadata_extraction_prompt_template.md \
-  --llm-model google/gemini-3.5-flash \
+PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.mavedb.mavedb_metadata_extraction_runner \
+  --extraction-schema curation_tools.llm_curation.llm_curation_schema:EvidenceExtractionSchema \
+  --publication-full-text-dir test_md_dir \
+  --output-dir test_output/step1_evidence \
+  --log-file test_output/step1_evidence_extraction.log \
+  --prompt-template-file data_exploration/curation_tools/llm_curation/step1_evidence_extraction_prompt.md \
+  --llm-model google/gemini-3.6-flash \
   --max-workers 8 \
   --overwrite \
-  --create-csv
+  --create-csv \
+  --verbose
 ```
 
-Arguments:
-
-- `--extraction-schema`: required Pydantic `BaseModel` subclass to use for extraction, formatted as `package.module:SchemaClass` or `path/to/schema.py:SchemaClass`
-- `--publication-full-text-dir`: directory containing the Markdown publication files to extract from
-- `--output-dir`: base directory used for `clean/`, `with_evidence/`, and `clean_metadata.csv`
-- `--log-file`: log file used for extraction progress and errors
-- `--prompt-template-file`: Markdown prompt template used to build extraction prompts
-- `--llm-model`: model ID used for extraction; defaults to `LLM_MODEL_NAME` from the environment, or `google/gemini-3.5-flash` if unset
-- `--max-workers`: number of worker threads used for bulk extraction; must be at least `1`
-- `--overwrite`: overwrite existing outputs in `extracted_metadata/` instead of skipping files that already have clean JSON outputs
-- `--create-csv`: create `extracted_metadata/clean_metadata.csv` from the curated JSON files in `extracted_metadata/clean/`
-
-## Inputs and Outputs
-
-### Inputs
-
-- MaveDB dump CSVs in `data_exploration/MaveDB/Dump/.../csv`
-- publication full text resolved via DOI (`.xml` or `.pdf` files)
-- prompt template in `mavedb_metadata_extraction_prompt_template.md`
-- user-provided Pydantic extraction schema
-
-### Outputs
-
-- cached MaveDB records in `mavedb_metadata/*.json`
-- DOI lookup table in `mavedb_urn_to_dois.json`
-- raw publication files in `pub_full_text_raw/`
-- Markdown full text in `pub_full_text_md/*.md`
-- extraction JSON in `extracted_metadata/with_evidence/*.json`
-- curated extraction JSON in `extracted_metadata/clean/*.json`
-- combined CSV in `extracted_metadata/clean_metadata.csv`
-- progress logs in `pub_full_text_download.log` and `mavedb_metadata_extraction.log`
-
-If multiple distinct MaveDB contexts map to the same publication, `mavedb/metadata_extraction_runner.py` writes separate output files with URN suffixes.
-
-## Environment and Dependencies
-
-This folder uses several external Python packages, including:
-
-- `instructor`
-- `pydantic`
-- `tqdm`
-- `requests`
-- `paperscraper`
-- `pymupdf4llm`
-- `lxml` (optional but used when available for XML parsing)
-
-The extraction script defaults to:
-
-- model: `google/gemini-3.5-flash` (alternatively, e.g. `google/gemini-2.5-pro`)
-- environment variable override: `LLM_MODEL_NAME`
-
-The LLM client is initialized through `instructor.from_provider(..., vertexai=True, location='global')`, so you need working Vertex AI / Google credentials in the environment before running extraction.
-
-
-
-Notes
-
-- The Markdown conversion step tries to remove trailing reference sections conservatively.
-- Publication downloads can yield either PDF or XML; both are supported.
-- Existing cached files are reused unless overwrite behavior is explicitly enabled.
-- One publication file, `10_1101_2024_04_26_591310.md`, is excluded from bulk LLM extraction by default in `mavedb/metadata_extraction_runner.py`, since it will yield more than 500 redundant calls to the LLM.
-- Evidence quotes are intended to come from publication text, even when supplementary MaveDB metadata is injected into the prompt for disambiguation.
-
-## Suggested Workflow
-
-From the repository root:
-
+### Step 2: Specific Term Extraction
 ```bash
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.processing
-PYTHONPATH=data_exploration python -m curation_tools.llm_curation.mavedb.metadata_extraction_runner \
-  --extraction-schema path/to/schema.py:MyMetadataExtractionSchema \
-  --llm-model google/gemini-3.5-flash \
-  --create-csv
+PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.specific_term_extraction \
+  --step1-dir test_output/step1_evidence \
+  --output-dir test_output/step2_normalized \
+  --log-file test_output/step2_specific_term_extraction.log \
+  --prompt-template-file data_exploration/curation_tools/llm_curation/step2_specific_term_extraction.md \
+  --mavedb-metadata-dir data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata \
+  --llm-model google/gemini-3.6-flash \
+  --max-workers 8 \
+  --overwrite \
+  --no-csv \
+  --verbose
 ```
 
-Then inspect:
+### Step 3a: Candidate Discovery
+```bash
+PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.candidate_discovery \
+  --step1-dir test_output/step1_evidence \
+  --step2-dir test_output/step2_normalized \
+  --output-dir test_output/step3_ontology_candidates \
+  --log-file test_output/step3_candidate_discovery.log \
+  --prompt-template-file data_exploration/curation_tools/llm_curation/step3_candidate_discovery_prompt.md \
+  --llm-model google/gemini-3.6-flash \
+  --verbose
+```
 
-- `data_exploration/MaveDB/llm_metadata_extraction/extracted_metadata/clean_metadata.csv`
+### Step 4: Approved Terms Backfill
+```bash
+PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.backfill_terms \
+  --step2-dir test_output/step2_normalized \
+  --output-dir test_output/step4_backfilled \
+  --decisions-file test_output/step3_ontology_candidates/approved_ontology_terms.json \
+  --log-file test_output/step4_backfill.log \
+  --create-csv
+```
