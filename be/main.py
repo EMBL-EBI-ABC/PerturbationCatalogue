@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
-from target_search import build_target_fuzzy_query
+from target_search import build_target_fuzzy_query, escape_wildcard
 
 load_dotenv()
 
@@ -154,11 +154,6 @@ DATASET_SEARCHABLE_FIELDS = [
 
 
 # Elasticsearch helper functions
-def _escape_wildcard(value: str) -> str:
-    """Escape characters that have special meaning in wildcard queries."""
-    return re.sub(r"([\\*?])", r"\\\1", value)
-
-
 def build_aggregations(facet_fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """Build aggregations for all facet fields."""
     fields = facet_fields or FACET_FIELDS
@@ -216,12 +211,12 @@ def build_dataset_elasticsearch_query(
             # Wildcard for partial/infix search
             wildcard_terms = []
             for term in cleaned_query.split():
-                safe_term = _escape_wildcard(term.lower())
+                safe_term = escape_wildcard(term.lower())
                 if safe_term:
                     wildcard_terms.append(f"*{safe_term}*")
 
             if not wildcard_terms:
-                safe_term = _escape_wildcard(cleaned_query.lower())
+                safe_term = escape_wildcard(cleaned_query.lower())
                 if safe_term:
                     wildcard_terms.append(f"*{safe_term}*")
 

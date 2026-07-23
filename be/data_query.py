@@ -754,10 +754,11 @@ async def _fetch_perturb_seq_gsea(
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
     query = f"""
-        SELECT *
-        FROM perturb_seq_gsea
+        SELECT g.*, p.n_total, p.n_up, p.n_down
+        FROM perturb_seq_gsea g
+        LEFT JOIN perturb_seq_summary_perturbation p USING (dataset_id, perturbed_target_ensg)
         {where_clause}
-        ORDER BY sidak ASC
+        ORDER BY g.sidak ASC
         LIMIT 50
     """
     rows = await conn.fetch(query, *pg_params)
@@ -1290,24 +1291,11 @@ async def get_perturb_seq_gsea(
         # Group by perturbation
         gsea_by_pert = _group_gsea_rows(rows)
 
-        # Enrich perturbations
-        pert_summary_rows = await conn.fetch(
-            f"""
-            SELECT perturbed_target_ensg, n_total, n_up, n_down
-            FROM perturb_seq_summary_perturbation
-            WHERE dataset_id = $1
-            AND perturbed_target_ensg = ANY($2::text[])
-            """,
-            dataset_id,
-            list(gsea_by_pert.keys()),
-        )
-        pert_summary_by_target = {
-            row["perturbed_target_ensg"]: dict(row) for row in pert_summary_rows
-        }
-
         results = []
         for pert_target_ensg, effects in gsea_by_pert.items():
-            pert_summary = pert_summary_by_target.get(pert_target_ensg, {})
+            pert_summary = next(
+                (r for r in rows if r["perturbed_target_ensg"] == pert_target_ensg), {}
+            )
             results.append(
                 {
                     "perturbation": {

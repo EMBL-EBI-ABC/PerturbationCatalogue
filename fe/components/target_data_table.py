@@ -38,27 +38,15 @@ DATASET_METADATA_FIELDS = [
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
-    "dataset_tissues": ["tissue_labels", "tissues", "tissue"],
-    "dataset_cell_types": ["cell_type_labels", "cell_types", "cell_type"],
-    "dataset_cell_lines": ["cell_line_labels", "cell_lines", "cell_line"],
-    "dataset_library_perturbation_types": [
-        "library_perturbation_type_labels",
-        "library_perturbation_types",
-        "library_perturbation_type",
-        "library_type",
-    ],
-    "dataset_diseases": ["disease_labels", "diseases", "disease"],
-    "dataset_sexes": ["sex_labels", "sexes", "sex"],
-    "dataset_developmental_stages": [
-        "developmental_stage_labels",
-        "developmental_stages",
-        "developmental_stage",
-    ],
+    "dataset_tissues": ["tissue_labels"],
+    "dataset_cell_types": ["cell_type_labels"],
+    "dataset_cell_lines": ["cell_line_labels"],
+    "dataset_library_perturbation_types": ["library_perturbation_type_labels"],
+    "dataset_diseases": ["disease_labels"],
+    "dataset_sexes": ["sex_labels"],
+    "dataset_developmental_stages": ["developmental_stage_labels"],
     "dataset_score_interpretation": ["score_interpretation"],
-    "dataset_readout_technology_labels": [
-        "readout_technology_labels",
-        "readout_technology",
-    ],
+    "dataset_readout_technology_labels": ["readout_technology_labels"],
 }
 
 GREEN = "#2acc06"
