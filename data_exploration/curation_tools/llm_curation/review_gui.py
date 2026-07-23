@@ -1,4 +1,4 @@
-"""Streamlit GUI for reviewing Step 3 ontology candidates, applying approved terms to SpecificTermExtractionSchema, and executing Step 4 backfill."""
+"""Consolidated Streamlit Curation Control Center for MaveDB LLM Metadata Pipeline (Steps 1 - 4)."""
 
 import json
 from pathlib import Path
@@ -9,22 +9,42 @@ from curation_tools.llm_curation.backfill_terms import (
     backfill_approved_terms,
     preview_backfill_changes,
 )
+from curation_tools.llm_curation.candidate_discovery import discover_candidates
+from curation_tools.llm_curation.gui_utils import (
+    get_step1_file_status,
+    get_step2_file_status,
+    get_step3_other_corpus_summary,
+    read_last_log_lines,
+)
+from curation_tools.llm_curation.metadata_extraction import (
+    bulk_extract_evidence_from_publications,
+)
+from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.schema_updater import (
     DEFAULT_SCHEMA_PATH,
     apply_schema_update,
     get_existing_literals,
     get_schema_diff,
 )
-
-DEFAULT_CANDIDATES_PATH = (
-    Path.cwd()
-    / "test_output"
-    / "step3_ontology_candidates"
-    / "step3_ontology_candidates.json"
+from curation_tools.llm_curation.specific_term_extraction import (
+    normalize_evidence_artifacts,
 )
 
+# Default Test Directory Configuration
+ROOT_DIR = Path.cwd()
+DEFAULT_MD_DIR = ROOT_DIR / "test_md_dir"
+DEFAULT_TEST_OUTPUT = ROOT_DIR / "test_output"
+
+DEFAULT_STEP1_OUT = DEFAULT_TEST_OUTPUT / "step1_evidence"
+DEFAULT_STEP2_OUT = DEFAULT_TEST_OUTPUT / "step2_normalized"
+DEFAULT_STEP3_OUT = DEFAULT_TEST_OUTPUT / "step3_ontology_candidates"
+DEFAULT_STEP4_OUT = DEFAULT_TEST_OUTPUT / "step4_backfilled"
+
+DEFAULT_CANDIDATES_JSON = DEFAULT_STEP3_OUT / "step3_ontology_candidates.json"
+DEFAULT_PROMPT_DIR = ROOT_DIR / "data_exploration" / "curation_tools" / "llm_curation"
+
 st.set_page_config(
-    page_title="Step 3 & 4 Ontology Candidate Curator",
+    page_title="MaveDB LLM Curation Control Center",
     page_icon="🧬",
     layout="wide",
 )
@@ -51,7 +71,6 @@ def init_session_state(
     if "decisions" not in st.session_state:
         existing_literals = get_existing_literals(DEFAULT_SCHEMA_PATH)
 
-        # Check for prior decision audit file
         saved_audit = {}
         if candidates_path:
             audit_path = candidates_path.parent / "approved_ontology_terms.json"
@@ -66,7 +85,6 @@ def init_session_state(
             decisions[field] = []
             allowed_vocab = set(existing_literals.get(field, []))
 
-            # Build map of saved field decisions
             saved_field_map = {}
             if field in saved_audit and isinstance(saved_audit[field], list):
                 for saved_entry in saved_audit[field]:
@@ -78,7 +96,6 @@ def init_session_state(
                 term = item.get("proposed_new_term") or item.get("proposed_label") or ""
                 saved_entry = saved_field_map.get(term)
 
-                # Determine effective term label and whether it is already present in the schema
                 display_term = saved_entry.get("term", term) if saved_entry else term
                 is_in_schema = term in allowed_vocab or display_term in allowed_vocab
 
@@ -102,295 +119,621 @@ def init_session_state(
 
 
 def main():
-    st.title("🧬 Step 3 & 4 Ontology Candidate Curator & Backfill")
+    st.title("🧬 MaveDB LLM Curation Control Center")
     st.caption(
-        "Review proposed terms, update SpecificTermExtractionSchema, and backfill 'Other' values into Step 4 copies."
+        "End-to-end pipeline execution and curation: Evidence Extraction (Step 1) ➔ Term Normalization (Step 2) ➔ Candidate Discovery (Step 3a) ➔ Candidate Review (Step 3b) ➔ Step 4 Backfill"
     )
 
     # Sidebar setup
-    st.sidebar.header("📁 Data Source")
+    st.sidebar.header("⚙️ Global Execution Settings")
+
+    selected_model = st.sidebar.selectbox(
+        "LLM Model ID",
+        options=[
+            "google/gemini-3.6-flash",
+            "google/gemini-3.5-flash-lite",
+            "google/gemini-3.1-pro-preview",
+        ],
+        index=0,
+    )
+
+    max_workers_slider = st.sidebar.slider(
+        "Concurrency (Max Workers)",
+        min_value=1,
+        max_value=16,
+        value=8,
+    )
+
+    st.sidebar.divider()
+    st.sidebar.header("📁 Step 3b Review Settings")
     file_path_str = st.sidebar.text_input(
         "Candidates JSON Path",
-        value=str(DEFAULT_CANDIDATES_PATH),
+        value=str(DEFAULT_CANDIDATES_JSON),
         help="Path to step3_ontology_candidates.json",
     )
     candidates_path = Path(file_path_str).resolve()
 
-    if st.sidebar.button("Reload Candidates & Refresh Schema"):
+    if st.sidebar.button("Reload Session Cache"):
         st.session_state.clear()
         st.rerun()
 
+    # Load candidates if file exists
     candidates_data = load_candidates_file(candidates_path)
-    if not candidates_data:
-        st.warning(
-            f"No candidate data found at `{candidates_path}`. Please verify the file path."
-        )
-        st.stop()
+    if candidates_data:
+        init_session_state(candidates_data, candidates_path=candidates_path)
 
-    init_session_state(candidates_data, candidates_path=candidates_path)
-    decisions = st.session_state["decisions"]
-
-    # Compute overall statistics
-    total_fields = len(decisions)
-    total_candidates = sum(len(c_list) for c_list in decisions.values())
-    approved_count = sum(
-        1 for c_list in decisions.values() for c in c_list if c["status"] == "Approved"
-    )
-    rejected_count = sum(
-        1 for c_list in decisions.values() for c in c_list if c["status"] == "Rejected"
-    )
-    pending_count = sum(
-        1 for c_list in decisions.values() for c in c_list if c["status"] == "Pending"
-    )
-
-    st.sidebar.subheader("📊 Metrics")
-    col_m1, col_m2 = st.sidebar.columns(2)
-    col_m1.metric("Total Fields", total_fields)
-    col_m2.metric("Total Candidates", total_candidates)
-
-    col_m3, col_m4, col_m5 = st.sidebar.columns(3)
-    col_m3.metric("Approved", approved_count)
-    col_m4.metric("Rejected", rejected_count)
-    col_m5.metric("Pending", pending_count)
-
-    st.sidebar.divider()
-
-    # Field selection navigation
-    field_options = list(decisions.keys())
-    field_labels = [f"{field} ({len(decisions[field])})" for field in field_options]
-    selected_field_idx = st.sidebar.selectbox(
-        "Select Field to Review",
-        options=range(len(field_options)),
-        format_func=lambda i: field_labels[i],
-    )
-    selected_field = field_options[selected_field_idx]
-
-    status_filter = st.sidebar.radio(
-        "Filter Candidates Status",
-        options=["All", "Pending", "Approved", "Rejected"],
-        index=0,
-    )
-
-    # Tabs
-    tab_review, st_tab_diff, tab_backfill = st.tabs(
+    # Tabs for 5 Pipeline Steps
+    tab_step1, tab_step2, tab_step3a, tab_step3b, tab_step4 = st.tabs(
         [
-            "🔍 Candidate Review",
-            "📝 Approved Terms & Schema Diff",
+            "⚡ Step 1: Evidence Extraction",
+            "🏷️ Step 2: Term Normalization",
+            "💡 Step 3a: Candidate Discovery",
+            "🔍 Step 3b: Candidate Review & Schema Diff",
             "🔄 Step 4: Backfill Approved Terms",
         ]
     )
 
-    with tab_review:
-        st.header(f"Field: `{selected_field}`")
-
-        # Display existing literals for context
-        existing_literals = get_existing_literals(DEFAULT_SCHEMA_PATH).get(
-            selected_field, []
+    # -----------------------------------------------------------------------------
+    # TAB 1: Step 1 Evidence Extraction
+    # -----------------------------------------------------------------------------
+    with tab_step1:
+        st.header("⚡ Step 1: Evidence Extraction")
+        st.caption(
+            "Locates experiment targets and extracts verbatim quotes from publication text without normalization."
         )
-        if existing_literals:
-            with st.expander(
-                f"📋 Current Allowed Vocabulary ({len(existing_literals)} terms)",
-                expanded=False,
-            ):
-                st.write(", ".join([f"`{term}`" for term in existing_literals]))
 
-        # Field-level bulk action buttons
-        col_b1, col_b2, col_b3, _ = st.columns([1, 1, 1, 3])
-        if col_b1.button("✅ Approve All in Field"):
-            for item in decisions[selected_field]:
-                item["status"] = "Approved"
-            st.rerun()
-        if col_b2.button("❌ Reject All in Field"):
-            for item in decisions[selected_field]:
-                item["status"] = "Rejected"
-            st.rerun()
-        if col_b3.button("🔄 Reset Field to Pending"):
-            for item in decisions[selected_field]:
-                item["status"] = "Pending"
-            st.rerun()
+        col1_s1, col2_s1 = st.columns(2)
+        s1_input_dir = col1_s1.text_input(
+            "Publication Full Text Directory (.md)",
+            value=str(DEFAULT_MD_DIR),
+        )
+        s1_output_dir = col2_s1.text_input(
+            "Step 1 Output Directory",
+            value=str(DEFAULT_STEP1_OUT),
+        )
+
+        col3_s1, col4_s1 = st.columns(2)
+        s1_prompt_file = col3_s1.text_input(
+            "Step 1 Prompt Template",
+            value=str(DEFAULT_PROMPT_DIR / "step1_evidence_extraction_prompt.md"),
+        )
+        s1_log_file = col4_s1.text_input(
+            "Step 1 Log File",
+            value=str(DEFAULT_TEST_OUTPUT / "step1_evidence_extraction.log"),
+        )
+
+        s1_schema_str = st.text_input(
+            "Extraction Schema",
+            value="curation_tools.llm_curation.llm_curation_schema:EvidenceExtractionSchema",
+        )
+
+        col_opt1, col_opt2, col_opt3 = st.columns(3)
+        s1_overwrite = col_opt1.checkbox(
+            "Overwrite existing outputs", value=True, key="s1_ov"
+        )
+        s1_create_csv = col_opt2.checkbox("Create merged CSV", value=True, key="s1_csv")
+        s1_verbose = col_opt3.checkbox("Verbose logging", value=True, key="s1_verb")
 
         st.divider()
 
-        # Render candidates for selected field
-        candidates_to_render = []
-        for idx, item in enumerate(decisions[selected_field]):
-            if status_filter == "All" or item["status"] == status_filter:
-                candidates_to_render.append((idx, item))
+        # Pre-run File Status Table
+        s1_status_records = get_step1_file_status(
+            Path(s1_input_dir), Path(s1_output_dir)
+        )
+        st.subheader(
+            f"📂 Input Publication Files ({len(s1_status_records)} files found)"
+        )
 
-        if not candidates_to_render:
-            st.info(
-                f"No candidates matching filter status '{status_filter}' for `{selected_field}`."
+        if s1_status_records:
+            df_s1 = pd.DataFrame(s1_status_records)
+            st.dataframe(
+                df_s1,
+                column_config={
+                    "file_name": st.column_config.TextColumn("Publication File"),
+                    "size_kb": st.column_config.TextColumn("Size"),
+                    "status": st.column_config.TextColumn("Status"),
+                    "output_count": st.column_config.NumberColumn("Output JSONs"),
+                    "output_files": st.column_config.TextColumn("Generated Outputs"),
+                },
+                hide_index=True,
+                use_container_width=True,
             )
 
-        for idx, item in candidates_to_render:
-            with st.container(border=True):
-                col_term, col_actions = st.columns([3, 2])
+        st.divider()
 
-                with col_term:
-                    new_term_val = st.text_input(
-                        "Proposed Term Label",
-                        value=item["term"],
-                        key=f"term_input_{selected_field}_{idx}",
-                        help="Edit the term label if needed before approving.",
+        if st.button(
+            "🚀 Execute Step 1 Evidence Extraction", type="primary", key="btn_run_s1"
+        ):
+            with st.spinner("Extracting verbatim evidence quotes via LLM..."):
+                try:
+                    schema_cls = load_extraction_schema(s1_schema_str)
+                    from curation_tools.llm_curation.mavedb.processing import (
+                        context_output_suffix_builder,
+                        format_supplementary_mavedb_metadata,
+                        output_metadata_builder,
+                        prompt_context_builder,
                     )
-                    item["term"] = new_term_val.strip()
 
-                with col_actions:
-                    st.write("**Decision:**")
-                    btn_a, btn_r, btn_p = st.columns(3)
-
-                    status = item["status"]
-
-                    if btn_a.button(
-                        "✅ Approve",
-                        key=f"app_{selected_field}_{idx}",
-                        type="primary" if status == "Approved" else "secondary",
-                    ):
-                        item["status"] = "Approved"
-                        st.rerun()
-                    if btn_r.button(
-                        "❌ Reject",
-                        key=f"rej_{selected_field}_{idx}",
-                        type="primary" if status == "Rejected" else "secondary",
-                    ):
-                        item["status"] = "Rejected"
-                        st.rerun()
-                    if btn_p.button("↩️ Reset", key=f"rst_{selected_field}_{idx}"):
-                        item["status"] = "Pending"
-                        st.rerun()
-
-                # Status tag
-                if item["status"] == "Approved":
-                    st.success("Status: Approved (in schema or marked for update)")
-                elif item["status"] == "Rejected":
-                    st.error("Status: Rejected")
-                else:
-                    st.info("Status: Pending Review")
-
-                if item["rationale"]:
-                    st.markdown(f"**Rationale:** {item['rationale']}")
-
-                evidence = item["supporting_evidence"]
-                if evidence:
-                    with st.expander(
-                        f"💬 Supporting Evidence Snippets ({len(evidence)})"
-                    ):
-                        for ev_idx, ev_item in enumerate(evidence):
-                            if isinstance(ev_item, dict):
-                                stmt = (
-                                    ev_item.get("evidence_statement")
-                                    or ev_item.get("evidence")
-                                    or ""
-                                )
-                                src = ev_item.get("source_file", "unknown")
-                                st.markdown(f"**{ev_idx + 1}. Source:** `{src}`")
-                                st.caption(f'> "{stmt}"')
-                            else:
-                                st.caption(f'> "{ev_item}"')
-
-    with st_tab_diff:
-        st.header("📝 Approved Terms & Schema Diff")
-
-        # Build approved terms mapping
-        approved_map: dict[str, list[str]] = {}
-        for field, c_list in decisions.items():
-            approved_terms = [
-                c["term"] for c in c_list if c["status"] == "Approved" and c["term"]
-            ]
-            if approved_terms:
-                approved_map[field] = approved_terms
-
-        if not approved_map:
-            st.info(
-                "No candidates have been approved yet. Switch to the 'Candidate Review' tab and approve terms to see proposed schema changes."
-            )
-        else:
-            st.subheader("Summary of Approved Terms")
-            for field, terms in approved_map.items():
-                st.write(f"- **`{field}`**: " + ", ".join([f"`{t}`" for t in terms]))
-
-            st.divider()
-            st.subheader("Unified Code Diff (`llm_curation_schema.py`)")
-
-            try:
-                diff_str = get_schema_diff(approved_map, DEFAULT_SCHEMA_PATH)
-                if diff_str.strip():
-                    st.code(diff_str, language="diff")
-                else:
-                    st.info(
-                        "All currently approved terms are already merged into the schema."
+                    md_files = [str(p) for p in Path(s1_input_dir).glob("*.md")]
+                    bulk_extract_evidence_from_publications(
+                        publication_full_text_paths=md_files,
+                        extraction_schema=schema_cls,
+                        output_dir=Path(s1_output_dir),
+                        log_file=Path(s1_log_file),
+                        prompt_template_file=Path(s1_prompt_file),
+                        max_workers=max_workers_slider,
+                        overwrite=s1_overwrite,
+                        model_name=selected_model,
+                        create_csv=s1_create_csv,
+                        verbose=s1_verbose,
+                        prompt_context_builder=prompt_context_builder,
+                        prompt_context_formatter=format_supplementary_mavedb_metadata,
+                        context_output_suffix_builder=context_output_suffix_builder,
+                        output_metadata_builder=output_metadata_builder,
                     )
-            except Exception as e:
-                st.error(f"Error computing diff: {e}")
+                    st.success("Step 1 Evidence Extraction Complete!")
+                    st.balloons()
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Step 1 Extraction Failed: {ex}")
 
-            st.divider()
+        with st.expander("📜 Live Execution Log Stream"):
+            st.code(read_last_log_lines(Path(s1_log_file), num_lines=30))
 
-            col_apply, col_save_json = st.columns(2)
+        # Output JSON Inspector
+        s1_out_files = (
+            sorted(list(Path(s1_output_dir).glob("*.json")))
+            if Path(s1_output_dir).is_dir()
+            else []
+        )
+        if s1_out_files:
+            with st.expander("🔍 Inspect Step 1 Evidence Outputs"):
+                selected_s1_json = st.selectbox(
+                    "Select Output JSON", options=[p.name for p in s1_out_files]
+                )
+                if selected_s1_json:
+                    p = Path(s1_output_dir) / selected_s1_json
+                    st.json(json.loads(p.read_text(encoding="utf-8")))
 
-            create_backup = col_apply.checkbox(
-                "Create `.py.bak` backup before applying", value=True
+    # -----------------------------------------------------------------------------
+    # TAB 2: Step 2 Term Normalization
+    # -----------------------------------------------------------------------------
+    with tab_step2:
+        st.header("🏷️ Step 2: Specific Term Normalization")
+        st.caption(
+            "Maps verbatim Step 1 evidence quotes to controlled vocabularies without needing full publication text."
+        )
+
+        col1_s2, col2_s2 = st.columns(2)
+        s2_input_dir = col1_s2.text_input(
+            "Step 1 Evidence Directory",
+            value=str(DEFAULT_STEP1_OUT),
+        )
+        s2_output_dir = col2_s2.text_input(
+            "Step 2 Output Directory",
+            value=str(DEFAULT_STEP2_OUT),
+        )
+
+        col3_s2, col4_s2 = st.columns(2)
+        s2_prompt_file = col3_s2.text_input(
+            "Step 2 Prompt Template",
+            value=str(DEFAULT_PROMPT_DIR / "step2_specific_term_extraction.md"),
+        )
+        s2_log_file = col4_s2.text_input(
+            "Step 2 Log File",
+            value=str(DEFAULT_TEST_OUTPUT / "step2_specific_term_extraction.log"),
+        )
+
+        s2_mavedb_dir = st.text_input(
+            "MaveDB Metadata Directory (Optional)",
+            value=str(
+                ROOT_DIR
+                / "data_exploration"
+                / "MaveDB"
+                / "llm_metadata_extraction"
+                / "mavedb_metadata"
+            ),
+        )
+
+        col_s2_o1, col_s2_o2, col_s2_o3 = st.columns(3)
+        s2_overwrite = col_s2_o1.checkbox(
+            "Overwrite existing outputs", value=True, key="s2_ov"
+        )
+        s2_create_csv = col_s2_o2.checkbox(
+            "Create merged CSV", value=True, key="s2_csv"
+        )
+        s2_verbose = col_s2_o3.checkbox("Verbose logging", value=True, key="s2_verb")
+
+        st.divider()
+
+        # Pre-run File Status Table
+        s2_status_records = get_step2_file_status(
+            Path(s2_input_dir), Path(s2_output_dir)
+        )
+        st.subheader(
+            f"📂 Step 1 Evidence Files queued ({len(s2_status_records)} files found)"
+        )
+
+        if s2_status_records:
+            df_s2 = pd.DataFrame(s2_status_records)
+            st.dataframe(
+                df_s2,
+                column_config={
+                    "file_name": st.column_config.TextColumn("Evidence JSON File"),
+                    "status": st.column_config.TextColumn("Status"),
+                    "other_fields_count": st.column_config.TextColumn(
+                        "'Other' Fields Count"
+                    ),
+                    "output_path": st.column_config.TextColumn(
+                        "Normalized Output Path"
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
             )
-            if col_apply.button(
-                "🚀 Apply Approved Terms to SpecificTermExtractionSchema",
-                type="primary",
+
+        st.divider()
+
+        if st.button(
+            "🚀 Execute Step 2 Term Normalization", type="primary", key="btn_run_s2"
+        ):
+            with st.spinner(
+                "Normalizing evidence quotes to controlled vocabularies..."
             ):
                 try:
-                    applied_diff = apply_schema_update(
-                        approved_map,
-                        DEFAULT_SCHEMA_PATH,
-                        create_backup=create_backup,
+                    mavedb_dir_p = (
+                        Path(s2_mavedb_dir)
+                        if s2_mavedb_dir and Path(s2_mavedb_dir).exists()
+                        else None
                     )
-                    # Automatically export audit log
+                    normalize_evidence_artifacts(
+                        step1_dir=Path(s2_input_dir),
+                        output_dir=Path(s2_output_dir),
+                        log_file=Path(s2_log_file),
+                        prompt_template_file=Path(s2_prompt_file),
+                        mavedb_metadata_dir=mavedb_dir_p,
+                        max_workers=max_workers_slider,
+                        overwrite=s2_overwrite,
+                        model_name=selected_model,
+                        create_csv=s2_create_csv,
+                        verbose=s2_verbose,
+                    )
+                    st.success("Step 2 Term Normalization Complete!")
+                    st.balloons()
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Step 2 Normalization Failed: {ex}")
+
+        with st.expander("📜 Live Execution Log Stream"):
+            st.code(read_last_log_lines(Path(s2_log_file), num_lines=30))
+
+        # Output JSON Inspector
+        s2_out_files = (
+            sorted(list(Path(s2_output_dir).glob("*.json")))
+            if Path(s2_output_dir).is_dir()
+            else []
+        )
+        if s2_out_files:
+            with st.expander("🔍 Inspect Step 2 Normalized Outputs"):
+                selected_s2_json = st.selectbox(
+                    "Select Normalized Output JSON",
+                    options=[p.name for p in s2_out_files],
+                )
+                if selected_s2_json:
+                    p = Path(s2_output_dir) / selected_s2_json
+                    data_s2 = json.loads(p.read_text(encoding="utf-8"))
+
+                    # Highlight 'Other' fields
+                    other_fields = [k for k, v in data_s2.items() if v == "Other"]
+                    if other_fields:
+                        st.warning(
+                            f"Fields classified as 'Other': `{', '.join(other_fields)}`"
+                        )
+                    st.json(data_s2)
+
+    # -----------------------------------------------------------------------------
+    # TAB 3a: Step 3a Candidate Discovery
+    # -----------------------------------------------------------------------------
+    with tab_step3a:
+        st.header("💡 Step 3a: Candidate Discovery")
+        st.caption(
+            "Aggregates recurring 'Other' evidence snippets across the corpus and uses LLM synthesis to propose reusable ontology candidate terms."
+        )
+
+        col1_s3, col2_s3 = st.columns(2)
+        s3_step1_dir = col1_s3.text_input(
+            "Step 1 Evidence Directory (Source)",
+            value=str(DEFAULT_STEP1_OUT),
+        )
+        s3_step2_dir = col2_s3.text_input(
+            "Step 2 Normalized Directory (Filter)",
+            value=str(DEFAULT_STEP2_OUT),
+        )
+
+        col3_s3, col4_s3 = st.columns(2)
+        s3_output_dir = col3_s3.text_input(
+            "Step 3a Output Directory",
+            value=str(DEFAULT_STEP3_OUT),
+        )
+        s3_log_file = col4_s3.text_input(
+            "Step 3a Log File",
+            value=str(DEFAULT_TEST_OUTPUT / "step3_candidate_discovery.log"),
+        )
+
+        s3_prompt_file = st.text_input(
+            "Step 3a Prompt Template",
+            value=str(DEFAULT_PROMPT_DIR / "step3_candidate_discovery_prompt.md"),
+        )
+        s3_verbose = st.checkbox("Verbose prompt logging", value=True, key="s3_verb")
+
+        st.divider()
+
+        # Pre-run Corpus "Other" Analysis Summary
+        s3_summary_records = get_step3_other_corpus_summary(
+            Path(s3_step1_dir), Path(s3_step2_dir)
+        )
+        st.subheader(
+            f"📊 Corpus 'Other' Evidence Summary ({len(s3_summary_records)} fields with unmapped 'Other' evidence)"
+        )
+
+        if s3_summary_records:
+            df_s3 = pd.DataFrame(s3_summary_records)
+            st.dataframe(
+                df_s3,
+                column_config={
+                    "field_name": st.column_config.TextColumn("Metadata Field"),
+                    "other_instances_count": st.column_config.NumberColumn(
+                        "'Other' Instances Count"
+                    ),
+                    "sample_evidence": st.column_config.TextColumn(
+                        "Sample Verbatim Evidence"
+                    ),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info(
+                "No 'Other' fields currently detected across Step 2 outputs, or Step 2 outputs are missing."
+            )
+
+        st.divider()
+
+        if st.button(
+            "🚀 Execute Step 3a Candidate Discovery", type="primary", key="btn_run_s3"
+        ):
+            with st.spinner(
+                "Synthesizing ontology candidate terms from 'Other' evidence..."
+            ):
+                try:
+                    out_p = discover_candidates(
+                        step1_dir=Path(s3_step1_dir),
+                        step2_dir=Path(s3_step2_dir),
+                        output_dir=Path(s3_output_dir),
+                        log_file=Path(s3_log_file),
+                        prompt_template_file=Path(s3_prompt_file),
+                        model_name=selected_model,
+                        verbose=s3_verbose,
+                    )
+                    st.success(
+                        f"Step 3a Candidate Discovery Complete! Report saved to `{out_p}`."
+                    )
+                    st.balloons()
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Candidate Discovery Failed: {ex}")
+
+        with st.expander("📜 Live Execution Log Stream"):
+            st.code(read_last_log_lines(Path(s3_log_file), num_lines=30))
+
+    # -----------------------------------------------------------------------------
+    # TAB 3b: Step 3b Candidate Review & Schema Diff
+    # -----------------------------------------------------------------------------
+    with tab_step3b:
+        decisions = st.session_state.get("decisions", {})
+        if not decisions:
+            st.info(
+                f"No candidate decisions loaded yet. Ensure candidate discovery report exists at `{candidates_path}` and click 'Reload Session Cache'."
+            )
+        else:
+            field_options = list(decisions.keys())
+            field_labels = [
+                f"{field} ({len(decisions[field])})" for field in field_options
+            ]
+            selected_field_idx = st.selectbox(
+                "Select Field to Review",
+                options=range(len(field_options)),
+                format_func=lambda i: field_labels[i],
+            )
+            selected_field = field_options[selected_field_idx]
+
+            st.header(f"Field: `{selected_field}`")
+
+            existing_literals = get_existing_literals(DEFAULT_SCHEMA_PATH).get(
+                selected_field, []
+            )
+            if existing_literals:
+                with st.expander(
+                    f"📋 Current Allowed Vocabulary ({len(existing_literals)} terms)",
+                    expanded=False,
+                ):
+                    st.write(", ".join([f"`{term}`" for term in existing_literals]))
+
+            col_b1, col_b2, col_b3, col_filter = st.columns([1, 1, 1, 3])
+            if col_b1.button("✅ Approve All in Field", key="rev_app_all"):
+                for item in decisions[selected_field]:
+                    item["status"] = "Approved"
+                st.rerun()
+            if col_b2.button("❌ Reject All in Field", key="rev_rej_all"):
+                for item in decisions[selected_field]:
+                    item["status"] = "Rejected"
+                st.rerun()
+            if col_b3.button("🔄 Reset Field to Pending", key="rev_rst_all"):
+                for item in decisions[selected_field]:
+                    item["status"] = "Pending"
+                st.rerun()
+
+            status_filter = col_filter.radio(
+                "Filter Candidate Status",
+                options=["All", "Pending", "Approved", "Rejected"],
+                horizontal=True,
+                key="rev_status_filter",
+            )
+
+            st.divider()
+
+            candidates_to_render = []
+            for idx, item in enumerate(decisions[selected_field]):
+                if status_filter == "All" or item["status"] == status_filter:
+                    candidates_to_render.append((idx, item))
+
+            for idx, item in candidates_to_render:
+                with st.container(border=True):
+                    col_term, col_actions = st.columns([3, 2])
+
+                    with col_term:
+                        new_term_val = st.text_input(
+                            "Proposed Term Label",
+                            value=item["term"],
+                            key=f"term_input_{selected_field}_{idx}",
+                            help="Edit the term label if needed before approving.",
+                        )
+                        item["term"] = new_term_val.strip()
+
+                    with col_actions:
+                        st.write("**Decision:**")
+                        btn_a, btn_r, btn_p = st.columns(3)
+
+                        status = item["status"]
+
+                        if btn_a.button(
+                            "✅ Approve",
+                            key=f"app_{selected_field}_{idx}",
+                            type="primary" if status == "Approved" else "secondary",
+                        ):
+                            item["status"] = "Approved"
+                            st.rerun()
+                        if btn_r.button(
+                            "❌ Reject",
+                            key=f"rej_{selected_field}_{idx}",
+                            type="primary" if status == "Rejected" else "secondary",
+                        ):
+                            item["status"] = "Rejected"
+                            st.rerun()
+                        if btn_p.button("↩️ Reset", key=f"rst_{selected_field}_{idx}"):
+                            item["status"] = "Pending"
+                            st.rerun()
+
+                    if item["status"] == "Approved":
+                        st.success("Status: Approved (in schema or marked for update)")
+                    elif item["status"] == "Rejected":
+                        st.error("Status: Rejected")
+                    else:
+                        st.info("Status: Pending Review")
+
+                    if item["rationale"]:
+                        st.markdown(f"**Rationale:** {item['rationale']}")
+
+                    evidence = item["supporting_evidence"]
+                    if evidence:
+                        with st.expander(
+                            f"💬 Supporting Evidence Snippets ({len(evidence)})"
+                        ):
+                            for ev_idx, ev_item in enumerate(evidence):
+                                if isinstance(ev_item, dict):
+                                    stmt = (
+                                        ev_item.get("evidence_statement")
+                                        or ev_item.get("evidence")
+                                        or ""
+                                    )
+                                    src = ev_item.get("source_file", "unknown")
+                                    st.markdown(f"**{ev_idx + 1}. Source:** `{src}`")
+                                    st.caption(f'> "{stmt}"')
+                                else:
+                                    st.caption(f'> "{ev_item}"')
+
+            st.divider()
+
+            # Build approved terms mapping for Schema Diff
+            approved_map: dict[str, list[str]] = {}
+            for field, c_list in decisions.items():
+                approved_terms = [
+                    c["term"] for c in c_list if c["status"] == "Approved" and c["term"]
+                ]
+                if approved_terms:
+                    approved_map[field] = approved_terms
+
+            st.subheader("📝 Live Unified Code Diff (`llm_curation_schema.py`)")
+            if approved_map:
+                try:
+                    diff_str = get_schema_diff(approved_map, DEFAULT_SCHEMA_PATH)
+                    if diff_str.strip():
+                        st.code(diff_str, language="diff")
+                    else:
+                        st.info(
+                            "All currently approved terms are already merged into the schema."
+                        )
+                except Exception as e:
+                    st.error(f"Error computing diff: {e}")
+
+                col_apply, col_save_json = st.columns(2)
+                create_backup = col_apply.checkbox(
+                    "Create `.py.bak` backup before applying", value=True
+                )
+                if col_apply.button(
+                    "🚀 Apply Approved Terms to SpecificTermExtractionSchema",
+                    type="primary",
+                ):
+                    try:
+                        apply_schema_update(
+                            approved_map,
+                            DEFAULT_SCHEMA_PATH,
+                            create_backup=create_backup,
+                        )
+                        output_path = (
+                            candidates_path.parent / "approved_ontology_terms.json"
+                        )
+                        output_path.write_text(
+                            json.dumps(decisions, indent=2), encoding="utf-8"
+                        )
+                        st.success(
+                            "Successfully updated `SpecificTermExtractionSchema` in `llm_curation_schema.py` and saved audit log!"
+                        )
+                        st.balloons()
+                    except Exception as ex:
+                        st.error(f"Failed to update schema: {ex}")
+
+                if col_save_json.button("💾 Export Decision Audit Trail (JSON)"):
                     output_path = (
                         candidates_path.parent / "approved_ontology_terms.json"
                     )
                     output_path.write_text(
                         json.dumps(decisions, indent=2), encoding="utf-8"
                     )
+                    st.success(f"Saved decisions to `{output_path}`")
 
-                    st.success(
-                        "Successfully updated `SpecificTermExtractionSchema` in `llm_curation_schema.py` and saved audit log!"
-                    )
-                    st.balloons()
-                except Exception as ex:
-                    st.error(f"Failed to update schema: {ex}")
-
-            if col_save_json.button("💾 Export Decision Audit Trail (JSON)"):
-                output_path = candidates_path.parent / "approved_ontology_terms.json"
-                output_path.write_text(
-                    json.dumps(decisions, indent=2), encoding="utf-8"
-                )
-                st.success(f"Saved decisions to `{output_path}`")
-
-    with tab_backfill:
+    # -----------------------------------------------------------------------------
+    # TAB 5: Step 4 Backfill Approved Terms
+    # -----------------------------------------------------------------------------
+    with tab_step4:
         st.header("🔄 Step 4: Backfill Approved Terms")
         st.caption(
             "Visual preview of 'Other' replacements that will be applied to Step 2 copies when executing Step 4."
         )
 
-        default_step2_dir = (
-            candidates_path.parent.parent / "step2_normalized"
-            if candidates_path.parent.parent.joinpath("step2_normalized").exists()
-            else Path.cwd() / "test_output" / "step2_normalized"
-        )
-        default_step4_dir = (
-            candidates_path.parent.parent / "step4_backfilled"
-            if candidates_path.parent.parent.exists()
-            else Path.cwd() / "test_output" / "step4_backfilled"
-        )
-
         col_b_in, col_b_out = st.columns(2)
         step2_dir_input = col_b_in.text_input(
             "Step 2 Source Directory",
-            value=str(default_step2_dir),
+            value=str(DEFAULT_STEP2_OUT),
             help="Directory containing Step 2 normalized JSON files.",
         )
         step4_dir_input = col_b_out.text_input(
             "Step 4 Output Directory",
-            value=str(default_step4_dir),
+            value=str(DEFAULT_STEP4_OUT),
             help="Directory where backfilled Step 4 copies will be written.",
         )
 
+        decisions = st.session_state.get("decisions", {})
         decisions_file_path = candidates_path.parent / "approved_ontology_terms.json"
 
         # Compute preview of planned changes BEFORE writing
@@ -407,7 +750,6 @@ def main():
         if preview_records:
             df_preview = pd.DataFrame(preview_records)
 
-            # Preview Metrics
             unique_datasets = df_preview["dataset_id"].nunique()
             unique_files = df_preview["source_file"].nunique()
             unique_fields = df_preview["field_name"].nunique()
@@ -469,7 +811,6 @@ def main():
             type="primary",
             disabled=len(preview_records) == 0,
         ):
-            # Save current decisions
             decisions_file_path.parent.mkdir(parents=True, exist_ok=True)
             decisions_file_path.write_text(
                 json.dumps(decisions, indent=2), encoding="utf-8"
