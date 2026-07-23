@@ -1,0 +1,44 @@
+Bootstrap: docker
+From: python:3.10-slim
+
+%labels
+    Maintainer PerturbationCatalogue
+    Version 1.1.0
+    Description Singularity image for Perturb-seq pipeline containing kb-python and scanpy/anndata stack.
+
+%post
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libhdf5-dev \
+        hdf5-tools \
+        curl \
+        ca-certificates \
+        zlib1g-dev \
+        libbz2-dev \
+        liblzma-dev
+
+    # Install kb-python and the data science stack
+    pip install --no-cache-dir \
+        kb-python \
+        anndata \
+        pandas \
+        numpy \
+        scipy \
+        h5py \
+        openpyxl
+
+    # Clean up to reduce image size
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+%runscript
+    exec kb "$@"
+
+%help
+    This container provides kb-python and the necessary Python stack (anndata, pandas, etc.) 
+    for the Perturb-seq Raw Data Processing Pipeline.
+    Build with: singularity build kb_python.sif Singularity.def
