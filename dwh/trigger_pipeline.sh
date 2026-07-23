@@ -10,6 +10,7 @@
 #   - Environment variables set (via dev_secrets or equivalent):
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
+#       Optional: ES_INDEX_SET (defaults to empty), OPENTARGETS_RELEASE (defaults to 26.03)
 #
 
 set -euo pipefail
@@ -63,6 +64,14 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     exit 1
 fi
 
+if [[ "$GCLOUD_PROJECT" == *"prod"* ]]; then
+    echo "ERROR: Refusing to run the pipeline in a production environment: $GCLOUD_PROJECT" >&2
+    exit 1
+fi
+
+OPENTARGETS_RELEASE="${OPENTARGETS_RELEASE:-26.03}"
+ES_INDEX_SET="${ES_INDEX_SET:-}"
+
 # ---------------------------------------------------------------------------
 # Resolve paths
 # ---------------------------------------------------------------------------
@@ -85,8 +94,11 @@ echo "============================================"
 echo "  Project:            $GCLOUD_PROJECT"
 echo "  Region:             $GCLOUD_REGION"
 echo "  BQ Dataset:         $BQ_DATASET"
+echo "  BQ Reference:       $BQ_DATASET.opentargets_targets"
+echo "  OT Release:         $OPENTARGETS_RELEASE"
 echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
+echo "  ES Index Set:       ${ES_INDEX_SET:-<default>}"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
 echo "============================================"
 echo ""
@@ -96,16 +108,18 @@ BUILD_ID=$(gcloud builds submit "$SCRIPT_DIR" \
     --region="$GCLOUD_REGION" \
     --config="$SCRIPT_DIR/cloudbuild.yaml" \
     --gcs-source-staging-dir="gs://$GCLOUD_TMP_BUCKET/cloudbuild-source" \
-    --substitutions="\
-_GCLOUD_PROJECT=$GCLOUD_PROJECT,\
-_GCLOUD_REGION=$GCLOUD_REGION,\
-_BQ_DATASET=$BQ_DATASET,\
-_BQ_LOCATION=$BQ_LOCATION,\
-_GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET,\
-_PG_CONN_INTERNAL=$PG_CONN_INTERNAL,\
-_ES_URL=$ES_URL,\
-_ES_USERNAME=$ES_USERNAME,\
-_ES_PASSWORD=$ES_PASSWORD,\
+    --substitutions="^|^\
+_GCLOUD_PROJECT=$GCLOUD_PROJECT|\
+_GCLOUD_REGION=$GCLOUD_REGION|\
+_BQ_DATASET=$BQ_DATASET|\
+_OPENTARGETS_RELEASE=$OPENTARGETS_RELEASE|\
+_BQ_LOCATION=$BQ_LOCATION|\
+_GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET|\
+_PG_CONN_INTERNAL=$PG_CONN_INTERNAL|\
+_ES_URL=$ES_URL|\
+_ES_USERNAME=$ES_USERNAME|\
+_ES_PASSWORD=$ES_PASSWORD|\
+_ES_INDEX_SET=$ES_INDEX_SET|\
 _SUPPRESS_DATASETS=$SUPPRESS_DATASETS" \
     --async \
     --format='value(id)')

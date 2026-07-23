@@ -6,15 +6,18 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs three stages sequentially:
+The pipeline runs four stages sequentially:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
-| 1. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
-| 2. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
-| 3. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
+| 1. **Open Targets reference** | (Native) | Loads Open Targets Platform targets into the configured BQ reference table | ~minutes |
+| 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
+| 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
+| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
+For the ENSG dev stack, the Open Targets reference stage writes to
+`BQ_DATASET.opentargets_targets`.
 
 ## Prerequisites
 
@@ -36,7 +39,11 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`
+The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
+
+`OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
+optional and defaults to empty. Its value is appended directly to all three
+Elasticsearch index names.
 
 ### 4. Grant IAM permissions to Cloud Build service account
 
@@ -107,6 +114,18 @@ To exclude datasets from metadata tables (while keeping them in data tables):
 
 For debugging or partial re-runs, you can run each stage manually.
 
+### Open Targets reference
+
+To reload the Open Targets reference table manually, you can execute a native serverless load command directly via the BigQuery CLI:
+
+```bash
+bq load --source_format=PARQUET \
+    --location=$BQ_LOCATION \
+    --replace \
+    $GCLOUD_PROJECT:$BQ_DATASET.opentargets_targets \
+    "gs://open-targets-data-releases/$OPENTARGETS_RELEASE/output/target/*.parquet"
+```
+
 ### dbt
 
 ```bash
@@ -146,6 +165,13 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
+With an empty `ES_INDEX_SET`, projections use dated indexes and update the
+`dataset-summary`, `target-summary`, and `landing-page-summary` aliases, keeping
+the three newest dated indexes in each family. With a custom suffix, for example
+`-ensg-dev`, projections overwrite the standalone `dataset-summary-ensg-dev`,
+`target-summary-ensg-dev`, and `landing-page-summary-ensg-dev` indexes without
+updating aliases or pruning old indexes.
+
 ## Creating the PostgreSQL instance
 
 Create the database at: https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_PLUS_DATA_CACHE_ENABLED_DEV_TEMPLATE
@@ -172,36 +198,36 @@ The script expects these materialized views to exist for `perturb_seq_dea`. Crea
 CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
 SELECT
     dataset_id,
-    perturbed_target_symbol,
+    perturbed_target_ensg,
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
 FROM perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, perturbed_target_symbol;
+WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
+GROUP BY dataset_id, perturbed_target_ensg;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_symbol);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
 SELECT
     dataset_id,
-    gene,
+    effect_gene_ensg,
     COUNT(*) AS n_total,
     COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
     COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
     AVG(score_value) AS avg_score
 FROM perturb_seq_dea
-WHERE padj <= 0.05
-GROUP BY dataset_id, gene;
+WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
+GROUP BY dataset_id, effect_gene_ensg;
 
-CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, gene);
+CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);
 
 CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
 SELECT
     dataset_id,
     COUNT(*) AS n_total
 FROM perturb_seq_dea
-WHERE gene IS NOT NULL
+WHERE effect_gene_ensg IS NOT NULL
 GROUP BY dataset_id;
 
 CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);

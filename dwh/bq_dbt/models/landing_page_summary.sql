@@ -70,6 +70,10 @@ with
         order by n_datasets desc
         limit 10
     ),
+    target_counts as (
+        select count(*) as n_targets
+        from {{ ref("target_summary") }}
+    ),
 
     landing_page_summary as (
         select
@@ -77,7 +81,7 @@ with
             count(distinct experiment_title) as n_experiments,
             min(study_year) as min_year,
             max(study_year) as max_year,
-            count(distinct perturbed_target_symbol) as n_targets,
+            (select n_targets from target_counts) as n_targets,
             count(distinct tissue_label) as n_tissues,
             count(distinct cell_type_label) as n_cell_types,
             count(distinct cell_line_label) as n_cell_lines,

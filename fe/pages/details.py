@@ -26,9 +26,11 @@ from components.target_data_table import TargetDataTable
 from utils import (
     BACKEND_URL,
     COLORS,
+    STRICT_GENE_FILTER_NOTE,
     fetch_dataset_rows,
     fetch_modality_datasets,
     fetch_perturb_seq_gsea,
+    fetch_target_identity,
     format_number,
 )
 
@@ -111,11 +113,12 @@ def layout(target_name: Optional[str] = None, **kwargs):
         for config in SECTION_CONFIGS
     )
 
-    heading = target_name or "Target"
+    target = fetch_target_identity(target_name) if target_name else {}
+    heading = target.get("approved_symbol") or target_name or "Target"
 
     sections = []
     for config in SECTION_CONFIGS:
-        # Add gene search box for Perturb-Seq (Perturbed) section header
+        # Add effect gene search box for Perturb-Seq (Perturbed) section header
         # For other sections, create hidden input to satisfy MATCH callback
         if config["id"] == "perturb_seq_perturbed":
             gene_search_input = dcc.Input(
@@ -139,13 +142,13 @@ def layout(target_name: Optional[str] = None, **kwargs):
                 style={"display": "none"},
             )
 
-        # Add perturbed gene search box for Perturb-Seq (Affected) section
+        # Add perturbed target search box for Perturb-Seq (Affected) section
         # For other sections, create hidden input to satisfy MATCH callback
         if config["id"] == "perturb_seq_affected":
             perturbed_gene_search_input = dcc.Input(
                 id={"type": "perturbed-gene-search", "section": config["id"]},
                 type="text",
-                placeholder="Search by perturbed gene…",
+                placeholder="Search by perturbed target…",
                 debounce=True,
                 className="form-control form-control-sm",
                 style={
@@ -157,7 +160,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
             perturbed_gene_search_input = dcc.Input(
                 id={"type": "perturbed-gene-search", "section": config["id"]},
                 type="text",
-                placeholder="Search by perturbed gene…",
+                placeholder="Search by perturbed target…",
                 debounce=True,
                 className="form-control form-control-sm",
                 style={"display": "none"},
@@ -193,7 +196,7 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         id={"type": "dataset-summary", "section": config["id"]},
                         className="mb-2",
                     ),
-                    # Search boxes row: Search datasets, Search by perturbed gene, and Search by effect gene
+                    # Search boxes row: search datasets, perturbed target, and effect gene
                     html.Div(
                         [
                             html.Div(
@@ -241,10 +244,23 @@ def layout(target_name: Optional[str] = None, **kwargs):
                                     else {}
                                 ),
                             ),
+                            *(
+                                [
+                                    html.Small(
+                                        STRICT_GENE_FILTER_NOTE,
+                                        className="text-muted",
+                                    )
+                                ]
+                                if config["id"]
+                                in ("perturb_seq_perturbed", "perturb_seq_affected")
+                                else []
+                            ),
                         ],
                         style={
                             "display": "flex",
                             "alignItems": "center",
+                            "flexWrap": "wrap",
+                            "gap": "0.5rem",
                             "marginBottom": "1rem",
                         },
                     ),
@@ -306,6 +322,16 @@ def layout(target_name: Optional[str] = None, **kwargs):
                         f"Target: {heading}",
                         className="display-5 fw-bold mb-2 text-center",
                         style={"color": COLORS["primary"]},
+                    ),
+                    *(
+                        [
+                            html.Div(
+                                target_name,
+                                className="text-muted text-center small mb-2",
+                            )
+                        ]
+                        if target_name and target_name != heading
+                        else []
                     ),
                     html.P(
                         "Explore perturbation datasets across modalities.",
@@ -565,7 +591,7 @@ def render_section(store_data: Optional[Dict[str, Any]]):
         ),
         section_id=section_id,
         download_url_base=download_url_base,
-        perturbed_gene_name=(
+        perturbed_target_ensg=(
             target_name if section_id == "perturb_seq_perturbed" else None
         ),
     )
@@ -930,12 +956,12 @@ def _fetch_section_payload(
         cleaned = dataset_search.strip()
         if cleaned:
             filters["dataset_metadata"] = cleaned
-    # Add effect_gene_name filter for Perturb-Seq (Perturbed) section
+    # Add effect gene query filter for Perturb-Seq (Perturbed) section
     if config["id"] == "perturb_seq_perturbed" and gene_search:
         cleaned_gene = gene_search.strip()
         if cleaned_gene:
             filters["effect_gene_name"] = cleaned_gene
-    # Add perturbation_gene_name filter for Perturb-Seq (Affected) section
+    # Add perturbed target query filter for Perturb-Seq (Affected) section
     if config["id"] == "perturb_seq_affected" and perturbed_gene_search:
         cleaned_perturbed_gene = perturbed_gene_search.strip()
         if cleaned_perturbed_gene:
@@ -1058,8 +1084,8 @@ def _paginate_dataset_rows(
         )
         return updated_store
 
-    # Get the target symbol (perturbed target) for the API call
-    target_symbol = updated_store.get("target_name")
+    # Get the target ENSG for the API call
+    target_ensg = updated_store.get("target_name")
 
     # Get the correct filter field based on the section
     section_id = updated_store.get("section")
@@ -1096,11 +1122,11 @@ def _paginate_dataset_rows(
         # Build filters for MAVE
         filters = (
             {
-                config.get("filter_field", "perturbation_gene_name"): target_symbol,
+                config.get("filter_field", "perturbation_gene_name"): target_ensg,
                 "effect_score_name": "score",
                 "perturbation_position": new_position_range,
             }
-            if target_symbol and config
+            if target_ensg and config
             else {}
         )
 
@@ -1142,11 +1168,11 @@ def _paginate_dataset_rows(
             else "perturbation_gene_name"
         )
 
-        # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_symbol}&limit=5&offset=X
+        # Call API: /v1/{modality}/{dataset_id}/search?{filter_field}={target_ensg}&limit=5&offset=X
         response = fetch_dataset_rows(
             modality,
             dataset_id,
-            filters={filter_field: target_symbol} if target_symbol else {},
+            filters={filter_field: target_ensg} if target_ensg else {},
             offset=new_offset,
             limit=DATASET_LOAD_MORE_SIZE,  # Always 5 rows per page
         )
@@ -1194,7 +1220,7 @@ def _paginate_dataset_rows(
         {
             "type": "gsea-modal-trigger",
             "dataset_id": ALL,
-            "perturbed_gene": ALL,
+            "perturbed_target_ensg": ALL,
             "dataset_cell_types": ALL,
         },
         "n_clicks",
@@ -1215,26 +1241,26 @@ def handle_gsea_modal(n_clicks_list):
     triggered = ctx.triggered[0]
     prop_id = triggered["prop_id"]
 
-    # Parse the ID to get dataset_id, perturbed_gene, and dataset_cell_types
+    # Parse the ID to get dataset_id, perturbed target ENSG, and dataset_cell_types
     try:
         id_str = prop_id.rsplit(".", 1)[0]
         button_id = json.loads(id_str)
         dataset_id = button_id.get("dataset_id", "")
-        perturbed_gene = button_id.get("perturbed_gene", "")
+        perturbed_target_ensg = button_id.get("perturbed_target_ensg", "")
         dataset_cell_types = button_id.get("dataset_cell_types", "")
     except (json.JSONDecodeError, KeyError):
         raise PreventUpdate
 
-    if not dataset_id or not perturbed_gene:
+    if not dataset_id or not perturbed_target_ensg:
         raise PreventUpdate
 
     # Fetch GSEA data
-    response = fetch_perturb_seq_gsea(dataset_id, perturbed_gene)
+    response = fetch_perturb_seq_gsea(dataset_id, perturbed_target_ensg)
 
     if response.get("error"):
         return (
             True,
-            f"GSEA Results: {perturbed_gene}",
+            f"GSEA Results: {perturbed_target_ensg}",
             html.Div(
                 f"Error loading GSEA data: {response['error']}",
                 className="text-danger",
@@ -1247,7 +1273,7 @@ def handle_gsea_modal(n_clicks_list):
     if not results:
         return (
             True,
-            f"GSEA Results: {perturbed_gene}",
+            f"GSEA Results: {perturbed_target_ensg}",
             html.Div("No GSEA results available.", className="text-muted fst-italic"),
             None,
         )
@@ -1340,11 +1366,11 @@ def handle_gsea_modal(n_clicks_list):
         style={"fontSize": "0.9rem"},
     )
 
-    modal_title = f"Pathway Enrichment (GSEA): {perturbed_gene}"
+    modal_title = f"Pathway Enrichment (GSEA): {perturbed_target_ensg}"
 
     # Prepare data for download (list of dicts for CSV export)
     download_data = {
-        "perturbed_gene": perturbed_gene,
+        "perturbed_target_ensg": perturbed_target_ensg,
         "rows": [],
     }
     for result in results:
@@ -1400,7 +1426,7 @@ def download_gsea_data(n_clicks, gsea_data):
         raise PreventUpdate
 
     rows = gsea_data.get("rows", [])
-    perturbed_gene = gsea_data.get("perturbed_gene", "unknown")
+    perturbed_target_ensg = gsea_data.get("perturbed_target_ensg", "unknown")
 
     if not rows:
         raise PreventUpdate
@@ -1432,6 +1458,6 @@ def download_gsea_data(n_clicks, gsea_data):
         csv_lines.append(",".join(csv_row))
 
     csv_content = "\n".join(csv_lines)
-    filename = f"gsea_{perturbed_gene}.csv"
+    filename = f"gsea_{perturbed_target_ensg}.csv"
 
     return dict(content=csv_content, filename=filename)

@@ -10,15 +10,15 @@ with
         union all by name
         select distinct * except (sample_id)
         from {{ source("perturb_seq", "metadata") }}
-        where not (
-            -- Exclude rows where EVERY '|' separated part contains "control",
+        where
+            -- Exclude rows where EVERY '|' separated ENSG part contains "control",
             -- meaning that the sample *only* contains controls.
-            not exists (
+            perturbed_target_ensg is null
+            or exists (
                 select 1
-                from unnest(split(perturbed_target_symbol, '|')) as part
+                from unnest(split(cast(perturbed_target_ensg as string), "|")) as part
                 where lower(part) not like '%control%'
             )
-        )
     )
 
 select *

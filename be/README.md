@@ -2,6 +2,8 @@
 
 ## Environment variables
 Before running either of the deployment options below, run `dev_secrets`.
+`ES_INDEX_SET` is optional and selects a suffixed Elasticsearch index set; it
+defaults to the standard indexes when unset.
 
 If you are running locally and as such connecting to Postges externally, allow connections from your IP:
 * https://console.cloud.google.com/sql/instances
@@ -28,6 +30,7 @@ docker run \
   -e ES_URL=${ES_URL} \
   -e ES_USERNAME=${ES_USERNAME} \
   -e ES_PASSWORD=${ES_PASSWORD} \
+  -e ES_INDEX_SET=${ES_INDEX_SET:-} \
   -e PS_HOST=${PS_HOST} \
   -e PS_PORT=${PS_PORT} \
   -e PS_USER=${PS_USER} \

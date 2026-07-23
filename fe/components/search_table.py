@@ -104,8 +104,10 @@ def render_targets_table(results):
 
     rows = []
     for record in results:
-        symbol = record.get("perturbed_target_symbol", "N/A")
-        results_store[symbol] = record
+        target_id = record.get("ensembl_gene_id") or "N/A"
+        approved_symbol = record.get("approved_symbol") or target_id
+        approved_name = record.get("approved_name")
+        results_store[target_id] = record
 
         n_sc_perturb_seq = format_count(record.get("n_perturb_seq"))
         n_sc_perturb_seq_up = format_count(record.get("n_sig_perturb_pairs_up"))
@@ -173,10 +175,23 @@ def render_targets_table(results):
                 [
                     html.Td(
                         dcc.Link(
-                            symbol,
-                            href=f"/perturbation-catalogue/target/{quote(symbol, safe='')}",
-                            className="text-decoration-none fw-semibold",
-                            style={"color": COLORS["primary"]},
+                            html.Div(
+                                [
+                                    html.Div(
+                                        approved_symbol,
+                                        className="fw-bold",
+                                        style={"color": COLORS["primary"]},
+                                    ),
+                                    html.Div(
+                                        target_id,
+                                        className="text-muted",
+                                        style={"fontSize": "0.75rem"},
+                                    ),
+                                ],
+                                title=approved_name or approved_symbol,
+                            ),
+                            href=f"/perturbation-catalogue/target/{quote(target_id, safe='')}",
+                            className="text-decoration-none",
                         )
                     ),
                     html.Td(

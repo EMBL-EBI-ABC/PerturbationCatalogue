@@ -59,6 +59,10 @@ DATA_MODALITIES_COLOURS = {
     "MAVE": COLORS["red"],
 }
 
+STRICT_GENE_FILTER_NOTE = (
+    "Gene filters match exactly one canonical gene symbol or Ensembl Gene ID."
+)
+
 
 def reprocessed_badge(value: Any, class_name: str = "ms-2"):
     """Provenance badge for a dataset.
@@ -156,6 +160,19 @@ def fetch_search_results(
             "facets": {},
             "search_after": None,
         }
+
+
+def fetch_target_identity(ensembl_gene_id: str) -> Dict[str, Any]:
+    """Return the exact target record for an Ensembl gene ID."""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/v1/target/{ensembl_gene_id}", timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        print(f"Error fetching target {ensembl_gene_id}: {exc}")
+        return {}
 
 
 def fetch_all_search_results(
@@ -296,14 +313,13 @@ def fetch_dataset(dataset_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[s
 
 def fetch_perturb_seq_gsea(
     dataset_id: str,
-    perturbed_gene_name: str,
+    perturbation_gene_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Fetch GSEA results for a perturbed gene in a dataset."""
+    """Fetch GSEA results for a perturbed target in a dataset."""
     try:
-        params = {
-            "dataset_id": dataset_id,
-            "perturbed_gene_name": perturbed_gene_name,
-        }
+        params = {"dataset_id": dataset_id}
+        if perturbation_gene_name:
+            params["perturbation_gene_name"] = perturbation_gene_name
         response = requests.get(
             f"{BACKEND_URL}/v1/perturb-seq-gsea",
             params=params,
@@ -312,7 +328,8 @@ def fetch_perturb_seq_gsea(
         response.raise_for_status()
         return {"results": response.json(), "error": None}
     except Exception as exc:
-        error_message = f"Error fetching GSEA data for {perturbed_gene_name}: {exc}"
+        target = perturbation_gene_name or "target"
+        error_message = f"Error fetching GSEA data for {target}: {exc}"
         print(error_message)
         return {"results": [], "error": error_message}
 
