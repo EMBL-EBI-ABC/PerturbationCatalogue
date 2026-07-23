@@ -32,7 +32,7 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
-# ponytail: only perturb-seq is partitioned to avoid table clutter from 1000s of small datasets.
+# Only perturb-seq is partitioned to avoid table clutter from thousands of small datasets.
 PARTITIONED_TABLES = {
     "perturb_seq_dea",
     "perturb_seq_gsea",
@@ -235,22 +235,6 @@ MATERIALIZED_VIEW_DEFINITIONS = {
         "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
     },
 }
-
-
-def parse_force_pg_tables(raw_tables: Optional[str]) -> Set[str]:
-    """Parse comma-separated logical table names that should be fully reloaded."""
-    if not raw_tables:
-        return set()
-
-    tables = {table.strip() for table in raw_tables.split(",") if table.strip()}
-    unknown_tables = tables - set(TABLES_TO_SYNC)
-    if unknown_tables:
-        valid_tables = ", ".join(TABLES_TO_SYNC)
-        unknown = ", ".join(sorted(unknown_tables))
-        raise RuntimeError(
-            f"Unknown forced PG table(s): {unknown}. Valid values: {valid_tables}"
-        )
-    return tables
 
 
 # ------------------------------------------------------------------------------
@@ -498,7 +482,7 @@ def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
             try:
                 blob.delete()
             except Exception as e:
-                # ponytail: ignore if file is already deleted or can't be found
+                # Ignore if file is already deleted or cannot be found
                 logging.warning(f"        Could not delete blob {blob.name}: {e}")
     except Exception as e:
         logging.warning(f"        GCS cleanup failed for prefix {gcs_prefix}: {e}")
@@ -915,14 +899,7 @@ def main():
         action="store_true",
         help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
     )
-    parser.add_argument(
-        "--force-pg-tables",
-        default="",
-        help="Comma-separated logical table names to fully reload even when sync_state is current.",
-    )
-
     args = parser.parse_args()
-    force_pg_tables = parse_force_pg_tables(args.force_pg_tables)
 
     # Validate required arguments
     missing = []
@@ -950,7 +927,7 @@ def main():
     conn = psycopg2.connect(args.pg_conn)
     conn.autocommit = True
 
-    # ponytail: unconditionally terminate any other backend processes to prevent hanging locks.
+    # Unconditionally terminate any other backend processes to prevent hanging locks.
     logging.info("Terminating other database sessions to prevent locks...")
     with conn.cursor() as cursor:
         cursor.execute(
@@ -1030,11 +1007,6 @@ def main():
                     )
                     # Reimport all datasets
                     to_insert = list(bq_info.keys())
-                elif table_name in force_pg_tables:
-                    logging.info(
-                        f"  Force reload requested for {table_name}; all BigQuery datasets will be reloaded."
-                    )
-                    to_update = list(bq_info)
                 else:
                     for ds_id, (bq_ts, bq_count) in bq_info.items():
                         if ds_id not in pg_info:

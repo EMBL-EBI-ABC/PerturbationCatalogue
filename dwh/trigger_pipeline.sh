@@ -3,7 +3,7 @@
 # Trigger the DWH pipeline on Google Cloud Build.
 #
 # Usage:
-#   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]
+#   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
@@ -19,7 +19,6 @@ set -euo pipefail
 # Parse arguments
 # ---------------------------------------------------------------------------
 SUPPRESS_DATASETS=""
-FORCE_PG_TABLES=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,13 +26,9 @@ while [[ $# -gt 0 ]]; do
             SUPPRESS_DATASETS="$2"
             shift 2
             ;;
-        --force-pg-tables)
-            FORCE_PG_TABLES="$2"
-            shift 2
-            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--suppress-datasets id1,id2,...] [--force-pg-tables table1,table2,...]"
+            echo "Usage: $0 [--suppress-datasets id1,id2,...]"
             exit 1
             ;;
     esac
@@ -105,7 +100,6 @@ echo "  BQ Location:        $BQ_LOCATION"
 echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
 echo "  ES Index Set:       ${ES_INDEX_SET:-<default>}"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
-echo "  Force PG Tables:    ${FORCE_PG_TABLES:-<none>}"
 echo "============================================"
 echo ""
 
@@ -126,8 +120,7 @@ _ES_URL=$ES_URL|\
 _ES_USERNAME=$ES_USERNAME|\
 _ES_PASSWORD=$ES_PASSWORD|\
 _ES_INDEX_SET=$ES_INDEX_SET|\
-_SUPPRESS_DATASETS=$SUPPRESS_DATASETS|\
-_FORCE_PG_TABLES=$FORCE_PG_TABLES" \
+_SUPPRESS_DATASETS=$SUPPRESS_DATASETS" \
     --async \
     --format='value(id)')
 
