@@ -2,7 +2,7 @@
 
 ## 1. Create a manual backup in dev
 ```bash
-dev_secrets
+pc_secrets dev
 export BACKUP_DESCRIPTION="cross-project migration backup"
 # Capture the operation ID from the backup creation
 export BACKUP_OP=$(gcloud sql backups create \
@@ -31,7 +31,7 @@ export BACKUP_PROJECT=${GCLOUD_PROJECT}
 
 ## 2. Create a new clean instance in prod
 ```bash
-prod_secrets
+pc_secrets prod
 export NEW_INSTANCE_ID=perturbation-catalogue-data-$(date +%Y-%m-%d)
 gcloud sql instances create ${NEW_INSTANCE_ID} \
   --project=${GCLOUD_PROJECT} \
@@ -59,7 +59,7 @@ gcloud sql users set-password postgres \
 
 ## 3. Restore the backup to the new instance
 ```bash
-prod_secrets
+pc_secrets prod
 export RESTORE_OP=$(gcloud sql backups restore ${BACKUP_ID} \
   --backup-instance=${BACKUP_INSTANCE} \
   --backup-project=${BACKUP_PROJECT} \
@@ -82,7 +82,7 @@ gcloud beta sql operations wait ${RESTORE_OP} \
 
 ### 5.1. Delete migration backup
 ```bash
-dev_secrets
+pc_secrets dev
 gcloud sql backups delete ${BACKUP_ID} \
   --instance=${BACKUP_INSTANCE} \
   --project=${GCLOUD_PROJECT}
