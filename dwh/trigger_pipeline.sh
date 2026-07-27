@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
-#   - Environment variables set (via dev_secrets or equivalent):
+#   - Environment variables set (via pc_secrets dev or equivalent):
 #       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
 #       Optional: ES_INDEX_SET (defaults to empty), OPENTARGETS_RELEASE (defaults to 26.03)
@@ -60,7 +60,7 @@ if [[ ${#missing[@]} -gt 0 ]]; then
     echo "ERROR: The following required environment variables are not set:"
     printf '  %s\n' "${missing[@]}"
     echo ""
-    echo "Make sure to source your secrets first, e.g.:  dev_secrets"
+    echo "Make sure to source your secrets first, e.g.:  pc_secrets dev"
     exit 1
 fi
 

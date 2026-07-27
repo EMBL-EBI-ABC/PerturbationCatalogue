@@ -2,7 +2,7 @@
 
 Automated pipeline for transforming and loading data from BigQuery to Postgres and Elasticsearch.
 
-> **Before running any commands in this document**, set up the environment by running `dev_secrets`.
+> **Before running any commands in this document**, set up the environment by running `pc_secrets dev`.
 
 ## Pipeline stages
 
@@ -39,7 +39,7 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `dev_secrets`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
+The trigger script requires the following variables (all provided by `pc_secrets dev`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
 optional and defaults to empty. Its value is appended directly to all three

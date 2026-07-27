@@ -1,7 +1,7 @@
 # Perturbation Catalogue back-end
 
 ## Environment variables
-Before running either of the deployment options below, run `dev_secrets`.
+Before running either of the deployment options below, run `pc_secrets dev`.
 `ES_INDEX_SET` is optional and selects a suffixed Elasticsearch index set; it
 defaults to the standard indexes when unset.
 
