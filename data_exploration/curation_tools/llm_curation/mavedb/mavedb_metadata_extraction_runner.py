@@ -8,22 +8,16 @@ from pathlib import Path
 from curation_tools.llm_curation.metadata_extraction import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
     DEFAULT_LLM_MODEL_NAME,
-    bulk_extract_evidence_from_publications,
 )
 from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.mavedb.processing import (
     MAVEDB_METADATA_OUTPUT_DIR,
     MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
     FULL_TEXT_MD_DIR,
-    build_mavedb_publication_full_text,
     bulk_extract_evidence_for_mavedb_urns,
-    context_output_suffix_builder,
-    format_supplementary_mavedb_metadata,
     format_urn_for_filename,
     get_dois_from_mavedb_entry,
     load_mavedb_urn_to_dois,
-    output_metadata_builder,
-    prompt_context_builder,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
@@ -33,7 +27,6 @@ EXTRACTED_METADATA_OUTPUT_DIR = MAVEDB_LLM_METADATA_DIR / "extracted_metadata"
 METADATA_EXTRACTION_LOG_FILE = (
     MAVEDB_LLM_METADATA_DIR / "mavedb_metadata_extraction.log"
 )
-DEFAULT_BULK_EXCLUDED_PUBLICATION_FILES = frozenset({"10_1101_2024_04_26_591310.md"})
 
 
 def build_parser() -> argparse.ArgumentParser:
