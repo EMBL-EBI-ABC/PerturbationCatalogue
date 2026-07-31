@@ -297,29 +297,50 @@ def main():
             with st.spinner("Extracting verbatim evidence quotes via LLM..."):
                 try:
                     schema_cls = load_extraction_schema(s1_schema_str)
-                    from curation_tools.llm_curation.mavedb.processing import (
-                        context_output_suffix_builder,
-                        format_supplementary_mavedb_metadata,
-                        output_metadata_builder,
-                        prompt_context_builder,
+                    urn_to_dois = load_mavedb_urn_to_dois(
+                        MAVEDB_URN_TO_DOIS_OUTPUT_FILE
                     )
 
-                    md_files = [str(p) for p in Path(s1_input_dir).glob("*.md")]
-                    bulk_extract_evidence_from_publications(
-                        publication_full_text_paths=md_files,
+                    if parsed_target_urns:
+                        filtered_urn_to_dois: dict[str, list[str]] = {}
+                        for target_urn in sorted(parsed_target_urns):
+                            if target_urn in urn_to_dois:
+                                filtered_urn_to_dois[target_urn] = urn_to_dois[
+                                    target_urn
+                                ]
+                            else:
+                                urn_stem = format_urn_for_filename(target_urn)
+                                meta_file = (
+                                    MAVEDB_METADATA_OUTPUT_DIR / f"{urn_stem}.json"
+                                )
+                                if meta_file.is_file():
+                                    try:
+                                        entry = json.loads(
+                                            meta_file.read_text(encoding="utf-8")
+                                        )
+                                        dois = (
+                                            get_dois_from_mavedb_entry(entry, log=False)
+                                            or []
+                                        )
+                                        filtered_urn_to_dois[target_urn] = dois
+                                    except (json.JSONDecodeError, OSError):
+                                        filtered_urn_to_dois[target_urn] = []
+                                else:
+                                    filtered_urn_to_dois[target_urn] = []
+                        urn_to_dois = filtered_urn_to_dois
+
+                    bulk_extract_evidence_for_mavedb_urns(
+                        urn_to_dois=urn_to_dois,
                         extraction_schema=schema_cls,
                         output_dir=Path(s1_output_dir),
                         log_file=Path(s1_log_file),
                         prompt_template_file=Path(s1_prompt_file),
+                        publication_full_text_dir=Path(s1_input_dir),
                         max_workers=max_workers_slider,
                         overwrite=s1_overwrite,
                         model_name=selected_model,
                         create_csv=s1_create_csv,
                         verbose=s1_verbose,
-                        prompt_context_builder=prompt_context_builder,
-                        prompt_context_formatter=format_supplementary_mavedb_metadata,
-                        context_output_suffix_builder=context_output_suffix_builder,
-                        output_metadata_builder=output_metadata_builder,
                     )
                     st.success("Step 1 Evidence Extraction Complete!")
                     st.toast(
