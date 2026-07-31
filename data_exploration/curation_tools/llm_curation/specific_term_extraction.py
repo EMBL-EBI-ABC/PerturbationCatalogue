@@ -22,7 +22,7 @@ from curation_tools.llm_curation.metadata_extraction import (
     create_csv_from_curated_metadata_json,
 )
 
-DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.5-flash")
+DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.6-flash")
 DEFAULT_CONCURRENCY_WORKERS = min(64, (os.cpu_count() or 1) * 8)
 JSON_INDENT = 2
 
