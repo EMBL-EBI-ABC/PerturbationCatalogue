@@ -65,7 +65,7 @@ def load_candidates_file(file_path: Path) -> dict:
         return {}
     try:
         return json.loads(file_path.read_text(encoding="utf-8"))
-    except Exception as e:
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
         st.error(f"Error reading {file_path}: {e}")
         return {}
 
@@ -86,7 +86,7 @@ def init_session_state(
             if audit_path.exists():
                 try:
                     saved_audit = json.loads(audit_path.read_text(encoding="utf-8"))
-                except Exception:
+                except (FileNotFoundError, json.JSONDecodeError, OSError):
                     saved_audit = {}
 
         decisions = {}
