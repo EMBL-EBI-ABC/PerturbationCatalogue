@@ -676,6 +676,267 @@ def format_supplementary_mavedb_metadata(
     )
 
 
+def build_mavedb_publication_full_text(
+    publication_full_text_path: Path,
+    prompt_context: dict[str, object] | None = None,
+    publication_full_text_dir: Path | str = FULL_TEXT_MD_DIR,
+    mapping_file: Path | str = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+) -> str:
+    """Build publication full text for a prompt, concatenating multiple primary papers if linked to the same URN."""
+    publication_full_text_path = Path(publication_full_text_path).resolve()
+    publication_full_text_dir = Path(publication_full_text_dir).resolve()
+
+    if not prompt_context or not prompt_context.get("source_urns"):
+        return publication_full_text_path.read_text(encoding="utf-8")
+
+    urn_to_dois = load_mavedb_urn_to_dois(mapping_file)
+    source_urns = prompt_context.get("source_urns", [])
+
+    all_dois_for_urns: list[str] = []
+    for urn in source_urns:
+        for doi in urn_to_dois.get(urn, []):
+            if doi not in all_dois_for_urns:
+                all_dois_for_urns.append(doi)
+
+    matching_md_files: list[tuple[str, Path]] = []
+    for doi in all_dois_for_urns:
+        stem = format_identifier_for_lookup(doi)
+        md_path = publication_full_text_dir / f"{stem}.md"
+        if md_path.is_file():
+            matching_md_files.append((doi, md_path))
+
+    if not matching_md_files:
+        return publication_full_text_path.read_text(encoding="utf-8")
+
+    if len(matching_md_files) == 1:
+        return matching_md_files[0][1].read_text(encoding="utf-8")
+
+    sections = []
+    for idx, (doi, md_path) in enumerate(matching_md_files, start=1):
+        content = md_path.read_text(encoding="utf-8").strip()
+        sections.append(f"# Primary Publication {idx} (DOI: {doi})\n\n{content}")
+
+    return "\n\n---\n\n".join(sections)
+
+
+def extract_evidence_for_mavedb_urn(
+    urn: str,
+    dois: list[str],
+    extraction_schema: Type[BaseModel],
+    output_dir: str | Path,
+    log_file: str | Path,
+    prompt_template_file: str | Path,
+    metadata_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
+    publication_full_text_dir: str | Path = FULL_TEXT_MD_DIR,
+    overwrite: bool = False,
+    model_name: str = DEFAULT_LLM_MODEL_NAME,
+    prompt_context_formatter=format_supplementary_mavedb_metadata,
+    output_metadata_builder=output_metadata_builder,
+    verbose: bool = False,
+) -> Path | None:
+    """Extract evidence for a single MaveDB URN, loading its metadata and concatenating its primary papers."""
+    output_dir = Path(output_dir).resolve()
+    metadata_dir = Path(metadata_dir).resolve()
+    publication_full_text_dir = Path(publication_full_text_dir).resolve()
+    prompt_template_file = Path(prompt_template_file).resolve()
+    log_file = _ensure_log_file(log_file)
+
+    urn_filename_stem = format_urn_for_filename(urn)
+    output_path = output_dir / f"{urn_filename_stem}.json"
+
+    if not overwrite and output_path.is_file():
+        print_status_block(
+            log_file,
+            "MaveDB URN evidence extraction skipped - output already exists",
+            f"URN: {urn}",
+            f"Evidence output: {output_path}",
+        )
+        return output_path
+
+    entry_metadata_path = metadata_dir / f"{urn_filename_stem}.json"
+    if entry_metadata_path.is_file():
+        entry_payload = json.loads(entry_metadata_path.read_text(encoding="utf-8"))
+        curated_metadata = extract_curated_mavedb_prompt_metadata(entry_payload)
+        source_files = [entry_metadata_path.name]
+    else:
+        curated_metadata = {}
+        source_files = []
+
+    prompt_context = {
+        "source_urns": [urn],
+        "source_files": source_files,
+        "metadata": curated_metadata,
+    }
+
+    matching_md_files: list[tuple[str, Path]] = []
+    for doi in dois:
+        stem = format_identifier_for_lookup(doi)
+        md_path = publication_full_text_dir / f"{stem}.md"
+        if md_path.is_file():
+            matching_md_files.append((doi, md_path))
+
+    if matching_md_files:
+        if len(matching_md_files) == 1:
+            publication_full_text = matching_md_files[0][1].read_text(encoding="utf-8")
+        else:
+            sections = []
+            for idx, (doi, md_path) in enumerate(matching_md_files, start=1):
+                content = md_path.read_text(encoding="utf-8").strip()
+                sections.append(
+                    f"# Primary Publication {idx} (DOI: {doi})\n\n{content}"
+                )
+            publication_full_text = "\n\n---\n\n".join(sections)
+    else:
+        publication_full_text = (
+            "No publication full text available for this MaveDB dataset."
+        )
+
+    prompt_template = prompt_template_file.read_text(encoding="utf-8")
+    supplementary_metadata = prompt_context_formatter(prompt_context)
+    prompt = prompt_template.format(
+        supplementary_metadata=supplementary_metadata,
+        supplementary_mavedb_metadata=supplementary_metadata,
+        publication_full_text=publication_full_text,
+    )
+
+    if verbose:
+        print_status_block(
+            log_file,
+            "[VERBOSE] MaveDB URN full prompt, metadata, and publication text",
+            f"URN: {urn}",
+            f"DOIs: {dois}",
+            "----- PROMPT START -----",
+            prompt,
+            "----- PROMPT END -----",
+        )
+
+    client = instructor.from_provider(
+        model_name,
+        location="global",
+        vertexai=True,
+    )
+    extraction_response = client.create(
+        response_model=extraction_schema,
+        messages=[{"role": "user", "content": prompt}],
+        thinking_config={"thinking_level": "high"},
+        generation_config={"temperature": 0.2},
+    )
+
+    output_metadata = output_metadata_builder(prompt_context)
+    evidence_payload = extraction_response.model_dump()
+    evidence_payload.update(output_metadata)
+    evidence_payload["curation_agent_type"] = "LLM"
+    evidence_payload["curation_agent_name"] = model_name
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(evidence_payload, indent=JSON_INDENT),
+        encoding="utf-8",
+    )
+
+    print_status_block(
+        log_file,
+        "MaveDB URN evidence extraction complete",
+        f"URN: {urn}",
+        f"Primary DOIs: {dois}",
+        f"Output: {output_path}",
+    )
+    return output_path
+
+
+def bulk_extract_evidence_for_mavedb_urns(
+    urn_to_dois: dict[str, list[str]],
+    extraction_schema: Type[BaseModel],
+    output_dir: str | Path,
+    log_file: str | Path,
+    prompt_template_file: str | Path,
+    metadata_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
+    publication_full_text_dir: str | Path = FULL_TEXT_MD_DIR,
+    max_workers: int = DEFAULT_DOWNLOAD_MAX_WORKERS,
+    overwrite: bool = False,
+    model_name: str = DEFAULT_LLM_MODEL_NAME,
+    create_csv: bool = True,
+    verbose: bool = False,
+) -> list[Path]:
+    """Bulk extract evidence for MaveDB URNs in parallel."""
+    if max_workers < 1:
+        raise ValueError("max_workers must be at least 1")
+    output_dir = Path(output_dir).resolve()
+    log_file = _ensure_log_file(log_file)
+    prompt_template_file = Path(prompt_template_file).resolve()
+
+    urn_list = sorted(urn_to_dois.keys())
+    print_status_block(
+        log_file,
+        "Starting bulk URN-centric evidence extraction",
+        f"MaveDB URNs queued: {len(urn_list)}",
+        f"Output directory: {output_dir}",
+        f"Model: {model_name}",
+        f"Max workers: {max_workers}",
+        f"Overwrite: {overwrite}",
+        f"Log file: {log_file}",
+    )
+
+    extracted_outputs: list[Path] = []
+    completed_urns = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_urn = {
+            executor.submit(
+                extract_evidence_for_mavedb_urn,
+                urn=urn,
+                dois=urn_to_dois[urn],
+                extraction_schema=extraction_schema,
+                output_dir=output_dir,
+                log_file=log_file,
+                prompt_template_file=prompt_template_file,
+                metadata_dir=metadata_dir,
+                publication_full_text_dir=publication_full_text_dir,
+                overwrite=overwrite,
+                model_name=model_name,
+                verbose=verbose,
+            ): urn
+            for urn in urn_list
+        }
+
+        for future in tqdm(
+            as_completed(future_to_urn),
+            total=len(future_to_urn),
+            desc="Extracting MaveDB URN evidence",
+            unit="urn",
+        ):
+            urn = future_to_urn[future]
+            try:
+                out_path = future.result()
+                if out_path:
+                    extracted_outputs.append(out_path)
+                completed_urns += 1
+                append_log_line(
+                    log_file,
+                    f"Bulk URN evidence extraction progress: {completed_urns}/{len(urn_list)} processed; URN: {urn}; status: ok",
+                )
+            except Exception as exc:
+                completed_urns += 1
+                append_log_line(
+                    log_file,
+                    f"Bulk URN evidence extraction progress: {completed_urns}/{len(urn_list)} processed; URN: {urn}; status: error; error: {exc}",
+                )
+                print_status_block(
+                    log_file,
+                    "Bulk URN evidence extraction failed",
+                    f"URN: {urn}",
+                    f"Error: {exc}",
+                )
+
+    if create_csv and extracted_outputs:
+        create_csv_from_curated_metadata_json(
+            input_dir=output_dir,
+            output_csv_path=output_dir / "clean_metadata.csv",
+            log_file=log_file,
+        )
+
+    return extracted_outputs
+
+
 def run_full_text_collection_pipeline(
     dump_dir: str | Path = MAVEDB_DUMP_DIR,
     metadata_output_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
