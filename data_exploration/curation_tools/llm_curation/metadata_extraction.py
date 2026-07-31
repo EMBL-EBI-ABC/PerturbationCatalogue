@@ -201,12 +201,18 @@ def build_metadata_extraction_prompt(
     log_file: str | Path,
     prompt_context: PromptContext | None = None,
     prompt_context_formatter=format_prompt_context_as_json,
+    publication_text_loader=None,
 ) -> str:
     """Render the metadata/evidence extraction prompt for a publication and optional context."""
     publication_full_text_path = Path(publication_full_text_path).resolve()
     prompt_template_file = Path(prompt_template_file).resolve()
     log_file = _ensure_log_file(log_file)
-    publication_full_text = publication_full_text_path.read_text(encoding="utf-8")
+    if publication_text_loader is not None:
+        publication_full_text = publication_text_loader(
+            publication_full_text_path, prompt_context
+        )
+    else:
+        publication_full_text = publication_full_text_path.read_text(encoding="utf-8")
     append_log_line(
         log_file,
         f"Loaded publication text from {publication_full_text_path}; characters: {len(publication_full_text)}",
@@ -233,6 +239,7 @@ def _extract_evidence_for_prompt_context(
     output_suffix: str,
     prompt_context_formatter,
     output_metadata_builder,
+    publication_text_loader=None,
     verbose: bool = False,
 ) -> BaseModel:
     """Extract evidence for one publication under a single prompt context (Step 1)."""
@@ -261,6 +268,7 @@ def _extract_evidence_for_prompt_context(
         log_file=log_file,
         prompt_context=prompt_context,
         prompt_context_formatter=prompt_context_formatter,
+        publication_text_loader=publication_text_loader,
     )
     append_log_line(
         log_file,
@@ -331,6 +339,7 @@ def extract_evidence_from_publication(
     prompt_context_formatter=format_prompt_context_as_json,
     context_output_suffix_builder=build_default_context_output_suffix,
     output_metadata_builder=build_default_output_metadata,
+    publication_text_loader=None,
     verbose: bool = False,
 ) -> None:
     """Extract evidence for one publication and write the resulting JSON output (Step 1)."""
@@ -371,6 +380,7 @@ def extract_evidence_from_publication(
                 verbose=verbose,
                 prompt_context_formatter=prompt_context_formatter,
                 output_metadata_builder=output_metadata_builder,
+                publication_text_loader=publication_text_loader,
             )
             return
 
@@ -399,6 +409,7 @@ def extract_evidence_from_publication(
                 verbose=verbose,
                 prompt_context_formatter=prompt_context_formatter,
                 output_metadata_builder=output_metadata_builder,
+                publication_text_loader=publication_text_loader,
             )
 
         if len(prompt_contexts) > 1:
@@ -437,6 +448,7 @@ def bulk_extract_evidence_from_publications(
     prompt_context_formatter=format_prompt_context_as_json,
     context_output_suffix_builder=build_default_context_output_suffix,
     output_metadata_builder=build_default_output_metadata,
+    publication_text_loader=None,
 ) -> list[Path]:
     """Extract evidence for many publication files in parallel."""
     if max_workers < 1:
@@ -483,6 +495,7 @@ def bulk_extract_evidence_from_publications(
                 prompt_context_formatter=prompt_context_formatter,
                 context_output_suffix_builder=context_output_suffix_builder,
                 output_metadata_builder=output_metadata_builder,
+                publication_text_loader=publication_text_loader,
                 verbose=verbose,
             ): index
             for index, publication_path in enumerate(publication_paths)
