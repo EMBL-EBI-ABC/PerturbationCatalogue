@@ -11,13 +11,22 @@ from curation_tools.llm_curation.backfill_terms import (
 )
 from curation_tools.llm_curation.candidate_discovery import discover_candidates
 from curation_tools.llm_curation.gui_utils import (
-    get_step1_file_status,
+    get_mavedb_urn_status,
     get_step2_file_status,
     get_step3_other_corpus_summary,
     read_last_log_lines,
 )
-from curation_tools.llm_curation.metadata_extraction import (
-    bulk_extract_evidence_from_publications,
+from curation_tools.llm_curation.mavedb.mavedb_metadata_extraction_runner import (
+    parse_target_urns,
+)
+from curation_tools.llm_curation.mavedb.processing import (
+    FULL_TEXT_MD_DIR,
+    MAVEDB_METADATA_OUTPUT_DIR,
+    MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+    bulk_extract_evidence_for_mavedb_urns,
+    format_urn_for_filename,
+    get_dois_from_mavedb_entry,
+    load_mavedb_urn_to_dois,
 )
 from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.schema_updater import (
