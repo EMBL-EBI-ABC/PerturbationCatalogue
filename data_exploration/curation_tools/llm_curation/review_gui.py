@@ -200,11 +200,17 @@ def main():
         col1_s1, col2_s1 = st.columns(2)
         s1_input_dir = col1_s1.text_input(
             "Publication Full Text Directory (.md)",
-            value=str(DEFAULT_MD_DIR),
+            value=str(FULL_TEXT_MD_DIR),
         )
         s1_output_dir = col2_s1.text_input(
             "Step 1 Output Directory",
-            value=str(DEFAULT_STEP1_OUT),
+            value=str(
+                ROOT_DIR
+                / "data_exploration"
+                / "MaveDB"
+                / "llm_metadata_extraction"
+                / "extracted_metadata"
+            ),
         )
 
         col3_s1, col4_s1 = st.columns(2)
@@ -708,9 +714,7 @@ def main():
                         output_path = (
                             candidates_path.parent / "approved_ontology_terms.json"
                         )
-                        output_path.write_text(
-                            json.dumps(decisions, indent=2), encoding="utf-8"
-                        )
+                        save_decision_audit_trail(output_path, decisions)
                         st.success(
                             "Successfully updated `SpecificTermExtractionSchema` in `llm_curation_schema.py` and saved audit log!"
                         )
@@ -722,9 +726,7 @@ def main():
                     output_path = (
                         candidates_path.parent / "approved_ontology_terms.json"
                     )
-                    output_path.write_text(
-                        json.dumps(decisions, indent=2), encoding="utf-8"
-                    )
+                    save_decision_audit_trail(output_path, decisions)
                     st.success(f"Saved decisions to `{output_path}`")
 
     # -----------------------------------------------------------------------------
@@ -826,10 +828,7 @@ def main():
             type="primary",
             disabled=len(preview_records) == 0,
         ):
-            decisions_file_path.parent.mkdir(parents=True, exist_ok=True)
-            decisions_file_path.write_text(
-                json.dumps(decisions, indent=2), encoding="utf-8"
-            )
+            save_decision_audit_trail(decisions_file_path, decisions)
 
             log_file = Path(step4_dir_input).parent / "step4_backfill.log"
 
