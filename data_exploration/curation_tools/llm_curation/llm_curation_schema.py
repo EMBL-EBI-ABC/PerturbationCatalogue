@@ -8,7 +8,7 @@ class EvidenceExtractionSchema(BaseModel):
 
     dataset_id_evidence: str | None = Field(
         default=None,
-        description="Unique identifier for the dataset, follows the format <firstauthor_year>. Example: The complete sequence datasets were deposited under the accession number GEO: GSE188426.",
+        description="Unique identifier for the dataset, follows the format <firstauthor_year>. Example: smith_2020.",
     )
     data_modality_evidence: str | None = Field(
         default=None,
