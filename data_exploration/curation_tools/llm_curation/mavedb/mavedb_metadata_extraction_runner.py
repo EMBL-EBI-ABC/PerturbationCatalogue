@@ -151,31 +151,43 @@ def parse_target_urns(
 
 
 def main() -> None:
-    """Run bulk metadata extraction for all cached MaveDB publication Markdown files."""
+    """Run bulk metadata extraction for cached MaveDB URN datasets."""
     args = build_parser().parse_args()
     if args.max_workers < 1:
         raise ValueError("--max-workers must be at least 1")
 
     extraction_schema = load_extraction_schema(args.extraction_schema)
 
-    bulk_extract_evidence_from_publications(
-        publication_full_text_paths=[
-            str(path) for path in args.publication_full_text_dir.glob("*.md")
-        ],
+    urn_to_dois = load_mavedb_urn_to_dois(args.urn_to_dois_file)
+    target_urns = parse_target_urns(args.urns)
+    if target_urns:
+        filtered_urn_to_dois: dict[str, list[str]] = {}
+        for target_urn in sorted(target_urns):
+            if target_urn in urn_to_dois:
+                filtered_urn_to_dois[target_urn] = urn_to_dois[target_urn]
+            else:
+                urn_stem = format_urn_for_filename(target_urn)
+                meta_file = MAVEDB_METADATA_OUTPUT_DIR / f"{urn_stem}.json"
+                if meta_file.is_file():
+                    entry = json.loads(meta_file.read_text(encoding="utf-8"))
+                    dois = get_dois_from_mavedb_entry(entry, log=False) or []
+                    filtered_urn_to_dois[target_urn] = dois
+                else:
+                    filtered_urn_to_dois[target_urn] = []
+        urn_to_dois = filtered_urn_to_dois
+
+    bulk_extract_evidence_for_mavedb_urns(
+        urn_to_dois=urn_to_dois,
         extraction_schema=extraction_schema,
         output_dir=args.output_dir,
         log_file=args.log_file,
         prompt_template_file=args.prompt_template_file,
+        publication_full_text_dir=args.publication_full_text_dir,
         max_workers=args.max_workers,
         overwrite=args.overwrite,
         model_name=args.llm_model,
         create_csv=args.create_csv,
         verbose=args.verbose,
-        excluded_publication_files=DEFAULT_BULK_EXCLUDED_PUBLICATION_FILES,
-        prompt_context_builder=prompt_context_builder,
-        prompt_context_formatter=format_supplementary_mavedb_metadata,
-        context_output_suffix_builder=context_output_suffix_builder,
-        output_metadata_builder=output_metadata_builder,
     )
 
 
