@@ -28,7 +28,7 @@ from curation_tools.llm_curation.mavedb.processing import (
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 MAVEDB_LLM_METADATA_DIR = MAVEDB_METADATA_OUTPUT_DIR.parent
-PROMPT_TEMPLATE_FILE = SCRIPT_DIR / "mavedb_metadata_extraction_prompt_template.md"
+PROMPT_TEMPLATE_FILE = SCRIPT_DIR / "step1_evidence_extraction_prompt.md"
 EXTRACTED_METADATA_OUTPUT_DIR = MAVEDB_LLM_METADATA_DIR / "extracted_metadata"
 METADATA_EXTRACTION_LOG_FILE = (
     MAVEDB_LLM_METADATA_DIR / "mavedb_metadata_extraction.log"
