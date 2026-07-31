@@ -258,9 +258,17 @@ def main():
 
         st.divider()
 
-        # Pre-run File Status Table
-        s1_status_records = get_step1_file_status(
-            Path(s1_input_dir), Path(s1_output_dir)
+        # Pre-run File / URN Status Table
+        parsed_target_urns = (
+            parse_target_urns(s1_target_urns_selection)
+            if s1_urn_filter_mode == "Selected URNs"
+            else None
+        )
+        s1_status_records = get_mavedb_urn_status(
+            mapping_file=MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+            output_dir=Path(s1_output_dir),
+            metadata_dir=MAVEDB_METADATA_OUTPUT_DIR,
+            target_urns=parsed_target_urns,
         )
         st.subheader(
             f"📂 Input Publication Files ({len(s1_status_records)} files found)"
