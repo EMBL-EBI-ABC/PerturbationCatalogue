@@ -100,7 +100,54 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print and log the full prompt, MaveDB metadata, and publication full text for each item.",
     )
+    parser.add_argument(
+        "--urn-to-dois-file",
+        type=Path,
+        default=MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+        help="JSON file mapping MaveDB URNs to primary DOIs.",
+    )
+    parser.add_argument(
+        "--urns",
+        nargs="+",
+        help=(
+            "Filter execution to specific MaveDB URNs (e.g. --urns mavedb:00000093-a-1 "
+            "or --urns urn:mavedb:00000093-a-1,urn:mavedb:00000002-a-1)."
+        ),
+    )
     return parser
+
+
+def parse_target_urns(
+    values: list[str] | tuple[str, ...] | set[str] | str | None,
+) -> set[str] | None:
+    """Parse user-provided URN string(s) into standardized 'urn:mavedb:...' strings."""
+    if not values:
+        return None
+    raw_list: list[str] = []
+    if isinstance(values, str):
+        raw_list = [
+            item.strip() for item in re.split(r"[,; \s]+", values) if item.strip()
+        ]
+    elif isinstance(values, (list, tuple, set)):
+        for item in values:
+            if isinstance(item, str):
+                raw_list.extend(
+                    [sub.strip() for sub in re.split(r"[,; \s]+", item) if sub.strip()]
+                )
+
+    standardized: set[str] = set()
+    for raw in raw_list:
+        clean = raw.strip()
+        if not clean:
+            continue
+        if clean.startswith("urn_mavedb_"):
+            clean = clean.replace("urn_mavedb_", "urn:mavedb:")
+        elif clean.startswith("mavedb:"):
+            clean = f"urn:{clean}"
+        elif not clean.startswith("urn:mavedb:"):
+            clean = f"urn:mavedb:{clean}"
+        standardized.add(clean)
+    return standardized or None
 
 
 def main() -> None:
