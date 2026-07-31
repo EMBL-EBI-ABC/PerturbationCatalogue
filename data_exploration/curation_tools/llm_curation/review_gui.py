@@ -271,7 +271,7 @@ def main():
             target_urns=parsed_target_urns,
         )
         st.subheader(
-            f"📂 Input Publication Files ({len(s1_status_records)} files found)"
+            f"📂 MaveDB Datasets Queued ({len(s1_status_records)} URN datasets matched)"
         )
 
         if s1_status_records:
