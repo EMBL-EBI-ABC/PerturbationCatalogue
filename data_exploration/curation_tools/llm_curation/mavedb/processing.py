@@ -121,25 +121,69 @@ def fetch_mavedb_entry(urn: str) -> dict:
     return response.json()
 
 
-def get_dois_from_mavedb_entry(entry: dict, log: bool = True) -> list[str] | None:
-    """Extract DOI values from a MaveDB entry if available."""
+def get_dois_from_mavedb_entry(
+    entry: dict,
+    primary_only: bool = True,
+    excluded_dois: (
+        set[str] | list[str] | tuple[str, ...] | str | Path | None
+    ) = DEFAULT_EXCLUDED_DOIS,
+    log: bool = True,
+) -> list[str] | None:
+    """Extract DOI values from a MaveDB entry, prioritizing primary publications."""
     experiment = entry.get("experiment") or {}
-    doi_sources = (
-        (entry.get("doiIdentifiers") or [], "identifier"),
+    parsed_excluded = parse_excluded_dois(excluded_dois)
+
+    primary_sources = (
         (entry.get("primaryPublicationIdentifiers") or [], "doi"),
-        (entry.get("secondaryPublicationIdentifiers") or [], "doi"),
+        (entry.get("doiIdentifiers") or [], "identifier"),
         (experiment.get("primaryPublicationIdentifiers") or [], "doi"),
+    )
+    secondary_sources = (
+        (entry.get("secondaryPublicationIdentifiers") or [], "doi"),
         (experiment.get("secondaryPublicationIdentifiers") or [], "doi"),
     )
-    dois = sorted(
+
+    raw_primary_dois = sorted(
         {
             doi
-            for identifiers, field_name in doi_sources
+            for identifiers, field_name in primary_sources
             for identifier in identifiers
             if isinstance(identifier, dict)
             if (doi := identifier.get(field_name))
         }
     )
+    raw_secondary_dois = sorted(
+        {
+            doi
+            for identifiers, field_name in secondary_sources
+            for identifier in identifiers
+            if isinstance(identifier, dict)
+            if (doi := identifier.get(field_name))
+        }
+    )
+
+    primary_dois = [
+        doi for doi in raw_primary_dois if not _is_doi_excluded(doi, parsed_excluded)
+    ]
+    secondary_dois = [
+        doi for doi in raw_secondary_dois if not _is_doi_excluded(doi, parsed_excluded)
+    ]
+
+    if primary_dois:
+        dois = primary_dois
+    elif secondary_dois and not primary_only:
+        dois = secondary_dois
+    elif secondary_dois:
+        dois = secondary_dois
+    elif raw_primary_dois:
+        # Fallback: if all primary DOIs were excluded and no other non-excluded DOIs exist, retain raw primary DOIs
+        dois = raw_primary_dois
+    elif raw_secondary_dois:
+        # Fallback: if all secondary DOIs were excluded and no other non-excluded DOIs exist, retain raw secondary DOIs
+        dois = raw_secondary_dois
+    else:
+        dois = None
+
     if dois:
         if log:
             print_status_block(
