@@ -38,7 +38,63 @@ MAVEDB_API_BASE_URL = "https://api.mavedb.org/api/v1"
 DEFAULT_FETCH_SLEEP_TIME = 0.1
 JSON_INDENT = 2
 
+DEFAULT_EXCLUDED_DOIS: tuple[str, ...] = (
+    "10.1186/s13059-017-1272-5",  # Enrich2 software paper
+    "10.1038/nmeth.1492",  # Fowler 2010 DMS method paper
+    "10.1038/s41588-018-0122-z",  # VAMP-seq method paper
+)
+
 _MAVEDB_URN_TO_DOIS_CACHE: dict[str, list[str]] | None = None
+
+
+def parse_excluded_dois(
+    value: str | list[str] | tuple[str, ...] | set[str] | Path | None,
+) -> tuple[str, ...]:
+    """Parse user-configured excluded DOIs from a string, list, set, or file path."""
+    if value is None:
+        return DEFAULT_EXCLUDED_DOIS
+    if isinstance(value, (list, tuple, set)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, Path) or (
+        isinstance(value, str)
+        and (Path(value).is_file() or "/" in value or "\\" in value)
+    ):
+        path = Path(value)
+        if path.is_file():
+            lines = path.read_text(encoding="utf-8").splitlines()
+            parsed = [
+                line.strip()
+                for line in lines
+                if line.strip() and not line.strip().startswith("#")
+            ]
+            return tuple(parsed)
+    if isinstance(value, str):
+        items = [item.strip() for item in re.split(r"[,; \s]+", value) if item.strip()]
+        return tuple(items)
+    return DEFAULT_EXCLUDED_DOIS
+
+
+def _is_doi_excluded(
+    doi: str,
+    excluded_dois: set[str] | list[str] | tuple[str, ...] | None,
+) -> bool:
+    """Check if a DOI matches any entry in the user-configured exclusion list."""
+    if not excluded_dois:
+        return False
+    doi_norm = doi.strip().lower()
+    doi_lookup_norm = format_identifier_for_lookup(doi).lower()
+    doi_alnum = re.sub(r"[^a-z0-9]", "", doi_norm)
+    for exc in excluded_dois:
+        exc_norm = str(exc).strip().lower()
+        exc_lookup_norm = format_identifier_for_lookup(str(exc)).lower()
+        exc_alnum = re.sub(r"[^a-z0-9]", "", exc_norm)
+        if (
+            doi_norm == exc_norm
+            or doi_lookup_norm == exc_lookup_norm
+            or doi_alnum == exc_alnum
+        ):
+            return True
+    return False
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,6 +138,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=FULL_TEXT_MD_DIR,
         help="Directory used to write converted Markdown files.",
+    )
+    parser.add_argument(
+        "--include-secondary",
+        action="store_true",
+        help="Include secondary publication DOIs even when primary publication DOIs exist.",
+    )
+    parser.add_argument(
+        "--excluded-dois",
+        type=str,
+        default=None,
+        help=(
+            "User-configurable list of DOIs to exclude (e.g. software/method papers). "
+            "Can be a comma-separated string, space-separated string, or path to a text file containing DOIs."
+        ),
     )
     return parser
 
