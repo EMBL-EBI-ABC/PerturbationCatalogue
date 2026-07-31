@@ -3,15 +3,25 @@
 import argparse
 import json
 import os
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from time import sleep
+from typing import Type
 
+import instructor
 import requests
+from pydantic import BaseModel
 from tqdm import tqdm
 
 from curation_tools.llm_curation.logging_utils import (
     append_log_line,
     print_status_block,
+)
+from curation_tools.llm_curation.metadata_extraction import (
+    DEFAULT_LLM_MODEL_NAME,
+    _ensure_log_file,
+    create_csv_from_curated_metadata_json,
 )
 from curation_tools.llm_curation.publication_text import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
