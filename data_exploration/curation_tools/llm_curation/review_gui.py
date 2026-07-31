@@ -279,11 +279,11 @@ def main():
             st.dataframe(
                 df_s1,
                 column_config={
-                    "file_name": st.column_config.TextColumn("Publication File"),
-                    "size_kb": st.column_config.TextColumn("Size"),
+                    "urn": st.column_config.TextColumn("MaveDB URN"),
+                    "title": st.column_config.TextColumn("Dataset Title"),
+                    "primary_dois": st.column_config.TextColumn("Primary DOIs"),
                     "status": st.column_config.TextColumn("Status"),
-                    "output_count": st.column_config.NumberColumn("Output JSONs"),
-                    "output_files": st.column_config.TextColumn("Generated Outputs"),
+                    "output_json": st.column_config.TextColumn("Generated Output"),
                 },
                 hide_index=True,
                 width="stretch",
