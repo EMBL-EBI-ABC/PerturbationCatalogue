@@ -257,7 +257,7 @@ def main():
                     "output_files": st.column_config.TextColumn("Generated Outputs"),
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         st.divider()
@@ -391,7 +391,7 @@ def main():
                     ),
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
 
         st.divider()
@@ -513,7 +513,7 @@ def main():
                     ),
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info(
@@ -820,7 +820,7 @@ def main():
                     "new_value": st.column_config.TextColumn("New Backfilled Value"),
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         else:
             st.info(
