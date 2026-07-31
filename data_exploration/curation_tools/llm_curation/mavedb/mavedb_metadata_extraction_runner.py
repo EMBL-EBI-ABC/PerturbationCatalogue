@@ -1,6 +1,8 @@
 """CLI runner for extracting structured metadata from MaveDB-linked papers."""
 
 import argparse
+import json
+import re
 from pathlib import Path
 
 from curation_tools.llm_curation.metadata_extraction import (
@@ -11,9 +13,15 @@ from curation_tools.llm_curation.metadata_extraction import (
 from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.mavedb.processing import (
     MAVEDB_METADATA_OUTPUT_DIR,
+    MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
     FULL_TEXT_MD_DIR,
+    build_mavedb_publication_full_text,
+    bulk_extract_evidence_for_mavedb_urns,
     context_output_suffix_builder,
     format_supplementary_mavedb_metadata,
+    format_urn_for_filename,
+    get_dois_from_mavedb_entry,
+    load_mavedb_urn_to_dois,
     output_metadata_builder,
     prompt_context_builder,
 )
