@@ -228,6 +228,27 @@ def main():
             value="curation_tools.llm_curation.llm_curation_schema:EvidenceExtractionSchema",
         )
 
+        try:
+            available_urn_map = load_mavedb_urn_to_dois(MAVEDB_URN_TO_DOIS_OUTPUT_FILE)
+            available_urns = sorted(available_urn_map.keys())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            available_urns = []
+
+        col_urn1, col_urn2 = st.columns([1, 2])
+        s1_urn_filter_mode = col_urn1.radio(
+            "URN Filter Mode",
+            options=["All MaveDB URNs", "Selected URNs"],
+            index=0,
+            key="s1_urn_mode",
+        )
+        s1_target_urns_selection = col_urn2.multiselect(
+            "Target URNs (e.g. mavedb:00000093-a-1, mavedb:00000014-a-1)",
+            options=available_urns,
+            default=[],
+            disabled=(s1_urn_filter_mode == "All MaveDB URNs"),
+            help="Select one or multiple MaveDB URNs.",
+        )
+
         col_opt1, col_opt2, col_opt3 = st.columns(3)
         s1_overwrite = col_opt1.checkbox(
             "Overwrite existing outputs", value=True, key="s1_ov"
