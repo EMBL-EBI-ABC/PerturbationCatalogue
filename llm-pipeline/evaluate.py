@@ -379,13 +379,23 @@ def main():
         dea_metrics, dea_results = evaluate_dea(dea_preds, dea_records)
         print(f"\nDEA ({len(dea_preds)} records):")
         print(f"  Mean overlap@k: {dea_metrics.get('mean_overlap_at_k', dea_metrics.get('mean_overlap_both', 0)):.4f}")
-        results.extend(dea_results.to_dict("records") if hasattr(dea_results, "to_dict") else dea_results)
+        dea_text = {p["gene"]: p["predicted_text"] for p in dea_preds}
+        dea_list = dea_results.to_dict("records") if hasattr(dea_results, "to_dict") else dea_results
+        for r in dea_list:
+            r["predicted_text"] = dea_text.get(r.get("gene"), "")
+            r["modality"] = "scPerturb-seq"
+        results.extend(dea_list)
 
     if gsea_preds:
         gsea_metrics, gsea_results = evaluate_dea(gsea_preds, gsea_records)
         print(f"\nGSEA ({len(gsea_preds)} records):")
         print(f"  Mean overlap@k: {gsea_metrics.get('mean_overlap_at_k', gsea_metrics.get('mean_overlap_both', 0)):.4f}")
-        results.extend(gsea_results.to_dict("records") if hasattr(gsea_results, "to_dict") else gsea_results)
+        gsea_text = {p["gene"]: p["predicted_text"] for p in gsea_preds}
+        gsea_list = gsea_results.to_dict("records") if hasattr(gsea_results, "to_dict") else gsea_results
+        for r in gsea_list:
+            r["predicted_text"] = gsea_text.get(r.get("gene"), "")
+            r["modality"] = "scPerturb-seq_GSEA"
+        results.extend(gsea_list)
 
     print("=" * 60)
     if args.output:
