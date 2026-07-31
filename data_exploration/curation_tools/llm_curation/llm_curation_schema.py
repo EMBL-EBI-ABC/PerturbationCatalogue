@@ -80,7 +80,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     study_uri_evidence: str | None = Field(
         default=None,
-        description="URI/DOI of the study/publication. Extract from the MAVE DB metadata or from the evidence. Example: The peer-reviewed paper is available online via https://doi.org/10.1016/j.ajhg.2022.01.019.",
+        description="DOI of the study/publication. Extract from the MAVE DB metadata or from the evidence. Example: The peer-reviewed paper is available online via https://doi.org/10.1016/j.ajhg.2022.01.019.",
     )
     study_year_evidence: str | None = Field(
         default=None,
@@ -383,7 +383,7 @@ class SpecificTermExtractionSchema(BaseModel):
 
     study_uri: str | None = Field(
         default=None,
-        description="URI/DOI of the study/publication.",
+        description="DOI of the study/publication.",
     )
 
     study_year: int | None = Field(
