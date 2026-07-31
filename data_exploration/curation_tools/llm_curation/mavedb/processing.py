@@ -275,6 +275,10 @@ def get_dois_from_mavedb_entry(
 def export_mavedb_urn_to_dois_json(
     mavedb_entries_dir: Path | str = MAVEDB_METADATA_OUTPUT_DIR,
     output_file: Path | str = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+    primary_only: bool = True,
+    excluded_dois: (
+        set[str] | list[str] | tuple[str, ...] | str | Path | None
+    ) = DEFAULT_EXCLUDED_DOIS,
 ) -> dict[str, list[str]]:
     """Write a JSON mapping from MaveDB URNs to publication DOIs."""
     mavedb_entries_dir = Path(mavedb_entries_dir).resolve()
@@ -293,7 +297,12 @@ def export_mavedb_urn_to_dois_json(
             urn = entry.get("urn")
             if not urn:
                 continue
-            dois = get_dois_from_mavedb_entry(entry, log=False)
+            dois = get_dois_from_mavedb_entry(
+                entry,
+                primary_only=primary_only,
+                excluded_dois=excluded_dois,
+                log=False,
+            )
             if dois:
                 urn_to_dois[urn] = dois
         except Exception as exc:
@@ -361,6 +370,10 @@ def bulk_fetch_mavedb_entries(
 
 def collect_publication_dois(
     mavedb_entries_dir: Path | str = MAVEDB_METADATA_OUTPUT_DIR,
+    primary_only: bool = True,
+    excluded_dois: (
+        set[str] | list[str] | tuple[str, ...] | str | Path | None
+    ) = DEFAULT_EXCLUDED_DOIS,
 ) -> dict[str, set[str]]:
     """Collect a DOI-to-URN mapping from cached MaveDB entry JSON files."""
     mavedb_entries_dir = Path(mavedb_entries_dir).resolve()
@@ -377,7 +390,12 @@ def collect_publication_dois(
         try:
             entry = json.loads(entry_file.read_text(encoding="utf-8"))
             urn = entry.get("urn", "<unknown URN>")
-            dois = get_dois_from_mavedb_entry(entry, log=False)
+            dois = get_dois_from_mavedb_entry(
+                entry,
+                primary_only=primary_only,
+                excluded_dois=excluded_dois,
+                log=False,
+            )
             if dois:
                 entries_with_dois += 1
                 doi_reference_count += len(dois)
@@ -667,6 +685,10 @@ def run_full_text_collection_pipeline(
     markdown_output_dir: str | Path = FULL_TEXT_MD_DIR,
     overwrite: bool = False,
     max_workers: int = DEFAULT_DOWNLOAD_MAX_WORKERS,
+    primary_only: bool = True,
+    excluded_dois: (
+        set[str] | list[str] | tuple[str, ...] | str | Path | None
+    ) = DEFAULT_EXCLUDED_DOIS,
 ) -> None:
     """Run the end-to-end MaveDB publication text collection pipeline."""
     unique_files = get_unique_mavedb_urns(dump_dir)
@@ -678,8 +700,14 @@ def run_full_text_collection_pipeline(
     export_mavedb_urn_to_dois_json(
         mavedb_entries_dir=metadata_output_dir,
         output_file=urn_to_dois_output_file,
+        primary_only=primary_only,
+        excluded_dois=excluded_dois,
     )
-    doi_to_urns = collect_publication_dois(metadata_output_dir)
+    doi_to_urns = collect_publication_dois(
+        mavedb_entries_dir=metadata_output_dir,
+        primary_only=primary_only,
+        excluded_dois=excluded_dois,
+    )
     full_text_paths = bulk_download_pub_full_texts(
         doi_to_urns=doi_to_urns,
         output_dir=raw_output_dir,
@@ -697,6 +725,11 @@ def run_full_text_collection_pipeline(
 
 def main() -> None:
     args = build_parser().parse_args()
+    excluded_dois = (
+        parse_excluded_dois(args.excluded_dois)
+        if args.excluded_dois
+        else DEFAULT_EXCLUDED_DOIS
+    )
     run_full_text_collection_pipeline(
         dump_dir=args.dump_dir,
         metadata_output_dir=args.metadata_output_dir,
@@ -704,6 +737,8 @@ def main() -> None:
         doi_to_fulltext_output_file=args.doi_to_fulltext_output_file,
         raw_output_dir=args.raw_output_dir,
         markdown_output_dir=args.markdown_output_dir,
+        primary_only=not args.include_secondary,
+        excluded_dois=excluded_dois,
     )
 
 
