@@ -16,7 +16,7 @@ from curation_tools.llm_curation.logging_utils import (
     print_status_block,
 )
 
-DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.5-flash")
+DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.6-flash")
 DEFAULT_DOWNLOAD_MAX_WORKERS = min(32, (os.cpu_count() or 1) * 4)
 JSON_INDENT = 2
 

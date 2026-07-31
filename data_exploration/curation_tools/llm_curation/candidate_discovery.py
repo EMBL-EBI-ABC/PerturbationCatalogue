@@ -26,7 +26,7 @@ from curation_tools.llm_curation.logging_utils import (
 # Persistent disk-based instructor cache
 cache = DiskCache(directory=".instructor_cache")
 
-DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.5-flash")
+DEFAULT_LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "google/gemini-3.6-flash")
 JSON_INDENT = 2
 
 
