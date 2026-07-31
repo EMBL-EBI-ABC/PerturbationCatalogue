@@ -45,6 +45,63 @@ def get_step1_file_status(input_dir: Path, output_dir: Path) -> list[dict[str, A
     return records
 
 
+def get_mavedb_urn_status(
+    mapping_file: Path,
+    output_dir: Path,
+    metadata_dir: Path,
+    target_urns: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Scan MaveDB URNs from mapping file and check status against step 1 output directory."""
+    from curation_tools.llm_curation.mavedb.processing import (
+        format_urn_for_filename,
+        load_mavedb_urn_to_dois,
+    )
+
+    mapping_file = Path(mapping_file).resolve()
+    output_dir = Path(output_dir).resolve()
+    metadata_dir = Path(metadata_dir).resolve()
+
+    if not mapping_file.is_file():
+        return []
+
+    try:
+        urn_to_dois = load_mavedb_urn_to_dois(mapping_file)
+    except Exception:
+        return []
+
+    records = []
+    for urn, dois in sorted(urn_to_dois.items()):
+        if target_urns and urn not in target_urns:
+            continue
+
+        urn_stem = format_urn_for_filename(urn)
+        out_target = output_dir / f"{urn_stem}.json"
+        status = "Completed" if out_target.exists() else "Pending"
+
+        title = "-"
+        meta_file = metadata_dir / f"{urn_stem}.json"
+        if meta_file.exists():
+            try:
+                data = json.loads(meta_file.read_text(encoding="utf-8"))
+                title = (
+                    data.get("title") or data.get("experiment", {}).get("title") or "-"
+                )
+            except Exception:
+                pass
+
+        records.append(
+            {
+                "urn": urn,
+                "title": title,
+                "primary_dois": ", ".join(dois) if dois else "None",
+                "status": status,
+                "output_json": out_target.name if out_target.exists() else "-",
+            }
+        )
+
+    return records
+
+
 def get_step2_file_status(step1_dir: Path, step2_dir: Path) -> list[dict[str, Any]]:
     """Scan Step 1 evidence files and check status & 'Other' count in Step 2 outputs."""
     step1_dir = Path(step1_dir).resolve()
