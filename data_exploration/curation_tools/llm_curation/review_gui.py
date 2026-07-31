@@ -70,6 +70,12 @@ def load_candidates_file(file_path: Path) -> dict:
         return {}
 
 
+def save_decision_audit_trail(file_path: Path, decisions_data: dict) -> None:
+    """Save candidates decision dictionary to JSON audit file."""
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(json.dumps(decisions_data, indent=2), encoding="utf-8")
+
+
 def init_session_state(
     candidates_data: dict, candidates_path: Path | None = None
 ) -> None:
