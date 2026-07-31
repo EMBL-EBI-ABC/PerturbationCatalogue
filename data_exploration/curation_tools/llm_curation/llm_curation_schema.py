@@ -430,6 +430,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "nicking mutagenesis",
             "oligo-directed mutagenic PCR",
             "site-directed mutagenesis",
+            "silicon microarray synthesis",
             "Other",
         ]
         | None
@@ -462,6 +463,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "lentivirus transduction",
             "transformation",
             "nanoparticle-mediated transfection",
+            "chemical-mediated transfection",
             "Other",
         ]
         | None
@@ -640,6 +642,12 @@ class SpecificTermExtractionSchema(BaseModel):
             "DMS-BarSeq",
             "Joined and refined DMS-BarSeq and DMS-TileSeq",
             "Combined DMS-BarSeq and DMS-TileSeq",
+            "yeast surface display",
+            "bacterial two-hybrid assay",
+            "mammalian two-hybrid assay",
+            "pooled growth competition assay",
+            "yeast one-hybrid assay",
+            "flow cytometry-based sequencing assay",
             "Other",
         ]
         | None
@@ -662,6 +670,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
             "GEM-X Flex Gene Expression Human n-plex kit",
+            "TruSeq Nano DNA Library Prep Kit",
+            "Ovation Ultralow Library System",
             "Other",
         ]
         | None
@@ -680,6 +690,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "Illumina NovaSeq 6000",
             "Illumina NextSeq 500",
             "Ultima Genomics UG100",
+            "Illumina MiSeq",
+            "Illumina Genome Analyzer IIx",
             "Other",
         ]
         | None
@@ -702,7 +714,7 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     software_counts_label: (
-        Literal["custom", "MaGeCK", "CellRanger", "Drop-seq Tools", "Enrich2", "Other"]
+        Literal["custom", "MaGeCK", "CellRanger", "Drop-seq Tools", "Enrich2", "Enrich", "Novoalign", "Other"]
         | None
     ) = Field(
         default=None,
@@ -719,6 +731,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "MAST",
             "scanpy",
             "Enrich2",
+            "DiMSum",
             "Other",
         ]
         | None
@@ -727,7 +740,7 @@ class SpecificTermExtractionSchema(BaseModel):
         description="Ontology term label for the software used for analysis.",
     )
 
-    reference_genome_label: Literal["GRCh38", "GRCh37", "Other"] | None = Field(
+    reference_genome_label: Literal["GRCh38", "GRCh37", "cDNA reference sequence", "Other"] | None = Field(
         default=None,
         description="Ontology term label for the reference genome.",
     )
