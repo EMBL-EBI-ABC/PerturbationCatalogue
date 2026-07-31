@@ -293,8 +293,9 @@ def main():
                         output_metadata_builder=output_metadata_builder,
                     )
                     st.success("Step 1 Evidence Extraction Complete!")
-                    st.balloons()
-                    st.rerun()
+                    st.toast(
+                        "Step 1 Evidence Extraction completed successfully!", icon="✅"
+                    )
                 except Exception as ex:
                     st.error(f"Step 1 Extraction Failed: {ex}")
 
@@ -420,8 +421,9 @@ def main():
                         verbose=s2_verbose,
                     )
                     st.success("Step 2 Term Normalization Complete!")
-                    st.balloons()
-                    st.rerun()
+                    st.toast(
+                        "Step 2 Term Normalization completed successfully!", icon="✅"
+                    )
                 except Exception as ex:
                     st.error(f"Step 2 Normalization Failed: {ex}")
 
@@ -539,8 +541,9 @@ def main():
                     st.success(
                         f"Step 3a Candidate Discovery Complete! Report saved to `{out_p}`."
                     )
-                    st.balloons()
-                    st.rerun()
+                    st.toast(
+                        "Step 3a Candidate Discovery completed successfully!", icon="✅"
+                    )
                 except Exception as ex:
                     st.error(f"Candidate Discovery Failed: {ex}")
 
@@ -718,7 +721,7 @@ def main():
                         st.success(
                             "Successfully updated `SpecificTermExtractionSchema` in `llm_curation_schema.py` and saved audit log!"
                         )
-                        st.balloons()
+                        st.toast("Schema updated and audit log saved!", icon="✅")
                     except Exception as ex:
                         st.error(f"Failed to update schema: {ex}")
 
@@ -728,6 +731,9 @@ def main():
                     )
                     save_decision_audit_trail(output_path, decisions)
                     st.success(f"Saved decisions to `{output_path}`")
+                    st.toast(
+                        f"Decision audit trail saved to `{output_path.name}`", icon="💾"
+                    )
 
     # -----------------------------------------------------------------------------
     # TAB 5: Step 4 Backfill Approved Terms
@@ -843,7 +849,7 @@ def main():
                 st.success(
                     f"Step 4 Backfill Complete! Copied {copied_count} files and replaced {fields_updated} 'Other' values in `{step4_dir_input}`."
                 )
-                st.balloons()
+                st.toast("Step 4 Backfill completed successfully!", icon="✅")
             except Exception as e:
                 st.error(f"Backfill failed: {e}")
 
