@@ -23,15 +23,7 @@ uvicorn main:app --reload
 
 ## Local tests
 
-BE tests are local PostgreSQL integration tests and are not run by CI. Source
-the development `pc_secrets` environment before running them:
-
-```bash
-pc_secrets -v dev
-be/fastapi-env/bin/pytest -q be/tests
-```
-
-See [tests/README.md](tests/README.md) for the test scope and database notes.
+See [tests/README.md](tests/README.md). Run with `pc_secrets -v dev && be/fastapi-env/bin/pytest -q be/tests`.
 
 ## Docker deployment
 

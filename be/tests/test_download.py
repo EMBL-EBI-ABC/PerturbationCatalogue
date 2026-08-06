@@ -4,6 +4,7 @@ import asyncio
 
 import data_query
 import pytest
+from starlette.requests import Request
 
 
 DATASET_ID = "replogle_2022_rpe1_essential_normalized"
@@ -14,22 +15,9 @@ def test_download_streams_csv_from_postgres(run_with_dev_db):
         response = await data_query.download_dataset_data(
             "perturb-seq",
             DATASET_ID,
+            Request({"type": "http", "query_string": b""}),
             limit=3,
             offset=0,
-            sort=None,
-            perturbation_gene_name=None,
-            effect_gene_name=None,
-            effect_log2fc=None,
-            effect_padj=None,
-            effect_score_name=None,
-            effect_score_value=None,
-            effect_cell_type=None,
-            effect_significant=None,
-            effect_significance_criteria=None,
-            perturbation_name=None,
-            perturbation_position=None,
-            perturbation_aa_wt=None,
-            perturbation_aa_change=None,
         )
         chunks = []
         async for chunk in response.body_iterator:
@@ -53,15 +41,15 @@ def test_download_streams_csv_from_postgres(run_with_dev_db):
 
 def test_download_without_limit_builds_unbounded_query(run_with_dev_db):
     async def prepare():
-        return await data_query._prepare_dataset_query(
-            "perturb-seq", DATASET_ID, {"limit": None, "offset": 0}
+        return await data_query._search_dataset_impl(
+            "perturb-seq",
+            DATASET_ID,
+            {"limit": None, "offset": 0},
+            return_query=True,
         )
 
-    query = run_with_dev_db(prepare)
-    assert "LIMIT" not in query["data_query"]
-    assert "SELECT *" not in query["csv_query"]
-    assert "perturbed_target_ensg, effect_gene_ensg" in query["csv_query"]
-    assert "gene_id_query" not in query
+    query, _, _ = run_with_dev_db(prepare)
+    assert "LIMIT" not in query
 
 
 def test_stream_failure_propagates_without_successful_completion(monkeypatch):
@@ -73,8 +61,11 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
             return False
 
     class BrokenConnection:
-        async def copy_from_query(self, *_args, output, **_kwargs):
-            await output(b"partial row")
+        def transaction(self):
+            return Context()
+
+        async def cursor(self, *_args, **_kwargs):
+            yield {"perturbed_target_ensg": "ENSG1"}
             raise RuntimeError("database connection lost")
 
     class BrokenPool:
@@ -91,14 +82,14 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
         return {}
 
     monkeypatch.setattr(data_query, "_fetch_all_gene_symbols", no_gene_symbols)
-    query = {
-        "csv_query": "SELECT 1",
-        "pg_params": [],
-        "api_to_db": data_query.get_api_to_db_mapping("perturb-seq"),
-    }
 
     async def consume():
-        stream = data_query._stream_dataset_csv(query, "perturb-seq")
+        stream = data_query._stream_dataset_csv(
+            "SELECT 1",
+            [],
+            data_query.get_api_to_db_mapping("perturb-seq"),
+            "perturb-seq",
+        )
         assert (await anext(stream)).startswith(b"Perturbed Target ENSG")
         with pytest.raises(RuntimeError, match="database connection lost"):
             await anext(stream)

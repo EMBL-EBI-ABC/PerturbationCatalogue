@@ -333,6 +333,26 @@ def _dataset_download_url(
     return f"{url}?{urlencode(params)}" if params else url
 
 
+def _dataset_download_link(url: str) -> html.A:
+    return html.A(
+        dbc.Button(
+            [html.I(className="bi bi-download me-2"), "Download Data"],
+            color="primary",
+            size="sm",
+            style={
+                "backgroundColor": COLORS["primary"],
+                "borderColor": COLORS["primary"],
+                "borderRadius": "6px",
+            },
+        ),
+        id=DATASET_DOWNLOAD_LINK,
+        href=url,
+        target="_blank",
+        rel="noopener noreferrer",
+        className="text-decoration-none me-3",
+    )
+
+
 @callback(
     [
         Output("dataset-content", "children"),
@@ -566,26 +586,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     if is_perturb_seq:
         search_controls = html.Div(
             [
-                html.A(
-                    dbc.Button(
-                        [
-                            html.I(className="bi bi-download me-2"),
-                            "Download Data",
-                        ],
-                        color="primary",
-                        size="sm",
-                        style={
-                            "backgroundColor": COLORS["primary"],
-                            "borderColor": COLORS["primary"],
-                            "borderRadius": "6px",
-                        },
-                    ),
-                    id=DATASET_DOWNLOAD_LINK,
-                    href=download_url,
-                    target="_blank",
-                    rel="noopener noreferrer",
-                    className="text-decoration-none me-3",
-                ),
+                _dataset_download_link(download_url),
                 dbc.Input(
                     id=PERTURB_SEARCH_PERTURBATION_GENE,
                     type="text",
@@ -619,26 +620,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     elif is_crispr:
         search_controls = html.Div(
             [
-                html.A(
-                    dbc.Button(
-                        [
-                            html.I(className="bi bi-download me-2"),
-                            "Download Data",
-                        ],
-                        color="primary",
-                        size="sm",
-                        style={
-                            "backgroundColor": COLORS["primary"],
-                            "borderColor": COLORS["primary"],
-                            "borderRadius": "6px",
-                        },
-                    ),
-                    id=DATASET_DOWNLOAD_LINK,
-                    href=download_url,
-                    target="_blank",
-                    rel="noopener noreferrer",
-                    className="text-decoration-none me-3",
-                ),
+                _dataset_download_link(download_url),
                 dbc.Input(
                     id=CRISPR_SEARCH_PERTURBATION_GENE,
                     type="text",
@@ -1142,16 +1124,8 @@ def render_dataset_data(
 @callback(
     Output(DATASET_DOWNLOAD_LINK, "href"),
     Input(DATASET_DATA_STORE, "data"),
-    Input(PERTURB_SEARCH_PERTURBATION_GENE, "value"),
-    Input(PERTURB_SEARCH_EFFECT_GENE, "value"),
-    Input(CRISPR_SEARCH_PERTURBATION_GENE, "value"),
 )
-def update_dataset_download_link(
-    store_data: Optional[Dict[str, Any]],
-    perturbation_gene: Optional[str],
-    effect_gene: Optional[str],
-    crispr_perturbation_gene: Optional[str],
-):
+def update_dataset_download_link(store_data: Optional[Dict[str, Any]]):
     """Point the browser directly at the streamed backend download."""
     if not store_data:
         return "#"
@@ -1161,15 +1135,12 @@ def update_dataset_download_link(
     if not dataset_id or not modality:
         return "#"
 
-    filters = {}
-    if modality == "perturb-seq":
-        filters = {
-            "perturbation_gene_name": (perturbation_gene or "").strip(),
-            "effect_gene_name": (effect_gene or "").strip(),
-        }
-    elif modality == "crispr-screen":
-        filters = {
-            "perturbation_gene_name": (crispr_perturbation_gene or "").strip(),
-        }
-
+    filters = {
+        "perturbation_gene_name": store_data.get(
+            "perturbation_gene_search"
+            if modality == "perturb-seq"
+            else "crispr_perturbation_gene_search"
+        ),
+        "effect_gene_name": store_data.get("effect_gene_search"),
+    }
     return _dataset_download_url(dataset_id, modality, filters)

@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
+from elasticsearch.helpers import async_scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
@@ -468,61 +469,21 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     return [ensg_id] if ensg_id else []
 
 
-async def _fetch_gene_symbols(ensg_ids: List[str]) -> Dict[str, Optional[str]]:
-    """Fetch approved symbols for Ensembl IDs in bounded Elasticsearch batches."""
-    symbols: Dict[str, Optional[str]] = {}
-    for start in range(0, len(ensg_ids), 10000):
-        chunk = ensg_ids[start : start + 10000]
-        response = await db_pools["es"].search(
-            index=ES_TARGET_SUMMARY,
-            body={
-                "_source": ["ensembl_gene_id", "approved_symbol"],
-                "size": len(chunk),
-                "query": {"terms": {"ensembl_gene_id": chunk}},
-            },
-        )
-        symbols.update(
-            {
-                source["ensembl_gene_id"]: source.get("approved_symbol")
-                for hit in response.get("hits", {}).get("hits", [])
-                if (source := hit.get("_source", {})).get("ensembl_gene_id")
-            }
-        )
-    return symbols
-
-
 async def _fetch_all_gene_symbols() -> Dict[str, Optional[str]]:
     """Fetch the small gene ID-to-symbol map from Elasticsearch."""
-    symbols: Dict[str, Optional[str]] = {}
-    search_after = None
-    while True:
-        body = {
-            "_source": ["ensembl_gene_id", "approved_symbol"],
-            "size": 10000,
-            "query": {"match_all": {}},
-            "sort": [{"ensembl_gene_id": "asc"}],
-        }
-        if search_after:
-            body["search_after"] = search_after
-        response = await db_pools["es"].search(
+    return {
+        source["ensembl_gene_id"]: source.get("approved_symbol")
+        async for hit in async_scan(
+            db_pools["es"],
             index=ES_TARGET_SUMMARY,
-            body=body,
+            query={"_source": ["ensembl_gene_id", "approved_symbol"]},
         )
-        hits = response.get("hits", {}).get("hits", [])
-        symbols.update(
-            {
-                source["ensembl_gene_id"]: source.get("approved_symbol")
-                for hit in hits
-                if (source := hit.get("_source", {})).get("ensembl_gene_id")
-            }
-        )
-        if len(hits) < 10000:
-            return symbols
-        search_after = hits[-1]["sort"]
+        if (source := hit.get("_source", {})).get("ensembl_gene_id")
+    }
 
 
 async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
-    """Add canonical symbols to nested result genes."""
+    """Add canonical symbols to nested result genes in one Elasticsearch query."""
     genes = [
         (result.get(part) or {}, field)
         for result in results
@@ -536,7 +497,19 @@ async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
     if not ensg_ids:
         return
 
-    symbols = await _fetch_gene_symbols(ensg_ids)
+    response = await db_pools["es"].search(
+        index=ES_TARGET_SUMMARY,
+        body={
+            "_source": ["ensembl_gene_id", "approved_symbol"],
+            "size": len(ensg_ids),
+            "query": {"terms": {"ensembl_gene_id": ensg_ids}},
+        },
+    )
+    symbols = {
+        source["ensembl_gene_id"]: source.get("approved_symbol")
+        for hit in response.get("hits", {}).get("hits", [])
+        if (source := hit.get("_source", {})).get("ensembl_gene_id")
+    }
     for gene, field in genes:
         gene["gene_symbol"] = symbols.get(gene[field])
 
@@ -1049,12 +1022,13 @@ async def _search_modality_impl(
     }
 
 
-async def _prepare_dataset_query(
+async def _search_dataset_impl(
     modality: MODALITIES,
     dataset_id: str,
     query_params: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Build the shared SQL query used by dataset search and downloads."""
+    return_query: bool = False,
+):
+    """Search within a specific dataset in a modality."""
     limit = query_params.get("limit", 50)
     offset = query_params.get("offset", 0)
     sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
@@ -1074,6 +1048,7 @@ async def _prepare_dataset_query(
 
     validate_query_params(query_params, modality, dataset_id)
 
+    pg_conn = db_pools["pg"]
     pg_table = PG_TABLES[modality]
     api_to_db = get_api_to_db_mapping(modality)
 
@@ -1114,6 +1089,7 @@ async def _prepare_dataset_query(
         count_query = f"SELECT COUNT(*) FROM {pg_table} {where_clause}"
         count_params = pg_params
 
+    # 2. Fetch Rows
     order_by_clause = ""
     if sort:
         sort_clauses = []
@@ -1125,114 +1101,78 @@ async def _prepare_dataset_query(
         if sort_clauses:
             order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
 
-    # MAVE position ranges intentionally return every row in the range.
+    # Only apply LIMIT/OFFSET if not using position range filter (which should return all matching rows)
     if has_position_range:
         pagination_clause = ""
     else:
-        pagination_parts = []
-        if limit is not None:
-            pagination_parts.append(f"LIMIT {limit}")
-        if offset:
-            pagination_parts.append(f"OFFSET {offset}")
-        pagination_clause = " ".join(pagination_parts)
-    query_tail = f"{where_clause} {order_by_clause} {pagination_clause}".strip()
-    data_query = f"SELECT * FROM {pg_table} {query_tail}".strip()
-    csv_columns = list(
-        dict.fromkeys(
-            api_to_db[field_key]
-            for field_key, _ in CSV_COLUMNS.get(modality, [])
-            if field_key in api_to_db
+        pagination_clause = " ".join(
+            part
+            for part in (
+                f"LIMIT {limit}" if limit is not None else "",
+                f"OFFSET {offset}" if offset else "",
+            )
+            if part
         )
-    )
-    csv_query = f"SELECT {', '.join(csv_columns)} FROM {pg_table} {query_tail}".strip()
-    return {
-        "limit": limit,
-        "offset": offset,
-        "has_position_range": has_position_range,
-        "count_query": count_query,
-        "count_params": count_params,
-        "data_query": data_query,
-        "csv_query": csv_query,
-        "pg_params": pg_params,
-        "pg_table": pg_table,
-        "api_to_db": api_to_db,
-    }
+    data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {pagination_clause}".strip()
 
-
-def _row_to_result(
-    row: Dict[str, Any], modality: MODALITIES, api_to_db: Dict[str, str]
-):
-    """Map one database row to the public nested result shape."""
-    perturbation = {
-        _result_field_name(k): row.get(v)
-        for k, v in api_to_db.items()
-        if _is_perturbation_field(k)
-    }
-    effect = {
-        _result_field_name(k): row.get(v)
-        for k, v in api_to_db.items()
-        if k.startswith("effect_")
-    }
-
-    if modality == "perturb-seq":
-        log2fc = row.get("log2foldchange")
-        if log2fc is None:
-            effect["direction"] = "not available"
-        elif log2fc > 0:
-            effect["direction"] = "increased"
-        elif log2fc < 0:
-            effect["direction"] = "decreased"
-        else:
-            effect["direction"] = "no change"
-        perturbation.update(
-            {
-                "n_total": row.get("perturbation_n_total"),
-                "n_up": row.get("perturbation_n_up"),
-                "n_down": row.get("perturbation_n_down"),
-            }
-        )
-        effect.update(
-            {
-                "n_total": row.get("effect_n_total"),
-                "n_up": row.get("effect_n_up"),
-                "n_down": row.get("effect_n_down"),
-            }
-        )
-
-    return {"perturbation": perturbation, "effect": effect}
-
-
-async def _search_dataset_impl(
-    modality: MODALITIES,
-    dataset_id: str,
-    query_params: Dict[str, Any],
-):
-    """Search within a specific dataset in a modality."""
-    query = await _prepare_dataset_query(modality, dataset_id, query_params)
-    pg_conn = db_pools["pg"]
+    if return_query:
+        return data_query, pg_params, api_to_db
 
     try:
-        total_rows_count = (
-            await pg_conn.fetchval(query["count_query"], *query["count_params"]) or 0
-        )
+        total_rows_count = await pg_conn.fetchval(count_query, *count_params) or 0
     except asyncpg.exceptions.UndefinedColumnError as e:
         raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
 
-    pg_rows = await pg_conn.fetch(query["data_query"], *query["pg_params"])
+    pg_rows = await pg_conn.fetch(data_query, *pg_params)
     pg_rows_dict = [dict(row) for row in pg_rows]
 
     if modality == "perturb-seq":
         pg_rows_dict = await enrich_perturb_seq_rows(pg_conn, dataset_id, pg_rows_dict)
 
-    results = [
-        _row_to_result(row, modality, query["api_to_db"]) for row in pg_rows_dict
-    ]
+    results = []
+    for row in pg_rows_dict:
+        perturbation = {
+            _result_field_name(k): row.get(v)
+            for k, v in api_to_db.items()
+            if _is_perturbation_field(k)
+        }
+        effect = {
+            _result_field_name(k): row.get(v)
+            for k, v in api_to_db.items()
+            if k.startswith("effect_")
+        }
+
+        if modality == "perturb-seq":
+            log2fc = row.get("log2foldchange")
+            if log2fc is None:
+                effect["direction"] = "not available"
+            elif log2fc > 0:
+                effect["direction"] = "increased"
+            elif log2fc < 0:
+                effect["direction"] = "decreased"
+            else:
+                effect["direction"] = "no change"
+            perturbation.update(
+                {
+                    "n_total": row.get("perturbation_n_total"),
+                    "n_up": row.get("perturbation_n_up"),
+                    "n_down": row.get("perturbation_n_down"),
+                }
+            )
+            effect.update(
+                {
+                    "n_total": row.get("effect_n_total"),
+                    "n_up": row.get("effect_n_up"),
+                    "n_down": row.get("effect_n_down"),
+                }
+            )
+        results.append({"perturbation": perturbation, "effect": effect})
 
     await enrich_gene_symbols(results)
     return {
         "total_rows_count": total_rows_count,
-        "offset": query["offset"],
-        "limit": query["limit"],
+        "offset": offset,
+        "limit": limit,
         "results": results,
     }
 
@@ -1470,116 +1410,36 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
     return output.getvalue()
 
 
-async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
-    """Stream native PostgreSQL CSV chunks without buffering the result set."""
+async def _stream_dataset_csv(
+    query: str, params: List[Any], mapping: Dict[str, str], modality: MODALITIES
+):
+    """Stream CSV rows without buffering the result set."""
     columns = CSV_COLUMNS.get(modality, [])
     symbols = await _fetch_all_gene_symbols()
-    raw_fields = [
-        field_key for field_key, _ in columns if field_key in query["api_to_db"]
-    ]
-    raw_indexes = {field_key: index for index, field_key in enumerate(raw_fields)}
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(label for _, label in columns)
+    yield output.getvalue().encode()
+    output.seek(0)
+    output.truncate(0)
 
-    yield (",".join(col[1] for col in CSV_COLUMNS.get(modality, [])) + "\r\n").encode(
-        "utf-8"
-    )
-
-    queue: asyncio.Queue = asyncio.Queue(maxsize=4)
-    pending = bytearray()
-    chunk_size = 256 * 1024
-    pool = db_pools["pg"]
-
-    async with pool.acquire() as conn:
-        record = bytearray()
-        in_quotes = False
-        quote_pending = False
-
-        def format_records(records):
-            if not records:
-                return b""
-            output = io.StringIO()
-            writer = csv.writer(output, lineterminator="\r\n")
-            for raw_row in csv.reader(record.decode("utf-8") for record in records):
-                output_row = []
-                for field_key, _ in columns:
-                    if field_key == "perturbed_target_name":
-                        value = symbols.get(
-                            raw_row[raw_indexes["perturbed_target_ensg"]], ""
-                        )
-                    elif field_key == "effect_gene_name":
-                        value = symbols.get(
-                            raw_row[raw_indexes["effect_gene_ensg"]], ""
-                        )
-                    else:
-                        value = raw_row[raw_indexes[field_key]]
-                    output_row.append(value or "")
-                writer.writerow(output_row)
-            return output.getvalue().encode("utf-8")
-
-        async def write_copy_chunk(data: bytes):
-            nonlocal record, in_quotes, quote_pending
-            records = []
-            for byte in data:
-                record.append(byte)
-                if quote_pending:
-                    if byte == ord('"'):
-                        quote_pending = False
-                    else:
-                        quote_pending = False
-                        in_quotes = False
-                        if byte == ord("\n"):
-                            records.append(bytes(record))
-                            record.clear()
-                    continue
-                if in_quotes:
-                    if byte == ord('"'):
-                        quote_pending = True
-                elif byte == ord('"'):
-                    in_quotes = True
-                elif byte == ord("\n"):
-                    records.append(bytes(record))
-                    record.clear()
-
-            pending.extend(format_records(records))
-            if len(pending) >= chunk_size:
-                chunk = bytes(pending)
-                pending.clear()
-                await queue.put(("data", chunk))
-
-        async def copy_to_queue():
-            try:
-                await conn.copy_from_query(
-                    query["csv_query"],
-                    *query["pg_params"],
-                    output=write_copy_chunk,
-                    format="csv",
-                    header=False,
-                    null="",
-                    encoding="utf-8",
+    async with db_pools["pg"].acquire() as conn, conn.transaction():
+        async for row in conn.cursor(query, *params, prefetch=1000):
+            writer.writerow(
+                (
+                    symbols.get(row.get(field.replace("_name", "_ensg")), "")
+                    if field.endswith("_name")
+                    else row.get(mapping[field], "")
                 )
-                if record:
-                    pending.extend(format_records([bytes(record)]))
-                if pending:
-                    await queue.put(("data", bytes(pending)))
-                await queue.put(("done", None))
-            except asyncio.CancelledError:
-                raise
-            except BaseException as exc:
-                await queue.put(("error", exc))
+                for field, _ in columns
+            )
+            if output.tell() >= 256 * 1024:
+                yield output.getvalue().encode()
+                output.seek(0)
+                output.truncate(0)
 
-        copy_task = asyncio.create_task(copy_to_queue())
-        try:
-            while True:
-                kind, value = await queue.get()
-                if kind == "data":
-                    yield value
-                elif kind == "error":
-                    raise value
-                else:
-                    break
-        finally:
-            if not copy_task.done():
-                copy_task.cancel()
-            await asyncio.gather(copy_task, return_exceptions=True)
+    if output.tell():
+        yield output.getvalue().encode()
 
 
 @router.get("/v1/{modality}/download")
@@ -1684,62 +1544,19 @@ def _gsea_results_to_csv(gsea_results: List[Dict]) -> str:
 async def download_dataset_data(
     modality: MODALITIES,
     dataset_id: str,
-    # Common params
+    request: Request,
     limit: Optional[int] = Query(
         None, ge=0, description="Maximum rows to download; omit for all rows"
     ),
     offset: int = Query(0, ge=0, description="Offset for rows"),
-    sort: Optional[str] = Query(None, description="Sort order"),
-    # Perturb-seq params
-    perturbation_gene_name: Optional[str] = Query(None),
-    effect_gene_name: Optional[str] = Query(None),
-    effect_log2fc: Optional[str] = Query(None),
-    effect_padj: Optional[str] = Query(None),
-    effect_score_name: Optional[str] = Query(None),
-    effect_score_value: Optional[str] = Query(None),
-    effect_cell_type: Optional[str] = Query(None),
-    # CRISPR params
-    effect_significant: Optional[str] = Query(None),
-    effect_significance_criteria: Optional[str] = Query(None),
-    # MAVE params
-    perturbation_name: Optional[str] = Query(None),
-    perturbation_position: Optional[str] = Query(None),
-    perturbation_aa_wt: Optional[str] = Query(None),
-    perturbation_aa_change: Optional[str] = Query(None),
 ):
     """Download data for a specific dataset as CSV."""
-    # Build params dict
-    params = {
-        "limit": limit,
-        "offset": offset,
-    }
-    if sort:
-        params["sort"] = sort
-
-    # Add modality-specific params
-    modality_params = {
-        "perturbation_gene_name": perturbation_gene_name,
-        "effect_gene_name": effect_gene_name,
-        "effect_log2fc": effect_log2fc,
-        "effect_padj": effect_padj,
-        "effect_score_name": effect_score_name,
-        "effect_score_value": effect_score_value,
-        "effect_cell_type": effect_cell_type,
-        "effect_significant": effect_significant,
-        "effect_significance_criteria": effect_significance_criteria,
-        "perturbation_name": perturbation_name,
-        "perturbation_position": perturbation_position,
-        "perturbation_aa_wt": perturbation_aa_wt,
-        "perturbation_aa_change": perturbation_aa_change,
-    }
-    params.update({k: v for k, v in modality_params.items() if v is not None})
-
-    query = await _prepare_dataset_query(modality, dataset_id, params)
-
+    params = dict(request.query_params, limit=limit, offset=offset)
+    query = await _search_dataset_impl(modality, dataset_id, params, return_query=True)
     filename = f"{modality}_{dataset_id}_data.csv"
 
     return StreamingResponse(
-        _stream_dataset_csv(query, modality),
+        _stream_dataset_csv(*query, modality),
         media_type="text/csv",
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
