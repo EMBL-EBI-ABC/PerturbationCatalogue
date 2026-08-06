@@ -21,10 +21,6 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-## Local tests
-
-See [tests/README.md](tests/README.md). Run with `pc_secrets -v dev && be/fastapi-env/bin/pytest -q be/tests`.
-
 ## Docker deployment
 
 ```bash
