@@ -1008,15 +1008,20 @@ async def _search_modality_impl(
     }
 
 
-async def _search_dataset_impl(
+async def _prepare_dataset_query(
     modality: MODALITIES,
     dataset_id: str,
     query_params: Dict[str, Any],
-):
-    """Search within a specific dataset in a modality (Shared Implementation)."""
+) -> Dict[str, Any]:
+    """Build the shared SQL query used by dataset search and downloads."""
     limit = query_params.get("limit", 50)
     offset = query_params.get("offset", 0)
     sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
+
+    if limit is not None and limit < 0:
+        raise HTTPException(status_code=400, detail="limit must be non-negative")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be non-negative")
 
     # Check if position range filter is specified - if so, return all matching rows
     has_position_range = (
@@ -1028,7 +1033,6 @@ async def _search_dataset_impl(
 
     validate_query_params(query_params, modality, dataset_id)
 
-    pg_conn = db_pools["pg"]
     pg_table = PG_TABLES[modality]
     api_to_db = get_api_to_db_mapping(modality)
 
@@ -1056,7 +1060,6 @@ async def _search_dataset_impl(
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
 
-    # 1. Count Rows
     no_user_filters = not any(
         k in api_to_db or k in MODALITY_TARGET_QUERY_FIELDS.get(modality, set())
         for k in query_params
@@ -1070,12 +1073,6 @@ async def _search_dataset_impl(
         count_query = f"SELECT COUNT(*) FROM {pg_table} {where_clause}"
         count_params = pg_params
 
-    try:
-        total_rows_count = await pg_conn.fetchval(count_query, *count_params) or 0
-    except asyncpg.exceptions.UndefinedColumnError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
-
-    # 2. Fetch Rows
     order_by_clause = ""
     if sort:
         sort_clauses = []
@@ -1087,64 +1084,105 @@ async def _search_dataset_impl(
         if sort_clauses:
             order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
 
-    # Only apply LIMIT/OFFSET if not using position range filter (which should return all matching rows)
+    # MAVE position ranges intentionally return every row in the range.
     if has_position_range:
         pagination_clause = ""
     else:
-        pagination_clause = f"LIMIT {limit} OFFSET {offset}"
+        pagination_parts = []
+        if limit is not None:
+            pagination_parts.append(f"LIMIT {limit}")
+        if offset:
+            pagination_parts.append(f"OFFSET {offset}")
+        pagination_clause = " ".join(pagination_parts)
     data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {pagination_clause}".strip()
 
-    pg_rows = await pg_conn.fetch(data_query, *pg_params)
+    return {
+        "limit": limit,
+        "offset": offset,
+        "has_position_range": has_position_range,
+        "count_query": count_query,
+        "count_params": count_params,
+        "data_query": data_query,
+        "pg_params": pg_params,
+        "pg_table": pg_table,
+        "api_to_db": api_to_db,
+    }
+
+
+def _row_to_result(
+    row: Dict[str, Any], modality: MODALITIES, api_to_db: Dict[str, str]
+):
+    """Map one database row to the public nested result shape."""
+    perturbation = {
+        _result_field_name(k): row.get(v)
+        for k, v in api_to_db.items()
+        if _is_perturbation_field(k)
+    }
+    effect = {
+        _result_field_name(k): row.get(v)
+        for k, v in api_to_db.items()
+        if k.startswith("effect_")
+    }
+
+    if modality == "perturb-seq":
+        log2fc = row.get("log2foldchange")
+        if log2fc is None:
+            effect["direction"] = "not available"
+        elif log2fc > 0:
+            effect["direction"] = "increased"
+        elif log2fc < 0:
+            effect["direction"] = "decreased"
+        else:
+            effect["direction"] = "no change"
+        perturbation.update(
+            {
+                "n_total": row.get("perturbation_n_total"),
+                "n_up": row.get("perturbation_n_up"),
+                "n_down": row.get("perturbation_n_down"),
+            }
+        )
+        effect.update(
+            {
+                "n_total": row.get("effect_n_total"),
+                "n_up": row.get("effect_n_up"),
+                "n_down": row.get("effect_n_down"),
+            }
+        )
+
+    return {"perturbation": perturbation, "effect": effect}
+
+
+async def _search_dataset_impl(
+    modality: MODALITIES,
+    dataset_id: str,
+    query_params: Dict[str, Any],
+):
+    """Search within a specific dataset in a modality."""
+    query = await _prepare_dataset_query(modality, dataset_id, query_params)
+    pg_conn = db_pools["pg"]
+
+    try:
+        total_rows_count = (
+            await pg_conn.fetchval(query["count_query"], *query["count_params"]) or 0
+        )
+    except asyncpg.exceptions.UndefinedColumnError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
+
+    pg_rows = await pg_conn.fetch(query["data_query"], *query["pg_params"])
     pg_rows_dict = [dict(row) for row in pg_rows]
 
     if modality == "perturb-seq":
         pg_rows_dict = await enrich_perturb_seq_rows(pg_conn, dataset_id, pg_rows_dict)
 
-    # 3. Assemble Response
-    results = []
-    for row in pg_rows_dict:
-        perturbation = {
-            _result_field_name(k): row.get(v)
-            for k, v in api_to_db.items()
-            if _is_perturbation_field(k)
-        }
-        effect = {
-            _result_field_name(k): row.get(v)
-            for k, v in api_to_db.items()
-            if k.startswith("effect_")
-        }
-
-        if modality == "perturb-seq":
-            log2fc = row.get("log2foldchange")
-            if log2fc is None:
-                effect["direction"] = "not available"
-            elif log2fc > 0:
-                effect["direction"] = "increased"
-            elif log2fc < 0:
-                effect["direction"] = "decreased"
-            else:
-                effect["direction"] = "no change"
-            perturbation.update(
-                {
-                    "n_total": row.get("perturbation_n_total"),
-                    "n_up": row.get("perturbation_n_up"),
-                    "n_down": row.get("perturbation_n_down"),
-                }
-            )
-            effect.update(
-                {
-                    "n_total": row.get("effect_n_total"),
-                    "n_up": row.get("effect_n_up"),
-                    "n_down": row.get("effect_n_down"),
-                }
-            )
-        results.append({"perturbation": perturbation, "effect": effect})
+    results = [
+        _row_to_result(row, modality, query["api_to_db"]) for row in pg_rows_dict
+    ]
 
     await enrich_gene_symbols(results)
     return {
         "total_rows_count": total_rows_count,
-        "offset": offset,
-        "limit": limit,
+        "offset": query["offset"],
+        "limit": query["limit"],
         "results": results,
     }
 
@@ -1374,6 +1412,44 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
     return output.getvalue()
 
 
+def _csv_values_from_row(
+    row: Dict[str, Any], modality: MODALITIES, api_to_db: Dict[str, str]
+) -> List[Any]:
+    """Return the existing CSV representation for one database row."""
+    values = []
+    for field_key, _ in CSV_COLUMNS.get(modality, []):
+        value = row.get(api_to_db.get(field_key, ""))
+        values.append(value if value is not None else "")
+    return values
+
+
+async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
+    """Stream CSV chunks from PostgreSQL without buffering the result set."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([col[1] for col in CSV_COLUMNS.get(modality, [])])
+    yield buffer.getvalue().encode("utf-8")
+    buffer.seek(0)
+    buffer.truncate(0)
+
+    pool = db_pools["pg"]
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            async for row in conn.cursor(
+                query["data_query"], *query["pg_params"], prefetch=1000
+            ):
+                writer.writerow(
+                    _csv_values_from_row(dict(row), modality, query["api_to_db"])
+                )
+                if buffer.tell() >= 64 * 1024:
+                    yield buffer.getvalue().encode("utf-8")
+                    buffer.seek(0)
+                    buffer.truncate(0)
+
+    if buffer.tell():
+        yield buffer.getvalue().encode("utf-8")
+
+
 @router.get("/v1/{modality}/download")
 async def download_modality_data(
     modality: MODALITIES,
@@ -1477,8 +1553,10 @@ async def download_dataset_data(
     modality: MODALITIES,
     dataset_id: str,
     # Common params
-    limit: int = Query(100000, description="Maximum rows to download"),
-    offset: int = Query(0, description="Offset for rows"),
+    limit: Optional[int] = Query(
+        None, ge=0, description="Maximum rows to download; omit for all rows"
+    ),
+    offset: int = Query(0, ge=0, description="Offset for rows"),
     sort: Optional[str] = Query(None, description="Sort order"),
     # Perturb-seq params
     perturbation_gene_name: Optional[str] = Query(None),
@@ -1524,16 +1602,18 @@ async def download_dataset_data(
     }
     params.update({k: v for k, v in modality_params.items() if v is not None})
 
-    result = await _search_dataset_impl(modality, dataset_id, params)
-
-    csv_content = _results_to_csv(result.get("results", []), modality)
+    query = await _prepare_dataset_query(modality, dataset_id, params)
 
     filename = f"{modality}_{dataset_id}_data.csv"
 
     return StreamingResponse(
-        iter([csv_content]),
+        _stream_dataset_csv(query, modality),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
