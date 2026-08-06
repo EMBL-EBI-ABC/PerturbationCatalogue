@@ -468,8 +468,61 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     return [ensg_id] if ensg_id else []
 
 
+async def _fetch_gene_symbols(ensg_ids: List[str]) -> Dict[str, Optional[str]]:
+    """Fetch approved symbols for Ensembl IDs in bounded Elasticsearch batches."""
+    symbols: Dict[str, Optional[str]] = {}
+    for start in range(0, len(ensg_ids), 10000):
+        chunk = ensg_ids[start : start + 10000]
+        response = await db_pools["es"].search(
+            index=ES_TARGET_SUMMARY,
+            body={
+                "_source": ["ensembl_gene_id", "approved_symbol"],
+                "size": len(chunk),
+                "query": {"terms": {"ensembl_gene_id": chunk}},
+            },
+        )
+        symbols.update(
+            {
+                source["ensembl_gene_id"]: source.get("approved_symbol")
+                for hit in response.get("hits", {}).get("hits", [])
+                if (source := hit.get("_source", {})).get("ensembl_gene_id")
+            }
+        )
+    return symbols
+
+
+async def _fetch_all_gene_symbols() -> Dict[str, Optional[str]]:
+    """Fetch the small gene ID-to-symbol map from Elasticsearch."""
+    symbols: Dict[str, Optional[str]] = {}
+    search_after = None
+    while True:
+        body = {
+            "_source": ["ensembl_gene_id", "approved_symbol"],
+            "size": 10000,
+            "query": {"match_all": {}},
+            "sort": [{"ensembl_gene_id": "asc"}],
+        }
+        if search_after:
+            body["search_after"] = search_after
+        response = await db_pools["es"].search(
+            index=ES_TARGET_SUMMARY,
+            body=body,
+        )
+        hits = response.get("hits", {}).get("hits", [])
+        symbols.update(
+            {
+                source["ensembl_gene_id"]: source.get("approved_symbol")
+                for hit in hits
+                if (source := hit.get("_source", {})).get("ensembl_gene_id")
+            }
+        )
+        if len(hits) < 10000:
+            return symbols
+        search_after = hits[-1]["sort"]
+
+
 async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
-    """Add canonical symbols to nested result genes in one Elasticsearch query."""
+    """Add canonical symbols to nested result genes."""
     genes = [
         (result.get(part) or {}, field)
         for result in results
@@ -483,19 +536,7 @@ async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
     if not ensg_ids:
         return
 
-    response = await db_pools["es"].search(
-        index=ES_TARGET_SUMMARY,
-        body={
-            "_source": ["ensembl_gene_id", "approved_symbol"],
-            "size": len(ensg_ids),
-            "query": {"terms": {"ensembl_gene_id": ensg_ids}},
-        },
-    )
-    symbols = {
-        source["ensembl_gene_id"]: source.get("approved_symbol")
-        for hit in response.get("hits", {}).get("hits", [])
-        if (source := hit.get("_source", {})).get("ensembl_gene_id")
-    }
+    symbols = await _fetch_gene_symbols(ensg_ids)
     for gene, field in genes:
         gene["gene_symbol"] = symbols.get(gene[field])
 
@@ -1098,11 +1139,12 @@ async def _prepare_dataset_query(
     data_query = f"SELECT * FROM {pg_table} {query_tail}".strip()
     csv_columns = list(
         dict.fromkeys(
-            api_to_db[field_key] for field_key, _ in CSV_COLUMNS.get(modality, [])
+            api_to_db[field_key]
+            for field_key, _ in CSV_COLUMNS.get(modality, [])
+            if field_key in api_to_db
         )
     )
     csv_query = f"SELECT {', '.join(csv_columns)} FROM {pg_table} {query_tail}".strip()
-
     return {
         "limit": limit,
         "offset": offset,
@@ -1360,7 +1402,9 @@ async def get_perturb_seq_gsea(
 CSV_COLUMNS = {
     "perturb-seq": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("effect_gene_ensg", "Effect Gene ENSG"),
+        ("effect_gene_name", "Effect Gene Name"),
         ("effect_log2fc", "Log2FC"),
         ("effect_padj", "Padj"),
         ("effect_score_name", "Score Name"),
@@ -1369,6 +1413,7 @@ CSV_COLUMNS = {
     ],
     "crispr-screen": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("effect_score_name", "Score Name"),
         ("effect_score_value", "Score Value"),
         ("effect_significant", "Significant"),
@@ -1376,6 +1421,7 @@ CSV_COLUMNS = {
     ],
     "mave": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("perturbation_name", "Perturbation Name"),
         ("perturbation_position", "Position"),
         ("perturbation_aa_wt", "AA WT"),
@@ -1404,8 +1450,12 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
         for field_key, _ in columns:
             if field_key == "perturbed_target_ensg":
                 value = perturbation.get(field_key, "")
+            elif field_key == "perturbed_target_name":
+                value = perturbation.get("gene_symbol", "")
             elif field_key == "effect_gene_ensg":
                 value = effect.get(field_key, "")
+            elif field_key == "effect_gene_name":
+                value = effect.get("gene_symbol", "")
             elif field_key.startswith("perturbation_"):
                 key = field_key.replace("perturbation_", "")
                 value = perturbation.get(key, "")
@@ -1422,6 +1472,13 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
 
 async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
     """Stream native PostgreSQL CSV chunks without buffering the result set."""
+    columns = CSV_COLUMNS.get(modality, [])
+    symbols = await _fetch_all_gene_symbols()
+    raw_fields = [
+        field_key for field_key, _ in columns if field_key in query["api_to_db"]
+    ]
+    raw_indexes = {field_key: index for index, field_key in enumerate(raw_fields)}
+
     yield (",".join(col[1] for col in CSV_COLUMNS.get(modality, [])) + "\r\n").encode(
         "utf-8"
     )
@@ -1432,9 +1489,57 @@ async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
     pool = db_pools["pg"]
 
     async with pool.acquire() as conn:
+        record = bytearray()
+        in_quotes = False
+        quote_pending = False
+
+        def format_records(records):
+            if not records:
+                return b""
+            output = io.StringIO()
+            writer = csv.writer(output, lineterminator="\r\n")
+            for raw_row in csv.reader(record.decode("utf-8") for record in records):
+                output_row = []
+                for field_key, _ in columns:
+                    if field_key == "perturbed_target_name":
+                        value = symbols.get(
+                            raw_row[raw_indexes["perturbed_target_ensg"]], ""
+                        )
+                    elif field_key == "effect_gene_name":
+                        value = symbols.get(
+                            raw_row[raw_indexes["effect_gene_ensg"]], ""
+                        )
+                    else:
+                        value = raw_row[raw_indexes[field_key]]
+                    output_row.append(value or "")
+                writer.writerow(output_row)
+            return output.getvalue().encode("utf-8")
 
         async def write_copy_chunk(data: bytes):
-            pending.extend(data)
+            nonlocal record, in_quotes, quote_pending
+            records = []
+            for byte in data:
+                record.append(byte)
+                if quote_pending:
+                    if byte == ord('"'):
+                        quote_pending = False
+                    else:
+                        quote_pending = False
+                        in_quotes = False
+                        if byte == ord("\n"):
+                            records.append(bytes(record))
+                            record.clear()
+                    continue
+                if in_quotes:
+                    if byte == ord('"'):
+                        quote_pending = True
+                elif byte == ord('"'):
+                    in_quotes = True
+                elif byte == ord("\n"):
+                    records.append(bytes(record))
+                    record.clear()
+
+            pending.extend(format_records(records))
             if len(pending) >= chunk_size:
                 chunk = bytes(pending)
                 pending.clear()
@@ -1451,14 +1556,15 @@ async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
                     null="",
                     encoding="utf-8",
                 )
+                if record:
+                    pending.extend(format_records([bytes(record)]))
+                if pending:
+                    await queue.put(("data", bytes(pending)))
+                await queue.put(("done", None))
             except asyncio.CancelledError:
                 raise
             except BaseException as exc:
                 await queue.put(("error", exc))
-            else:
-                if pending:
-                    await queue.put(("data", bytes(pending)))
-                await queue.put(("done", None))
 
         copy_task = asyncio.create_task(copy_to_queue())
         try:

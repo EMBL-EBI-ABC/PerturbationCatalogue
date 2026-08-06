@@ -39,7 +39,15 @@ def test_download_streams_csv_from_postgres(run_with_dev_db):
     content = run_with_dev_db(download)
     lines = content.decode().splitlines()
 
-    assert lines[0].startswith("Perturbed Target ENSG,Effect Gene ENSG")
+    assert lines[0] == (
+        "Perturbed Target ENSG,Perturbed Target Name,Effect Gene ENSG,"
+        "Effect Gene Name,Log2FC,Padj,Score Name,Score Value,Cell Type"
+    )
+    assert {tuple(line.split(",")[:4]) for line in lines[1:]} == {
+        ("ENSG00000171421", "MRPL36", "ENSG00000198804", "MT-CO1"),
+        ("ENSG00000075624", "ACTB", "ENSG00000180914", "OXTR"),
+        ("ENSG00000108064", "TFAM", "ENSG00000198804", "MT-CO1"),
+    }
     assert len(lines) == 4
 
 
@@ -53,6 +61,7 @@ def test_download_without_limit_builds_unbounded_query(run_with_dev_db):
     assert "LIMIT" not in query["data_query"]
     assert "SELECT *" not in query["csv_query"]
     assert "perturbed_target_ensg, effect_gene_ensg" in query["csv_query"]
+    assert "gene_id_query" not in query
 
 
 def test_stream_failure_propagates_without_successful_completion(monkeypatch):
@@ -77,6 +86,11 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
             return Acquire()
 
     monkeypatch.setitem(data_query.db_pools, "pg", BrokenPool())
+
+    async def no_gene_symbols():
+        return {}
+
+    monkeypatch.setattr(data_query, "_fetch_all_gene_symbols", no_gene_symbols)
     query = {
         "csv_query": "SELECT 1",
         "pg_params": [],
