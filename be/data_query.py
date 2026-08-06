@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
+from elasticsearch.helpers import async_scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
@@ -466,6 +467,19 @@ async def resolve_target_query_to_ensg(query: str) -> List[str]:
     hits = response.get("hits", {}).get("hits", [])
     ensg_id = hits[0].get("_source", {}).get("ensembl_gene_id") if hits else None
     return [ensg_id] if ensg_id else []
+
+
+async def _fetch_all_gene_symbols() -> Dict[str, Optional[str]]:
+    """Fetch the small gene ID-to-symbol map from Elasticsearch."""
+    return {
+        source["ensembl_gene_id"]: source.get("approved_symbol")
+        async for hit in async_scan(
+            db_pools["es"],
+            index=ES_TARGET_SUMMARY,
+            query={"_source": ["ensembl_gene_id", "approved_symbol"]},
+        )
+        if (source := hit.get("_source", {})).get("ensembl_gene_id")
+    }
 
 
 async def enrich_gene_symbols(results: List[Dict[str, Any]]) -> None:
@@ -1012,11 +1026,17 @@ async def _search_dataset_impl(
     modality: MODALITIES,
     dataset_id: str,
     query_params: Dict[str, Any],
+    return_query: bool = False,
 ):
-    """Search within a specific dataset in a modality (Shared Implementation)."""
+    """Search within a specific dataset in a modality."""
     limit = query_params.get("limit", 50)
     offset = query_params.get("offset", 0)
     sort = query_params.get("sort") or DEFAULT_SORTS.get(modality)
+
+    if limit is not None and limit < 0:
+        raise HTTPException(status_code=400, detail="limit must be non-negative")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be non-negative")
 
     # Check if position range filter is specified - if so, return all matching rows
     has_position_range = (
@@ -1056,7 +1076,6 @@ async def _search_dataset_impl(
 
     where_clause = f"WHERE {' AND '.join(pg_filters)}"
 
-    # 1. Count Rows
     no_user_filters = not any(
         k in api_to_db or k in MODALITY_TARGET_QUERY_FIELDS.get(modality, set())
         for k in query_params
@@ -1069,11 +1088,6 @@ async def _search_dataset_impl(
     else:
         count_query = f"SELECT COUNT(*) FROM {pg_table} {where_clause}"
         count_params = pg_params
-
-    try:
-        total_rows_count = await pg_conn.fetchval(count_query, *count_params) or 0
-    except asyncpg.exceptions.UndefinedColumnError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
 
     # 2. Fetch Rows
     order_by_clause = ""
@@ -1091,8 +1105,23 @@ async def _search_dataset_impl(
     if has_position_range:
         pagination_clause = ""
     else:
-        pagination_clause = f"LIMIT {limit} OFFSET {offset}"
+        pagination_clause = " ".join(
+            part
+            for part in (
+                f"LIMIT {limit}" if limit is not None else "",
+                f"OFFSET {offset}" if offset else "",
+            )
+            if part
+        )
     data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {pagination_clause}".strip()
+
+    if return_query:
+        return data_query, pg_params, api_to_db
+
+    try:
+        total_rows_count = await pg_conn.fetchval(count_query, *count_params) or 0
+    except asyncpg.exceptions.UndefinedColumnError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid filter field: {e}")
 
     pg_rows = await pg_conn.fetch(data_query, *pg_params)
     pg_rows_dict = [dict(row) for row in pg_rows]
@@ -1100,7 +1129,6 @@ async def _search_dataset_impl(
     if modality == "perturb-seq":
         pg_rows_dict = await enrich_perturb_seq_rows(pg_conn, dataset_id, pg_rows_dict)
 
-    # 3. Assemble Response
     results = []
     for row in pg_rows_dict:
         perturbation = {
@@ -1314,7 +1342,9 @@ async def get_perturb_seq_gsea(
 CSV_COLUMNS = {
     "perturb-seq": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("effect_gene_ensg", "Effect Gene ENSG"),
+        ("effect_gene_name", "Effect Gene Name"),
         ("effect_log2fc", "Log2FC"),
         ("effect_padj", "Padj"),
         ("effect_score_name", "Score Name"),
@@ -1323,6 +1353,7 @@ CSV_COLUMNS = {
     ],
     "crispr-screen": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("effect_score_name", "Score Name"),
         ("effect_score_value", "Score Value"),
         ("effect_significant", "Significant"),
@@ -1330,6 +1361,7 @@ CSV_COLUMNS = {
     ],
     "mave": [
         ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_name", "Perturbed Target Name"),
         ("perturbation_name", "Perturbation Name"),
         ("perturbation_position", "Position"),
         ("perturbation_aa_wt", "AA WT"),
@@ -1358,8 +1390,12 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
         for field_key, _ in columns:
             if field_key == "perturbed_target_ensg":
                 value = perturbation.get(field_key, "")
+            elif field_key == "perturbed_target_name":
+                value = perturbation.get("gene_symbol", "")
             elif field_key == "effect_gene_ensg":
                 value = effect.get(field_key, "")
+            elif field_key == "effect_gene_name":
+                value = effect.get("gene_symbol", "")
             elif field_key.startswith("perturbation_"):
                 key = field_key.replace("perturbation_", "")
                 value = perturbation.get(key, "")
@@ -1372,6 +1408,38 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
         writer.writerow(row)
 
     return output.getvalue()
+
+
+async def _stream_dataset_csv(
+    query: str, params: List[Any], mapping: Dict[str, str], modality: MODALITIES
+):
+    """Stream CSV rows without buffering the result set."""
+    columns = CSV_COLUMNS.get(modality, [])
+    symbols = await _fetch_all_gene_symbols()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(label for _, label in columns)
+    yield output.getvalue().encode()
+    output.seek(0)
+    output.truncate(0)
+
+    async with db_pools["pg"].acquire() as conn, conn.transaction():
+        async for row in conn.cursor(query, *params, prefetch=1000):
+            writer.writerow(
+                (
+                    symbols.get(row.get(field.replace("_name", "_ensg")), "")
+                    if field.endswith("_name")
+                    else row.get(mapping[field], "")
+                )
+                for field, _ in columns
+            )
+            if output.tell() >= 256 * 1024:
+                yield output.getvalue().encode()
+                output.seek(0)
+                output.truncate(0)
+
+    if output.tell():
+        yield output.getvalue().encode()
 
 
 @router.get("/v1/{modality}/download")
@@ -1476,64 +1544,25 @@ def _gsea_results_to_csv(gsea_results: List[Dict]) -> str:
 async def download_dataset_data(
     modality: MODALITIES,
     dataset_id: str,
-    # Common params
-    limit: int = Query(100000, description="Maximum rows to download"),
-    offset: int = Query(0, description="Offset for rows"),
-    sort: Optional[str] = Query(None, description="Sort order"),
-    # Perturb-seq params
-    perturbation_gene_name: Optional[str] = Query(None),
-    effect_gene_name: Optional[str] = Query(None),
-    effect_log2fc: Optional[str] = Query(None),
-    effect_padj: Optional[str] = Query(None),
-    effect_score_name: Optional[str] = Query(None),
-    effect_score_value: Optional[str] = Query(None),
-    effect_cell_type: Optional[str] = Query(None),
-    # CRISPR params
-    effect_significant: Optional[str] = Query(None),
-    effect_significance_criteria: Optional[str] = Query(None),
-    # MAVE params
-    perturbation_name: Optional[str] = Query(None),
-    perturbation_position: Optional[str] = Query(None),
-    perturbation_aa_wt: Optional[str] = Query(None),
-    perturbation_aa_change: Optional[str] = Query(None),
+    request: Request,
+    limit: Optional[int] = Query(
+        None, ge=0, description="Maximum rows to download; omit for all rows"
+    ),
+    offset: int = Query(0, ge=0, description="Offset for rows"),
 ):
     """Download data for a specific dataset as CSV."""
-    # Build params dict
-    params = {
-        "limit": limit,
-        "offset": offset,
-    }
-    if sort:
-        params["sort"] = sort
-
-    # Add modality-specific params
-    modality_params = {
-        "perturbation_gene_name": perturbation_gene_name,
-        "effect_gene_name": effect_gene_name,
-        "effect_log2fc": effect_log2fc,
-        "effect_padj": effect_padj,
-        "effect_score_name": effect_score_name,
-        "effect_score_value": effect_score_value,
-        "effect_cell_type": effect_cell_type,
-        "effect_significant": effect_significant,
-        "effect_significance_criteria": effect_significance_criteria,
-        "perturbation_name": perturbation_name,
-        "perturbation_position": perturbation_position,
-        "perturbation_aa_wt": perturbation_aa_wt,
-        "perturbation_aa_change": perturbation_aa_change,
-    }
-    params.update({k: v for k, v in modality_params.items() if v is not None})
-
-    result = await _search_dataset_impl(modality, dataset_id, params)
-
-    csv_content = _results_to_csv(result.get("results", []), modality)
-
+    params = dict(request.query_params, limit=limit, offset=offset)
+    query = await _search_dataset_impl(modality, dataset_id, params, return_query=True)
     filename = f"{modality}_{dataset_id}_data.csv"
 
     return StreamingResponse(
-        iter([csv_content]),
+        _stream_dataset_csv(*query, modality),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
