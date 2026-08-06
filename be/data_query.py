@@ -1094,7 +1094,14 @@ async def _prepare_dataset_query(
         if offset:
             pagination_parts.append(f"OFFSET {offset}")
         pagination_clause = " ".join(pagination_parts)
-    data_query = f"SELECT * FROM {pg_table} {where_clause} {order_by_clause} {pagination_clause}".strip()
+    query_tail = f"{where_clause} {order_by_clause} {pagination_clause}".strip()
+    data_query = f"SELECT * FROM {pg_table} {query_tail}".strip()
+    csv_columns = list(
+        dict.fromkeys(
+            api_to_db[field_key] for field_key, _ in CSV_COLUMNS.get(modality, [])
+        )
+    )
+    csv_query = f"SELECT {', '.join(csv_columns)} FROM {pg_table} {query_tail}".strip()
 
     return {
         "limit": limit,
@@ -1103,6 +1110,7 @@ async def _prepare_dataset_query(
         "count_query": count_query,
         "count_params": count_params,
         "data_query": data_query,
+        "csv_query": csv_query,
         "pg_params": pg_params,
         "pg_table": pg_table,
         "api_to_db": api_to_db,
@@ -1412,42 +1420,60 @@ def _results_to_csv(results: List[Dict], modality: MODALITIES) -> str:
     return output.getvalue()
 
 
-def _csv_values_from_row(
-    row: Dict[str, Any], modality: MODALITIES, api_to_db: Dict[str, str]
-) -> List[Any]:
-    """Return the existing CSV representation for one database row."""
-    values = []
-    for field_key, _ in CSV_COLUMNS.get(modality, []):
-        value = row.get(api_to_db.get(field_key, ""))
-        values.append(value if value is not None else "")
-    return values
-
-
 async def _stream_dataset_csv(query: Dict[str, Any], modality: MODALITIES):
-    """Stream CSV chunks from PostgreSQL without buffering the result set."""
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow([col[1] for col in CSV_COLUMNS.get(modality, [])])
-    yield buffer.getvalue().encode("utf-8")
-    buffer.seek(0)
-    buffer.truncate(0)
+    """Stream native PostgreSQL CSV chunks without buffering the result set."""
+    yield (",".join(col[1] for col in CSV_COLUMNS.get(modality, [])) + "\r\n").encode(
+        "utf-8"
+    )
 
+    queue: asyncio.Queue = asyncio.Queue(maxsize=4)
+    pending = bytearray()
+    chunk_size = 256 * 1024
     pool = db_pools["pg"]
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            async for row in conn.cursor(
-                query["data_query"], *query["pg_params"], prefetch=1000
-            ):
-                writer.writerow(
-                    _csv_values_from_row(dict(row), modality, query["api_to_db"])
-                )
-                if buffer.tell() >= 64 * 1024:
-                    yield buffer.getvalue().encode("utf-8")
-                    buffer.seek(0)
-                    buffer.truncate(0)
 
-    if buffer.tell():
-        yield buffer.getvalue().encode("utf-8")
+    async with pool.acquire() as conn:
+
+        async def write_copy_chunk(data: bytes):
+            pending.extend(data)
+            if len(pending) >= chunk_size:
+                chunk = bytes(pending)
+                pending.clear()
+                await queue.put(("data", chunk))
+
+        async def copy_to_queue():
+            try:
+                await conn.copy_from_query(
+                    query["csv_query"],
+                    *query["pg_params"],
+                    output=write_copy_chunk,
+                    format="csv",
+                    header=False,
+                    null="",
+                    encoding="utf-8",
+                )
+            except asyncio.CancelledError:
+                raise
+            except BaseException as exc:
+                await queue.put(("error", exc))
+            else:
+                if pending:
+                    await queue.put(("data", bytes(pending)))
+                await queue.put(("done", None))
+
+        copy_task = asyncio.create_task(copy_to_queue())
+        try:
+            while True:
+                kind, value = await queue.get()
+                if kind == "data":
+                    yield value
+                elif kind == "error":
+                    raise value
+                else:
+                    break
+        finally:
+            if not copy_task.done():
+                copy_task.cancel()
+            await asyncio.gather(copy_task, return_exceptions=True)
 
 
 @router.get("/v1/{modality}/download")

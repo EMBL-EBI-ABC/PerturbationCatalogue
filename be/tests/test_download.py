@@ -51,16 +51,11 @@ def test_download_without_limit_builds_unbounded_query(run_with_dev_db):
 
     query = run_with_dev_db(prepare)
     assert "LIMIT" not in query["data_query"]
+    assert "SELECT *" not in query["csv_query"]
+    assert "perturbed_target_ensg, effect_gene_ensg" in query["csv_query"]
 
 
 def test_stream_failure_propagates_without_successful_completion(monkeypatch):
-    class BrokenCursor:
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            raise RuntimeError("database connection lost")
-
     class Context:
         async def __aenter__(self):
             return self
@@ -69,11 +64,9 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
             return False
 
     class BrokenConnection:
-        def transaction(self):
-            return Context()
-
-        def cursor(self, *_args, **_kwargs):
-            return BrokenCursor()
+        async def copy_from_query(self, *_args, output, **_kwargs):
+            await output(b"partial row")
+            raise RuntimeError("database connection lost")
 
     class BrokenPool:
         def acquire(self):
@@ -85,7 +78,7 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
 
     monkeypatch.setitem(data_query.db_pools, "pg", BrokenPool())
     query = {
-        "data_query": "SELECT 1",
+        "csv_query": "SELECT 1",
         "pg_params": [],
         "api_to_db": data_query.get_api_to_db_mapping("perturb-seq"),
     }
