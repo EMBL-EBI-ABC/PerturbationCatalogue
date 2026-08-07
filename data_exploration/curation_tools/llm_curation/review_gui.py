@@ -727,11 +727,36 @@ def main():
             f"📂 Step 1 Evidence Files queued ({len(s2_status_records)} files found)"
         )
 
+        s2_file_filter_mode = st.radio(
+            "File Filter Mode",
+            options=["All Step 1 Evidence Files", "Selected Files (checkboxes)"],
+            index=0,
+            key="s2_file_filter_mode",
+            horizontal=True,
+        )
+        s2_selected_files = []
+
         if s2_status_records:
             df_s2 = pd.DataFrame(s2_status_records)
-            st.dataframe(
+            all_s2_files_selected = s2_file_filter_mode == "All Step 1 Evidence Files"
+            df_s2.insert(0, "run", all_s2_files_selected)
+            disabled_s2_columns = [
+                "file_name",
+                "status",
+                "other_fields_count",
+                "output_path",
+            ]
+            if s2_file_filter_mode == "All Step 1 Evidence Files":
+                disabled_s2_columns.append("run")
+
+            edited_s2_df = st.data_editor(
                 df_s2,
                 column_config={
+                    "run": st.column_config.CheckboxColumn(
+                        "Normalize",
+                        help="Select this file for Step 2 term normalization.",
+                        default=False,
+                    ),
                     "file_name": st.column_config.TextColumn("Evidence JSON File"),
                     "status": st.column_config.TextColumn("Status"),
                     "other_fields_count": st.column_config.TextColumn(
@@ -741,9 +766,24 @@ def main():
                         "Normalized Output Path"
                     ),
                 },
+                disabled=disabled_s2_columns,
                 hide_index=True,
                 width="stretch",
+                key=(
+                    "s2_file_selection_table_all"
+                    if all_s2_files_selected
+                    else "s2_file_selection_table_selected"
+                ),
             )
+            s2_selected_files = edited_s2_df.loc[
+                edited_s2_df["run"].fillna(False), "file_name"
+            ].tolist()
+
+        s2_target_files = (
+            None
+            if s2_file_filter_mode == "All Step 1 Evidence Files"
+            else s2_selected_files
+        )
 
         st.divider()
 
