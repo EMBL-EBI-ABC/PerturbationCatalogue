@@ -19,7 +19,8 @@ This is strictly an evidence mapping and classification task. You must normalize
 1. **Mapping Verbatim Evidence to Schema:**
    - Look at the `*_evidence` fields in the input Step 1 JSON.
    - Map each piece of evidence to its corresponding normalized field in the `SpecificTermExtractionSchema` (e.g. map `model_system_label_evidence` or any related context to `model_system_label`).
-   - If `dataset_id` or basic metadata (like `study_title`, `study_uri`, etc.) is present in the Step 1 JSON or Supplementary MaveDB Metadata, format and populate them.
+   - For `perturbed_target_symbol`, use the MaveDB supplementary metadata `target_genes` value as the authoritative starting definition. Refine or disambiguate it from the Step 1 publication evidence only when the main text provides a more specific target symbol. Do not replace it with an unrelated publication target.
+   - If `dataset_id` or basic metadata (like `study_title`, `study_uri`, etc.) is present in the Step 1 JSON or Supplementary MaveDB Metadata, format and populate them. For this MaveDB workflow, `dataset_id` must be the canonical source URI, such as `urn:mavedb:00000001-a-2`, not a publication-based name.
 
 2. **Synonym Resolution & Case Insensitivity:**
    - Always match terms case-insensitively.
