@@ -1383,10 +1383,23 @@ def main():
                     log_file=log_file,
                     create_csv=True,
                 )
+                record_pipeline_step(
+                    paths["pipeline_manifest"],
+                    "step4",
+                    input_dir=Path(step2_dir_input),
+                    output_dir=Path(step4_dir_input),
+                    decisions_file=decisions_file_path,
+                    source_step="step2",
+                )
                 st.success(
                     f"Step 4 Backfill Complete! Copied {copied_count} files and replaced {fields_updated} 'Other' values in `{step4_dir_input}`."
                 )
                 st.toast("Step 4 Backfill completed successfully!", icon="✅")
+                st.session_state["_step4_backfill_message"] = (
+                    f"Step 4 Backfill complete: copied {copied_count} files and replaced "
+                    f"{fields_updated} 'Other' values."
+                )
+                st.rerun()
             except Exception as e:
                 st.error(f"Backfill failed: {e}")
 
