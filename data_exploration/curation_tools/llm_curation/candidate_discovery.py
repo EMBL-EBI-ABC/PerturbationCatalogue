@@ -57,6 +57,7 @@ def aggregate_unmapped_evidence(
     step1_dir: Path,
     step2_dir: Path,
     log_file: Path,
+    selected_files: list[str | Path] | None = None,
 ) -> dict[str, list[dict[str, str]]]:
     """Iterate over Step 2 normalized artifacts, find fields with value "Other", and retrieve their original verbatim evidence string from corresponding Step 1 files."""
     unmapped_evidence_map: dict[str, list[dict[str, str]]] = {}
@@ -131,6 +132,7 @@ def discover_candidates(
     prompt_template_file: Path,
     model_name: str,
     verbose: bool = False,
+    selected_files: list[str | Path] | None = None,
 ) -> Path:
     """Run corpus-level ontology candidate discovery on fields with 'Other' values."""
     output_dir = Path(output_dir).resolve()
@@ -147,7 +149,9 @@ def discover_candidates(
     )
 
     # Aggregate unmapped evidence from Step 1 and Step 2 files
-    unmapped_evidence = aggregate_unmapped_evidence(step1_dir, step2_dir, log_file)
+    unmapped_evidence = aggregate_unmapped_evidence(
+        step1_dir, step2_dir, log_file, selected_files=selected_files
+    )
 
     if not unmapped_evidence:
         print_status_block(
