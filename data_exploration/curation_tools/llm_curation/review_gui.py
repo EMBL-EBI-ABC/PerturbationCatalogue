@@ -52,6 +52,99 @@ DEFAULT_STEP4_OUT = DEFAULT_TEST_OUTPUT / "step4_backfilled"
 DEFAULT_CANDIDATES_JSON = DEFAULT_STEP3_OUT / "step3_ontology_candidates.json"
 DEFAULT_PROMPT_DIR = ROOT_DIR / "data_exploration" / "curation_tools" / "llm_curation"
 
+_DEFAULT_TOOLBAR_VALUES = {
+    "base_out_input": str(DEFAULT_TEST_OUTPUT),
+    "s1_sub_input": "step1_evidence",
+    "s2_sub_input": "step2_normalized",
+    "s3_sub_input": "step3_ontology_candidates",
+    "s4_sub_input": "step4_backfilled",
+    "s5_sub_input": "step5_final",
+    "pub_md_input": str(FULL_TEXT_MD_DIR),
+    "mavedb_meta_input": str(MAVEDB_METADATA_OUTPUT_DIR),
+    "prompt_dir_input": str(DEFAULT_PROMPT_DIR),
+}
+
+_DEFAULT_ACTIVE_PATH_VALUES = {
+    "s1_input_dir_val": str(Path(FULL_TEXT_MD_DIR).resolve()),
+    "s1_output_dir_val": str(DEFAULT_STEP1_OUT.resolve()),
+    "s1_prompt_file_val": str(
+        (DEFAULT_PROMPT_DIR / "step1_evidence_extraction_prompt.md").resolve()
+    ),
+    "s1_log_file_val": str(
+        (DEFAULT_TEST_OUTPUT / "step1_evidence_extraction.log").resolve()
+    ),
+    "s2_input_dir_val": str(DEFAULT_STEP1_OUT.resolve()),
+    "s2_output_dir_val": str(DEFAULT_STEP2_OUT.resolve()),
+    "s2_prompt_file_val": str(
+        (DEFAULT_PROMPT_DIR / "step2_specific_term_extraction.md").resolve()
+    ),
+    "s2_log_file_val": str(
+        (DEFAULT_TEST_OUTPUT / "step2_specific_term_extraction.log").resolve()
+    ),
+    "s2_mavedb_dir_val": str(Path(MAVEDB_METADATA_OUTPUT_DIR).resolve()),
+    "s3_step1_dir_val": str(DEFAULT_STEP1_OUT.resolve()),
+    "s3_step2_dir_val": str(DEFAULT_STEP2_OUT.resolve()),
+    "s3_output_dir_val": str(DEFAULT_STEP3_OUT.resolve()),
+    "s3_log_file_val": str(
+        (DEFAULT_TEST_OUTPUT / "step3_candidate_discovery.log").resolve()
+    ),
+    "s3_prompt_file_val": str(
+        (DEFAULT_PROMPT_DIR / "step3_candidate_discovery_prompt.md").resolve()
+    ),
+    "s4_step2_dir_val": str(DEFAULT_STEP2_OUT.resolve()),
+    "s4_step4_dir_val": str(DEFAULT_STEP4_OUT.resolve()),
+    "s5_source_dir_val": str(DEFAULT_STEP4_OUT.resolve()),
+    "s5_output_dir_val": str(DEFAULT_STEP5_OUT.resolve()),
+    "s5_mavedb_dir_val": str(Path(MAVEDB_METADATA_OUTPUT_DIR).resolve()),
+}
+
+_TOOLBAR_PATH_KEYS = {
+    "base_out_input": {
+        "s1_output_dir_val": "step1_out",
+        "s2_output_dir_val": "step2_out",
+        "s3_output_dir_val": "step3_out",
+        "s4_step4_dir_val": "step4_out",
+        "s5_source_dir_val": "step4_out",
+        "s5_output_dir_val": "step5_out",
+        "s1_log_file_val": "step1_log",
+        "s2_log_file_val": "step2_log",
+        "s3_log_file_val": "step3_log",
+    },
+    "s1_sub_input": {
+        "s1_output_dir_val": "step1_out",
+        "s2_input_dir_val": "step1_out",
+        "s3_step1_dir_val": "step1_out",
+    },
+    "s2_sub_input": {
+        "s2_output_dir_val": "step2_out",
+        "s3_step2_dir_val": "step2_out",
+        "s4_step2_dir_val": "step2_out",
+        "s5_source_dir_val": "step2_out",
+    },
+    "s3_sub_input": {
+        "s3_output_dir_val": "step3_out",
+    },
+    "s4_sub_input": {
+        "s4_step4_dir_val": "step4_out",
+        "s5_source_dir_val": "step4_out",
+    },
+    "s5_sub_input": {
+        "s5_output_dir_val": "step5_out",
+    },
+    "pub_md_input": {
+        "s1_input_dir_val": "pub_md_dir",
+    },
+    "mavedb_meta_input": {
+        "s2_mavedb_dir_val": "mavedb_meta_dir",
+        "s5_mavedb_dir_val": "mavedb_meta_dir",
+    },
+    "prompt_dir_input": {
+        "s1_prompt_file_val": "step1_prompt",
+        "s2_prompt_file_val": "step2_prompt",
+        "s3_prompt_file_val": "step3_prompt",
+    },
+}
+
 st.set_page_config(
     page_title="MaveDB LLM Curation Control Center",
     page_icon="🧬",
