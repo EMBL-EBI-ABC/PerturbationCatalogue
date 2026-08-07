@@ -521,25 +521,72 @@ def main():
             f"📂 MaveDB Datasets Queued ({len(s1_status_records)} URN datasets matched)"
         )
 
+        s1_urn_filter_mode = st.radio(
+            "URN Filter Mode",
+            options=["All MaveDB URNs", "Selected URNs (checkboxes)"],
+            index=0,
+            key="s1_urn_filter_mode",
+            horizontal=True,
+        )
+        s1_selected_urns = []
+
         if s1_status_records:
             df_s1 = pd.DataFrame(s1_status_records)
-            st.dataframe(
+            all_s1_urns_selected = s1_urn_filter_mode == "All MaveDB URNs"
+            df_s1.insert(0, "run", all_s1_urns_selected)
+            disabled_s1_columns = [
+                "urn",
+                "title",
+                "primary_dois",
+                "status",
+                "output_json",
+            ]
+            if all_s1_urns_selected:
+                disabled_s1_columns.append("run")
+
+            edited_s1_df = st.data_editor(
                 df_s1,
                 column_config={
+                    "run": st.column_config.CheckboxColumn(
+                        "Extract",
+                        help="Select this MaveDB dataset for Step 1 evidence extraction.",
+                        default=False,
+                    ),
                     "urn": st.column_config.TextColumn("MaveDB URN"),
                     "title": st.column_config.TextColumn("Dataset Title"),
                     "primary_dois": st.column_config.TextColumn("Primary DOIs"),
                     "status": st.column_config.TextColumn("Status"),
                     "output_json": st.column_config.TextColumn("Generated Output"),
                 },
+                disabled=disabled_s1_columns,
                 hide_index=True,
                 width="stretch",
+                key=(
+                    "s1_urn_selection_table_all"
+                    if all_s1_urns_selected
+                    else "s1_urn_selection_table_selected"
+                ),
             )
+            s1_selected_urns = edited_s1_df.loc[
+                edited_s1_df["run"].fillna(False), "urn"
+            ].tolist()
+
+        parsed_target_urns = (
+            None
+            if s1_urn_filter_mode == "All MaveDB URNs"
+            else parse_target_urns(s1_selected_urns)
+        )
 
         st.divider()
 
         if st.button(
-            "🚀 Execute Step 1 Evidence Extraction", type="primary", key="btn_run_s1"
+            "🚀 Execute Step 1 Evidence Extraction",
+            type="primary",
+            key="btn_run_s1",
+            disabled=(
+                s1_urn_filter_mode == "Selected URNs (checkboxes)"
+                and not s1_selected_urns
+            ),
         ):
             with st.spinner("Extracting verbatim evidence quotes via LLM..."):
                 try:
@@ -588,6 +635,13 @@ def main():
                         model_name=selected_model,
                         create_csv=s1_create_csv,
                         verbose=s1_verbose,
+                    )
+                    record_pipeline_step(
+                        paths["pipeline_manifest"],
+                        "step1",
+                        input_dir=Path(s1_input_dir),
+                        output_dir=Path(s1_output_dir),
+                        selected_items=s1_selected_urns,
                     )
                     st.success("Step 1 Evidence Extraction Complete!")
                     st.toast(
