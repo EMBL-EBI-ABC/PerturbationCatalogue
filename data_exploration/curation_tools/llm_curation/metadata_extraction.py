@@ -549,8 +549,13 @@ def bulk_extract_evidence_from_publications(
     )
 
     if create_csv:
+        step1_json_dir = (
+            output_dir
+            if output_dir.name == "step1_evidence"
+            else output_dir / "step1_evidence"
+        )
         create_csv_from_curated_metadata_json(
-            input_dir=output_dir / "step1_evidence",
+            input_dir=step1_json_dir,
             output_csv_path=output_dir / "step1_evidence.csv",
             log_file=log_file,
         )
