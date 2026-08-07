@@ -196,7 +196,7 @@ class EvidenceExtractionSchema(BaseModel):
     )
     method_name_label_evidence: str | None = Field(
         default=None,
-        description="Method name used in the readout assay. Example: We mapped genetic interactions using Perturb-seq with direct guide capture. or Example: DMS-TileSeq was employed to assess the functional impact of BRCA1 variants by measuring their effects on protein stability and activity.",
+        description="A specific method name used in the readout assay. Example: We mapped genetic interactions using Perturb-seq with direct guide capture. or Example: DMS-TileSeq was employed to assess the functional impact of BRCA1 variants by measuring their effects on protein stability and activity.",
     )
     method_uri_evidence: str | None = Field(
         default=None,
@@ -661,7 +661,7 @@ class SpecificTermExtractionSchema(BaseModel):
         | None
     ) = Field(
         default=None,
-        description="Ontology term label associated with the method name used in the readout assay.",
+        description="Ontology term label associated with the specific method name used in the readout assay. This should be a specific method name, e.g., ECCITE-seq, DMS-TileSeq, Vamp-seq, etc.",
     )
 
     method_uri: str | None = Field(
