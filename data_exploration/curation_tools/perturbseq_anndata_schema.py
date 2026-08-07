@@ -153,7 +153,15 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[String] = Field(
         nullable=False,
         description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid", "yeast", "bacteria", "Other"],
+        isin=[
+            "cell_line",
+            "primary_cell",
+            "organoid",
+            "yeast",
+            "bacteria",
+            "bacteriophage",
+            "Other",
+        ],
     )
     model_system_id: Series[String] = Field(
         nullable=True,
@@ -289,6 +297,9 @@ class ObsSchema(DataFrameModel):
             "nicking mutagenesis",
             "oligo-directed mutagenic PCR",
             "site-directed mutagenesis",
+            "silicon microarray synthesis",
+            "POPCode mutagenesis",
+            "insertional mutagenesis",
         ],
     )
     enzyme_delivery_method_id: Series[String] = Field(
@@ -324,6 +335,7 @@ class ObsSchema(DataFrameModel):
             "lentivirus transduction",
             "transformation",
             "nanoparticle-mediated transfection",
+            "chemical-mediated transfection",
         ],
     )
     enzyme_integration_state_id: Series[String] = Field(
@@ -464,7 +476,12 @@ class ObsSchema(DataFrameModel):
     readout_technology_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the technology used in the readout assay.",
-        isin=["single-cell rna-seq", "population growth assay", "flow cytometry"],
+        isin=[
+            "single-cell rna-seq",
+            "population growth assay",
+            "flow cytometry",
+            "high-throughput dna sequencing",
+        ],
     )
     readout_measurement_id: Series[String] = Field(
         nullable=True,
@@ -499,6 +516,13 @@ class ObsSchema(DataFrameModel):
             "MITE",
             "Joined and refined DMS-BarSeq and DMS-TileSeq",
             "Combined DMS-BarSeq and DMS-TileSeq",
+            "yeast surface display",
+            "bacterial two-hybrid assay",
+            "mammalian two-hybrid assay",
+            "pooled growth competition assay",
+            "yeast one-hybrid assay",
+            "flow cytometry-based sequencing assay",
+            "phage display",
         ],
     )
     method_uri: Series[String] = Field(
@@ -515,12 +539,15 @@ class ObsSchema(DataFrameModel):
         isin=[
             "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
             "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2",
-            "10x Genomics Single Cell 3-prime",
+            "10x Genomics Single Cell 3-prime v1",
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit",
+            "10x Genomics Chromium GEM-X Flex v1",
             "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
+            "TruSeq Nano DNA Library Prep Kit",
+            "Ovation Ultralow Library System",
+            "custom PCR library preparation",
         ],
     )
     sequencing_platform_id: Series[String] = Field(
@@ -540,6 +567,7 @@ class ObsSchema(DataFrameModel):
             "Illumina NovaSeq 6000",
             "Illumina NextSeq 500",
             "Ultima Genomics UG100",
+            "Illumina Genome Analyzer IIx",
         ],
     )
     sequencing_strategy_id: Series[String] = Field(
@@ -562,7 +590,15 @@ class ObsSchema(DataFrameModel):
     software_counts_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for generating counts.",
-        isin=["custom", "MaGeCK", "CellRanger", "Drop-seq Tools"],
+        isin=[
+            "custom",
+            "MaGeCK",
+            "CellRanger",
+            "Drop-seq Tools",
+            "Enrich2",
+            "Enrich",
+            "Novoalign",
+        ],
     )
     software_analysis_id: Series[String] = Field(
         nullable=True,
@@ -571,7 +607,19 @@ class ObsSchema(DataFrameModel):
     software_analysis_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST", "scanpy"],
+        isin=[
+            "custom",
+            "MAGeCK",
+            "Achilles",
+            "TRADE",
+            "Seurat",
+            "MAST",
+            "scanpy",
+            "Enrich2",
+            "DiMSum",
+            "dmsPipeline",
+            "phydms",
+        ],
     )
     score_interpretation: Series[String] = Field(
         nullable=True, description="Interpretation of the perturbation effect score."
@@ -582,7 +630,7 @@ class ObsSchema(DataFrameModel):
     reference_genome_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the reference genome.",
-        isin=["GRCh38", "GRCh37"],
+        isin=["GRCh38", "GRCh37", "cDNA reference sequence"],
     )
     # associated datasets
     associated_datasets: Series[String] = Field(
