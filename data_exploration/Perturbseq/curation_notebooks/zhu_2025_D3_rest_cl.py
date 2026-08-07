@@ -7,7 +7,6 @@ from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
-    Experiment,
     download_file,
     upload_parquet_to_bq
 )
@@ -172,7 +171,7 @@ cur_data.create_columns(
 
         "timepoint": "P12DT8H0M0S",
         "species": "Homo sapiens",
-        "sex_label": "male",
+        "sex_label": "female",
         "sex_id": None,
         "developmental_stage_label": "adult",
         "developmental_stage_id": None,
@@ -192,7 +191,7 @@ cur_data.create_columns(
             (1) Rest - cells were left for 8 hr without stimulation;
             (2) Stim8hr - cells were stimulated with ImmunoCult CD3/CD28/CD2 activator for 8 hr;
             (3) Stim48hr - cells were stimulated with ImmunoCult CD3/CD28/CD2 activator for 48 hr.
-            Cells were harvested, fixed, stored using GEM-X Flex Sample Preparation v2 Kit and sequenced using GEM-X Flex Gene Expression Human n-plex kit converted into Ultima compatible libraries for sequencing on the Ultima Genomics UG100.
+            Cells were harvested, fixed, stored using GEM-X Flex Sample Preparation v2 Kit and sequenced using 10x Genomics Chromium GEM-X Flex v1 converted into Ultima compatible libraries for sequencing on the Ultima Genomics UG100.
             """,
 
         "number_of_perturbed_targets": len(set(cur_data.adata.obs['perturbed_target_symbol'])),
@@ -255,7 +254,7 @@ cur_data.create_columns(
         "method_uri": None,
 
         "sequencing_library_kit_id": None,
-        "sequencing_library_kit_label": "GEM-X Flex Gene Expression Human n-plex kit",
+        "sequencing_library_kit_label": "10x Genomics Chromium GEM-X Flex v1",
 
         "sequencing_platform_id": None,
         "sequencing_platform_label": "Ultima Genomics UG100",
