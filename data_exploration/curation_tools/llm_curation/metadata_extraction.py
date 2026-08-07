@@ -51,6 +51,34 @@ def build_default_output_metadata(
     return {}
 
 
+def normalize_mavedb_urn(value: object) -> str | None:
+    """Normalize a MaveDB identifier to the canonical ``urn:mavedb:...`` form."""
+    if not isinstance(value, str):
+        return None
+    clean = value.strip()
+    if not clean:
+        return None
+    if clean.startswith("urn_mavedb_"):
+        return clean.replace("urn_mavedb_", "urn:mavedb:", 1)
+    if clean.startswith("mavedb:"):
+        return f"urn:{clean}"
+    if clean.startswith("urn:mavedb:"):
+        return clean
+    return None
+
+
+def dataset_id_from_source_urns(source_urns: object) -> str | None:
+    """Return the first canonical MaveDB URN to use as ``dataset_id``."""
+    values = [source_urns] if isinstance(source_urns, str) else source_urns
+    if not isinstance(values, (list, tuple, set)):
+        return None
+    for value in values:
+        normalized = normalize_mavedb_urn(value)
+        if normalized:
+            return normalized
+    return None
+
+
 def _filter_bulk_publication_paths(
     publication_full_text_paths: list[str | Path],
     excluded_publication_files: set[str] | frozenset[str] | None = None,
