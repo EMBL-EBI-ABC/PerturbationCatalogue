@@ -267,8 +267,15 @@ def sync_active_pipeline_paths(
 def main():
     st.title("🧬 MaveDB LLM Curation Control Center")
     st.caption(
-        "End-to-end pipeline execution and curation: Evidence Extraction (Step 1) ➔ Term Normalization (Step 2) ➔ Candidate Discovery (Step 3a) ➔ Candidate Review (Step 3b) ➔ Step 4 Backfill"
+        "End-to-end pipeline execution and curation: Evidence Extraction (Step 1) ➔ Term Normalization (Step 2) ➔ Candidate Discovery (Step 3a) ➔ Candidate Review (Step 3b) ➔ Step 4 Backfill ➔ Step 5 Final Metadata"
     )
+
+    if step4_message := st.session_state.pop("_step4_backfill_message", None):
+        st.success(step4_message)
+    if step3a_message := st.session_state.pop("_step3a_message", None):
+        st.success(step3a_message)
+    if step5_message := st.session_state.pop("_step5_message", None):
+        st.success(step5_message)
 
     # Sidebar setup
     st.sidebar.header("⚙️ Global Execution Settings")
