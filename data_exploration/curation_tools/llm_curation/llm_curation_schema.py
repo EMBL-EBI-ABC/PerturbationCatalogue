@@ -462,6 +462,8 @@ class SpecificTermExtractionSchema(BaseModel):
         Literal[
             "lipofection",
             "nucleofection",
+            "adeno-associated virus transduction",
+            "adenovirus transduction",
             "retrovirus transduction",
             "lentivirus transduction",
             "transformation",
@@ -478,6 +480,8 @@ class SpecificTermExtractionSchema(BaseModel):
         Literal[
             "lipofection",
             "nucleofection",
+            "adeno-associated virus transduction",
+            "adenovirus transduction",
             "retrovirus transduction",
             "lentivirus transduction",
             "transformation",
@@ -663,6 +667,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "proliferation CRISPR screen",
             "DMS-TileSeq",
             "DMS-BarSeq",
+            "MITE",
             "Joined and refined DMS-BarSeq and DMS-TileSeq",
             "Combined DMS-BarSeq and DMS-TileSeq",
             "yeast surface display",
@@ -694,6 +699,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
             "10x Genomics Chromium GEM-X Flex v1",
+            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
             "TruSeq Nano DNA Library Prep Kit",
             "Ovation Ultralow Library System",
             "custom PCR library preparation",
