@@ -51,3 +51,45 @@ This is strictly a text retrieval and reading comprehension task. You must NOT p
 4. **Null Handling:** If no explicit evidence or mention of a field is found in the publication text for the target experiment, you must return `null`. Do NOT propose new ontology terms. Proposing new terms is strictly forbidden in this step.
 
 5. **Precision Over Completeness (with Exhaustive Retrieval):** You must be exhaustive in retrieving all valid, supporting sentences actually present in the text (up to the soft limit). However, you must still prioritize high precision: if the text lacks explicit, direct evidence for a field, or if the evidence is highly ambiguous, do not make assumptions—return `null`.
+
+6. **Field Ambiguity Boundaries & In-Context Examples (Positive & Negative):**
+
+   * **A. Timepoint Fields (`timepoint_post_transfection_evidence`, `differentiation_timepoint_evidence`, `experimental_timepoint_evidence`):**
+     * **`timepoint_post_transfection_evidence`**: Time elapsed after transfection, viral library transduction, or bacterial transformation into the host model.
+     * **`differentiation_timepoint_evidence`**: Time elapsed after initiating cell differentiation (e.g., adding differentiation factors to iPSCs).
+     * **`experimental_timepoint_evidence`**: Sample collection time point post-treatment or post-intervention (e.g., hours after drug exposure or viral infection).
+     * ❌ *Negative Example (Culture Maintenance):* Do NOT extract routine cell culture schedules or passage frequencies (e.g., `"Cells were split every 3 days and grown at 37 °C"`) as evidence for timepoint fields.
+     * ✔️ *Positive Example:* `"Cells were harvested 72 hours post-transfection for downstream sequencing."` -> Extract for `timepoint_post_transfection_evidence`.
+
+   * **B. Treatments vs Culture Media, Seeding Density & Reagents (`treatment_label_evidence`, `treatment_dose_evidence`, `treatment_unit_evidence`):**
+     * **Treatments**: Refer strictly to extrinsic experimental interventions/stimuli (e.g., drugs, cytokines, physical stressors) applied to perturb the sample.
+     * ❌ *Negative Example (Basal Media / Transfection Reagents / Density / Incubator):* Do NOT extract baseline media components (e.g., `"DMEM with 10% FBS"`), transfection reagent volumes (e.g., `"30 uL Lipofectamine"`), cell seeding densities (e.g., `"1 x 10^6 cells/well"`), or incubator settings (e.g., `"37 °C with 5% CO2"`) into treatment label, dose, or unit.
+     * ✔️ *Positive Example:* `"To evaluate drug resistance, cells were exposed to 5 uM cisplatin for 24 h."` -> Extract full sentence for `treatment_label_evidence`, `treatment_dose_evidence`, and `treatment_unit_evidence`.
+
+   * **C. Model System vs Cell Line vs Cell Type (`model_system_label_evidence`, `cell_line_label_evidence`, `cell_type_label_evidence`):**
+     * **`model_system_label_evidence`**: Broad experimental model type (e.g. cell line, primary cell, organoid, yeast, bacteria).
+     * **`cell_line_label_evidence`**: Specific cell line designation (e.g., HEK293T, K562, HeLa). Only applicable when model system is a cell line.
+     * **`cell_type_label_evidence`**: Specific biological cell type (e.g., CD4+ T cells, hepatocytes, cardiomyocytes).
+     * ❌ *Negative Example (Primary Cells vs Cell Line):* `"Primary CD4+ T cells were isolated from human donors."` -> Extract for `model_system_label_evidence` and `cell_type_label_evidence`. Do NOT extract into `cell_line_label_evidence` (primary cells are not cell lines).
+     * ✔️ *Positive Example:* `"Assays were conducted using human embryonic kidney 293T (HEK293T) cells."` -> Extract for `model_system_label_evidence` and `cell_line_label_evidence`.
+
+   * **D. Library Generation vs Delivery vs Integration Method (`library_generation_type_label_evidence`, `library_generation_method_label_evidence`, `library_delivery_method_label_evidence`):**
+     * **Library Generation**: How the synthetic mutant or gRNA pool was synthesized or constructed (e.g., site-directed mutagenesis, error-prone PCR, silicon microarray synthesis).
+     * **Library Delivery**: How the library was introduced into the host cells (e.g., lentivirus transduction, lipofection, electroporation).
+     * ❌ *Negative Example (Delivery vs Generation):* Do NOT extract `"Cells were transduced with lentivirus"` for `library_generation_method_label_evidence` (lentiviral delivery belongs to `library_delivery_method_label_evidence`).
+     * ✔️ *Positive Example:* `"The variant library was constructed via oligonucleotide-directed mutagenic PCR."` -> Extract for `library_generation_method_label_evidence`.
+
+   * **E. Library Diversity vs Sequencing Read Depth (`library_total_grnas_evidence`, `library_total_variants_evidence`):**
+     * **Library Diversity**: Physical size or count of distinct gRNAs/variants in the synthesized perturbation library.
+     * ❌ *Negative Example (Sequencing Reads / Cell Counts):* Do NOT extract total sequencing read counts (e.g., `"50 million raw reads were obtained"`) or harvested cell numbers (e.g., `"20 million cells were harvested"`) for library variant or gRNA totals.
+     * ✔️ *Positive Example:* `"The synthesized pool contained 18,400 unique sgRNAs targeting 3,200 genes."` -> Extract for `library_total_grnas_evidence`.
+
+   * **F. Study Title vs Specific Experiment Title (`study_title_evidence`, `experiment_title_evidence`):**
+     * **`study_title_evidence`**: Overall publication manuscript title.
+     * **`experiment_title_evidence`**: Title or description of the specific assay or screen being curated within the manuscript (e.g., `"6-TG resistance growth screen"`).
+     * ❌ *Negative Example:* Do NOT substitute the paper title for `experiment_title_evidence` if the manuscript presents multiple distinct sub-experiments or screens.
+
+   * **G. Sequencing Platform vs Sequencing Kit (`sequencing_platform_label_evidence`, `sequencing_library_kit_label_evidence`):**
+     * **`sequencing_platform_label_evidence`**: Sequencing instrument/machine model (e.g., `"Illumina NovaSeq 6000"`).
+     * **`sequencing_library_kit_label_evidence`**: Specific commercial library preparation kit used (e.g., `"10x Genomics Chromium GEM-X Single Cell 5-prime kit v3"`).
+     * ❌ *Negative Example:* Do NOT extract instrument names (e.g., `"NovaSeq 6000"`) into `sequencing_library_kit_label_evidence`.
