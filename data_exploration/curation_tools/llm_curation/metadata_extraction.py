@@ -10,6 +10,9 @@ import instructor
 from pydantic import BaseModel
 from tqdm import tqdm
 
+from curation_tools.llm_curation.llm_curation_schema import (
+    SpecificTermExtractionSchema,
+)
 from curation_tools.llm_curation.logging_utils import (
     _ensure_log_file,
     append_log_line,
