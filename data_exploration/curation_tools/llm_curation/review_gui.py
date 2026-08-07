@@ -290,11 +290,125 @@ def main():
     )
 
     st.sidebar.divider()
-    st.sidebar.header("📁 Step 3b Review Settings")
-    file_path_str = st.sidebar.text_input(
-        "Candidates JSON Path",
-        value=str(DEFAULT_CANDIDATES_JSON),
-        help="Path to step3_ontology_candidates.json",
+    st.sidebar.header("📁 Workspace & Output Folders")
+
+    base_output_str = st.sidebar.text_input(
+        "Base Output Directory",
+        value=_DEFAULT_TOOLBAR_VALUES["base_out_input"],
+        help="Root output directory containing all step output folders and log files.",
+        key="base_out_input",
+    )
+    base_output_path = Path(base_output_str).resolve()
+
+    st.sidebar.subheader("📂 Step Output Folders")
+    s1_sub_str = st.sidebar.text_input(
+        "Step 1 - Evidence Extraction",
+        value=_DEFAULT_TOOLBAR_VALUES["s1_sub_input"],
+        help="Output folder name inside Base Output Directory for Step 1 evidence extraction.",
+        key="s1_sub_input",
+    )
+    s2_sub_str = st.sidebar.text_input(
+        "Step 2 - Specific Term Normalization",
+        value=_DEFAULT_TOOLBAR_VALUES["s2_sub_input"],
+        help="Output folder name inside Base Output Directory for Step 2 normalized terms.",
+        key="s2_sub_input",
+    )
+    s3_sub_str = st.sidebar.text_input(
+        "Step 3a - Candidate Discovery",
+        value=_DEFAULT_TOOLBAR_VALUES["s3_sub_input"],
+        help="Output folder name inside Base Output Directory for Step 3a candidate discovery.",
+        key="s3_sub_input",
+    )
+    s4_sub_str = st.sidebar.text_input(
+        "Step 4 - Approved Terms Backfill",
+        value=_DEFAULT_TOOLBAR_VALUES["s4_sub_input"],
+        help="Output folder name inside Base Output Directory for Step 4 backfilled results.",
+        key="s4_sub_input",
+    )
+    s5_sub_str = st.sidebar.text_input(
+        "Step 5 - Final Metadata",
+        value=_DEFAULT_TOOLBAR_VALUES["s5_sub_input"],
+        help="Output folder name inside Base Output Directory for final schema-projected metadata and CSV.",
+        key="s5_sub_input",
+    )
+
+    st.sidebar.divider()
+    st.sidebar.subheader("📖 Source Data & Templates")
+
+    pub_md_str = st.sidebar.text_input(
+        "Publication Text Dir (.md)",
+        value=_DEFAULT_TOOLBAR_VALUES["pub_md_input"],
+        help="Directory containing publication markdown files.",
+        key="pub_md_input",
+    )
+    pub_md_path = Path(pub_md_str).resolve()
+
+    mavedb_meta_str = st.sidebar.text_input(
+        "MaveDB Metadata Dir",
+        value=_DEFAULT_TOOLBAR_VALUES["mavedb_meta_input"],
+        help="Directory containing cached MaveDB entry JSONs.",
+        key="mavedb_meta_input",
+    )
+    mavedb_meta_path = Path(mavedb_meta_str).resolve()
+
+    prompt_dir_str = st.sidebar.text_input(
+        "Prompt Templates Dir",
+        value=_DEFAULT_TOOLBAR_VALUES["prompt_dir_input"],
+        help="Directory containing prompt template Markdown files.",
+        key="prompt_dir_input",
+    )
+    prompt_dir_path = Path(prompt_dir_str).resolve()
+
+    st.sidebar.button(
+        "↩️ Reset Default Paths",
+        help="Restore all toolbar and Active Step path fields to their defaults.",
+        on_click=reset_default_paths,
+    )
+
+    # Compute full output paths by joining Base Output Directory + Subdirectory
+    step1_out_path = (base_output_path / s1_sub_str.strip()).resolve()
+    step2_out_path = (base_output_path / s2_sub_str.strip()).resolve()
+    step3_out_path = (base_output_path / s3_sub_str.strip()).resolve()
+    step4_out_path = (base_output_path / s4_sub_str.strip()).resolve()
+    step5_out_path = (base_output_path / s5_sub_str.strip()).resolve()
+    candidates_json_path = step3_out_path / "step3_ontology_candidates.json"
+
+    # Consolidated Pipeline Paths Map
+    paths = {
+        "base_out": base_output_path,
+        "pub_md_dir": pub_md_path,
+        "mavedb_meta_dir": mavedb_meta_path,
+        "step1_out": step1_out_path,
+        "step2_out": step2_out_path,
+        "step3_out": step3_out_path,
+        "step4_out": step4_out_path,
+        "step5_out": step5_out_path,
+        "candidates_json": candidates_json_path,
+        "prompt_dir": prompt_dir_path,
+        "step1_prompt": prompt_dir_path / "step1_evidence_extraction_prompt.md",
+        "step2_prompt": prompt_dir_path / "step2_specific_term_extraction.md",
+        "step3_prompt": prompt_dir_path / "step3_candidate_discovery_prompt.md",
+        "step1_log": base_output_path / "step1_evidence_extraction.log",
+        "step2_log": base_output_path / "step2_specific_term_extraction.log",
+        "step3_log": base_output_path / "step3_candidate_discovery.log",
+        "step4_log": base_output_path / "step4_backfill.log",
+        "step5_log": base_output_path / "step5_final_metadata.log",
+        "pipeline_manifest": base_output_path / "pipeline_manifest.json",
+    }
+
+    sync_active_pipeline_paths(
+        {
+            "base_out_input": base_output_str,
+            "s1_sub_input": s1_sub_str,
+            "s2_sub_input": s2_sub_str,
+            "s3_sub_input": s3_sub_str,
+            "s4_sub_input": s4_sub_str,
+            "s5_sub_input": s5_sub_str,
+            "pub_md_input": pub_md_str,
+            "mavedb_meta_input": mavedb_meta_str,
+            "prompt_dir_input": prompt_dir_str,
+        },
+        paths,
     )
     candidates_path = Path(file_path_str).resolve()
 
