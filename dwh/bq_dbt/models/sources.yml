@@ -30,6 +30,8 @@ sources:
         description: "DEA per dataset, perturbed target ENSG, and effect gene ENSG"
       - name: pertpy_gsea
         description: "GSEA results per dataset and perturbed target ENSG"
+      - name: reprocessed_datasets
+        description: "Perturb-seq datasets reprocessed by the catalogue"
   - name: reference
     description: "Reference data loaded from external canonical resources"
     database: "{{ env_var('GCLOUD_PROJECT') }}"   # GCP project id
