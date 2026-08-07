@@ -28,7 +28,9 @@ This is strictly a text retrieval and reading comprehension task. You must NOT p
 
 1. **Locate the Experiment:** Use the Supplementary MaveDB Metadata to identify the target experiment, assay, or variant library screen. The publication may describe multiple experiments or screens; you must focus exclusively on the specific experiment corresponding to the provided Supplementary MaveDB Metadata.
 
-2. **Full, Unmodified Sentences & Exhaustive Search (Strict Rule):**
+2. **Perturbed Target Symbol:** Define `perturbed_target_symbol_evidence` from the MaveDB supplementary metadata `target_genes` field first. When the publication provides more specific naming or resolves an ambiguity (for example, a gene symbol versus a protein/domain name), use the main text to refine or disambiguate that MaveDB-defined target. Do not infer an unrelated target from the publication.
+
+3. **Full, Unmodified Sentences & Exhaustive Search (Strict Rule):**
    * Every extracted quote **MUST be complete, full, and unmodified sentences** copied directly from the publication text. Each sentence must start with a capital letter and end with a sentence-terminating punctuation mark (e.g., a period, question mark, or exclamation point). The **only exception** is when the field description in the schema explicitly states: "Extract from the MAVE DB metadata or from the evidence.". In that case, you may use the Supplementary MaveDB Metadata as evidence source.
    * **Exhaustive Search with Soft Limit:** You must aggressively search the entire publication (Abstract, Methods, Results, Discussion, etc.) and extract **all** distinct, informative sentences containing relevant evidence for each field. However, to avoid redundant text, impose a soft limit of **up to 3-5 most informative sentences** per field.
    * **Joining Distinct Quotes:** If you find relevant evidence in multiple different, non-adjacent locations in the text, extract the full sentence for each instance and join them using the pipe delimiter `" | "`.
