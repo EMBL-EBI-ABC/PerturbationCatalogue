@@ -140,7 +140,9 @@ def get_step2_file_status(step1_dir: Path, step2_dir: Path) -> list[dict[str, An
 
 
 def get_step3_other_corpus_summary(
-    step1_dir: Path, step2_dir: Path
+    step1_dir: Path,
+    step2_dir: Path,
+    selected_files: list[str | Path] | None = None,
 ) -> list[dict[str, Any]]:
     """Aggregate 'Other' fields across Step 2 files for Step 3a pre-run analysis."""
     from curation_tools.llm_curation.candidate_discovery import (
@@ -158,6 +160,7 @@ def get_step3_other_corpus_summary(
             step1_dir=step1_dir,
             step2_dir=step2_dir,
             log_file=step2_dir.parent / "step3_summary.log",
+            selected_files=selected_files,
         )
         records = []
         for field_name, evidence_list in unmapped.items():
