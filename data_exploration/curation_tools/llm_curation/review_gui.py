@@ -433,11 +433,26 @@ def main():
 
     # Load candidates if file exists
     candidates_data = load_candidates_file(candidates_path)
-    if candidates_data:
+    candidates_are_current = is_candidate_discovery_current(
+        candidates_path,
+        effective_candidate_input_dir,
+        paths["pipeline_manifest"],
+    )
+    if candidates_data and candidates_are_current:
         init_session_state(candidates_data, candidates_path=candidates_path)
+        st.session_state["_candidate_data_stale"] = False
+    else:
+        st.session_state["_candidate_data_stale"] = bool(
+            candidates_data and not candidates_are_current
+        )
+        st.session_state.pop("candidates_raw", None)
+        st.session_state.pop("decisions", None)
+        st.session_state.pop("_candidate_identity", None)
 
-    # Tabs for 5 Pipeline Steps
-    tab_step1, tab_step2, tab_step3a, tab_step3b, tab_step4 = st.tabs(
+    # Keep the selected tab in Streamlit session state so button-triggered reruns
+    # (for example, Step 2 normalization or Step 5 assembly) return to the tab
+    # where the user initiated the action instead of resetting to Step 1.
+    tab_step1, tab_step2, tab_step3a, tab_step3b, tab_step4, tab_step5 = st.tabs(
         [
             "⚡ Step 1: Evidence Extraction",
             "🏷️ Step 2: Term Normalization",
