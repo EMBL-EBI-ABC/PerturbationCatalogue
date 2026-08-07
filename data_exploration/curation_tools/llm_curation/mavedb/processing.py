@@ -665,10 +665,15 @@ def output_metadata_builder(
     """Preserve MaveDB source provenance in each extraction output payload."""
     if not prompt_context:
         return {}
-    return {
-        "__source_urns": list(prompt_context.get("source_urns", [])),
+    source_urns = list(prompt_context.get("source_urns", []))
+    output_metadata = {
+        "__source_urns": source_urns,
         "__source_files": list(prompt_context.get("source_files", [])),
     }
+    dataset_id = dataset_id_from_source_urns(source_urns)
+    if dataset_id:
+        output_metadata["dataset_id"] = dataset_id
+    return output_metadata
 
 
 def format_supplementary_mavedb_metadata(
