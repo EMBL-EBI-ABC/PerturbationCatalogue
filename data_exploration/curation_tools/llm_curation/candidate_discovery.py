@@ -73,7 +73,30 @@ def aggregate_unmapped_evidence(
         )
         return unmapped_evidence_map
 
-    step2_files = sorted(step2_dir.glob("*.json"))
+    step2_files = [
+        f
+        for f in sorted(step2_dir.glob("*.json"))
+        if not f.name.endswith("_audit.json")
+    ]
+    if not step2_files and (step2_dir / "step2_normalized").is_dir():
+        step2_files = [
+            f
+            for f in sorted((step2_dir / "step2_normalized").glob("*.json"))
+            if not f.name.endswith("_audit.json")
+        ]
+    if not step2_files:
+        step2_files = [
+            f
+            for f in sorted(step2_dir.rglob("*.json"))
+            if not f.name.endswith("_audit.json")
+        ]
+
+    if selected_files is not None:
+        selected_names = {Path(file_name).name for file_name in selected_files}
+        step2_files = [
+            file_path for file_path in step2_files if file_path.name in selected_names
+        ]
+
     append_log_line(
         log_file,
         f"Found {len(step2_files)} Step 2 files to analyze for 'Other' values.",
@@ -81,10 +104,20 @@ def aggregate_unmapped_evidence(
 
     for s2_file in step2_files:
         s1_file = step1_dir / s2_file.name
+        if (
+            not s1_file.is_file()
+            and (step1_dir / "step1_evidence" / s2_file.name).is_file()
+        ):
+            s1_file = step1_dir / "step1_evidence" / s2_file.name
+        if not s1_file.is_file():
+            matches = list(step1_dir.rglob(s2_file.name))
+            if matches:
+                s1_file = matches[0]
+
         if not s1_file.is_file():
             append_log_line(
                 log_file,
-                f"Corresponding Step 1 file not found for {s2_file.name}. Skipping.",
+                f"Corresponding Step 1 file not found for {s2_file.name} in {step1_dir}. Skipping.",
             )
             continue
 
