@@ -10,11 +10,22 @@ from curation_tools.llm_curation.backfill_terms import (
     preview_backfill_changes,
 )
 from curation_tools.llm_curation.candidate_discovery import discover_candidates
+from curation_tools.llm_curation.final_metadata import (
+    finalize_metadata,
+    get_final_csv_path,
+    load_final_csv,
+    save_final_csv_edits,
+)
 from curation_tools.llm_curation.gui_utils import (
+    calculate_file_signature,
     get_mavedb_urn_status,
     get_step2_file_status,
     get_step3_other_corpus_summary,
+    get_publication_dois_for_source_file,
+    is_candidate_discovery_current,
     read_last_log_lines,
+    record_pipeline_step,
+    resolve_effective_normalized_dir,
 )
 from curation_tools.llm_curation.mavedb.mavedb_metadata_extraction_runner import (
     parse_target_urns,
