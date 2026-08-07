@@ -766,6 +766,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "scanpy",
             "Enrich2",
             "DiMSum",
+            "dmsPipeline",
+            "phydms",
             "Other",
         ]
         | None
