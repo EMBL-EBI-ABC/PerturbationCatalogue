@@ -6,9 +6,11 @@ from curation_tools.llm_curation.gui_utils import (
     read_last_log_lines,
 )
 from curation_tools.llm_curation.metadata_extraction import (
+    build_controlled_vocabulary_hints,
     build_metadata_extraction_prompt,
     create_csv_from_curated_metadata_json,
     format_prompt_context_as_json,
+    render_metadata_extraction_prompt,
     extract_evidence_from_publication,
     bulk_extract_evidence_from_publications,
 )
@@ -41,9 +43,11 @@ __all__ = [
     "get_step2_file_status",
     "get_step3_other_corpus_summary",
     "read_last_log_lines",
+    "build_controlled_vocabulary_hints",
     "build_metadata_extraction_prompt",
     "create_csv_from_curated_metadata_json",
     "format_prompt_context_as_json",
+    "render_metadata_extraction_prompt",
     "extract_evidence_from_publication",
     "bulk_extract_evidence_from_publications",
     "EvidenceExtractionSchema",
