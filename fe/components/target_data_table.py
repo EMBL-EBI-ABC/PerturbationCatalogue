@@ -439,25 +439,46 @@ def _perturb_seq_table(
     gsea_button_data: Optional[Dict[str, str]] = None,
     dataset_cell_types: Optional[str] = None,
     extra_controls: Optional[Any] = None,
+    header_filters: Optional[Dict[str, Any]] = None,
+    header_download: Optional[Any] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
-    if not results:
+    if not results and not header_filters:
         return html.Div(
             "No results available.",
             className="text-muted fst-italic py-2",
         )
 
     # Build table header
+    header_filters = header_filters or {}
     header_row = html.Tr(
         [
-            html.Th("Perturbation", className="text-start"),
-            html.Th("Effect Gene", className="text-start"),
+            html.Th(
+                [html.Div("Perturbation")]
+                + (
+                    [header_filters["perturbation"]]
+                    if "perturbation" in header_filters
+                    else []
+                ),
+                className="text-start",
+            ),
+            html.Th(
+                [html.Div("Effect Gene")]
+                + ([header_filters["effect"]] if "effect" in header_filters else []),
+                className="text-start",
+            ),
             html.Th("Log2FC", className="text-end"),
             html.Th("Padj", className="text-end"),
             html.Th("Statistical Score", className="text-start"),
             html.Th("Cell Type", className="text-start"),
         ]
     )
+    header_rows = [header_row]
+    if header_download:
+        header_rows.insert(
+            0,
+            html.Tr([html.Th(header_download, colSpan=6, className="text-end")]),
+        )
 
     # Build table rows
     table_rows = []
@@ -525,9 +546,22 @@ def _perturb_seq_table(
             )
         )
 
+    if not table_rows:
+        table_rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        "No results available.",
+                        colSpan=6,
+                        className="text-muted text-center",
+                    )
+                ]
+            )
+        )
+
     table = html.Table(
         [
-            html.Thead(header_row, className="table-light"),
+            html.Thead(header_rows, className="table-light"),
             html.Tbody(table_rows),
         ],
         className="table table-sm table-hover mb-0",
@@ -1138,6 +1172,8 @@ def perturb_seq_table(
     download_url: Optional[str] = None,
     dataset_cell_types: Optional[str] = None,
     extra_controls: Optional[Any] = None,
+    header_filters: Optional[Dict[str, Any]] = None,
+    header_download: Optional[Any] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a table.
 
@@ -1149,6 +1185,8 @@ def perturb_seq_table(
         download_url: Optional URL for downloading the data.
         dataset_cell_types: Fallback cell type from dataset metadata.
         extra_controls: Optional extra controls to render alongside the download button.
+        header_filters: Optional filter inputs to render below the table headers.
+        header_download: Optional download link to render above the table headers.
 
     Returns:
         A Dash html.Div containing the table.
@@ -1160,6 +1198,8 @@ def perturb_seq_table(
         gsea_button_data=None,
         dataset_cell_types=dataset_cell_types,
         extra_controls=extra_controls,
+        header_filters=header_filters,
+        header_download=header_download,
     )
 
 
