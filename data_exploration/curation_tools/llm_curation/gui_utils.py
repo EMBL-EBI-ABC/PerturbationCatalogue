@@ -116,13 +116,33 @@ def get_step2_file_status(step1_dir: Path, step2_dir: Path) -> list[dict[str, An
     step2_dir = Path(step2_dir).resolve()
 
     if not step1_dir.is_dir():
-        return []
+        if (step1_dir / "step1_evidence").is_dir():
+            step1_dir = step1_dir / "step1_evidence"
+        else:
+            return []
 
-    s1_files = sorted(step1_dir.glob("*.json"))
+    s1_files = [
+        f
+        for f in sorted(step1_dir.glob("*.json"))
+        if not f.name.endswith("_audit.json")
+    ]
+    if not s1_files and (step1_dir / "step1_evidence").is_dir():
+        s1_files = [
+            f
+            for f in sorted((step1_dir / "step1_evidence").glob("*.json"))
+            if not f.name.endswith("_audit.json")
+        ]
+
     records = []
 
     for s1_file in s1_files:
         s2_target = step2_dir / s1_file.name
+        if (
+            not s2_target.exists()
+            and (step2_dir / "step2_normalized" / s1_file.name).exists()
+        ):
+            s2_target = step2_dir / "step2_normalized" / s1_file.name
+
         status = "Pending"
         other_count = 0
 
