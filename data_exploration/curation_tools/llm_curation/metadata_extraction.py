@@ -4,7 +4,7 @@ import os
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Type
+from typing import Any, Type
 
 import instructor
 from pydantic import BaseModel
