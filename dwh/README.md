@@ -39,7 +39,13 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `pc_secrets dev`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `GCLOUD_TMP_BUCKET`, `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
+The trigger script requires the following variables (all provided by `pc_secrets dev`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `CLOUD_TMP_BUCKET` (or legacy `GCLOUD_TMP_BUCKET`), `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
+
+Each pipeline run first requires an empty `gs://$CLOUD_TMP_BUCKET/release`
+prefix. It then writes reviewed release artifacts below that prefix, grouped
+by `crispr`, `perturb-seq`, and `mave`; each dataset receives metadata JSON,
+CSV.GZ, and Parquet files. Move the completed prefix to the release bucket
+manually after inspection.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
 optional and defaults to empty. Its value is appended directly to all three

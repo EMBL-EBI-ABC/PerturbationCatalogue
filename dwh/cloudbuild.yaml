@@ -5,13 +5,14 @@
 #   2. dbt run          (BQ source → BQ final tables)
 #   3. bq_to_postgres   (BQ final tables → Postgres)
 #   4. bq_to_es         (BQ summary tables → Elasticsearch)
+#   5. release artifacts (BQ data → reviewed GCS hand-off)
 #
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
 #
 # Substitution variables (passed by trigger_pipeline.sh):
 #   _GCLOUD_PROJECT, _GCLOUD_REGION, _BQ_DATASET, _BQ_LOCATION,
 #   _OPENTARGETS_RELEASE,
-#   _GCLOUD_TMP_BUCKET, _PG_CONN_INTERNAL,
+#   _GCLOUD_TMP_BUCKET, _CLOUD_TMP_BUCKET, _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD, _ES_INDEX_SET,
 #   _SUPPRESS_DATASETS (optional, comma-separated)
 
@@ -23,6 +24,19 @@ options:
     name: projects/$PROJECT_ID/locations/$_GCLOUD_REGION/workerPools/dwh-pipeline-pool
 
 steps:
+  # The release directory is a hand-off area. Never append to an old release.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: check-release-path
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud storage ls "gs://$_CLOUD_TMP_BUCKET" >/dev/null
+        if gcloud storage ls --recursive "gs://$_CLOUD_TMP_BUCKET/release/**" >/dev/null 2>&1; then
+          echo "gs://$_CLOUD_TMP_BUCKET/release already contains objects" >&2
+          exit 1
+        fi
+
   # Step 0: Build the pipeline Docker image
   - name: gcr.io/cloud-builders/docker
     id: build-image
@@ -104,7 +118,30 @@ steps:
       - ES_PASSWORD=$_ES_PASSWORD
       - ES_INDEX_SET=$_ES_INDEX_SET
 
+  # Step 5: Build the manually-reviewed release artifacts
+  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+    id: release-artifacts
+    dir: /app/bq_to_postgres
+    entrypoint: python3
+    args:
+      - release.py
+      - --bq-project
+      - $_GCLOUD_PROJECT
+      - --bq-dataset
+      - $_BQ_DATASET
+      - --bq-location
+      - $_BQ_LOCATION
+      - --gcs-bucket
+      - $_CLOUD_TMP_BUCKET
+      - --release-prefix
+      - release
+    env:
+      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
+      - BQ_DATASET=$_BQ_DATASET
+      - BQ_LOCATION=$_BQ_LOCATION
+
 substitutions:
   _ES_INDEX_SET: ""
   _OPENTARGETS_RELEASE: "26.03"
+  _CLOUD_TMP_BUCKET: ""
   _SUPPRESS_DATASETS: ""

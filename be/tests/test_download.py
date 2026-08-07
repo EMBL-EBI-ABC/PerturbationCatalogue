@@ -95,3 +95,25 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
             await anext(stream)
 
     asyncio.run(consume())
+
+
+def test_full_release_download_redirects_to_signed_url(monkeypatch):
+    monkeypatch.setattr(
+        data_query,
+        "_release_signed_url",
+        lambda modality, dataset_id, download_format: (
+            f"https://storage.example/{modality}/{dataset_id}.{download_format}"
+        ),
+    )
+
+    async def download():
+        return await data_query.download_dataset_data(
+            "mave",
+            "dataset-1",
+            Request({"type": "http", "query_string": b"format=parquet"}),
+            download_format="parquet",
+        )
+
+    response = asyncio.run(download())
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/mave/dataset-1.parquet")

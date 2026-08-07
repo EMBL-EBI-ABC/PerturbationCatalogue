@@ -4,6 +4,12 @@
 Before running either of the deployment options below, run `pc_secrets dev`.
 `ES_INDEX_SET` is optional and selects a suffixed Elasticsearch index set; it
 defaults to the standard indexes when unset.
+`RELEASE_BUCKET` is the manually published GCS bucket containing release
+artifacts. The runtime service account must be allowed to sign URLs and read
+objects in this bucket.
+
+Unfiltered dataset downloads redirect to seven-day V4 signed URLs in that
+bucket; filtered CSV downloads continue to run through the API.
 
 If you are running locally and as such connecting to Postges externally, allow connections from your IP:
 * https://console.cloud.google.com/sql/instances

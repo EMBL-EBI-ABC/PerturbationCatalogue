@@ -41,8 +41,10 @@ PERTURB_SEARCH_EFFECT_GENE = "dataset-perturb-search-effect-gene"
 # Search input IDs for CRISPR screen
 CRISPR_SEARCH_PERTURBATION_GENE = "dataset-crispr-search-perturbation-gene"
 
-# Download link ID
+# Download link IDs
 DATASET_DOWNLOAD_LINK = "dataset-download-link"
+DATASET_METADATA_DOWNLOAD_LINK = "dataset-metadata-download-link"
+DATASET_PARQUET_DOWNLOAD_LINK = "dataset-parquet-download-link"
 
 # Map display names to API endpoint modality names
 MODALITY_DISPLAY_TO_API = {
@@ -326,17 +328,21 @@ def _get_modality_from_dataset(dataset_data: Dict[str, Any]) -> Optional[str]:
 
 
 def _dataset_download_url(
-    dataset_id: str, modality: str, filters: Optional[Dict[str, str]] = None
+    dataset_id: str,
+    modality: str,
+    download_format: str = "csv.gz",
+    filters: Optional[Dict[str, str]] = None,
 ) -> str:
     url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
-    params = {key: value for key, value in (filters or {}).items() if value}
-    return f"{url}?{urlencode(params)}" if params else url
+    params = {"format": download_format}
+    params.update({key: value for key, value in (filters or {}).items() if value})
+    return f"{url}?{urlencode(params)}"
 
 
-def _dataset_download_link(url: str) -> html.A:
+def _dataset_download_link(label: str, url: str, link_id: str) -> html.A:
     return html.A(
         dbc.Button(
-            [html.I(className="bi bi-download me-2"), "Download Data"],
+            [html.I(className="bi bi-download me-2"), label],
             color="primary",
             size="sm",
             style={
@@ -345,11 +351,34 @@ def _dataset_download_link(url: str) -> html.A:
                 "borderRadius": "6px",
             },
         ),
-        id=DATASET_DOWNLOAD_LINK,
+        id=link_id,
         href=url,
         target="_blank",
         rel="noopener noreferrer",
         className="text-decoration-none me-3",
+    )
+
+
+def _dataset_download_controls(dataset_id: str, modality: str) -> html.Div:
+    return html.Div(
+        [
+            _dataset_download_link(
+                "Download metadata",
+                _dataset_download_url(dataset_id, modality, "metadata"),
+                DATASET_METADATA_DOWNLOAD_LINK,
+            ),
+            _dataset_download_link(
+                "Download data (parquet)",
+                _dataset_download_url(dataset_id, modality, "parquet"),
+                DATASET_PARQUET_DOWNLOAD_LINK,
+            ),
+            _dataset_download_link(
+                "Download data (csv.gz)",
+                _dataset_download_url(dataset_id, modality),
+                DATASET_DOWNLOAD_LINK,
+            ),
+        ],
+        className="d-flex align-items-center flex-wrap gap-2 me-3",
     )
 
 
@@ -581,12 +610,14 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     # Build search controls based on modality
     is_perturb_seq = modality == "perturb-seq"
     is_crispr = modality == "crispr-screen"
-    download_url = _dataset_download_url(dataset_id, modality) if modality else "#"
+    download_controls = (
+        _dataset_download_controls(dataset_id, modality) if modality else html.Div()
+    )
 
     if is_perturb_seq:
         search_controls = html.Div(
             [
-                _dataset_download_link(download_url),
+                download_controls,
                 dbc.Input(
                     id=PERTURB_SEARCH_PERTURBATION_GENE,
                     type="text",
@@ -620,7 +651,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     elif is_crispr:
         search_controls = html.Div(
             [
-                _dataset_download_link(download_url),
+                download_controls,
                 dbc.Input(
                     id=CRISPR_SEARCH_PERTURBATION_GENE,
                     type="text",
@@ -648,9 +679,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             className="d-flex align-items-center flex-wrap gap-2 mb-3",
         )
     else:
-        # Hidden inputs for callback compatibility (MAVE modality)
+        # MAVE has no gene search, but retains the common hidden inputs.
         search_controls = html.Div(
             [
+                download_controls,
                 dbc.Input(
                     id=PERTURB_SEARCH_PERTURBATION_GENE,
                     type="text",
@@ -992,12 +1024,9 @@ def _render_data_visualization(store_data: Dict[str, Any]) -> html.Div:
             className="text-muted fst-italic text-center py-4",
         )
 
-    # Build download URL
-    download_url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
-
     # Render based on modality
     if modality == "mave":
-        table_component = mave_heatmap(results, download_url)
+        table_component = mave_heatmap(results, download_url=None)
     elif modality == "perturb-seq":
         # Download button and search inputs are in the main layout for perturb-seq
         table_component = perturb_seq_table(
@@ -1122,18 +1151,22 @@ def render_dataset_data(
 
 
 @callback(
-    Output(DATASET_DOWNLOAD_LINK, "href"),
+    [
+        Output(DATASET_METADATA_DOWNLOAD_LINK, "href"),
+        Output(DATASET_PARQUET_DOWNLOAD_LINK, "href"),
+        Output(DATASET_DOWNLOAD_LINK, "href"),
+    ],
     Input(DATASET_DATA_STORE, "data"),
 )
 def update_dataset_download_link(store_data: Optional[Dict[str, Any]]):
-    """Point the browser directly at the streamed backend download."""
+    """Point full downloads at release artifacts and CSV at live filters."""
     if not store_data:
-        return "#"
+        return "#", "#", "#"
 
     dataset_id = store_data.get("dataset_id")
     modality = store_data.get("modality")
     if not dataset_id or not modality:
-        return "#"
+        return "#", "#", "#"
 
     filters = {
         "perturbation_gene_name": store_data.get(
@@ -1143,4 +1176,8 @@ def update_dataset_download_link(store_data: Optional[Dict[str, Any]]):
         ),
         "effect_gene_name": store_data.get("effect_gene_search"),
     }
-    return _dataset_download_url(dataset_id, modality, filters)
+    return (
+        _dataset_download_url(dataset_id, modality, "metadata"),
+        _dataset_download_url(dataset_id, modality, "parquet"),
+        _dataset_download_url(dataset_id, modality, "csv.gz", filters),
+    )
