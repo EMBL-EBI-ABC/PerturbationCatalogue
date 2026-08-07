@@ -48,6 +48,7 @@ DEFAULT_STEP1_OUT = DEFAULT_TEST_OUTPUT / "step1_evidence"
 DEFAULT_STEP2_OUT = DEFAULT_TEST_OUTPUT / "step2_normalized"
 DEFAULT_STEP3_OUT = DEFAULT_TEST_OUTPUT / "step3_ontology_candidates"
 DEFAULT_STEP4_OUT = DEFAULT_TEST_OUTPUT / "step4_backfilled"
+DEFAULT_STEP5_OUT = DEFAULT_TEST_OUTPUT / "step5_final"
 
 DEFAULT_CANDIDATES_JSON = DEFAULT_STEP3_OUT / "step3_ontology_candidates.json"
 DEFAULT_PROMPT_DIR = ROOT_DIR / "data_exploration" / "curation_tools" / "llm_curation"
@@ -459,7 +460,10 @@ def main():
             "💡 Step 3a: Candidate Discovery",
             "🔍 Step 3b: Candidate Review & Schema Diff",
             "🔄 Step 4: Backfill Approved Terms",
-        ]
+            "🧬 Step 5: Final Metadata",
+        ],
+        key="pipeline_tabs",
+        on_change="rerun",
     )
 
     # -----------------------------------------------------------------------------
@@ -1270,7 +1274,7 @@ def main():
                     )
 
     # -----------------------------------------------------------------------------
-    # TAB 5: Step 4 Backfill Approved Terms
+    # TAB 4: Step 4 Backfill Approved Terms
     # -----------------------------------------------------------------------------
     with tab_step4:
         st.header("🔄 Step 4: Backfill Approved Terms")
@@ -1402,6 +1406,117 @@ def main():
                 st.rerun()
             except Exception as e:
                 st.error(f"Backfill failed: {e}")
+
+    # -----------------------------------------------------------------------------
+    # TAB 5: Step 5 Final Metadata and CSV Review
+    # -----------------------------------------------------------------------------
+    with tab_step5:
+        st.header("🧬 Step 5: Final Metadata")
+        st.caption(
+            "Combines the curated LLM metadata with MaveDB supplementary metadata, projects each study onto ObsSchema, and creates the final editable CSV."
+        )
+
+        with st.expander("📍 Active Step 5 Pipeline Paths", expanded=False):
+            col_f_in, col_f_out = st.columns(2)
+            s5_source_dir = col_f_in.text_input(
+                "Step 4/2 Source Directory",
+                value=str(effective_candidate_input_dir),
+                help="Directory containing the latest normalized or Step 4 backfilled JSON files.",
+                key="s5_source_dir_val",
+            )
+            s5_output_dir = col_f_out.text_input(
+                "Step 5 Output Directory",
+                value=str(paths["step5_out"]),
+                help="Directory where final JSON files and step5_final_metadata.csv are written.",
+                key="s5_output_dir_val",
+            )
+            s5_mavedb_dir = st.text_input(
+                "MaveDB Metadata Directory",
+                value=str(paths["mavedb_meta_dir"]),
+                help="Cached MaveDB entry JSONs used to fill fields that are not LLM-curated.",
+                key="s5_mavedb_dir_val",
+            )
+
+        s5_overwrite = st.checkbox(
+            "Overwrite existing Step 5 JSON files",
+            value=False,
+            key="s5_overwrite",
+            help="Leave disabled to preserve existing final outputs and manual CSV edits; enable only when you intentionally want to regenerate them.",
+        )
+        if st.button("🚀 Assemble Step 5 Final Metadata", type="primary"):
+            try:
+                output_paths = finalize_metadata(
+                    normalized_metadata_dir=Path(s5_source_dir),
+                    output_dir=Path(s5_output_dir),
+                    log_file=paths["step5_log"],
+                    mavedb_metadata_dir=Path(s5_mavedb_dir),
+                    overwrite=s5_overwrite,
+                    create_csv=True,
+                )
+                record_pipeline_step(
+                    paths["pipeline_manifest"],
+                    "step5",
+                    input_dir=Path(s5_source_dir),
+                    output_dir=Path(s5_output_dir),
+                    source_step=(
+                        "step4"
+                        if Path(s5_source_dir).resolve()
+                        == Path(paths["step4_out"]).resolve()
+                        else "step2"
+                    ),
+                )
+                st.session_state["_step5_message"] = (
+                    f"Step 5 complete: assembled {len(output_paths)} study records. "
+                    f"Edit the CSV below when needed."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Step 5 finalization failed: {exc}")
+
+        csv_path = get_final_csv_path(Path(s5_output_dir))
+        st.divider()
+        st.subheader("✏️ Edit Final CSV Cells")
+        st.caption(
+            "Click any editable metadata cell, change its value, and save. Dataset identifiers and provenance columns are protected. Changes are written to the CSV and recorded in step5_csv_edit_audit.json; the per-study JSON files are left unchanged."
+        )
+        if not csv_path.is_file():
+            st.info(
+                f"No Step 5 CSV found at `{csv_path}`. Run Step 5 finalization first."
+            )
+        else:
+            try:
+                csv_df = load_final_csv(csv_path)
+                csv_signature = calculate_file_signature(csv_path) or "missing"
+                editor_key = f"s5_csv_editor_{csv_signature}"
+                protected_columns = [
+                    column
+                    for column in (
+                        "dataset_id",
+                        "source_json_file",
+                        "__source_urns",
+                        "__source_files",
+                    )
+                    if column in csv_df.columns
+                ]
+                edited_csv_df = st.data_editor(
+                    csv_df,
+                    key=editor_key,
+                    hide_index=True,
+                    num_rows="fixed",
+                    disabled=protected_columns,
+                    width="stretch",
+                )
+                if st.button("💾 Save CSV Cell Edits", type="secondary"):
+                    changes = save_final_csv_edits(
+                        csv_path,
+                        csv_df,
+                        edited_csv_df,
+                    )
+                    st.success(f"Saved {len(changes)} changed cell(s) to `{csv_path}`.")
+                    st.toast("CSV edits saved and audited.", icon="💾")
+                    st.rerun()
+            except (OSError, ValueError, pd.errors.ParserError) as exc:
+                st.error(f"Could not load or edit the final CSV: {exc}")
 
 
 if __name__ == "__main__":
