@@ -90,7 +90,7 @@ class TestReleaseWorker(unittest.TestCase):
                 self.assertEqual(next(csv.reader(handle))[0], "Perturbed Target ENSG")
             self.assertEqual(pq.read_table(tmp_path / f"{prefix}.parquet").num_rows, 1)
             self.assertEqual(
-                json.loads((tmp_path / f"{prefix}.metadata.json").read_text())[0][
+                json.loads((tmp_path / f"{prefix}.metadata.json").read_text())[
                     "dataset_id"
                 ],
                 "demo",

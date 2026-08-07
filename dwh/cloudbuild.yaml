@@ -127,7 +127,7 @@ steps:
   # Step 5: Create clustered staging tables and the task manifest.
   - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: release-stage
-    dir: /app/bq_to_postgres
+    dir: /app/release
     entrypoint: bash
     args:
       - -ceu
@@ -159,11 +159,11 @@ steps:
         cleanup() {
           status=$$?
           for modality in crispr perturb_seq mave; do
-            for kind in data metadata; do
-              bq rm -f -t \
-                "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_$${modality}_$${kind}" || true
-            done
+            bq rm -f -t \
+              "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_$${modality}_data" || true
           done
+          bq rm -f -t \
+            "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_dataset_metadata" || true
           gcloud storage rm --recursive \
             "gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/**" >/dev/null 2>&1 || true
           if [ "$$status" -ne 0 ]; then
@@ -190,7 +190,7 @@ steps:
           --region=$_GCLOUD_REGION \
           --image=${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID \
           --command=python3 \
-          --args=/app/bq_to_postgres/release_worker.py \
+          --args=/app/release/release_worker.py \
           --tasks="$$tasks" \
           --parallelism="$$parallelism" \
           --max-retries=1 \

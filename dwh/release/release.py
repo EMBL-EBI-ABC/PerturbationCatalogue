@@ -3,7 +3,6 @@
 DATASETS = {
     "crispr": {
         "data": "crispr.data",
-        "metadata": "crispr.metadata",
         "fields": [
             ("perturbed_target_ensg", "Perturbed Target ENSG"),
             ("perturbed_target_name", "Perturbed Target Name"),
@@ -15,7 +14,6 @@ DATASETS = {
     },
     "perturb-seq": {
         "data": "perturb_seq.pertpy_dea",
-        "metadata": "perturb_seq.metadata",
         "fields": [
             ("perturbed_target_ensg", "Perturbed Target ENSG"),
             ("perturbed_target_name", "Perturbed Target Name"),
@@ -30,7 +28,6 @@ DATASETS = {
     },
     "mave": {
         "data": "mavedb.data",
-        "metadata": "mavedb.metadata",
         "fields": [
             ("perturbed_target_ensg", "Perturbed Target ENSG"),
             ("perturbed_target_name", "Perturbed Target Name"),
@@ -43,6 +40,8 @@ DATASETS = {
         ],
     },
 }
+
+DATASET_METADATA = "dataset_summary"
 
 
 def table(project, dataset, name):
@@ -75,7 +74,3 @@ def data_query(project, dataset, modality):
         else:
             fields.append(f"d.{field}")
     return f"SELECT d.dataset_id, {', '.join(fields)} FROM {source} AS d"
-
-
-def metadata_query(project, dataset, modality):
-    return f"SELECT * FROM {table(project, dataset, DATASETS[modality]['metadata'])}"

@@ -172,17 +172,15 @@ def _write_metadata(bucket, prefix, client, item, location, bqstorage_client):
             ignore_flush=True,
             content_type="application/json",
         ) as output:
-            output.write(b"[")
-            first = True
-            for batch in _batches(result, bqstorage_client):
-                for row in batch.to_pylist():
-                    if not first:
-                        output.write(b",")
-                    output.write(
-                        json.dumps(row, default=str, separators=(",", ":")).encode()
-                    )
-                    first = False
-            output.write(b"]")
+            row = next(
+                (
+                    row
+                    for batch in _batches(result, bqstorage_client)
+                    for row in batch.to_pylist()
+                ),
+                {},
+            )
+            output.write(json.dumps(row, default=str, separators=(",", ":")).encode())
 
 
 def generate(item, bucket, prefix, client, location, bqstorage_client):

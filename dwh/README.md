@@ -14,7 +14,7 @@ The pipeline runs five stages sequentially:
 | 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
 | 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
 | 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
-| 5. **Release artifacts** | `bq_to_postgres/` | Clusters source data, then fans out one Cloud Run task per dataset | variable |
+| 5. **Release artifacts** | `release/` | Clusters source data, then fans out one Cloud Run task per dataset | variable |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
 For the ENSG dev stack, the Open Targets reference stage writes to
@@ -44,10 +44,13 @@ The trigger script requires the following variables (all provided by `pc_secrets
 
 Each pipeline run first requires an empty `gs://$CLOUD_TMP_BUCKET/release`
 prefix. Release staging tables are clustered by `dataset_id`, then one Cloud
-Run Job task per dataset streams metadata JSON, CSV.GZ, and Parquet files into
-that prefix, grouped by `crispr`, `perturb-seq`, and `mave`. The staging tables
-and task job are removed after completion; move the reviewed prefix to the
-release bucket manually.
+Run Job task per dataset streams the dataset-level row from `dataset_summary`
+as JSON plus CSV.GZ and Parquet data into that prefix, grouped by `crispr`,
+`perturb-seq`, and `mave`. The staging tables and task job are removed after
+completion; move the reviewed prefix to the release bucket manually.
+
+To regenerate only metadata JSONs, run `python3 release/metadata.py` with the
+same project, dataset, location, and bucket options.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
 optional and defaults to empty. Its value is appended directly to all three

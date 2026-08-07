@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from google.cloud import bigquery, storage
 
-from release import DATASETS, data_query, table
+from release import DATASET_METADATA, DATASETS, data_query, table
 
 
 def _table_id(run_id, modality, kind):
@@ -31,9 +31,17 @@ def _stage(client, project, dataset, location, name, query):
 def create_staging(project, dataset, location, bucket_name, run_id):
     client = bigquery.Client(project=project)
     items = []
-    for modality, config in DATASETS.items():
+    metadata_name = _table_id(run_id, "dataset", "metadata")
+    metadata_table = _stage(
+        client,
+        project,
+        dataset,
+        location,
+        metadata_name,
+        f"SELECT * FROM {table(project, dataset, DATASET_METADATA)}",
+    )
+    for modality in DATASETS:
         data_name = _table_id(run_id, modality, "data")
-        metadata_name = _table_id(run_id, modality, "metadata")
         data_table = _stage(
             client,
             project,
@@ -41,14 +49,6 @@ def create_staging(project, dataset, location, bucket_name, run_id):
             location,
             data_name,
             data_query(project, dataset, modality),
-        )
-        metadata_table = _stage(
-            client,
-            project,
-            dataset,
-            location,
-            metadata_name,
-            f"SELECT * FROM {table(project, dataset, config['metadata'])}",
         )
         rows = client.query(
             "SELECT dataset_id FROM "
@@ -78,11 +78,14 @@ def create_staging(project, dataset, location, bucket_name, run_id):
 def cleanup(project, dataset, location, bucket_name, run_id):
     client = bigquery.Client(project=project)
     for modality in DATASETS:
-        for kind in ("data", "metadata"):
-            client.delete_table(
-                f"{project}.{dataset}.{_table_id(run_id, modality, kind)}",
-                not_found_ok=True,
-            )
+        client.delete_table(
+            f"{project}.{dataset}.{_table_id(run_id, modality, 'data')}",
+            not_found_ok=True,
+        )
+    client.delete_table(
+        f"{project}.{dataset}.{_table_id(run_id, 'dataset', 'metadata')}",
+        not_found_ok=True,
+    )
     bucket = storage.Client(project=project).bucket(bucket_name)
     for blob in bucket.list_blobs(prefix=f"release-staging/{run_id}/"):
         blob.delete()
