@@ -1,4 +1,4 @@
-"""Consolidated Streamlit Curation Control Center for MaveDB LLM Metadata Pipeline (Steps 1 - 4)."""
+"""Consolidated Streamlit Curation Control Center for MaveDB LLM Metadata Pipeline (Steps 1 - 5)."""
 
 import json
 from pathlib import Path
