@@ -35,6 +35,8 @@ def get_normalized_output_path(
     step1_evidence_path = Path(step1_evidence_path).resolve()
     filename_stem = step1_evidence_path.stem
     output_dir = Path(output_dir).resolve()
+    if output_dir.name == "step2_normalized":
+        return output_dir / f"{filename_stem}.json"
     return output_dir / "step2_normalized" / f"{filename_stem}.json"
 
 
