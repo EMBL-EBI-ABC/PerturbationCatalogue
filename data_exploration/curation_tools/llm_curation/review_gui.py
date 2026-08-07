@@ -226,6 +226,33 @@ def init_session_state(
         st.session_state["decisions"] = decisions
 
 
+def reset_default_paths() -> None:
+    """Restore toolbar and active-step path widgets to their default values."""
+    st.session_state.update(_DEFAULT_TOOLBAR_VALUES)
+    st.session_state.update(_DEFAULT_ACTIVE_PATH_VALUES)
+    st.session_state["_toolbar_path_values"] = _DEFAULT_TOOLBAR_VALUES.copy()
+
+
+def sync_active_pipeline_paths(
+    toolbar_values: dict[str, str], paths: dict[str, Path]
+) -> None:
+    """Update step path widgets when their corresponding toolbar setting changes."""
+    previous_toolbar_values = st.session_state.get("_toolbar_path_values")
+    if previous_toolbar_values is not None:
+        changed_toolbar_keys = {
+            key
+            for key, value in toolbar_values.items()
+            if previous_toolbar_values.get(key) != value
+        }
+
+        for toolbar_key in changed_toolbar_keys:
+            for widget_key, path_key in _TOOLBAR_PATH_KEYS.get(toolbar_key, {}).items():
+                if path_key in paths:
+                    st.session_state[widget_key] = str(paths[path_key])
+
+    st.session_state["_toolbar_path_values"] = toolbar_values.copy()
+
+
 def main():
     st.title("🧬 MaveDB LLM Curation Control Center")
     st.caption(
