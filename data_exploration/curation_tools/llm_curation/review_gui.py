@@ -1019,7 +1019,7 @@ def main():
             )
         else:
             st.info(
-                "No 'Other' fields currently detected across Step 2 outputs, or Step 2 outputs are missing."
+                "No 'Other' fields currently detected in the selected normalized outputs, or the selected directories are missing."
             )
 
         st.divider()
