@@ -77,6 +77,8 @@ def get_evidence_output_path(
     publication_full_text_path = Path(publication_full_text_path).resolve()
     publication_stem = publication_full_text_path.stem
     output_dir = Path(output_dir).resolve()
+    if output_dir.name == "step1_evidence":
+        return output_dir / f"{publication_stem}{suffix}.json"
     return output_dir / "step1_evidence" / f"{publication_stem}{suffix}.json"
 
 
