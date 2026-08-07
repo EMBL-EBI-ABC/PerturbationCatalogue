@@ -1,11 +1,11 @@
 # DWH Pipeline — Cloud Build Configuration
 #
-# Runs the pipeline stages sequentially:
+# Runs the data pipeline stages sequentially:
 #   1. reference load   (Open Targets target parquet → BQ reference table)
 #   2. dbt run          (BQ source → BQ final tables)
 #   3. bq_to_postgres   (BQ final tables → Postgres)
 #   4. bq_to_es         (BQ summary tables → Elasticsearch)
-#   5. release artifacts (BQ data → reviewed GCS hand-off)
+#   5. release artifacts (clustered BQ staging → parallel Cloud Run tasks)
 #
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
 #
@@ -44,10 +44,16 @@ steps:
       - build
       - -q
       - -t
-      - gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+      - ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
       - -f
       - Dockerfile
       - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-image
+    args:
+      - push
+      - ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
 
   # Step 1: Open Targets reference load
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -63,7 +69,7 @@ steps:
           "gs://open-targets-data-releases/$_OPENTARGETS_RELEASE/output/target/*.parquet"
 
   # Step 2: dbt run
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+  - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: dbt-run
     dir: /app/bq_dbt
     entrypoint: bash
@@ -83,7 +89,7 @@ steps:
       - BQ_LOCATION=$_BQ_LOCATION
 
   # Step 3: BigQuery → Postgres
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+  - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: bq-to-postgres
     dir: /app/bq_to_postgres
     entrypoint: python3
@@ -102,7 +108,7 @@ steps:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
 
   # Step 4: BigQuery → Elasticsearch
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
+  - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: bq-to-es
     dir: /app/bq_to_elastic
     entrypoint: python3
@@ -118,23 +124,83 @@ steps:
       - ES_PASSWORD=$_ES_PASSWORD
       - ES_INDEX_SET=$_ES_INDEX_SET
 
-  # Step 5: Build the manually-reviewed release artifacts
-  - name: gcr.io/$PROJECT_ID/dwh-pipeline:$BUILD_ID
-    id: release-artifacts
+  # Step 5: Create clustered staging tables and the task manifest.
+  - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
+    id: release-stage
     dir: /app/bq_to_postgres
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - release.py
-      - --bq-project
-      - $_GCLOUD_PROJECT
-      - --bq-dataset
-      - $_BQ_DATASET
-      - --bq-location
-      - $_BQ_LOCATION
-      - --gcs-bucket
-      - $_CLOUD_TMP_BUCKET
-      - --release-prefix
-      - release
+      - -ceu
+      - |
+        rm -f /workspace/release-tasks /workspace/release-ready
+        python3 release_stage.py create \
+          --project $_GCLOUD_PROJECT \
+          --dataset $_BQ_DATASET \
+          --location $_BQ_LOCATION \
+          --bucket $_CLOUD_TMP_BUCKET \
+          --run-id "$BUILD_ID" > /workspace/release-tasks
+        touch /workspace/release-ready
+    allowFailure: true
+    env:
+      - GCLOUD_PROJECT=$_GCLOUD_PROJECT
+      - BQ_DATASET=$_BQ_DATASET
+      - BQ_LOCATION=$_BQ_LOCATION
+
+  # Step 6: Deploy and wait for the parallel Cloud Run release tasks.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: release-artifacts
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        run_id="$BUILD_ID"
+        safe_id="$${run_id//-/_}"
+        job="pertcat-release-$$run_id"
+        cleanup() {
+          status=$$?
+          for modality in crispr perturb_seq mave; do
+            for kind in data metadata; do
+              bq rm -f -t \
+                "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_$${modality}_$${kind}" || true
+            done
+          done
+          gcloud storage rm --recursive \
+            "gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/**" >/dev/null 2>&1 || true
+          if [ "$$status" -ne 0 ]; then
+            gcloud storage rm --recursive "gs://$_CLOUD_TMP_BUCKET/release/**" >/dev/null 2>&1 || true
+          fi
+          gcloud run jobs delete "$$job" \
+            --project=$_GCLOUD_PROJECT --region=$_GCLOUD_REGION --quiet || true
+          exit "$$status"
+        }
+        trap cleanup EXIT
+
+        if [ ! -f /workspace/release-ready ]; then
+          echo "Release staging failed" >&2
+          exit 1
+        fi
+        tasks="$$(tr -d '[:space:]' < /workspace/release-tasks)"
+        if [ "$$tasks" -eq 0 ]; then
+          exit 0
+        fi
+        parallelism="$$tasks"
+        if [ "$$parallelism" -gt 16 ]; then parallelism=16; fi
+        gcloud run jobs deploy "$$job" \
+          --project=$_GCLOUD_PROJECT \
+          --region=$_GCLOUD_REGION \
+          --image=${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID \
+          --command=python3 \
+          --args=/app/bq_to_postgres/release_worker.py \
+          --tasks="$$tasks" \
+          --parallelism="$$parallelism" \
+          --max-retries=1 \
+          --task-timeout=24h \
+          --cpu=4 \
+          --memory=16Gi \
+          --set-env-vars="GCLOUD_PROJECT=$_GCLOUD_PROJECT,BQ_LOCATION=$_BQ_LOCATION,RELEASE_BUCKET=$_CLOUD_TMP_BUCKET,RELEASE_MANIFEST_URI=gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/manifest.json,RELEASE_PREFIX=release" \
+          --quiet
+        gcloud run jobs execute "$$job" \
+          --project=$_GCLOUD_PROJECT --region=$_GCLOUD_REGION --wait
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - BQ_DATASET=$_BQ_DATASET

@@ -6,7 +6,7 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs four stages sequentially:
+The pipeline runs five stages sequentially:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
@@ -14,6 +14,7 @@ The pipeline runs four stages sequentially:
 | 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
 | 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
 | 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
+| 5. **Release artifacts** | `bq_to_postgres/` | Clusters source data, then fans out one Cloud Run task per dataset | variable |
 
 Each stage depends on the previous one. If any stage fails, the pipeline stops.
 For the ENSG dev stack, the Open Targets reference stage writes to
@@ -42,10 +43,11 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 The trigger script requires the following variables (all provided by `pc_secrets dev`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `CLOUD_TMP_BUCKET` (or legacy `GCLOUD_TMP_BUCKET`), `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
 
 Each pipeline run first requires an empty `gs://$CLOUD_TMP_BUCKET/release`
-prefix. It then writes reviewed release artifacts below that prefix, grouped
-by `crispr`, `perturb-seq`, and `mave`; each dataset receives metadata JSON,
-CSV.GZ, and Parquet files. Move the completed prefix to the release bucket
-manually after inspection.
+prefix. Release staging tables are clustered by `dataset_id`, then one Cloud
+Run Job task per dataset streams metadata JSON, CSV.GZ, and Parquet files into
+that prefix, grouped by `crispr`, `perturb-seq`, and `mave`. The staging tables
+and task job are removed after completion; move the reviewed prefix to the
+release bucket manually.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
 optional and defaults to empty. Its value is appended directly to all three
@@ -73,6 +75,28 @@ gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
 gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
     --member="serviceAccount:$CB_SA" \
     --role="roles/cloudsql.client"
+
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/run.admin"
+
+gcloud iam service-accounts add-iam-policy-binding \
+    "$(gcloud projects describe $GCLOUD_PROJECT --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+    --member="serviceAccount:$CB_SA" \
+    --role="roles/iam.serviceAccountUser"
+
+# The Cloud Run Job's default compute service account also needs BigQuery job
+# and read access plus write access to CLOUD_TMP_BUCKET.
+export RELEASE_SA="$(gcloud projects describe $GCLOUD_PROJECT --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$RELEASE_SA" \
+    --role="roles/bigquery.jobUser"
+gcloud projects add-iam-policy-binding $GCLOUD_PROJECT \
+    --member="serviceAccount:$RELEASE_SA" \
+    --role="roles/bigquery.dataViewer"
+gcloud storage buckets add-iam-policy-binding "gs://$CLOUD_TMP_BUCKET" \
+    --member="serviceAccount:$RELEASE_SA" \
+    --role="roles/storage.objectAdmin"
 ```
 
 ### 5. Create Cloud Build private worker pool

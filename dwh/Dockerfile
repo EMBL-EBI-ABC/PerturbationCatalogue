@@ -20,6 +20,8 @@ COPY bq_dbt/ bq_dbt/
 # Copy bq_to_postgres
 COPY bq_to_postgres/bq_to_postgres.py bq_to_postgres/bq_to_postgres.py
 COPY bq_to_postgres/release.py bq_to_postgres/release.py
+COPY bq_to_postgres/release_stage.py bq_to_postgres/release_stage.py
+COPY bq_to_postgres/release_worker.py bq_to_postgres/release_worker.py
 
 # Copy bq_to_elastic
 COPY bq_to_elastic/ bq_to_elastic/
