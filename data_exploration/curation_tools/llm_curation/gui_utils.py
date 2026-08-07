@@ -167,6 +167,257 @@ def get_step2_file_status(step1_dir: Path, step2_dir: Path) -> list[dict[str, An
     return records
 
 
+def _normalized_json_files(directory: Path) -> list[Path]:
+    """Return normalized JSON artifacts from a directory or its nested output folder."""
+    directory = Path(directory).resolve()
+    files = [
+        path
+        for path in sorted(directory.glob("*.json"))
+        if not path.name.endswith("_audit.json")
+    ]
+    if not files and (directory / "step2_normalized").is_dir():
+        files = [
+            path
+            for path in sorted((directory / "step2_normalized").glob("*.json"))
+            if not path.name.endswith("_audit.json")
+        ]
+        directory = directory / "step2_normalized"
+    return files
+
+
+def _pipeline_artifact_files(directory: Path) -> list[Path]:
+    """Return files that participate in pipeline freshness signatures."""
+    directory = Path(directory).resolve()
+    if not directory.is_dir():
+        return []
+
+    files = [
+        path
+        for path in sorted(directory.iterdir())
+        if path.is_file()
+        and path.suffix in {".json", ".md"}
+        and not path.name.endswith("_audit.json")
+        and path.name != "pipeline_manifest.json"
+    ]
+    if not files and (directory / "step2_normalized").is_dir():
+        return _pipeline_artifact_files(directory / "step2_normalized")
+    return files
+
+
+def calculate_file_signature(file_path: Path) -> str | None:
+    """Return a SHA-256 signature for a file, or None when it is unavailable."""
+    file_path = Path(file_path).resolve()
+    if not file_path.is_file():
+        return None
+    return sha256(file_path.read_bytes()).hexdigest()
+
+
+def get_publication_dois_for_source_file(
+    source_file: str,
+    normalized_dir: Path,
+    mapping_file: Path,
+) -> list[str]:
+    """Resolve publication DOIs from a Step 2/4 source file's MaveDB URNs."""
+    from curation_tools.llm_curation.mavedb.processing import format_urn_for_filename
+
+    normalized_dir = Path(normalized_dir).resolve()
+    source_path = normalized_dir / source_file
+    if not source_path.is_file() and (normalized_dir / "step2_normalized").is_dir():
+        source_path = normalized_dir / "step2_normalized" / source_file
+    if not source_path.is_file():
+        matches = list(normalized_dir.rglob(source_file))
+        source_path = matches[0] if matches else source_path
+
+    try:
+        urn_to_dois = json.loads(
+            Path(mapping_file).resolve().read_text(encoding="utf-8")
+        )
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+
+    source_urns: list[str] = []
+    if source_path.is_file():
+        try:
+            source_payload = json.loads(source_path.read_text(encoding="utf-8"))
+            source_urns = source_payload.get("__source_urns", [])
+        except (json.JSONDecodeError, OSError):
+            source_urns = []
+
+    dois: set[str] = set()
+    for source_urn in source_urns:
+        urn_variants = {
+            str(source_urn),
+            str(source_urn).removeprefix("urn:"),
+        }
+        for urn_variant in urn_variants:
+            dois.update(urn_to_dois.get(urn_variant, []))
+
+    if not dois:
+        for urn, urn_dois in urn_to_dois.items():
+            if f"{format_urn_for_filename(urn)}.json" == source_file:
+                dois.update(urn_dois)
+
+    return sorted(dois)
+
+
+def calculate_directory_signature(directory: Path) -> str | None:
+    """Return a stable SHA-256 signature for pipeline artifacts in a directory."""
+    files = _pipeline_artifact_files(directory)
+    if not files:
+        return None
+
+    digest = sha256()
+    for file_path in files:
+        digest.update(file_path.name.encode("utf-8"))
+        digest.update(file_path.read_bytes())
+    return digest.hexdigest()
+
+
+def load_pipeline_manifest(manifest_path: Path) -> dict[str, Any]:
+    """Load the pipeline manifest, returning an empty structure when absent or invalid."""
+    manifest_path = Path(manifest_path).resolve()
+    if not manifest_path.is_file():
+        return {"steps": {}}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {"steps": {}}
+    return manifest if isinstance(manifest, dict) else {"steps": {}}
+
+
+def record_pipeline_step(
+    manifest_path: Path,
+    step: str,
+    input_dir: Path | None = None,
+    output_dir: Path | None = None,
+    selected_items: list[str] | None = None,
+    decisions_file: Path | None = None,
+    source_step: str | None = None,
+) -> dict[str, Any]:
+    """Record a successful pipeline step and its freshness metadata."""
+    manifest_path = Path(manifest_path).resolve()
+    manifest = load_pipeline_manifest(manifest_path)
+    manifest.setdefault("steps", {})
+    completed_at = datetime.now(timezone.utc).isoformat()
+    step_record: dict[str, Any] = {
+        "status": "completed",
+        "run_id": f"{step}-{completed_at}",
+        "completed_at": completed_at,
+    }
+
+    if input_dir is not None:
+        input_dir = Path(input_dir).resolve()
+        step_record["input_dir"] = str(input_dir)
+        step_record["input_signature"] = calculate_directory_signature(input_dir)
+    if output_dir is not None:
+        output_dir = Path(output_dir).resolve()
+        step_record["output_dir"] = str(output_dir)
+        step_record["output_signature"] = calculate_directory_signature(output_dir)
+    if selected_items is not None:
+        step_record["selected_items"] = sorted(selected_items)
+    if decisions_file is not None:
+        step_record["decisions_file"] = str(Path(decisions_file).resolve())
+        step_record["decisions_signature"] = calculate_file_signature(decisions_file)
+
+    if source_step:
+        source_record = manifest["steps"].get(source_step, {})
+        step_record["source_step"] = source_step
+        step_record["source_run_id"] = source_record.get("run_id")
+        step_record["source_completed_at"] = source_record.get("completed_at")
+        step_record["source_output_signature"] = source_record.get("output_signature")
+
+    manifest["steps"][step] = step_record
+    timestamp_key = {
+        "step1": "timestamp_evidence_extraction",
+        "step2": "timestamp_term_normalization",
+        "step3a": "timestamp_candidate_discovery",
+        "step4": "timestamp_backfill",
+        "step5": "timestamp_final_metadata",
+    }.get(step)
+    if timestamp_key:
+        manifest[timestamp_key] = completed_at
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return step_record
+
+
+def resolve_effective_normalized_dir(
+    step2_dir: Path,
+    step4_dir: Path,
+    manifest_path: Path | None = None,
+    decisions_file: Path | None = None,
+) -> Path:
+    """Use a manifest-verified Step 4 output, otherwise use Step 2 artifacts."""
+    step2_dir = Path(step2_dir).resolve()
+    step4_dir = Path(step4_dir).resolve()
+    step2_files = _normalized_json_files(step2_dir)
+    step4_files = _normalized_json_files(step4_dir)
+
+    if not step4_files:
+        return step2_dir
+
+    if manifest_path is not None:
+        manifest = load_pipeline_manifest(manifest_path)
+        step2_record = manifest.get("steps", {}).get("step2", {})
+        step4_record = manifest.get("steps", {}).get("step4", {})
+        current_step2_signature = calculate_directory_signature(step2_dir)
+        current_step4_signature = calculate_directory_signature(step4_dir)
+        current_decisions_signature = (
+            calculate_file_signature(decisions_file) if decisions_file else None
+        )
+        source_run_matches = not step4_record.get("source_run_id") or (
+            step4_record.get("source_run_id") == step2_record.get("run_id")
+        )
+        source_timestamp_matches = not step4_record.get("source_completed_at") or (
+            step4_record.get("source_completed_at") == step2_record.get("completed_at")
+        )
+
+        step4_is_current = (
+            step4_record.get("status") == "completed"
+            and step4_record.get("input_dir") == str(step2_dir)
+            and step4_record.get("output_dir") == str(step4_dir)
+            and step4_record.get("source_step") == "step2"
+            and source_run_matches
+            and source_timestamp_matches
+            and step4_record.get("input_signature") == current_step2_signature
+            and step4_record.get("output_signature") == current_step4_signature
+            and step4_record.get("decisions_signature") == current_decisions_signature
+        )
+        return step4_dir if step4_is_current else step2_dir
+
+    if not step2_files:
+        return step4_dir
+
+    latest_step2_mtime = max(path.stat().st_mtime for path in step2_files)
+    latest_step4_mtime = max(path.stat().st_mtime for path in step4_files)
+    return step4_dir if latest_step4_mtime >= latest_step2_mtime else step2_dir
+
+
+def is_candidate_discovery_current(
+    candidates_file: Path,
+    effective_input_dir: Path,
+    manifest_path: Path,
+) -> bool:
+    """Return whether the Step 3a output matches the current input artifacts."""
+    candidates_file = Path(candidates_file).resolve()
+    effective_input_dir = Path(effective_input_dir).resolve()
+    manifest = load_pipeline_manifest(manifest_path)
+    step3_record = manifest.get("steps", {}).get("step3a", {})
+    output_dir = Path(step3_record.get("output_dir", "")).resolve()
+
+    return (
+        step3_record.get("status") == "completed"
+        and step3_record.get("input_dir") == str(effective_input_dir)
+        and step3_record.get("input_signature")
+        == calculate_directory_signature(effective_input_dir)
+        and output_dir == candidates_file.parent
+        and candidates_file.is_file()
+        and step3_record.get("output_signature")
+        == calculate_directory_signature(output_dir)
+    )
+
+
 def get_step3_other_corpus_summary(
     step1_dir: Path,
     step2_dir: Path,
