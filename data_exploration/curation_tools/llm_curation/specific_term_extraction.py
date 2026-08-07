@@ -208,6 +208,7 @@ def normalize_evidence_artifacts(
     log_file: str | Path,
     prompt_template_file: str | Path,
     mavedb_metadata_dir: str | Path | None = None,
+    selected_files: list[str | Path] | None = None,
     max_workers: int = DEFAULT_CONCURRENCY_WORKERS,
     overwrite: bool = False,
     model_name: str = DEFAULT_LLM_MODEL_NAME,
@@ -231,6 +232,13 @@ def normalize_evidence_artifacts(
         raise FileNotFoundError(f"Step 1 evidence directory not found: {step1_dir}")
 
     step1_paths = sorted(step1_dir.glob("*.json"))
+    if selected_files is not None:
+        selected_file_names = {Path(file).name for file in selected_files}
+        step1_paths = [
+            step1_path
+            for step1_path in step1_paths
+            if step1_path.name in selected_file_names
+        ]
     if not step1_paths:
         print_status_block(
             log_file,
