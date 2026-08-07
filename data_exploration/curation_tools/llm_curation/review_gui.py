@@ -1071,6 +1071,10 @@ def main():
     # TAB 3b: Step 3b Candidate Review & Schema Diff
     # -----------------------------------------------------------------------------
     with tab_step3b:
+        if st.session_state.pop("_candidate_data_stale", False):
+            st.warning(
+                "The Step 3a candidate report is stale relative to the current effective normalized outputs. Run Step 3a again before reviewing candidates."
+            )
         decisions = st.session_state.get("decisions", {})
         if not decisions:
             st.info(
