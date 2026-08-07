@@ -22,6 +22,8 @@ from curation_tools.llm_curation.metadata_extraction import (
     DEFAULT_LLM_MODEL_NAME,
     _ensure_log_file,
     create_csv_from_curated_metadata_json,
+    dataset_id_from_source_urns,
+    render_metadata_extraction_prompt,
 )
 from curation_tools.llm_curation.publication_text import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
@@ -803,10 +805,10 @@ def extract_evidence_for_mavedb_urn(
 
     prompt_template = prompt_template_file.read_text(encoding="utf-8")
     supplementary_metadata = prompt_context_formatter(prompt_context)
-    prompt = prompt_template.format(
-        supplementary_metadata=supplementary_metadata,
-        supplementary_mavedb_metadata=supplementary_metadata,
+    prompt = render_metadata_extraction_prompt(
+        prompt_template=prompt_template,
         publication_full_text=publication_full_text,
+        supplementary_metadata=supplementary_metadata,
     )
 
     if verbose:
