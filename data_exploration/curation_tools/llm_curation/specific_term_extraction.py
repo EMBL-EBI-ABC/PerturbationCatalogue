@@ -319,8 +319,13 @@ def normalize_evidence_artifacts(
 
     if create_csv and normalized_outputs:
         try:
+            step2_json_dir = (
+                output_dir
+                if output_dir.name == "step2_normalized"
+                else output_dir / "step2_normalized"
+            )
             create_csv_from_curated_metadata_json(
-                input_dir=output_dir / "step2_normalized",
+                input_dir=step2_json_dir,
                 output_csv_path=output_dir / "clean_metadata.csv",
                 log_file=log_file,
             )
