@@ -537,6 +537,7 @@ def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, obj
             experiment_payload.get("methodText")
         ),
         "target_genes": target_genes or None,
+        "perturbed_target_symbol": target_genes or None,
         "score_columns": entry_payload.get("datasetColumns", {}).get("scoreColumns")
         or None,
         "primary_publication_titles": publication_titles or None,
