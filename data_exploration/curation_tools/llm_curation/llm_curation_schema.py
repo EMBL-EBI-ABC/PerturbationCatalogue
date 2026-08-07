@@ -8,7 +8,11 @@ class EvidenceExtractionSchema(BaseModel):
 
     dataset_id_evidence: str | None = Field(
         default=None,
-        description="Unique identifier for the dataset, follows the format <firstauthor_year>. Example: smith_2020.",
+        description="Verbatim evidence mentioning the dataset or MaveDB identifier; the final dataset_id is populated from the source MaveDB URI.",
+    )
+    perturbed_target_symbol_evidence: str | None = Field(
+        default=None,
+        description="Perturbed target gene symbol. Define it from the MaveDB supplementary metadata target_genes field first; when needed, use the publication text to refine or disambiguate the target symbol. Extract from the MAVE DB metadata or from the evidence.",
     )
     data_modality_evidence: str | None = Field(
         default=None,
@@ -246,7 +250,11 @@ class SpecificTermExtractionSchema(BaseModel):
 
     dataset_id: str | None = Field(
         default=None,
-        description="Unique identifier for the dataset, follows the format <firstauthor_year>",
+        description="Canonical MaveDB dataset URI, for example urn:mavedb:00000001-a-2",
+    )
+    perturbed_target_symbol: str | None = Field(
+        default=None,
+        description="Gene symbol of the perturbed target. Use the MaveDB supplementary metadata target_genes value as the starting definition, refining it from the Step 1 publication evidence only when needed.",
     )
 
     data_modality: Literal["Perturb-seq", "CRISPR screen", "MAVE"] | None = Field(
