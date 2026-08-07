@@ -788,7 +788,13 @@ def main():
         st.divider()
 
         if st.button(
-            "🚀 Execute Step 2 Term Normalization", type="primary", key="btn_run_s2"
+            "🚀 Execute Step 2 Term Normalization",
+            type="primary",
+            key="btn_run_s2",
+            disabled=(
+                s2_file_filter_mode == "Selected Files (checkboxes)"
+                and not s2_selected_files
+            ),
         ):
             with st.spinner(
                 "Normalizing evidence quotes to controlled vocabularies..."
@@ -805,11 +811,19 @@ def main():
                         log_file=Path(s2_log_file),
                         prompt_template_file=Path(s2_prompt_file),
                         mavedb_metadata_dir=mavedb_dir_p,
+                        selected_files=s2_target_files,
                         max_workers=max_workers_slider,
                         overwrite=s2_overwrite,
                         model_name=selected_model,
                         create_csv=s2_create_csv,
                         verbose=s2_verbose,
+                    )
+                    record_pipeline_step(
+                        paths["pipeline_manifest"],
+                        "step2",
+                        input_dir=Path(s2_input_dir),
+                        output_dir=Path(s2_output_dir),
+                        selected_items=s2_selected_files,
                     )
                     st.success("Step 2 Term Normalization Complete!")
                     st.toast(
