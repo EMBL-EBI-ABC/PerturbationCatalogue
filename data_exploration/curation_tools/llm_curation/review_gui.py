@@ -893,10 +893,12 @@ def main():
                 key="s3_log_file_val",
             )
 
-        s3_prompt_file = st.text_input(
-            "Step 3a Prompt Template",
-            value=str(DEFAULT_PROMPT_DIR / "step3_candidate_discovery_prompt.md"),
-        )
+            s3_prompt_file = st.text_input(
+                "Step 3a Prompt Template",
+                value=str(paths["step3_prompt"]),
+                key="s3_prompt_file_val",
+            )
+
         s3_verbose = st.checkbox("Verbose prompt logging", value=True, key="s3_verb")
 
         st.divider()
