@@ -993,7 +993,9 @@ def main():
         )
 
         s3_summary_records = get_step3_other_corpus_summary(
-            Path(s3_step1_dir), Path(s3_step2_dir)
+            Path(s3_step1_dir),
+            s3_effective_step2_dir,
+            selected_files=s3_selected_files,
         )
         st.subheader(
             f"📊 Corpus 'Other' Evidence Summary ({len(s3_summary_records)} fields with unmapped 'Other' evidence)"
