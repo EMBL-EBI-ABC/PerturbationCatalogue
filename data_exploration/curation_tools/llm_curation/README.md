@@ -1,18 +1,19 @@
 # MaveDB LLM Metadata Extraction & Curation Control Center
 
-This folder contains an analysis pipeline for deriving structured MaveDB experiment metadata from publications linked to MaveDB entries. The workflow consists of four main stages and a consolidated Streamlit Curation Control Center:
+This folder contains an analysis pipeline for deriving structured MaveDB experiment metadata from publications linked to MaveDB entries. The workflow consists of five main stages and a consolidated Streamlit Curation Control Center:
 
 1. **Step 1: Evidence Extraction** — Extracts verbatim quotes from publication text using LLM queries.
 2. **Step 2: Specific Term Normalization** — Maps verbatim evidence to controlled vocabularies (`SpecificTermExtractionSchema`).
 3. **Step 3a: Candidate Discovery** — Aggregates recurring `"Other"` evidence and synthesizes proposed ontology candidate terms.
 4. **Step 3b: Candidate Review & Schema Update** — Interactive review interface to approve/edit terms and inject them into `llm_curation_schema.py`.
 5. **Step 4: Approved Terms Backfill** — Copies normalized Step 2 JSON files to Step 4 and replaces `"Other"` values with approved terms.
+6. **Step 5: Final Metadata Assembly** — Combines normalized LLM metadata with MaveDB target/study metadata and projects each study into the `ObsSchema` field set.
 
 ---
 
 ## Interactive Streamlit Curation Dashboard
 
-To launch the consolidated 5-tab Curation Control Center:
+To launch the consolidated 6-tab Curation Control Center:
 
 ```bash
 PYTHONPATH=data_exploration ./.venv/bin/streamlit run data_exploration/curation_tools/llm_curation/review_gui.py
@@ -24,6 +25,7 @@ PYTHONPATH=data_exploration ./.venv/bin/streamlit run data_exploration/curation_
 - **💡 Step 3a: Candidate Discovery:** Preview corpus-level `"Other"` evidence frequencies per field and run LLM candidate discovery.
 - **🔍 Step 3b: Candidate Review & Schema Diff:** Review candidate terms, edit labels, approve/reject candidates, preview live AST code diffs of `llm_curation_schema.py`, and apply approved terms to the schema.
 - **🔄 Step 4: Backfill Approved Terms:** View a live preview table of all planned `"Other"` replacements before writing, then execute backfill to generate Step 4 copies, audit JSON, and compiled CSV outputs.
+- **🧬 Step 5: Final Metadata:** Assemble schema-projected final JSON/CSV outputs, then edit individual CSV cells in place. Saving writes `step5_csv_edit_audit.json`; the source JSON records remain unchanged.
 
 ---
 
@@ -80,3 +82,20 @@ PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.ba
   --log-file test_output/step4_backfill.log \
   --create-csv
 ```
+
+### Step 5: Final Metadata Assembly
+
+Combine Step 4 (or Step 2) normalized metadata with MaveDB target and study metadata into `ObsSchema`-shaped JSON objects:
+
+```bash
+PYTHONPATH=data_exploration ./.venv/bin/python -m curation_tools.llm_curation.final_metadata \
+  --normalized-metadata-dir test_output/step4_backfilled \
+  --output-dir test_output/step5_final \
+  --mavedb-metadata-dir data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata \
+  --log-file test_output/step5_final_metadata.log \
+  --overwrite
+```
+
+MaveDB target genes are mapped to `perturbed_target_symbol`; target counts and MAVE variant totals are populated where available. `perturbation_name`, `perturbed_target_biotype`, and `perturbed_target_ensg` are intentionally left unset for downstream curation. Operational source provenance is retained under the existing `__source_urns` and `__source_files` keys.
+
+For MaveDB-backed records, `dataset_id` is the canonical source URI (for example, `urn:mavedb:00000001-a-2`) throughout Steps 1–5.
