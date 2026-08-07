@@ -702,16 +702,11 @@ def main():
                 key="s2_log_file_val",
             )
 
-        s2_mavedb_dir = st.text_input(
-            "MaveDB Metadata Directory (Optional)",
-            value=str(
-                ROOT_DIR
-                / "data_exploration"
-                / "MaveDB"
-                / "llm_metadata_extraction"
-                / "mavedb_metadata"
-            ),
-        )
+            s2_mavedb_dir = st.text_input(
+                "MaveDB Metadata Directory (Optional)",
+                value=str(paths["mavedb_meta_dir"]),
+                key="s2_mavedb_dir_val",
+            )
 
         col_s2_o1, col_s2_o2, col_s2_o3 = st.columns(3)
         s2_overwrite = col_s2_o1.checkbox(
