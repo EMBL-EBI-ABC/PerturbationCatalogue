@@ -904,6 +904,94 @@ def main():
         st.divider()
 
         # Pre-run Corpus "Other" Analysis Summary
+        step4_output_dir = Path(
+            st.session_state.get("s4_step4_dir_val", paths["step4_out"])
+        )
+        decisions_file_path = candidates_path.parent / "approved_ontology_terms.json"
+        s3_effective_step2_dir = resolve_effective_normalized_dir(
+            Path(s3_step2_dir),
+            step4_output_dir,
+            manifest_path=paths["pipeline_manifest"],
+            decisions_file=decisions_file_path,
+        )
+        st.caption(f"Analysis source: `{s3_effective_step2_dir}`")
+
+        # Pre-run file selector. Only normalized outputs can contribute to discovery.
+        s3_status_records = [
+            record
+            for record in get_step2_file_status(
+                Path(s3_step1_dir), s3_effective_step2_dir
+            )
+            if record["status"] == "Completed"
+        ]
+        st.subheader(
+            f"📂 Normalized Evidence Files queued ({len(s3_status_records)} files found)"
+        )
+
+        s3_file_filter_mode = st.radio(
+            "File Filter Mode",
+            options=["All Normalized Evidence Files", "Selected Files (checkboxes)"],
+            index=0,
+            key="s3_file_filter_mode",
+            horizontal=True,
+        )
+        s3_selected_files = []
+
+        if s3_status_records:
+            df_s3_files = pd.DataFrame(s3_status_records)
+            all_s3_files_selected = (
+                s3_file_filter_mode == "All Normalized Evidence Files"
+            )
+            df_s3_files.insert(0, "run", all_s3_files_selected)
+            disabled_s3_columns = [
+                "file_name",
+                "status",
+                "other_fields_count",
+                "output_path",
+            ]
+            if all_s3_files_selected:
+                disabled_s3_columns.append("run")
+
+            edited_s3_files_df = st.data_editor(
+                df_s3_files,
+                column_config={
+                    "run": st.column_config.CheckboxColumn(
+                        "Discover",
+                        help="Select this file for Step 3a candidate discovery.",
+                        default=False,
+                    ),
+                    "file_name": st.column_config.TextColumn("Evidence JSON File"),
+                    "status": st.column_config.TextColumn("Status"),
+                    "other_fields_count": st.column_config.TextColumn(
+                        "'Other' Fields Count"
+                    ),
+                    "output_path": st.column_config.TextColumn(
+                        "Normalized Output Path"
+                    ),
+                },
+                disabled=disabled_s3_columns,
+                hide_index=True,
+                width="stretch",
+                key=(
+                    "s3_file_selection_table_all"
+                    if all_s3_files_selected
+                    else "s3_file_selection_table_selected"
+                ),
+            )
+            s3_selected_files = edited_s3_files_df.loc[
+                edited_s3_files_df["run"].fillna(False), "file_name"
+            ].tolist()
+        else:
+            st.info(
+                "No normalized evidence files are available for candidate discovery."
+            )
+
+        s3_target_files = (
+            None
+            if s3_file_filter_mode == "All Normalized Evidence Files"
+            else s3_selected_files
+        )
+
         s3_summary_records = get_step3_other_corpus_summary(
             Path(s3_step1_dir), Path(s3_step2_dir)
         )
