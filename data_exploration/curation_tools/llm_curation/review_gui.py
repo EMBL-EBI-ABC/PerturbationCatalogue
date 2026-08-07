@@ -1025,7 +1025,13 @@ def main():
         st.divider()
 
         if st.button(
-            "🚀 Execute Step 3a Candidate Discovery", type="primary", key="btn_run_s3"
+            "🚀 Execute Step 3a Candidate Discovery",
+            type="primary",
+            key="btn_run_s3",
+            disabled=(
+                s3_file_filter_mode == "Selected Files (checkboxes)"
+                and not s3_selected_files
+            ),
         ):
             with st.spinner(
                 "Synthesizing ontology candidate terms from 'Other' evidence..."
@@ -1033,19 +1039,28 @@ def main():
                 try:
                     out_p = discover_candidates(
                         step1_dir=Path(s3_step1_dir),
-                        step2_dir=Path(s3_step2_dir),
+                        step2_dir=s3_effective_step2_dir,
                         output_dir=Path(s3_output_dir),
                         log_file=Path(s3_log_file),
                         prompt_template_file=Path(s3_prompt_file),
                         model_name=selected_model,
                         verbose=s3_verbose,
+                        selected_files=s3_target_files,
                     )
-                    st.success(
-                        f"Step 3a Candidate Discovery Complete! Report saved to `{out_p}`."
+                    record_pipeline_step(
+                        paths["pipeline_manifest"],
+                        "step3a",
+                        input_dir=s3_effective_step2_dir,
+                        output_dir=Path(s3_output_dir),
+                        selected_items=s3_selected_files,
+                    )
+                    st.session_state["_step3a_message"] = (
+                        f"Step 3a Candidate Discovery complete: report saved to `{out_p}`."
                     )
                     st.toast(
                         "Step 3a Candidate Discovery completed successfully!", icon="✅"
                     )
+                    st.rerun()
                 except Exception as ex:
                     st.error(f"Candidate Discovery Failed: {ex}")
 
