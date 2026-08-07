@@ -91,6 +91,11 @@ class ObsSchema(DataFrameModel):
         regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
         description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: P1DT12H30M15S",
     )
+    experimental_timepoint: Series[String] = Field(
+        nullable=True,
+        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
+        description="Experimental timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+    )
     treatment_label: Series[String] = Field(
         nullable=True,
         description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
