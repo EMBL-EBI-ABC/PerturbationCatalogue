@@ -1278,17 +1278,20 @@ def main():
             "Visual preview of 'Other' replacements that will be applied to Step 2 copies when executing Step 4."
         )
 
-        col_b_in, col_b_out = st.columns(2)
-        step2_dir_input = col_b_in.text_input(
-            "Step 2 Source Directory",
-            value=str(DEFAULT_STEP2_OUT),
-            help="Directory containing Step 2 normalized JSON files.",
-        )
-        step4_dir_input = col_b_out.text_input(
-            "Step 4 Output Directory",
-            value=str(DEFAULT_STEP4_OUT),
-            help="Directory where backfilled Step 4 copies will be written.",
-        )
+        with st.expander("📍 Active Step 4 Pipeline Paths", expanded=False):
+            col_b_in, col_b_out = st.columns(2)
+            step2_dir_input = col_b_in.text_input(
+                "Step 2 Source Directory",
+                value=str(paths["step2_out"]),
+                help="Directory containing Step 2 normalized JSON files.",
+                key="s4_step2_dir_val",
+            )
+            step4_dir_input = col_b_out.text_input(
+                "Step 4 Output Directory",
+                value=str(paths["step4_out"]),
+                help="Directory where backfilled Step 4 copies will be written.",
+                key="s4_step4_dir_val",
+            )
 
         decisions = st.session_state.get("decisions", {})
         decisions_file_path = candidates_path.parent / "approved_ontology_terms.json"
