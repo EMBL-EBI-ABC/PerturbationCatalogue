@@ -172,7 +172,7 @@ def normalize_single_evidence_artifact(
         },
         generation_config={
             "temperature": 0.2,
-        }
+        },
     )
 
     # Persist the output
