@@ -410,7 +410,22 @@ def main():
         },
         paths,
     )
-    candidates_path = Path(file_path_str).resolve()
+
+    candidates_path = paths["candidates_json"]
+
+    candidate_step2_dir = Path(
+        st.session_state.get("s3_step2_dir_val", paths["step2_out"])
+    )
+    candidate_step4_dir = Path(
+        st.session_state.get("s4_step4_dir_val", paths["step4_out"])
+    )
+    effective_candidate_input_dir = resolve_effective_normalized_dir(
+        candidate_step2_dir,
+        candidate_step4_dir,
+        manifest_path=paths["pipeline_manifest"],
+        decisions_file=candidates_path.parent / "approved_ontology_terms.json",
+    )
+    st.session_state.setdefault("s5_source_dir_val", str(effective_candidate_input_dir))
 
     if st.sidebar.button("Reload Session Cache"):
         st.session_state.clear()
