@@ -1373,7 +1373,7 @@ def main():
         ):
             save_decision_audit_trail(decisions_file_path, decisions)
 
-            log_file = Path(step4_dir_input).parent / "step4_backfill.log"
+            log_file = paths["step4_log"]
 
             try:
                 copied_count, fields_updated, audit_records = backfill_approved_terms(
