@@ -3,15 +3,14 @@ from pandera.pandas import Field, DataFrameModel
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
+
 class ObsSchema(DataFrameModel):
     dataset_id: Series[String] = Field(
         nullable=False,
         description="Unique identifier for the dataset, follows the format <firstauthor_year>",
     )
     sample_id: Series[String] = Field(
-        nullable=False, 
-        coerce=True,
-        description="Unique identifier for the sample."
+        nullable=False, coerce=True, description="Unique identifier for the sample."
     )
     cell_barcode: Series[String] = Field(
         nullable=False,
@@ -218,7 +217,7 @@ class ObsSchema(DataFrameModel):
             "adolescent",
             "adult",
             "senior adult",
-        ]
+        ],
     )
     developmental_stage_id: Series[String] = Field(
         nullable=True,
