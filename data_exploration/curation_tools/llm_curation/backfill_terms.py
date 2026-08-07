@@ -38,6 +38,9 @@ def preview_backfill_changes(
     if not step2_dir.is_dir():
         return []
 
+    if not list(step2_dir.glob("*.json")) and (step2_dir / "step2_normalized").is_dir():
+        step2_dir = step2_dir / "step2_normalized"
+
     if isinstance(decisions_data, (str, Path)):
         decisions_file = Path(decisions_data).resolve()
         if not decisions_file.is_file():
@@ -119,6 +122,8 @@ def backfill_approved_terms(
 
     if not step2_dir.is_dir():
         raise FileNotFoundError(f"Step 2 directory not found: {step2_dir}")
+    if not list(step2_dir.glob("*.json")) and (step2_dir / "step2_normalized").is_dir():
+        step2_dir = step2_dir / "step2_normalized"
     if not decisions_file.is_file():
         raise FileNotFoundError(f"Decisions file not found: {decisions_file}")
 
