@@ -331,7 +331,15 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     model_system_label: (
-        Literal["cell_line", "primary_cell", "organoid", "yeast", "bacteria", "Other"]
+        Literal[
+            "cell_line",
+            "primary_cell",
+            "organoid",
+            "yeast",
+            "bacteria",
+            "bacteriophage",
+            "Other",
+        ]
         | None
     ) = Field(
         default=None,
@@ -439,6 +447,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "oligo-directed mutagenic PCR",
             "site-directed mutagenesis",
             "silicon microarray synthesis",
+            "POPCode mutagenesis",
+            "insertional mutagenesis",
             "Other",
         ]
         | None
@@ -616,7 +626,11 @@ class SpecificTermExtractionSchema(BaseModel):
 
     readout_technology_label: (
         Literal[
-            "single-cell rna-seq", "population growth assay", "flow cytometry", "Other"
+            "single-cell rna-seq",
+            "population growth assay",
+            "flow cytometry",
+            "high-throughput dna sequencing",
+            "Other",
         ]
         | None
     ) = Field(
@@ -656,6 +670,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "pooled growth competition assay",
             "yeast one-hybrid assay",
             "flow cytometry-based sequencing assay",
+            "phage display",
             "Other",
         ]
         | None
@@ -673,13 +688,14 @@ class SpecificTermExtractionSchema(BaseModel):
         Literal[
             "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
             "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2",
-            "10x Genomics Single Cell 3-prime",
+            "10x Genomics Single Cell 3-prime v1",
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
             "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit",
+            "10x Genomics Chromium GEM-X Flex v1",
             "TruSeq Nano DNA Library Prep Kit",
             "Ovation Ultralow Library System",
+            "custom PCR library preparation",
             "Other",
         ]
         | None
@@ -722,7 +738,16 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     software_counts_label: (
-        Literal["custom", "MaGeCK", "CellRanger", "Drop-seq Tools", "Enrich2", "Enrich", "Novoalign", "Other"]
+        Literal[
+            "custom",
+            "MaGeCK",
+            "CellRanger",
+            "Drop-seq Tools",
+            "Enrich2",
+            "Enrich",
+            "Novoalign",
+            "Other",
+        ]
         | None
     ) = Field(
         default=None,
@@ -748,7 +773,9 @@ class SpecificTermExtractionSchema(BaseModel):
         description="Ontology term label for the software used for analysis.",
     )
 
-    reference_genome_label: Literal["GRCh38", "GRCh37", "cDNA reference sequence", "Other"] | None = Field(
+    reference_genome_label: (
+        Literal["GRCh38", "GRCh37", "cDNA reference sequence", "Other"] | None
+    ) = Field(
         default=None,
         description="Ontology term label for the reference genome.",
     )
