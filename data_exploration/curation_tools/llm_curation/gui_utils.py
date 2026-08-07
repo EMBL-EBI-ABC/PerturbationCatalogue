@@ -78,6 +78,12 @@ def get_mavedb_urn_status(
 
         urn_stem = format_urn_for_filename(urn)
         out_target = output_dir / f"{urn_stem}.json"
+        if (
+            not out_target.exists()
+            and (output_dir / "step1_evidence" / f"{urn_stem}.json").exists()
+        ):
+            out_target = output_dir / "step1_evidence" / f"{urn_stem}.json"
+
         status = "Completed" if out_target.exists() else "Pending"
 
         title = "-"
