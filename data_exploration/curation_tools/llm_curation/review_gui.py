@@ -471,31 +471,30 @@ def main():
             "Locates experiment targets and extracts verbatim quotes from publication text without normalization."
         )
 
-        col1_s1, col2_s1 = st.columns(2)
-        s1_input_dir = col1_s1.text_input(
-            "Publication Full Text Directory (.md)",
-            value=str(FULL_TEXT_MD_DIR),
-        )
-        s1_output_dir = col2_s1.text_input(
-            "Step 1 Output Directory",
-            value=str(
-                ROOT_DIR
-                / "data_exploration"
-                / "MaveDB"
-                / "llm_metadata_extraction"
-                / "extracted_metadata"
-            ),
-        )
+        with st.expander("📍 Active Step 1 Pipeline Paths", expanded=False):
+            col1_s1, col2_s1 = st.columns(2)
+            s1_input_dir = col1_s1.text_input(
+                "Publication Full Text Directory (.md)",
+                value=str(paths["pub_md_dir"]),
+                key="s1_input_dir_val",
+            )
+            s1_output_dir = col2_s1.text_input(
+                "Step 1 Output Directory",
+                value=str(paths["step1_out"]),
+                key="s1_output_dir_val",
+            )
 
-        col3_s1, col4_s1 = st.columns(2)
-        s1_prompt_file = col3_s1.text_input(
-            "Step 1 Prompt Template",
-            value=str(DEFAULT_PROMPT_DIR / "step1_evidence_extraction_prompt.md"),
-        )
-        s1_log_file = col4_s1.text_input(
-            "Step 1 Log File",
-            value=str(DEFAULT_TEST_OUTPUT / "step1_evidence_extraction.log"),
-        )
+            col3_s1, col4_s1 = st.columns(2)
+            s1_prompt_file = col3_s1.text_input(
+                "Step 1 Prompt Template",
+                value=str(paths["step1_prompt"]),
+                key="s1_prompt_file_val",
+            )
+            s1_log_file = col4_s1.text_input(
+                "Step 1 Log File",
+                value=str(paths["step1_log"]),
+                key="s1_log_file_val",
+            )
 
         s1_schema_str = st.text_input(
             "Extraction Schema",
@@ -650,25 +649,30 @@ def main():
             "Maps verbatim Step 1 evidence quotes to controlled vocabularies without needing full publication text."
         )
 
-        col1_s2, col2_s2 = st.columns(2)
-        s2_input_dir = col1_s2.text_input(
-            "Step 1 Evidence Directory",
-            value=str(DEFAULT_STEP1_OUT),
-        )
-        s2_output_dir = col2_s2.text_input(
-            "Step 2 Output Directory",
-            value=str(DEFAULT_STEP2_OUT),
-        )
+        with st.expander("📍 Active Step 2 Pipeline Paths", expanded=False):
+            col1_s2, col2_s2 = st.columns(2)
+            s2_input_dir = col1_s2.text_input(
+                "Step 1 Evidence Directory (Input)",
+                value=str(paths["step1_out"]),
+                key="s2_input_dir_val",
+            )
+            s2_output_dir = col2_s2.text_input(
+                "Step 2 Output Directory",
+                value=str(paths["step2_out"]),
+                key="s2_output_dir_val",
+            )
 
-        col3_s2, col4_s2 = st.columns(2)
-        s2_prompt_file = col3_s2.text_input(
-            "Step 2 Prompt Template",
-            value=str(DEFAULT_PROMPT_DIR / "step2_specific_term_extraction.md"),
-        )
-        s2_log_file = col4_s2.text_input(
-            "Step 2 Log File",
-            value=str(DEFAULT_TEST_OUTPUT / "step2_specific_term_extraction.log"),
-        )
+            col3_s2, col4_s2 = st.columns(2)
+            s2_prompt_file = col3_s2.text_input(
+                "Step 2 Prompt Template",
+                value=str(paths["step2_prompt"]),
+                key="s2_prompt_file_val",
+            )
+            s2_log_file = col4_s2.text_input(
+                "Step 2 Log File",
+                value=str(paths["step2_log"]),
+                key="s2_log_file_val",
+            )
 
         s2_mavedb_dir = st.text_input(
             "MaveDB Metadata Directory (Optional)",
@@ -787,25 +791,30 @@ def main():
             "Aggregates recurring 'Other' evidence snippets across the corpus and uses LLM synthesis to propose reusable ontology candidate terms."
         )
 
-        col1_s3, col2_s3 = st.columns(2)
-        s3_step1_dir = col1_s3.text_input(
-            "Step 1 Evidence Directory (Source)",
-            value=str(DEFAULT_STEP1_OUT),
-        )
-        s3_step2_dir = col2_s3.text_input(
-            "Step 2 Normalized Directory (Filter)",
-            value=str(DEFAULT_STEP2_OUT),
-        )
+        with st.expander("📍 Active Step 3a Pipeline Paths", expanded=False):
+            col1_s3, col2_s3 = st.columns(2)
+            s3_step1_dir = col1_s3.text_input(
+                "Step 1 Evidence Directory (Source)",
+                value=str(paths["step1_out"]),
+                key="s3_step1_dir_val",
+            )
+            s3_step2_dir = col2_s3.text_input(
+                "Step 2 Normalized Directory (Filter)",
+                value=str(paths["step2_out"]),
+                key="s3_step2_dir_val",
+            )
 
-        col3_s3, col4_s3 = st.columns(2)
-        s3_output_dir = col3_s3.text_input(
-            "Step 3a Output Directory",
-            value=str(DEFAULT_STEP3_OUT),
-        )
-        s3_log_file = col4_s3.text_input(
-            "Step 3a Log File",
-            value=str(DEFAULT_TEST_OUTPUT / "step3_candidate_discovery.log"),
-        )
+            col3_s3, col4_s3 = st.columns(2)
+            s3_output_dir = col3_s3.text_input(
+                "Step 3a Output Directory",
+                value=str(paths["step3_out"]),
+                key="s3_output_dir_val",
+            )
+            s3_log_file = col4_s3.text_input(
+                "Step 3a Log File",
+                value=str(paths["step3_log"]),
+                key="s3_log_file_val",
+            )
 
         s3_prompt_file = st.text_input(
             "Step 3a Prompt Template",
