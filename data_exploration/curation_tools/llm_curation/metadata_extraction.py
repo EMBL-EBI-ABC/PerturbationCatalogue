@@ -25,6 +25,73 @@ JSON_INDENT = 2
 
 PromptContext = dict[str, object]
 
+# These fields contain competing or easily confused controlled terms. They are
+# supplied to Step 1 as retrieval cues, not as constraints on verbatim evidence.
+STEP1_CONTROLLED_VOCABULARY_HINT_FIELDS: tuple[str, ...] = (
+    "data_modality",
+    "perturbation_type_label",
+    "model_system_label",
+    "library_generation_type_label",
+    "library_generation_method_label",
+    "library_perturbation_type_label",
+    "readout_dimensionality_label",
+    "readout_type_label",
+    "readout_technology_label",
+    "readout_measurement_label",
+    "method_name_label",
+    "sequencing_library_kit_label",
+    "sequencing_strategy_label",
+    "software_counts_label",
+    "software_analysis_label",
+)
+
+
+def _extract_enum_values(field_schema: dict[str, Any]) -> list[str]:
+    """Extract string enum values from a Pydantic JSON-schema field definition."""
+    enum_values = field_schema.get("enum", [])
+    values = [value for value in enum_values if isinstance(value, str)]
+    for branch_key in ("anyOf", "oneOf"):
+        for branch in field_schema.get(branch_key, []):
+            values.extend(_extract_enum_values(branch))
+    return values
+
+
+def build_controlled_vocabulary_hints(
+    normalization_schema: Type[BaseModel] = SpecificTermExtractionSchema,
+) -> str:
+    """Build Step 1 retrieval hints from selected normalization-schema enums."""
+    properties = normalization_schema.model_json_schema().get("properties", {})
+    hint_lines: list[str] = []
+    for field_name in STEP1_CONTROLLED_VOCABULARY_HINT_FIELDS:
+        field_schema = properties.get(field_name)
+        if not field_schema:
+            continue
+        values = _extract_enum_values(field_schema)
+        values = [value for value in values if value != "Other"]
+        if values:
+            evidence_field_name = f"{field_name}_evidence"
+            formatted_values = ", ".join(f"`{value}`" for value in values)
+            hint_lines.append(f"- `{evidence_field_name}`: {formatted_values}")
+    return "\n".join(hint_lines)
+
+
+def render_metadata_extraction_prompt(
+    prompt_template: str,
+    publication_full_text: str,
+    supplementary_metadata: str,
+    normalization_schema: Type[BaseModel] = SpecificTermExtractionSchema,
+) -> str:
+    """Render a Step 1 prompt consistently for generic and MaveDB workflows."""
+    controlled_vocabulary_hints = build_controlled_vocabulary_hints(
+        normalization_schema=normalization_schema,
+    )
+    return prompt_template.format(
+        supplementary_metadata=supplementary_metadata,
+        supplementary_mavedb_metadata=supplementary_metadata,
+        publication_full_text=publication_full_text,
+        controlled_vocabulary_hints=controlled_vocabulary_hints,
+    )
+
 
 def format_prompt_context_as_json(prompt_context: PromptContext | None) -> str:
     """Render prompt context as JSON with a generic fallback message."""
@@ -253,10 +320,10 @@ def build_metadata_extraction_prompt(
     prompt_template = prompt_template_file.read_text(encoding="utf-8")
     supplementary_metadata = prompt_context_formatter(prompt_context)
 
-    return prompt_template.format(
-        supplementary_metadata=supplementary_metadata,
-        supplementary_mavedb_metadata=supplementary_metadata,
+    return render_metadata_extraction_prompt(
+        prompt_template=prompt_template,
         publication_full_text=publication_full_text,
+        supplementary_metadata=supplementary_metadata,
     )
 
 
