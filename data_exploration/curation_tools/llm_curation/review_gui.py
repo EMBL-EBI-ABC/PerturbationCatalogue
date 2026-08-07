@@ -173,8 +173,18 @@ def init_session_state(
     candidates_data: dict, candidates_path: Path | None = None
 ) -> None:
     """Initialize decision state for candidates, syncing with existing schema allowed values and prior audit logs."""
-    if "candidates_raw" not in st.session_state:
+    candidate_identity = None
+    if candidates_path:
+        resolved_candidates_path = Path(candidates_path).resolve()
+        candidate_identity = (
+            str(resolved_candidates_path),
+            calculate_file_signature(resolved_candidates_path),
+        )
+
+    if st.session_state.get("_candidate_identity") != candidate_identity:
+        st.session_state.pop("decisions", None)
         st.session_state["candidates_raw"] = candidates_data
+        st.session_state["_candidate_identity"] = candidate_identity
 
     if "decisions" not in st.session_state:
         existing_literals = get_existing_literals(DEFAULT_SCHEMA_PATH)
