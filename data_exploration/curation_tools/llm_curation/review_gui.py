@@ -1193,6 +1193,19 @@ def main():
                                     )
                                     src = ev_item.get("source_file", "unknown")
                                     st.markdown(f"**{ev_idx + 1}. Source:** `{src}`")
+                                    source_dois = get_publication_dois_for_source_file(
+                                        src,
+                                        s3_effective_step2_dir,
+                                        MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+                                    )
+                                    if source_dois:
+                                        doi_links = ", ".join(
+                                            f"[`{doi}`](https://doi.org/{doi})"
+                                            for doi in source_dois
+                                        )
+                                        st.markdown(f"**Publication DOI:** {doi_links}")
+                                    else:
+                                        st.caption("Publication DOI: Not found")
                                     st.caption(f'> "{stmt}"')
                                 else:
                                     st.caption(f'> "{ev_item}"')
