@@ -9,7 +9,6 @@ from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
-    Experiment,
 )
 
 
