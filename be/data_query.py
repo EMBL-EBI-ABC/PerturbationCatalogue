@@ -601,8 +601,8 @@ async def build_pg_filters(
             filters.append("FALSE")
             continue
 
-        params.append(search_terms)
-        filters.append(f"{db_field} = ANY(${len(params)}::text[])")
+        params.append(search_terms[0])
+        filters.append(f"{db_field} = ${len(params)}")
 
     for key, value in query_params.items():
         if key not in api_to_db:
