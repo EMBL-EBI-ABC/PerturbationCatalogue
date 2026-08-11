@@ -5,6 +5,7 @@ shandy-sqlfmt[jinjafmt]
 elasticsearch
 tqdm
 google-cloud-bigquery
+google-cloud-bigquery-storage
 google-cloud-storage
 psycopg2-binary
 pyarrow

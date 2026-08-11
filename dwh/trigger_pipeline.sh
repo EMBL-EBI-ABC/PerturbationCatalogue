@@ -8,7 +8,7 @@
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
 #   - Environment variables set (via pc_secrets dev or equivalent):
-#       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, GCLOUD_TMP_BUCKET,
+#       GCLOUD_PROJECT, GCLOUD_REGION, BQ_DATASET, BQ_LOCATION, CLOUD_TMP_BUCKET,
 #       PG_CONN_INTERNAL, ES_URL, ES_USERNAME, ES_PASSWORD
 #       Optional: ES_INDEX_SET (defaults to empty), OPENTARGETS_RELEASE (defaults to 26.03)
 #
@@ -34,6 +34,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Keep the old secret name working while exposing the shorter pipeline name.
+CLOUD_TMP_BUCKET="${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}"
+
 # ---------------------------------------------------------------------------
 # Validate environment
 # ---------------------------------------------------------------------------
@@ -42,7 +45,7 @@ REQUIRED_VARS=(
     GCLOUD_REGION
     BQ_DATASET
     BQ_LOCATION
-    GCLOUD_TMP_BUCKET
+    CLOUD_TMP_BUCKET
     PG_CONN_INTERNAL
     ES_URL
     ES_USERNAME
@@ -97,7 +100,7 @@ echo "  BQ Dataset:         $BQ_DATASET"
 echo "  BQ Reference:       $BQ_DATASET.opentargets_targets"
 echo "  OT Release:         $OPENTARGETS_RELEASE"
 echo "  BQ Location:        $BQ_LOCATION"
-echo "  GCS Bucket:         $GCLOUD_TMP_BUCKET"
+echo "  GCS Bucket:         $CLOUD_TMP_BUCKET"
 echo "  ES Index Set:       ${ES_INDEX_SET:-<default>}"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
 echo "============================================"
@@ -107,14 +110,15 @@ BUILD_ID=$(gcloud builds submit "$SCRIPT_DIR" \
     --project="$GCLOUD_PROJECT" \
     --region="$GCLOUD_REGION" \
     --config="$SCRIPT_DIR/cloudbuild.yaml" \
-    --gcs-source-staging-dir="gs://$GCLOUD_TMP_BUCKET/cloudbuild-source" \
+    --gcs-source-staging-dir="gs://$CLOUD_TMP_BUCKET/cloudbuild-source" \
     --substitutions="^|^\
 _GCLOUD_PROJECT=$GCLOUD_PROJECT|\
 _GCLOUD_REGION=$GCLOUD_REGION|\
 _BQ_DATASET=$BQ_DATASET|\
 _OPENTARGETS_RELEASE=$OPENTARGETS_RELEASE|\
 _BQ_LOCATION=$BQ_LOCATION|\
-_GCLOUD_TMP_BUCKET=$GCLOUD_TMP_BUCKET|\
+_GCLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET|\
+_CLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET|\
 _PG_CONN_INTERNAL=$PG_CONN_INTERNAL|\
 _ES_URL=$ES_URL|\
 _ES_USERNAME=$ES_USERNAME|\

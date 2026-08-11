@@ -4,12 +4,13 @@ import io
 import os
 import json
 from collections import defaultdict
+from datetime import timedelta
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import asyncpg
 from elasticsearch.helpers import async_scan
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field, create_model
 from target_search import build_target_exact_query
 
@@ -24,6 +25,17 @@ router = APIRouter()
 ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
 ES_TARGET_SUMMARY = f"target-summary{ES_INDEX_SET}"
 ES_DATASET_SUMMARY = f"dataset-summary{ES_INDEX_SET}"
+RELEASE_BUCKET = os.getenv("RELEASE_BUCKET")
+RELEASE_MODALITIES = {
+    "crispr-screen": "crispr",
+    "perturb-seq": "perturb-seq",
+    "mave": "mave",
+}
+RELEASE_FORMATS = {
+    "metadata": "metadata.json",
+    "parquet": "parquet",
+    "csv.gz": "csv.gz",
+}
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
@@ -1442,6 +1454,68 @@ async def _stream_dataset_csv(
         yield output.getvalue().encode()
 
 
+def _release_signed_url(
+    modality: MODALITIES, dataset_id: str, download_format: str
+) -> str:
+    import google.auth
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    from google.cloud import storage
+
+    release_bucket = os.getenv("RELEASE_BUCKET") or RELEASE_BUCKET
+    if not release_bucket:
+        raise HTTPException(
+            status_code=503, detail="Release downloads are not configured"
+        )
+
+    try:
+        credentials, project = google.auth.default()
+        if not credentials.valid:
+            credentials.refresh(GoogleAuthRequest())
+        client = storage.Client(credentials=credentials, project=project)
+        service_account = getattr(
+            credentials, "service_account_email", None
+        ) or getattr(credentials, "signer_email", None)
+        if not service_account or service_account == "default":
+            project_service_account = client.get_service_account_email(project=project)
+            project_number = project_service_account.removeprefix("service-").split(
+                "@", 1
+            )[0]
+            service_account = f"{project_number}-compute@developer.gserviceaccount.com"
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Release signing is unavailable"
+        ) from exc
+    if not service_account:
+        raise HTTPException(status_code=503, detail="Release signing is not configured")
+
+    bucket_name = release_bucket.removeprefix("gs://").rstrip("/")
+    try:
+        blob = client.bucket(bucket_name).blob(
+            f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{RELEASE_FORMATS[download_format]}"
+        )
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Release artifact not found")
+        filename = (
+            f"{modality}_{dataset_id}.{RELEASE_FORMATS[download_format]}".replace(
+                '"', ""
+            )
+        )
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(days=7),
+            method="GET",
+            service_account_email=service_account,
+            access_token=credentials.token,
+            response_disposition=f'attachment; filename="{filename}"',
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Release artifact is unavailable"
+        ) from exc
+
+
 @router.get("/v1/{modality}/download")
 async def download_modality_data(
     modality: MODALITIES,
@@ -1545,13 +1619,34 @@ async def download_dataset_data(
     modality: MODALITIES,
     dataset_id: str,
     request: Request,
+    download_format: str = Query("csv.gz", alias="format"),
     limit: Optional[int] = Query(
         None, ge=0, description="Maximum rows to download; omit for all rows"
     ),
     offset: int = Query(0, ge=0, description="Offset for rows"),
 ):
-    """Download data for a specific dataset as CSV."""
+    """Download a full release artifact or a filtered live CSV."""
+    if not isinstance(download_format, str):
+        download_format = "csv.gz"
+    if not isinstance(limit, (int, type(None))):
+        limit = None
+    if not isinstance(offset, int):
+        offset = 0
+    if download_format not in RELEASE_FORMATS:
+        raise HTTPException(
+            status_code=400, detail="format must be metadata, parquet or csv.gz"
+        )
+    if set(request.query_params).issubset({"format"}) and limit is None and offset == 0:
+        signed_url = _release_signed_url(modality, dataset_id, download_format)
+        return RedirectResponse(signed_url, status_code=307)
+    if download_format != "csv.gz":
+        raise HTTPException(
+            status_code=400,
+            detail="Only full datasets have Parquet and metadata artifacts",
+        )
+
     params = dict(request.query_params, limit=limit, offset=offset)
+    params.pop("format", None)
     query = await _search_dataset_impl(modality, dataset_id, params, return_query=True)
     filename = f"{modality}_{dataset_id}_data.csv"
 

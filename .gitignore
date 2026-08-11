@@ -3,6 +3,8 @@
 .env
 .idea
 .venv
+be/fastapi-env
+fe/env
 *.h5ad
 *.parquet
 *.log
@@ -11,3 +13,4 @@ data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump
 data_exploration/text_extraction
 coessentiality_feature/required_data
+dwh/bq_dbt/.user.yml

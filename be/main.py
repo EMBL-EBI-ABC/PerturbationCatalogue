@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     es_url: str
     es_username: str
     es_password: str
+    release_bucket: Optional[str] = None
 
 
 settings = Settings()

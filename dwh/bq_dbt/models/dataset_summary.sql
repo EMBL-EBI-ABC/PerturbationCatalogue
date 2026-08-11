@@ -12,6 +12,11 @@
 
 with
 
+    reprocessed_datasets as (
+        select distinct dataset_id
+        from {{ source("perturb_seq", "reprocessed_datasets") }}
+    ),
+
     base as (
         select
             dataset_id,
@@ -184,9 +189,10 @@ with
             array_agg(distinct license_id ignore nulls) as license_ids,
             array_agg(distinct associated_datasets ignore nulls) as associated_datasets,
             any_value(score_interpretation) as score_interpretation,
-            cast(null as bool) as perturb_seq_reprocessed,
+            cast(countif(reprocessed.dataset_id is not null) > 0 as bool) as perturb_seq_reprocessed,
             max(ingested_at) as max_ingested_at
         from {{ ref("unified_metadata") }}
+        left join reprocessed_datasets as reprocessed using (dataset_id)
 
         group by dataset_id
     )

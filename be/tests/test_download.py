@@ -1,6 +1,7 @@
 """Local integration tests for streamed dataset downloads."""
 
 import asyncio
+from unittest.mock import Mock
 
 import data_query
 import pytest
@@ -95,3 +96,55 @@ def test_stream_failure_propagates_without_successful_completion(monkeypatch):
             await anext(stream)
 
     asyncio.run(consume())
+
+
+def test_full_release_download_redirects_to_signed_url(monkeypatch):
+    monkeypatch.setattr(
+        data_query,
+        "_release_signed_url",
+        lambda modality, dataset_id, download_format: (
+            f"https://storage.example/{modality}/{dataset_id}.{download_format}"
+        ),
+    )
+
+    async def download():
+        return await data_query.download_dataset_data(
+            "mave",
+            "dataset-1",
+            Request({"type": "http", "query_string": b"format=parquet"}),
+            download_format="parquet",
+        )
+
+    response = asyncio.run(download())
+    assert response.status_code == 307
+    assert response.headers["location"].endswith("/mave/dataset-1.parquet")
+
+
+def test_release_signing_falls_back_to_project_compute_service_account(monkeypatch):
+    import google.auth
+    from google.cloud import storage
+
+    credentials = Mock(
+        valid=True, token="token", service_account_email=None, signer_email=None
+    )
+    blob = Mock(exists=Mock(return_value=True))
+    blob.generate_signed_url.return_value = "https://storage.example/signed"
+    client = Mock()
+    client.get_service_account_email.return_value = (
+        "service-123456@gs-project-accounts.iam.gserviceaccount.com"
+    )
+    client.bucket.return_value.blob.return_value = blob
+
+    monkeypatch.setenv("RELEASE_BUCKET", "release-bucket")
+    monkeypatch.setattr(google.auth, "default", lambda: (credentials, "project"))
+    monkeypatch.setattr(storage, "Client", lambda **_: client)
+
+    assert (
+        data_query._release_signed_url("perturb-seq", "dataset-1", "parquet")
+        == "https://storage.example/signed"
+    )
+    client.get_service_account_email.assert_called_once_with(project="project")
+    blob.generate_signed_url.assert_called_once()
+    assert blob.generate_signed_url.call_args.kwargs["service_account_email"] == (
+        "123456-compute@developer.gserviceaccount.com"
+    )
