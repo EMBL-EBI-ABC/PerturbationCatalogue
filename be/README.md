@@ -8,6 +8,12 @@ defaults to the standard indexes when unset.
 artifacts. The runtime service account must be allowed to sign URLs and read
 objects in this bucket.
 
+For the default Cloud Run identity, grant `roles/storage.objectViewer` on the
+release bucket and `roles/iam.serviceAccountTokenCreator` on the signing
+service account (to the runtime service account itself). Local ADC uses the
+project's default compute service account, so grant the same token-creator role
+to the local user as well.
+
 Unfiltered dataset downloads redirect to seven-day V4 signed URLs in that
 bucket; filtered CSV downloads continue to run through the API.
 

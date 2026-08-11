@@ -1471,26 +1471,27 @@ def _release_signed_url(
         credentials, project = google.auth.default()
         if not credentials.valid:
             credentials.refresh(GoogleAuthRequest())
+        client = storage.Client(credentials=credentials, project=project)
+        service_account = getattr(
+            credentials, "service_account_email", None
+        ) or getattr(credentials, "signer_email", None)
+        if not service_account or service_account == "default":
+            project_service_account = client.get_service_account_email(project=project)
+            project_number = project_service_account.removeprefix("service-").split(
+                "@", 1
+            )[0]
+            service_account = f"{project_number}-compute@developer.gserviceaccount.com"
     except Exception as exc:
         raise HTTPException(
             status_code=503, detail="Release signing is unavailable"
         ) from exc
-    service_account = (
-        os.getenv("RELEASE_SIGNING_SERVICE_ACCOUNT")
-        or getattr(credentials, "service_account_email", None)
-        or getattr(credentials, "signer_email", None)
-    )
     if not service_account:
         raise HTTPException(status_code=503, detail="Release signing is not configured")
 
     bucket_name = release_bucket.removeprefix("gs://").rstrip("/")
     try:
-        blob = (
-            storage.Client(credentials=credentials, project=project)
-            .bucket(bucket_name)
-            .blob(
-                f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{RELEASE_FORMATS[download_format]}"
-            )
+        blob = client.bucket(bucket_name).blob(
+            f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{RELEASE_FORMATS[download_format]}"
         )
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Release artifact not found")
