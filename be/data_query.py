@@ -1440,7 +1440,7 @@ async def _stream_dataset_csv(
             writer.writerow(
                 (
                     symbols.get(row.get(field.replace("_name", "_ensg")), "")
-                    if field.endswith("_name")
+                    if field in {"perturbed_target_name", "effect_gene_name"}
                     else row.get(mapping[field], "")
                 )
                 for field, _ in columns

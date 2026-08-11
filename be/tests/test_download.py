@@ -37,6 +37,7 @@ def test_download_streams_csv_from_postgres(run_with_dev_db):
         ("ENSG00000075624", "ACTB", "ENSG00000180914", "OXTR"),
         ("ENSG00000108064", "TFAM", "ENSG00000198804", "MT-CO1"),
     }
+    assert all(line.split(",")[6] for line in lines[1:])
     assert len(lines) == 4
 
 
