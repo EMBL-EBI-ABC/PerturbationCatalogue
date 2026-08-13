@@ -299,6 +299,90 @@ def pathway_overlap_score(predicted_genes, true_genes, top_n=5):
     return len(pred_pathways & true_pathways) / len(true_pathways)
 
 
+def parse_pathways_from_output(text):
+    """
+    Extract pathway names from GSEA model output text.
+
+    Expected format:
+    "...activates pathways: Pathway A (NES: +1.86), Pathway B (NES: +1.50).
+     Suppressed pathways: Pathway C (NES: -1.92)."
+
+    Returns
+    -------
+    dict with keys 'activated' and 'suppressed' — lists of pathway name strings
+    """
+    import re
+    result = {"activated": [], "suppressed": [], "unparseable": False}
+
+    # Extract activated pathways
+    act_match = re.search(
+        r'activates pathways:\s*(.+?)(?:\.\s*Suppressed|$)',
+        text, re.IGNORECASE | re.DOTALL
+    )
+    # Extract suppressed pathways
+    sup_match = re.search(
+        r'[Ss]uppressed pathways:\s*(.+?)(?:\s*$|(?<=\d{2})\s*$)',
+        text, re.IGNORECASE | re.DOTALL
+    )
+
+    def extract_names(segment):
+        if not segment or "none detected" in segment.lower():
+            return []
+        # Remove NES scores: "(NES: +1.86)" or "(NES: -2.54)"
+        cleaned = re.sub(r'\(NES:\s*[+\-]?\d+\.\d+\)', '', segment)
+        # Split on comma and clean
+        names = [n.strip().rstrip('.').strip() for n in cleaned.split(',')]
+        return [n for n in names if n]
+
+    if act_match:
+        result["activated"] = extract_names(act_match.group(1))
+    if sup_match:
+        result["suppressed"] = extract_names(sup_match.group(1))
+
+    if not act_match and not sup_match:
+        result["unparseable"] = True
+
+    return result
+
+
+def pathway_name_overlap(predicted_pathways, true_pathways):
+    """
+    Compute overlap between predicted and true pathway name lists.
+    Uses normalized matching: lowercase + strip whitespace.
+    No fuzzy matching — our output format is controlled so exact
+    normalized match is sufficient.
+
+    Returns
+    -------
+    dict with recall, precision, f1
+    """
+    if not true_pathways and not predicted_pathways:
+        return {"recall": 1.0, "precision": 1.0, "f1": 1.0, "n_true": 0, "n_predicted": 0}
+    if not true_pathways or not predicted_pathways:
+        return {"recall": 0.0, "precision": 0.0, "f1": 0.0,
+                "n_true": len(true_pathways), "n_predicted": len(predicted_pathways)}
+
+    # Normalize: lowercase and strip
+    true_norm = [p.lower().strip() for p in true_pathways]
+    pred_norm = [p.lower().strip() for p in predicted_pathways]
+
+    true_matched = sum(1 for t in true_norm if t in pred_norm)
+    pred_matched = sum(1 for p in pred_norm if p in true_norm)
+
+    recall = true_matched / len(true_norm)
+    precision = pred_matched / len(pred_norm) if pred_norm else 0.0
+    f1 = (2 * precision * recall / (precision + recall)
+          if (precision + recall) > 0 else 0.0)
+
+    return {
+        "recall": round(recall, 4),
+        "precision": round(precision, 4),
+        "f1": round(f1, 4),
+        "n_true": len(true_norm),
+        "n_predicted": len(pred_norm),
+    }
+
+
 def parse_genes_from_output(text, direction="up"):
     """
     Extract gene names from model output text.

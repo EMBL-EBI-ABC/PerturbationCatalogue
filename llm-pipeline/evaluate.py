@@ -5,7 +5,7 @@ import torch
 from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-from benchmark import parse_genes_from_output, evaluate as benchmark_evaluate
+from benchmark import parse_genes_from_output, evaluate as benchmark_evaluate, parse_pathways_from_output, pathway_name_overlap
 from rouge_score import rouge_scorer
 
 logging.basicConfig(
@@ -263,6 +263,69 @@ def evaluate_dea(predictions, ground_truth_records, k=10):
     return benchmark_evaluate(predictions, ground_truth_records, k=k)
 
 
+
+def evaluate_gsea(predictions, ground_truth_records):
+    """
+    Evaluate GSEA pathway predictions using pathway name overlap.
+    Uses parse_pathways_from_output() to extract pathway names from
+    generated text, then compares to ground truth from metadata.
+    """
+    gt = {
+        r["metadata"]["gene"]: {
+            "activated": r["metadata"].get("activated_pathways", []),
+            "suppressed": r["metadata"].get("suppressed_pathways", []),
+        }
+        for r in ground_truth_records
+        if r["metadata"].get("modality") == "scPerturb-seq_GSEA"
+    }
+
+    results = []
+    total = 0
+    unparseable = 0
+    f1_scores = []
+
+    for pred in predictions:
+        gene = pred["gene"]
+        if gene not in gt:
+            continue
+        predicted_text = pred.get("predicted_text", "")
+        true_activated = gt[gene]["activated"]
+        true_suppressed = gt[gene]["suppressed"]
+        parsed = parse_pathways_from_output(predicted_text)
+        if parsed["unparseable"]:
+            unparseable += 1
+        act_score = pathway_name_overlap(parsed["activated"], true_activated)
+        sup_score = pathway_name_overlap(parsed["suppressed"], true_suppressed)
+        mean_f1 = (act_score["f1"] + sup_score["f1"]) / 2
+        f1_scores.append(mean_f1)
+        total += 1
+        results.append({
+            "gene": gene,
+            "modality": "scPerturb-seq_GSEA",
+            "predicted_text": predicted_text,
+            "predicted_activated": parsed["activated"],
+            "predicted_suppressed": parsed["suppressed"],
+            "true_activated": true_activated,
+            "true_suppressed": true_suppressed,
+            "f1_activated": act_score["f1"],
+            "f1_suppressed": sup_score["f1"],
+            "f1_mean": mean_f1,
+            "recall_activated": act_score["recall"],
+            "recall_suppressed": sup_score["recall"],
+            "unparseable": parsed["unparseable"],
+        })
+
+    mean_f1_all = sum(f1_scores) / len(f1_scores) if f1_scores else 0.0
+    log.info(f"Evaluated {total} GSEA genes, mean F1: {mean_f1_all:.4f}")
+
+    return {
+        "n_evaluated": total,
+        "mean_f1": round(mean_f1_all, 4),
+        "unparseable": unparseable,
+        "unparseable_pct": round(100 * unparseable / total, 1) if total > 0 else 0,
+    }, results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Evaluate fine-tuned LoRA adapter on test split"
@@ -343,7 +406,6 @@ def main():
         )
 
         log.info(f"  Predicted class: {pred_class}")
-        log.info(f"  Generated: {generated[:100]}...")
 
     # Split predictions by modality
     crispr_preds = [p for p in predictions if "CRISPR" in p["modality"]]
@@ -387,15 +449,11 @@ def main():
         results.extend(dea_list)
 
     if gsea_preds:
-        gsea_metrics, gsea_results = evaluate_dea(gsea_preds, gsea_records)
+        gsea_metrics, gsea_results = evaluate_gsea(gsea_preds, gsea_records)
         print(f"\nGSEA ({len(gsea_preds)} records):")
-        print(f"  Mean overlap@k: {gsea_metrics.get('mean_overlap_at_k', gsea_metrics.get('mean_overlap_both', 0)):.4f}")
-        gsea_text = {p["gene"]: p["predicted_text"] for p in gsea_preds}
-        gsea_list = gsea_results.to_dict("records") if hasattr(gsea_results, "to_dict") else gsea_results
-        for r in gsea_list:
-            r["predicted_text"] = gsea_text.get(r.get("gene"), "")
-            r["modality"] = "scPerturb-seq_GSEA"
-        results.extend(gsea_list)
+        print(f"  Mean F1: {gsea_metrics.get('mean_f1', 0):.4f}")
+        print(f"  Unparseable: {gsea_metrics.get('unparseable', 0)} ({gsea_metrics.get('unparseable_pct', 0):.1f}%)")
+        results.extend(gsea_results)
 
     print("=" * 60)
     if args.output:
@@ -418,6 +476,7 @@ def main():
         with open(summary_path, "w") as f:
             f.write(json_module.dumps(summary, indent=2))
         log.info(f"Saved eval summary to {summary_path}")
+
 
 
 if __name__ == "__main__":
