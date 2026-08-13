@@ -8,11 +8,30 @@ defaults to the standard indexes when unset.
 artifacts. The runtime service account must be allowed to sign URLs and read
 objects in this bucket.
 
-For the default Cloud Run identity, grant `roles/storage.objectViewer` on the
-release bucket and `roles/iam.serviceAccountTokenCreator` on the signing
-service account (to the runtime service account itself). Local ADC uses the
-project's default compute service account, so grant the same token-creator role
-to the local user as well.
+For the default Cloud Run identity, grant the following permissions. The
+runtime service account needs to read the bucket and sign itself; the Cloud
+Run service agent also needs to sign the runtime service account because Cloud
+Run delegates the signing request through it:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$GCLOUD_PROJECT" --format='value(projectNumber)')
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+CLOUD_RUN_AGENT="service-${PROJECT_NUMBER}@serverless-robot-prod.iam.gserviceaccount.com"
+
+gcloud storage buckets add-iam-policy-binding "gs://$RELEASE_BUCKET" \
+  --member="serviceAccount:$RUNTIME_SA" \
+  --role=roles/storage.objectViewer
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+  --member="serviceAccount:$RUNTIME_SA" \
+  --role=roles/iam.serviceAccountTokenCreator
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+  --member="serviceAccount:$CLOUD_RUN_AGENT" \
+  --role=roles/iam.serviceAccountTokenCreator
+```
+
+For local ADC, grant the local user `roles/storage.objectViewer` on the
+release bucket and `roles/iam.serviceAccountTokenCreator` on the runtime
+service account.
 
 Unfiltered dataset downloads redirect to seven-day V4 signed URLs in that
 bucket; filtered CSV downloads continue to run through the API.
