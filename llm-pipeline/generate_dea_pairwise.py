@@ -18,7 +18,25 @@ from pathlib import Path
 
 import pandas as pd
 
+import requests
 from catalogue_api_new import query_perturb_seq, get_dataset_metadata
+
+BASE_URL = "https://perturbation-catalogue-be-328296435987.europe-west2.run.app"
+
+
+def resolve_ensg_to_symbol(ensg_id, cache):
+    """Resolve an ENSG ID to a gene symbol via the /v1/target endpoint, caching results."""
+    if ensg_id in cache:
+        return cache[ensg_id]
+    try:
+        resp = requests.get(f"{BASE_URL}/v1/target/{ensg_id}", timeout=15)
+        resp.raise_for_status()
+        symbol = resp.json().get("approved_symbol")
+        cache[ensg_id] = symbol
+        return symbol
+    except Exception:
+        cache[ensg_id] = None
+        return None
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -45,9 +63,32 @@ def build_pairwise_dea_records(dataset_id, max_records=5000, include_condition=T
     rows = []
     n_skipped_combo = 0
     n_below_significance = 0
+    n_skipped_invalid_perturbed_gene = 0
+    n_resolved_via_ensg = 0
+    ensg_cache = {}
 
     for r in raw:
-        raw_gene_name = r.get("perturbation", {}).get("gene_symbol", "unknown")
+        raw_gene_name = r.get("perturbation", {}).get("gene_symbol")
+        if raw_gene_name is None:
+            ensg_field = r.get("perturbation", {}).get("perturbed_target_ensg")
+            if ensg_field:
+                parts = [p for p in str(ensg_field).split("|") if p.startswith("ENSG")]
+                if parts:
+                    symbol = resolve_ensg_to_symbol(parts[0], ensg_cache)
+                    if symbol:
+                        raw_gene_name = symbol
+                        n_resolved_via_ensg += 1
+            if raw_gene_name is None:
+                n_skipped_invalid_perturbed_gene += 1
+                continue
+        elif str(raw_gene_name).startswith("ENSG"):
+            symbol = resolve_ensg_to_symbol(raw_gene_name, ensg_cache)
+            if symbol:
+                raw_gene_name = symbol
+                n_resolved_via_ensg += 1
+            else:
+                n_skipped_invalid_perturbed_gene += 1
+                continue
         if "|" in str(raw_gene_name):
             parts = raw_gene_name.split("|")
             if "control_nontargeting" in parts[1].lower():
@@ -114,7 +155,9 @@ def build_pairwise_dea_records(dataset_id, max_records=5000, include_condition=T
         })
 
     log.info(f"Built {len(records)} pairwise records from {dataset_id} "
-              f"(skipped {n_skipped_combo} combos, {n_below_significance} non-significant)")
+              f"(skipped {n_skipped_combo} combos, {n_below_significance} non-significant, "
+              f"{n_skipped_invalid_perturbed_gene} unresolvable perturbed_gene, "
+              f"{n_resolved_via_ensg} resolved via ENSG lookup)")
     return records, pd.DataFrame(rows)
 
 
