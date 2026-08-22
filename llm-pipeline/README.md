@@ -6,6 +6,8 @@ GSoC 2026 project: Building a Perturbation-Aware LLM for Multimodal In Silico Pe
 
 This pipeline connects to the EMBL-EBI Perturbation Catalogue REST API and converts perturbation experiment data into instruction-tuning training records for fine-tuning a biomedical language model (BioMedLM).
 
+![Pipeline overview: a shared gene perturbation input branches into three modalities (CRISPR fitness screen, scPerturb-seq differential expression analysis, scPerturb-seq pathway enrichment analysis), each producing structured training records that combine into a unified corpus used to fine-tune a language model.](assets/pipeline_overview.png)
+
 ## Prediction Tasks
 
 For each modality, the model is trained to answer natural language queries given only information available at inference time:
