@@ -7,6 +7,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 from benchmark import parse_genes_from_output, evaluate as benchmark_evaluate, parse_pathways_from_output, pathway_name_overlap
 from rouge_score import rouge_scorer
+from evaluate_pairwise_dea import evaluate_pairwise_dea
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -402,6 +403,8 @@ def main():
                 "predicted_text": generated,
                 "predicted_class": pred_class,
                 "true_output": record["output"],
+                "perturbed_gene": record["metadata"].get("perturbed_gene"),
+                "affected_gene": record["metadata"].get("affected_gene"),
             }
         )
 
@@ -411,10 +414,12 @@ def main():
     crispr_preds = [p for p in predictions if "CRISPR" in p["modality"]]
     dea_preds    = [p for p in predictions if p["modality"] == "scPerturb-seq"]
     gsea_preds   = [p for p in predictions if p["modality"] == "scPerturb-seq_GSEA"]
+    pairwise_preds = [p for p in predictions if p["modality"] == "scPerturb-seq_pairwise"]
 
     crispr_records = [r for r in test_records if "CRISPR" in r["metadata"].get("modality","")]
     dea_records    = [r for r in test_records if r["metadata"].get("modality","") == "scPerturb-seq"]
     gsea_records   = [r for r in test_records if r["metadata"].get("modality","") == "scPerturb-seq_GSEA"]
+    pairwise_records = [r for r in test_records if r["metadata"].get("modality","") == "scPerturb-seq_pairwise"]
 
     rouge_metrics = compute_rouge_l(predictions, test_records)
 
@@ -454,6 +459,15 @@ def main():
         print(f"  Mean F1: {gsea_metrics.get('mean_f1', 0):.4f}")
         print(f"  Unparseable: {gsea_metrics.get('unparseable', 0)} ({gsea_metrics.get('unparseable_pct', 0):.1f}%)")
         results.extend(gsea_results)
+
+    if pairwise_preds:
+        pairwise_metrics, pairwise_results = evaluate_pairwise_dea(pairwise_preds, pairwise_records)
+        print(f"\nDEA Pairwise ({len(pairwise_preds)} records):")
+        print(f"  Direction accuracy: {pairwise_metrics['direction_accuracy']:.4f}")
+        print(f"  Unparseable: {pairwise_metrics['n_unparseable']} ({pairwise_metrics['unparseable_pct']:.1f}%)")
+        if pairwise_metrics['mean_log2fc_abs_error'] is not None:
+            print(f"  Mean log2fc abs error (direction-correct only): {pairwise_metrics['mean_log2fc_abs_error']:.4f}")
+        results.extend(pairwise_results)
 
     print("=" * 60)
     if args.output:
