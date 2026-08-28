@@ -992,8 +992,9 @@ class CuratedDataset:
 
         mapped_count = conv_df["ensembl_gene_id"].dropna().nunique()
         input_count = conv_df[input_column].dropna().nunique()
+        input_genes = conv_df[input_column].dropna().unique()
         print(
-            f"{'-'*50}\nSuccessfully mapped {mapped_count} out of {input_count} genes.\n{'-'*50}"
+            f"{'-'*50}\nSuccessfully mapped {mapped_count} out of {input_count} genes.\nInput genes: {input_genes}\n{'-'*50}"
         )
 
         if multiple_entries:
