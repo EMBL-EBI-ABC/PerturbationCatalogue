@@ -400,8 +400,12 @@ class CuratedDataset:
             if not os.path.exists(os.path.dirname(self.curated_parquet_metadata_path)):
                 os.makedirs(os.path.dirname(self.curated_parquet_metadata_path))
 
-            if os.path.exists(self.curated_parquet_data_path) or os.path.exists(
-                self.curated_parquet_metadata_path
+            if (
+                not overwrite
+                and (
+                    os.path.exists(self.curated_parquet_data_path)
+                    or os.path.exists(self.curated_parquet_metadata_path)
+                )
             ):
                 print(
                     f"Files {self.curated_parquet_data_path} or {self.curated_parquet_metadata_path} already exist. Skipping write."
