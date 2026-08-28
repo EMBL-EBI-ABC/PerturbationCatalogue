@@ -271,12 +271,6 @@ def get_dois_from_mavedb_entry(
         dois = secondary_dois
     elif secondary_dois:
         dois = secondary_dois
-    elif raw_primary_dois:
-        # Fallback: if all primary DOIs were excluded and no other non-excluded DOIs exist, retain raw primary DOIs
-        dois = raw_primary_dois
-    elif raw_secondary_dois:
-        # Fallback: if all secondary DOIs were excluded and no other non-excluded DOIs exist, retain raw secondary DOIs
-        dois = raw_secondary_dois
     else:
         dois = None
 
