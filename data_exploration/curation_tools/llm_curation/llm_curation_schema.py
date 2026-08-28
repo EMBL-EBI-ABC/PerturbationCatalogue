@@ -1,7 +1,7 @@
 """Pydantic schemas used for metadata curation."""
 
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EvidenceExtractionSchema(BaseModel):
@@ -285,6 +285,40 @@ class SpecificTermExtractionSchema(BaseModel):
         description="Experimental timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
     )
 
+    treatment_type_label: (
+        Literal[
+            "untreated control",
+            "scrambled control oligonucleotide",
+            "culture medium",
+            "chemical entity",
+            "protein",
+            "protein complex",
+            "peptide",
+            "antibody",
+            "lipid",
+            "PNA",
+            "DNA",
+            "RNA",
+            "mRNA",
+            "rRNA",
+            "tRNA",
+            "cDNA",
+            "genomic DNA",
+            "plasmid DNA",
+            "miRNA",
+            "shRNA",
+            "siRNA",
+            "LNA",
+            "RNA aptamer",
+            "riboswitch",
+            "esiRNA",
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description="Ontology term label describing the treatment type.",
+    )
+
     treatment_label: str | None = Field(
         default=None,
         description="Treatment/compound ontology term label used to stimulate the investigated sample. ChEMBL compound label for chemical entities. Use 'untreated control' for untreated samples where other samples were treated.",
@@ -339,6 +373,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "yeast",
             "bacteria",
             "bacteriophage",
+            "animal_model",
+            "cell_free_system",
             "Other",
         ]
         | None
@@ -354,20 +390,20 @@ class SpecificTermExtractionSchema(BaseModel):
 
     tissue_label: str | None = Field(
         default=None,
-        description="Tissue ontology term label of the investigated sample.",
+        description="Tissue ontology term label of the investigated sample. Must be part of the UBERON ontology.",
     )
 
     cell_type_label: str | None = Field(
         default=None,
-        description="Cell type ontology term label of the investigated sample.",
+        description="Cell type ontology term label of the investigated sample. Must be part of the Cell Ontology (CL).",
     )
 
     cell_line_label: str | None = Field(
         default=None,
-        description="Cell line ontology term label of the investigated sample.",
+        description="Cell line ontology term label of the investigated sample. Must be part of the Cell Line Ontology (CLO).",
     )
 
-    sex_label: Literal["female", "male", "mixed", "unknown"] | None = Field(
+    sex_label: Literal["female", "male", "hermaphrodite", "unknown"] | None = Field(
         default=None,
         description="Sex ontology term label of the investigated sample.",
     )
@@ -378,19 +414,19 @@ class SpecificTermExtractionSchema(BaseModel):
             "fetal",
             "neonatal",
             "child",
-            "adolescent",
+            "juvenile",
             "adult",
-            "senior adult",
+            "elderly",
         ]
         | None
     ) = Field(
         default=None,
-        description="Developmental stage ontology term label of the investigated sample. Age brackets: embryonic - upto 8th week of gestation; fetal - 8th week - 40 weeks of gestation; child (0-12 years old); adolescent (13-18 years old); adult (19-59 years old); senior adult (60+ years old).",
+        description="Developmental stage ontology term label of the investigated sample.",
     )
 
     disease_label: str | None = Field(
         default=None,
-        description="Disease ontology term label of the investigated sample.",
+        description="Disease ontology term label of the investigated sample. Must be part of the MONDO ontology.",
     )
 
     study_title: str | None = Field(
@@ -436,7 +472,7 @@ class SpecificTermExtractionSchema(BaseModel):
         | None
     ) = Field(
         default=None,
-        description="Library generation type ontology term label. Endogenous genetic perturbation method - A genetic perturbation method that involves the manipulation of the host organism's genome. Exogenous genetic perturbation method - A genetic perturbation method that involves the introduction of foreign genetic material into a host organism, such as a library of synthetic sequences encoding variants of interest for a particular gene.",
+        description="Library generation type ontology term label, defined in EFO under parent term EFO:0022867 (genetic perturbation). Endogenous genetic perturbation method - A genetic perturbation method that involves the manipulation of the host organism's genome. Exogenous genetic perturbation method - A genetic perturbation method that involves the introduction of foreign genetic material into a host organism, such as a library of synthetic sequences encoding variants of interest for a particular gene.",
     )
 
     library_generation_method_label: (
@@ -450,12 +486,15 @@ class SpecificTermExtractionSchema(BaseModel):
             "silicon microarray synthesis",
             "POPCode mutagenesis",
             "insertional mutagenesis",
+            "solid-phase oligonucleotide synthesis",
+            "multiplexed site-directed mutagenesis",
+            "microchip-based massive parallel oligo synthesis",
             "Other",
         ]
         | None
     ) = Field(
         default=None,
-        description="Library generation method ontology term label.",
+        description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method).",
     )
 
     enzyme_delivery_method_label: (
@@ -468,6 +507,11 @@ class SpecificTermExtractionSchema(BaseModel):
             "lentivirus transduction",
             "transformation",
             "nanoparticle-mediated transfection",
+            "chemical-mediated transfection",
+            "hydrodynamic injection",
+            "molecular cloning",
+            "influenza A virus infection",
+            "electroporation",
             "Other",
         ]
         | None
@@ -487,6 +531,10 @@ class SpecificTermExtractionSchema(BaseModel):
             "transformation",
             "nanoparticle-mediated transfection",
             "chemical-mediated transfection",
+            "hydrodynamic injection",
+            "electroporation",
+            "molecular cloning",
+            "influenza A virus infection",
             "Other",
         ]
         | None
@@ -501,6 +549,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "targeted locus integration",
             "native locus replacement",
             "non-integrative transgene expression",
+            "bacteriophage genome integration",
             "Other",
         ]
         | None
@@ -515,6 +564,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "targeted locus integration",
             "native locus replacement",
             "non-integrative transgene expression",
+            "bacteriophage genome integration",
             "Other",
         ]
         | None
@@ -529,6 +579,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "inducible transgene expression",
             "native promoter-driven transgene expression",
             "degradation domain-based transgene control",
+            "transient transgene expression",
+            "minimal promoter-driven transgene expression",
             "Other",
         ]
         | None
@@ -543,6 +595,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "inducible transgene expression",
             "native promoter-driven transgene expression",
             "degradation domain-based transgene control",
+            "transient transgene expression",
+            "minimal promoter-driven transgene expression",
             "Other",
         ]
         | None
@@ -635,6 +689,8 @@ class SpecificTermExtractionSchema(BaseModel):
             "population growth assay",
             "flow cytometry",
             "high-throughput dna sequencing",
+            "patch-clamp electrophysiology",
+            "fluorometry",
             "Other",
         ]
         | None
@@ -649,8 +705,15 @@ class SpecificTermExtractionSchema(BaseModel):
             "cell viability",
             "gene expression",
             "protein abundance",
+            "protein stability",
             "ligand binding",
             "cell proliferation",
+            "ion channel activity",
+            "RNA splicing",
+            "protein activity",
+            "protein ubiquitination",
+            "DNA repair",
+            "fluorescence",
             "Other",
         ]
         | None
@@ -677,6 +740,14 @@ class SpecificTermExtractionSchema(BaseModel):
             "yeast one-hybrid assay",
             "flow cytometry-based sequencing assay",
             "phage display",
+            "yeast two-hybrid assay",
+            "massively parallel reporter assay",
+            "saturation genome editing",
+            "patch-clamp electrophysiology",
+            "VAMP-seq",
+            "saturation prime editing",
+            "polysome profiling",
+            "abundance protein fragment complementation assay",
             "Other",
         ]
         | None
@@ -697,12 +768,19 @@ class SpecificTermExtractionSchema(BaseModel):
             "10x Genomics Single Cell 3-prime v1",
             "10x Genomics Single Cell 3-prime v2",
             "10x Genomics Single Cell 3-prime v3",
+            "10x Genomics Single Cell 3-prime v3.1",
             "Nextera XT DNA Library Preparation Kit",
             "10x Genomics Chromium GEM-X Flex v1",
             "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
             "TruSeq Nano DNA Library Prep Kit",
             "Ovation Ultralow Library System",
             "custom PCR library preparation",
+            "Nextera DNA Library Preparation Kit",
+            "PacBio SMRTbell Template Prep Kit",
+            "PacBio SMRTbell Template Prep Kit v1",
+            "PacBio SMRTbell Template Prep Kit v2",
+            "PacBio SMRTbell Template Prep Kit v3",
+            "Beckman Coulter DTCS DNA sequencing kit",
             "Other",
         ]
         | None
@@ -720,9 +798,50 @@ class SpecificTermExtractionSchema(BaseModel):
             "Illumina HiSeq 2000",
             "Illumina NovaSeq 6000",
             "Illumina NextSeq 500",
+            "Roche 454 GS FLX",
+            "Illumina NextSeq 550",
+            "Illumina NextSeq 2000",
+            "Ion Torrent PGM",
+            "Illumina MiniSeq",
             "Ultima Genomics UG100",
             "Illumina MiSeq",
             "Illumina Genome Analyzer IIx",
+            "Illumina Genome Analyzer",
+            "Illumina Genome Analyzer II",
+            "Illumina HiSeq 1000",
+            "454 GS 20 sequencer",
+            "454 GS sequencer",
+            "454 GS FLX sequencer",
+            "454 GS FLX Titanium sequencer",
+            "454 GS Junior sequencer",
+            "AB SOLiD System",
+            "AB SOLiD 5500xl",
+            "AB SOLiD PI System",
+            "AB SOLiD 4 System",
+            "AB SOLiD System 3.0",
+            "AB SOLiD 5500",
+            "AB SOLiD 4hq System",
+            "AB SOLiD System 2.0",
+            "Illumina HiSeq 3000",
+            "Illumina HiSeq X",
+            "PacBio Sequel system",
+            "PacBio RS II",
+            "ONT MinION",
+            "ONT GridION X5",
+            "ONT PromethION",
+            "Illumina iSeq 100",
+            "Illumina NextSeq 1000",
+            "Illumina HiSeq 1500",
+            "Singular G4",
+            "PacBio Sequel II system",
+            "BGI MGISEQ-2000",
+            "ONT PromethION 2 Solo",
+            "Ultima UG100",
+            "PacBio Revio",
+            "PacBio Onso",
+            "Element Aviti",
+            "Illumina MiSeq i100",
+            "MGI DNBSEQ-T7",
             "Other",
         ]
         | None
@@ -753,6 +872,14 @@ class SpecificTermExtractionSchema(BaseModel):
             "Enrich2",
             "Enrich",
             "Novoalign",
+            "TileSEQ Analysis Package",
+            "DiMSum",
+            "dms_tools",
+            "dms_tools2",
+            "dms_variants",
+            "CRISPResso2",
+            "mapmuts",
+            "ORFcall",
             "Other",
         ]
         | None
@@ -772,8 +899,15 @@ class SpecificTermExtractionSchema(BaseModel):
             "scanpy",
             "Enrich2",
             "DiMSum",
+            "DESeq2",
+            "dms_tools",
+            "dms_tools2",
+            "ALDEx2",
+            "multidms",
             "dmsPipeline",
             "phydms",
+            "Enrich",
+            "Rosetta",
             "Other",
         ]
         | None
@@ -783,7 +917,18 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     reference_genome_label: (
-        Literal["GRCh38", "GRCh37", "cDNA reference sequence", "Other"] | None
+        Literal[
+            "GRCh38",
+            "GRCh37",
+            "cDNA reference sequence",
+            "mm9",
+            "S288c",
+            "hg19",
+            "Wuhan-Hu-1",
+            "non-standard reference sequence",
+            "Other",
+        ]
+        | None
     ) = Field(
         default=None,
         description="Ontology term label for the reference genome.",
@@ -805,11 +950,60 @@ class SpecificTermExtractionSchema(BaseModel):
     )
 
     license_label: (
-        Literal["CC0", "CC BY", "CC BY-SA", "CC BY-NC", "CC BY-ND", "Other"] | None
+        Literal[
+            "CC0",
+            "CC BY",
+            "CC BY-SA",
+            "CC BY-NC",
+            "CC BY-ND",
+            "CC0 1.0",
+            "CC BY 2.0",
+            "CC BY-SA 2.0",
+            "CC BY 4.0",
+            "CC BY 2.0 UK",
+            "CC BY 2.1 JP",
+            "CC BY 2.5",
+            "CC BY 3.0 AU",
+            "CC BY 3.0",
+            "CC BY 3.0 US",
+            "CC BY-ND 3.0",
+            "CC BY-ND 4.0",
+            "CC BY-NC 3.0",
+            "CC BY-NC 4.0",
+            "CC BY-NC-ND 3.0",
+            "CC BY-NC-ND 2.5",
+            "CC BY-NC-ND 2.5 CH",
+            "CC BY-NC-ND 4.0",
+            "CC BY-NC-SA 2.5",
+            "CC BY-NC-SA 3.0",
+            "CC BY-NC-SA 3.0 US",
+            "CC BY-NC-SA 2.5 IN",
+            "CC BY-NC-SA 4.0",
+            "CC BY-SA 2.1 JP",
+            "CC BY-SA 3.0",
+            "CC BY-SA 3.0 US",
+            "CC BY-SA 4.0",
+            "Other",
+        ]
+        | None
     ) = Field(
         default=None,
         description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
     )
+
+    @model_validator(mode="after")
+    def validate_cell_line_label_for_model_system(self):
+        is_cell_line = self.model_system_label == "cell_line"
+        has_cell_line_label = self.cell_line_label is not None
+        if is_cell_line and not has_cell_line_label:
+            raise ValueError(
+                "cell_line_label is required when model_system_label is cell_line."
+            )
+        if not is_cell_line and has_cell_line_label:
+            raise ValueError(
+                "cell_line_label must be absent when model_system_label is not cell_line."
+            )
+        return self
 
 
 class SupportingEvidence(BaseModel):
