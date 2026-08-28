@@ -54,6 +54,7 @@ DEFAULT_EXCLUDED_DOIS: tuple[str, ...] = (
     "10.1186/s13059-017-1272-5",  # Enrich2 software paper
     "10.1038/nmeth.1492",  # Fowler 2010 DMS method paper
     "10.1038/s41588-018-0122-z",  # VAMP-seq method paper
+    "10.1101/2024.04.26.591310",  # domainome paper
 )
 
 _MAVEDB_URN_TO_DOIS_CACHE: dict[str, list[str]] | None = None
