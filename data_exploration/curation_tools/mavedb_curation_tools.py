@@ -70,6 +70,23 @@ def make_gene_mapping_dict(entries_list: list) -> dict:
     return out_gene_mapping
 
 
+def _select_numeric_score_columns(score_df: pd.DataFrame) -> pd.DataFrame:
+    """Coerce score candidates to numeric values and drop non-score columns."""
+    numeric_scores = pd.DataFrame(index=score_df.index)
+    for column in score_df.columns:
+        if pd.api.types.is_bool_dtype(score_df[column]):
+            continue
+
+        coerced_column = pd.to_numeric(score_df[column], errors="coerce")
+        if coerced_column.notna().any():
+            numeric_scores[column] = coerced_column
+
+    if numeric_scores.empty:
+        raise ValueError("No numeric score columns found in MaveDB score data.")
+
+    return numeric_scores
+
+
 def edit_mavedb_metadata_df_columns(metadata_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Edit columns of the mavedb metadata dataframe to match the unified schema.
@@ -347,9 +364,8 @@ def make_adata_mavedb(
     X_df = mavedb_data.copy()
     X_df.index = X_df["accession"].str.replace("#", "-").str.replace(":", "-")
     X_df = X_df.drop(columns=["accession"])
-    X_df = X_df.iloc[
-        :, 3::
-    ]  # first three columns are always hgvs ids, take all columns from 4th onwards as these are the scores
+    X_df = X_df.iloc[:, 3:]  # first three columns are always hgvs ids
+    X_df = _select_numeric_score_columns(X_df)
 
     metadata_subset_dict = curated_metadata_df[
         curated_metadata_df["dataset_id"] == mavedb_id
