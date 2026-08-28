@@ -7,6 +7,7 @@ import streamlit as st
 
 from curation_tools.llm_curation.backfill_terms import (
     backfill_approved_terms,
+    get_approved_schema_terms,
     preview_backfill_changes,
 )
 from curation_tools.llm_curation.candidate_discovery import discover_candidates
@@ -19,6 +20,7 @@ from curation_tools.llm_curation.final_metadata import (
 from curation_tools.llm_curation.gui_utils import (
     calculate_file_signature,
     get_mavedb_urn_status,
+    get_mavedb_urn_to_dois_for_exclusions,
     get_step2_file_status,
     get_step3_other_corpus_summary,
     get_publication_dois_for_source_file,
@@ -31,13 +33,15 @@ from curation_tools.llm_curation.mavedb.mavedb_metadata_extraction_runner import
     parse_target_urns,
 )
 from curation_tools.llm_curation.mavedb.processing import (
+    DEFAULT_EXCLUDED_DOIS,
     FULL_TEXT_MD_DIR,
     MAVEDB_METADATA_OUTPUT_DIR,
     MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
     bulk_extract_evidence_for_mavedb_urns,
+    filter_excluded_dois,
     format_urn_for_filename,
     get_dois_from_mavedb_entry,
-    load_mavedb_urn_to_dois,
+    parse_excluded_dois,
 )
 from curation_tools.llm_curation.schema_loading import load_extraction_schema
 from curation_tools.llm_curation.schema_updater import (
