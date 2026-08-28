@@ -396,8 +396,8 @@ def make_adata_mavedb(
     VAR_df = pd.DataFrame(index=X_df.columns, data={"score_name": X_df.columns})
 
     # replace None with np.nan to avoid issues with AnnData writing
-    OBS_df = OBS_df.replace({None: np.nan})
-    VAR_df = VAR_df.replace({None: np.nan})
+    OBS_df = OBS_df.where(OBS_df.notna(), np.nan).infer_objects(copy=False)
+    VAR_df = VAR_df.where(VAR_df.notna(), np.nan).infer_objects(copy=False)
 
     # Create AnnData object
     adata = anndata.AnnData(X=X_df, obs=OBS_df, var=VAR_df)
