@@ -2,9 +2,58 @@
 
 import json
 from datetime import datetime, timezone
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+
+
+@lru_cache(maxsize=8)
+def _build_mavedb_urn_to_dois_from_metadata(
+    metadata_dir: str, excluded_dois: tuple[str, ...]
+) -> dict[str, list[str]]:
+    """Build a DOI mapping from metadata using the current exclusion list."""
+    from curation_tools.llm_curation.mavedb.processing import (
+        get_dois_from_mavedb_entry,
+    )
+
+    urn_to_dois: dict[str, list[str]] = {}
+    for metadata_file in sorted(Path(metadata_dir).glob("*.json")):
+        try:
+            entry = json.loads(metadata_file.read_text(encoding="utf-8"))
+            urn = entry.get("urn")
+            if not urn:
+                continue
+            dois = get_dois_from_mavedb_entry(
+                entry,
+                excluded_dois=excluded_dois,
+                log=False,
+            )
+            if dois:
+                urn_to_dois[urn] = dois
+        except (OSError, json.JSONDecodeError):
+            continue
+    return urn_to_dois
+
+
+def get_mavedb_urn_to_dois_for_exclusions(
+    mapping_file: Path,
+    metadata_dir: Path,
+    excluded_dois: tuple[str, ...] | list[str] | set[str] | None = None,
+) -> dict[str, list[str]]:
+    """Load or rebuild the MaveDB DOI mapping for the active exclusions."""
+    from curation_tools.llm_curation.mavedb.processing import (
+        DEFAULT_EXCLUDED_DOIS,
+        load_mavedb_urn_to_dois,
+        parse_excluded_dois,
+    )
+
+    parsed_excluded = parse_excluded_dois(excluded_dois)
+    if set(parsed_excluded) == set(DEFAULT_EXCLUDED_DOIS):
+        return load_mavedb_urn_to_dois(mapping_file)
+    return _build_mavedb_urn_to_dois_from_metadata(
+        str(Path(metadata_dir).resolve()), parsed_excluded
+    )
 
 
 def get_step1_file_status(input_dir: Path, output_dir: Path) -> list[dict[str, Any]]:
@@ -52,12 +101,10 @@ def get_mavedb_urn_status(
     output_dir: Path,
     metadata_dir: Path,
     target_urns: set[str] | None = None,
+    excluded_dois: tuple[str, ...] | list[str] | set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Scan MaveDB URNs from mapping file and check status against step 1 output directory."""
-    from curation_tools.llm_curation.mavedb.processing import (
-        format_urn_for_filename,
-        load_mavedb_urn_to_dois,
-    )
+    from curation_tools.llm_curation.mavedb.processing import format_urn_for_filename
 
     mapping_file = Path(mapping_file).resolve()
     output_dir = Path(output_dir).resolve()
@@ -67,7 +114,11 @@ def get_mavedb_urn_status(
         return []
 
     try:
-        urn_to_dois = load_mavedb_urn_to_dois(mapping_file)
+        urn_to_dois = get_mavedb_urn_to_dois_for_exclusions(
+            mapping_file,
+            metadata_dir,
+            excluded_dois,
+        )
     except Exception:
         return []
 
@@ -198,6 +249,7 @@ def _pipeline_artifact_files(directory: Path) -> list[Path]:
         and path.suffix in {".json", ".md"}
         and not path.name.endswith("_audit.json")
         and path.name != "pipeline_manifest.json"
+        and path.name != "approved_ontology_terms.json"
     ]
     if not files and (directory / "step2_normalized").is_dir():
         return _pipeline_artifact_files(directory / "step2_normalized")
