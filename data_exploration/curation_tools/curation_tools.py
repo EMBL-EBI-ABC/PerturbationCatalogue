@@ -443,6 +443,9 @@ class CuratedDataset:
                     variable_name="score_name",
                     value_name="score_value",
                 )
+                data_subset_df = data_subset_df.with_columns(
+                    pl.col("score_value").cast(pl.Float64)
+                )
 
                 # save data_subset_df to parquet
                 print(f"Saving data to {self.curated_parquet_data_path}...")
