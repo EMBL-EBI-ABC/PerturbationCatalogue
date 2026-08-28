@@ -1073,6 +1073,61 @@ class ObsSchema(DataFrameModel):
         description="Name or identifier of the curator. For humans: full name (e.g., 'John Doe'). For LLMs: model identifier (e.g., 'google/gemini-3.5-flash').",
     )
 
+    # Checks
+    @dataframe_check(
+        ignore_na=False,
+        error="cell_barcode is required for Perturb-seq rows.",
+    )
+    def perturbseq_requires_cell_barcode(cls, df: pd.DataFrame) -> pd.Series:
+        is_perturbseq = df["data_modality"].eq("Perturb-seq")
+        return ~is_perturbseq | df["cell_barcode"].notna()
+
+    @dataframe_check(
+        ignore_na=False,
+        error="perturbed_target_coord is required when perturbed_target_biotype is enhancer.",
+    )
+    def enhancer_requires_target_coord(cls, df: pd.DataFrame) -> pd.Series:
+        is_enhancer = df["perturbed_target_biotype"].eq("enhancer")
+        return ~is_enhancer | df["perturbed_target_coord"].notna()
+
+    @dataframe_check(
+        error="If model system is cell_line, then cell_line_label and cell_line_id must be present.",
+    )
+    def cell_line_requires_metadata(cls, df: pd.DataFrame) -> pd.Series:
+        is_cell_line = df["model_system_label"].eq("cell_line")
+        has_cell_line_metadata = df["cell_line_label"].notna() & df[
+            "cell_line_id"
+        ].notna()
+        return ~is_cell_line | has_cell_line_metadata
+
+    @dataframe_check(
+        error="If model system is anything other than cell_line, then cell_line_label and cell_line_id must be absent.",
+    )
+    def non_cell_line_excludes_metadata(cls, df: pd.DataFrame) -> pd.Series:
+        is_cell_line = df["model_system_label"].eq("cell_line")
+        cell_line_metadata_absent = df["cell_line_label"].isna() & df[
+            "cell_line_id"
+        ].isna()
+        return is_cell_line | cell_line_metadata_absent
+
+    @dataframe_check(
+        error="Cell line label must be present only when model system is cell line.",
+    )
+    def cell_line_label_requires_cell_line_model(
+        cls, df: pd.DataFrame
+    ) -> pd.Series:
+        return ~df["cell_line_label"].notna() | df["model_system_label"].eq(
+            "cell_line"
+        )
+
+    @dataframe_check(
+        error="Cell line ID must be present only when model system is cell line.",
+    )
+    def cell_line_id_requires_cell_line_model(cls, df: pd.DataFrame) -> pd.Series:
+        return ~df["cell_line_id"].notna() | df["model_system_label"].eq(
+            "cell_line"
+        )
+
     class Config:
         strict = True
         # coerce = False
