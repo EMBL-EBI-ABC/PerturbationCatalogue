@@ -419,6 +419,7 @@ def curate_mavedb(
     save_curated_h5ad: bool = True,
     save_curated_parquet: bool = True,
     split_parquet: bool = True,
+    overwrite: bool = False,
 ):
     """Curate DepMap AnnData object using curation tools.
 
@@ -432,6 +433,8 @@ def curate_mavedb(
             Whether to save the curated data as a parquet file. Defaults to True.
         split_parquet: bool
             Whether to save separate Parquet files for data and metadata. Defaults to True.
+        overwrite: bool
+            Whether to overwrite existing curated output files. Defaults to False.
 
     Returns:
     -------
@@ -483,7 +486,9 @@ def curate_mavedb(
 
     # save the curated data as Parquet files
     if save_curated_parquet:
-        cur_data.save_curated_data_parquet(split_metadata=split_parquet)
+        cur_data.save_curated_data_parquet(
+            split_metadata=split_parquet, overwrite=overwrite
+        )
 
     return cur_data
 
@@ -547,6 +552,7 @@ def process_mavedb(
         save_curated_h5ad=True,
         save_curated_parquet=True,
         split_parquet=True,
+        overwrite=overwrite,
     )
 
     return cur_data
