@@ -188,30 +188,7 @@ def preview_backfill_changes(
     else:
         return []
 
-    file_field_updates: dict[str, dict[str, str]] = {}
-
-    for field_name, candidate_list in decisions.items():
-        if not isinstance(candidate_list, list):
-            continue
-        for candidate in candidate_list:
-            if candidate.get("status") == "Approved":
-                approved_term = candidate.get("term")
-                if not approved_term:
-                    continue
-                evidence_list = candidate.get("supporting_evidence", [])
-                for ev in evidence_list:
-                    source_file = None
-                    if isinstance(ev, dict):
-                        source_file = ev.get("source_file")
-                    elif isinstance(ev, str):
-                        if ev.endswith(".json"):
-                            source_file = ev
-
-                    if source_file:
-                        source_filename = Path(source_file).name
-                        if source_filename not in file_field_updates:
-                            file_field_updates[source_filename] = {}
-                        file_field_updates[source_filename][field_name] = approved_term
+    file_field_updates = resolve_approved_terms(decisions)
 
     preview_records: list[dict[str, Any]] = []
 
@@ -281,31 +258,9 @@ def backfill_approved_terms(
     # 2. Load decisions file
     decisions_data = json.loads(decisions_file.read_text(encoding="utf-8"))
 
-    # 3. Process approved decisions and map target files -> field -> approved_term
-    file_field_updates: dict[str, dict[str, str]] = {}
-
-    for field_name, candidate_list in decisions_data.items():
-        if not isinstance(candidate_list, list):
-            continue
-        for candidate in candidate_list:
-            if candidate.get("status") == "Approved":
-                approved_term = candidate.get("term")
-                if not approved_term:
-                    continue
-                evidence_list = candidate.get("supporting_evidence", [])
-                for ev in evidence_list:
-                    source_file = None
-                    if isinstance(ev, dict):
-                        source_file = ev.get("source_file")
-                    elif isinstance(ev, str):
-                        if ev.endswith(".json"):
-                            source_file = ev
-
-                    if source_file:
-                        source_filename = Path(source_file).name
-                        if source_filename not in file_field_updates:
-                            file_field_updates[source_filename] = {}
-                        file_field_updates[source_filename][field_name] = approved_term
+    # 3. Resolve global approvals and dataset-specific overrides consistently
+    # with the preview path.
+    file_field_updates = resolve_approved_terms(decisions_data)
 
     # 4. Perform replacements on copied Step 4 files
     updated_fields_count = 0
