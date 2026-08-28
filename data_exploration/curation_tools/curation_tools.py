@@ -390,7 +390,9 @@ class CuratedDataset:
 
         return schema_dict
 
-    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False):
+    def save_curated_data_parquet(
+        self, split_metadata=False, save_metadata_only=False, overwrite=False
+    ):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
@@ -399,6 +401,8 @@ class CuratedDataset:
             Whether to split the data and metadata into two separate files (default is False).
         save_metadata_only : bool
             Whether to save only the metadata and skip saving the data (default is False).
+        overwrite : bool
+            Whether to overwrite existing Parquet files. Defaults to False.
         """
 
         adata = self.adata
