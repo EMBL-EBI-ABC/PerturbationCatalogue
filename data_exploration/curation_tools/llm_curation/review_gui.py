@@ -185,6 +185,118 @@ def save_decision_audit_trail(file_path: Path, decisions_data: dict) -> None:
     file_path.write_text(json.dumps(decisions_data, indent=2), encoding="utf-8")
 
 
+def get_backfill_decisions(
+    session_decisions: dict | None, decisions_file_path: Path
+) -> dict:
+    """Return in-memory decisions, falling back to the saved review audit."""
+    if session_decisions:
+        return session_decisions
+
+    saved_decisions = load_candidates_file(decisions_file_path)
+    return saved_decisions if isinstance(saved_decisions, dict) else {}
+
+
+def _normalize_source_file(value: object) -> str | None:
+    """Return a normalized evidence source filename."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return Path(value).name
+
+
+def get_candidate_source_files(supporting_evidence: object) -> list[str]:
+    """Return unique source files represented by candidate evidence."""
+    source_files: list[str] = []
+    if not isinstance(supporting_evidence, list):
+        return source_files
+
+    for evidence in supporting_evidence:
+        if isinstance(evidence, dict):
+            source_file = evidence.get("source_file")
+        elif isinstance(evidence, str) and evidence.endswith(".json"):
+            source_file = evidence
+        else:
+            source_file = None
+
+        normalized_source = _normalize_source_file(source_file)
+        if normalized_source and normalized_source not in source_files:
+            source_files.append(normalized_source)
+    return source_files
+
+
+def get_candidate_evidence_by_source(
+    supporting_evidence: object,
+) -> tuple[dict[str, list[object]], list[object]]:
+    """Group evidence snippets by source file and retain unassigned snippets."""
+    evidence_by_source: dict[str, list[object]] = {}
+    unassigned_evidence: list[object] = []
+    if not isinstance(supporting_evidence, list):
+        return evidence_by_source, unassigned_evidence
+
+    for evidence in supporting_evidence:
+        if isinstance(evidence, dict):
+            source_file = evidence.get("source_file")
+        elif isinstance(evidence, str) and evidence.endswith(".json"):
+            source_file = evidence
+        else:
+            source_file = None
+
+        normalized_source = _normalize_source_file(source_file)
+        if normalized_source:
+            evidence_by_source.setdefault(normalized_source, []).append(evidence)
+        else:
+            unassigned_evidence.append(evidence)
+
+    return evidence_by_source, unassigned_evidence
+
+
+def build_dataset_decisions(
+    candidate_term: str,
+    supporting_evidence: object,
+    saved_entry: dict | None = None,
+) -> dict[str, dict[str, str | None]]:
+    """Build per-dataset review state, including compatibility with old audits."""
+    saved_entry = saved_entry if isinstance(saved_entry, dict) else {}
+    saved_dataset_decisions = saved_entry.get("dataset_decisions", {})
+    saved_by_source: dict[str, dict] = {}
+
+    if isinstance(saved_dataset_decisions, dict):
+        for source_file, decision in saved_dataset_decisions.items():
+            normalized_source = _normalize_source_file(source_file)
+            if normalized_source and isinstance(decision, dict):
+                saved_by_source[normalized_source] = decision
+    elif isinstance(saved_dataset_decisions, list):
+        for decision in saved_dataset_decisions:
+            if not isinstance(decision, dict):
+                continue
+            normalized_source = _normalize_source_file(decision.get("source_file"))
+            if normalized_source:
+                saved_by_source[normalized_source] = decision
+
+    dataset_decisions: dict[str, dict[str, str | None]] = {}
+    for source_file in get_candidate_source_files(supporting_evidence):
+        saved_decision = saved_by_source.get(source_file, {})
+        draft_term = str(
+            saved_decision.get("term")
+            or saved_decision.get("draft_term")
+            or candidate_term
+            or ""
+        ).strip()
+        status = str(saved_decision.get("status") or "Pending")
+        accepted_term = saved_decision.get("accepted_term")
+        if accepted_term is not None:
+            accepted_term = str(accepted_term).strip() or None
+        if status in {"Approved", "Accepted"} and not accepted_term:
+            accepted_term = draft_term or None
+
+        dataset_decisions[source_file] = {
+            "term": draft_term,
+            "accepted_term": accepted_term,
+            "status": status,
+        }
+
+    return dataset_decisions
+
+
 def init_session_state(
     candidates_data: dict, candidates_path: Path | None = None
 ) -> None:
@@ -247,6 +359,11 @@ def init_session_state(
                         "status": status,
                         "rationale": item.get("rationale", ""),
                         "supporting_evidence": item.get("supporting_evidence", []),
+                        "dataset_decisions": build_dataset_decisions(
+                            display_term,
+                            item.get("supporting_evidence", []),
+                            saved_entry,
+                        ),
                     }
                 )
         st.session_state["decisions"] = decisions
@@ -617,8 +734,10 @@ def main():
             with st.spinner("Extracting verbatim evidence quotes via LLM..."):
                 try:
                     schema_cls = load_extraction_schema(s1_schema_str)
-                    urn_to_dois = load_mavedb_urn_to_dois(
-                        MAVEDB_URN_TO_DOIS_OUTPUT_FILE
+                    urn_to_dois = get_mavedb_urn_to_dois_for_exclusions(
+                        MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+                        MAVEDB_METADATA_OUTPUT_DIR,
+                        excluded_dois,
                     )
 
                     if parsed_target_urns:
@@ -638,9 +757,13 @@ def main():
                                         entry = json.loads(
                                             meta_file.read_text(encoding="utf-8")
                                         )
-                                        dois = (
-                                            get_dois_from_mavedb_entry(entry, log=False)
-                                            or []
+                                        dois = filter_excluded_dois(
+                                            get_dois_from_mavedb_entry(
+                                                entry,
+                                                excluded_dois=excluded_dois,
+                                                log=False,
+                                            ),
+                                            excluded_dois,
                                         )
                                         filtered_urn_to_dois[target_urn] = dois
                                     except (json.JSONDecodeError, OSError):
@@ -1238,14 +1361,10 @@ def main():
 
             st.divider()
 
-            # Build approved terms mapping for Schema Diff
-            approved_map: dict[str, list[str]] = {}
-            for field, c_list in decisions.items():
-                approved_terms = [
-                    c["term"] for c in c_list if c["status"] == "Approved" and c["term"]
-                ]
-                if approved_terms:
-                    approved_map[field] = approved_terms
+            # Build approved terms mapping for Schema Diff. Dataset-specific
+            # approvals are included in the schema vocabulary, while their
+            # source-file scope is retained in the audit used by Step 4.
+            approved_map = get_approved_schema_terms(decisions)
 
             st.subheader("📝 Live Unified Code Diff (`llm_curation_schema.py`)")
             if approved_map:
@@ -1319,8 +1438,10 @@ def main():
                 key="s4_step4_dir_val",
             )
 
-        decisions = st.session_state.get("decisions", {})
         decisions_file_path = candidates_path.parent / "approved_ontology_terms.json"
+        decisions = get_backfill_decisions(
+            st.session_state.get("decisions"), decisions_file_path
+        )
 
         # Compute preview of planned changes BEFORE writing
         preview_records = preview_backfill_changes(
