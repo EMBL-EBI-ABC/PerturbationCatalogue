@@ -431,6 +431,18 @@ def main():
     )
 
     st.sidebar.divider()
+    st.sidebar.subheader("🚫 Excluded Datasets")
+    excluded_dois_text = st.sidebar.text_area(
+        "Publication DOIs to exclude",
+        value="\n".join(DEFAULT_EXCLUDED_DOIS),
+        height=140,
+        key="excluded_dois_text",
+        help="Enter one publication DOI per line. These datasets are excluded from Step 1 evidence extraction.",
+    )
+    excluded_dois = parse_excluded_dois(excluded_dois_text)
+    st.sidebar.caption(f"{len(excluded_dois)} dataset DOI(s) excluded")
+
+    st.sidebar.divider()
     st.sidebar.header("📁 Workspace & Output Folders")
 
     base_output_str = st.sidebar.text_input(
@@ -660,6 +672,7 @@ def main():
             output_dir=Path(s1_output_dir),
             metadata_dir=MAVEDB_METADATA_OUTPUT_DIR,
             target_urns=None,
+            excluded_dois=excluded_dois,
         )
         st.subheader(
             f"📂 MaveDB Datasets Queued ({len(s1_status_records)} URN datasets matched)"
@@ -1283,7 +1296,11 @@ def main():
                     candidates_to_render.append((idx, item))
 
             for idx, item in candidates_to_render:
-                with st.container(border=True):
+                broad_term_label = item.get("term") or "Untitled proposed term"
+                with st.expander(
+                    f"Proposed broad term: `{broad_term_label}`",
+                    expanded=True,
+                ):
                     col_term, col_actions = st.columns([3, 2])
 
                     with col_term:
@@ -1294,6 +1311,8 @@ def main():
                             help="Edit the term label if needed before approving.",
                         )
                         item["term"] = new_term_val.strip()
+                        if item["rationale"]:
+                            st.markdown(f"**Rationale:** {item['rationale']}")
 
                     with col_actions:
                         st.write("**Decision:**")
@@ -1326,25 +1345,45 @@ def main():
                     else:
                         st.info("Status: Pending Review")
 
-                    if item["rationale"]:
-                        st.markdown(f"**Rationale:** {item['rationale']}")
+                    dataset_decisions = item.setdefault(
+                        "dataset_decisions",
+                        build_dataset_decisions(
+                            item.get("term", ""),
+                            item.get("supporting_evidence", []),
+                        ),
+                    )
+                    if dataset_decisions:
+                        st.markdown("**Dataset-specific terms**")
+                        st.caption(
+                            "Edit a dataset term and click Accept to apply it only to that dataset. "
+                            "Global approval remains available above for all datasets."
+                        )
+                        evidence_by_source, unassigned_evidence = (
+                            get_candidate_evidence_by_source(
+                                item.get("supporting_evidence", [])
+                            )
+                        )
+                        for source_file, dataset_decision in dataset_decisions.items():
+                            with st.container(border=True):
+                                st.markdown(f"**Dataset:** `{source_file}`")
+                                source_evidence = evidence_by_source.get(
+                                    source_file, []
+                                )
+                                if source_evidence:
+                                    st.markdown("**Supporting evidence**")
+                                    for ev_item in source_evidence:
+                                        if isinstance(ev_item, dict):
+                                            stmt = (
+                                                ev_item.get("evidence_statement")
+                                                or ev_item.get("evidence")
+                                                or ""
+                                            )
+                                        else:
+                                            stmt = str(ev_item)
+                                        st.caption(f'> "{stmt}"')
 
-                    evidence = item["supporting_evidence"]
-                    if evidence:
-                        with st.expander(
-                            f"💬 Supporting Evidence Snippets ({len(evidence)})"
-                        ):
-                            for ev_idx, ev_item in enumerate(evidence):
-                                if isinstance(ev_item, dict):
-                                    stmt = (
-                                        ev_item.get("evidence_statement")
-                                        or ev_item.get("evidence")
-                                        or ""
-                                    )
-                                    src = ev_item.get("source_file", "unknown")
-                                    st.markdown(f"**{ev_idx + 1}. Source:** `{src}`")
                                     source_dois = get_publication_dois_for_source_file(
-                                        src,
+                                        source_file,
                                         s3_effective_step2_dir,
                                         MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
                                     )
@@ -1353,12 +1392,86 @@ def main():
                                             f"[`{doi}`](https://doi.org/{doi})"
                                             for doi in source_dois
                                         )
-                                        st.markdown(f"**Publication DOI:** {doi_links}")
+                                        st.caption(f"Publication DOI: {doi_links}")
                                     else:
                                         st.caption("Publication DOI: Not found")
-                                    st.caption(f'> "{stmt}"')
+
+                                dataset_col, dataset_actions = st.columns([3, 2])
+                                with dataset_col:
+                                    dataset_term = st.text_input(
+                                        f"Term for `{source_file}`",
+                                        value=str(dataset_decision.get("term") or ""),
+                                        key=(
+                                            f"dataset_term_{selected_field}_{idx}_"
+                                            f"{source_file}"
+                                        ),
+                                        help=(
+                                            "This draft is prefilled with the LLM suggestion. "
+                                            "Accept it to approve this dataset-specific value."
+                                        ),
+                                    )
+                                    dataset_decision["term"] = dataset_term.strip()
+
+                                with dataset_actions:
+                                    st.write("**Dataset decision:**")
+                                    dataset_accept, dataset_reset = st.columns(2)
+                                    dataset_status = dataset_decision.get(
+                                        "status", "Pending"
+                                    )
+                                    if dataset_accept.button(
+                                        "✅ Accept",
+                                        key=(
+                                            f"dataset_app_{selected_field}_{idx}_"
+                                            f"{source_file}"
+                                        ),
+                                        type=(
+                                            "primary"
+                                            if dataset_status == "Approved"
+                                            else "secondary"
+                                        ),
+                                        disabled=not dataset_decision["term"],
+                                    ):
+                                        dataset_decision["accepted_term"] = (
+                                            dataset_decision["term"]
+                                        )
+                                        dataset_decision["status"] = "Approved"
+                                        st.rerun()
+                                    if dataset_reset.button(
+                                        "↩️ Reset",
+                                        key=(
+                                            f"dataset_rst_{selected_field}_{idx}_"
+                                            f"{source_file}"
+                                        ),
+                                    ):
+                                        dataset_decision["accepted_term"] = None
+                                        dataset_decision["status"] = "Pending"
+                                        st.rerun()
+
+                                if dataset_decision.get("status") == "Approved":
+                                    st.success(
+                                        "Dataset status: Accepted"
+                                        f" (`{dataset_decision.get('accepted_term')}`)"
+                                    )
                                 else:
-                                    st.caption(f'> "{ev_item}"')
+                                    st.info("Dataset status: Pending")
+
+                    _, unassigned_evidence = get_candidate_evidence_by_source(
+                        item.get("supporting_evidence", [])
+                    )
+                    if unassigned_evidence:
+                        with st.expander(
+                            f"💬 Additional Supporting Evidence ({len(unassigned_evidence)})"
+                        ):
+                            for ev_item in unassigned_evidence:
+                                if isinstance(ev_item, dict):
+                                    stmt = (
+                                        ev_item.get("evidence_statement")
+                                        or ev_item.get("evidence")
+                                        or ""
+                                    )
+                                else:
+                                    stmt = str(ev_item)
+                                st.caption(f'> "{stmt}"')
 
             st.divider()
 
