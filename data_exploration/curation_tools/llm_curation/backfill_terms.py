@@ -16,6 +16,143 @@ from curation_tools.llm_curation.metadata_extraction import (
 )
 
 
+def _source_filename(value: object) -> str | None:
+    """Return a normalized source filename from an evidence or decision value."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return Path(value).name
+
+
+def _evidence_source_files(candidate: dict[str, Any]) -> list[str]:
+    """Return unique source filenames referenced by a candidate's evidence."""
+    source_files: list[str] = []
+    for evidence in candidate.get("supporting_evidence", []) or []:
+        if isinstance(evidence, dict):
+            source_file = evidence.get("source_file")
+        elif isinstance(evidence, str) and evidence.endswith(".json"):
+            source_file = evidence
+        else:
+            source_file = None
+
+        normalized_source = _source_filename(source_file)
+        if normalized_source and normalized_source not in source_files:
+            source_files.append(normalized_source)
+    return source_files
+
+
+def _iter_dataset_decisions(
+    candidate: dict[str, Any],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Yield normalized per-dataset decisions from the current audit shape."""
+    dataset_decisions = candidate.get("dataset_decisions", {})
+    if isinstance(dataset_decisions, dict):
+        result = []
+        for source_file, decision in dataset_decisions.items():
+            normalized_source = _source_filename(source_file)
+            if normalized_source and isinstance(decision, dict):
+                result.append((normalized_source, decision))
+        return result
+
+    # Accept a list as a small compatibility convenience for hand-edited audits.
+    if isinstance(dataset_decisions, list):
+        result = []
+        for decision in dataset_decisions:
+            if not isinstance(decision, dict):
+                continue
+            normalized_source = _source_filename(decision.get("source_file"))
+            if normalized_source:
+                result.append((normalized_source, decision))
+        return result
+
+    return []
+
+
+def _is_approved(decision: dict[str, Any]) -> bool:
+    """Return whether a global or dataset decision is approved."""
+    return decision.get("status") in {"Approved", "Accepted"}
+
+
+def resolve_approved_terms(
+    decisions_data: dict[str, Any],
+) -> dict[str, dict[str, str]]:
+    """Resolve approved terms into a source-file -> field -> term mapping.
+
+    Candidate-level approvals are applied to every source file referenced by the
+    candidate. Dataset-level approvals are applied afterwards, overriding the
+    candidate-level term for that source file. This function is shared by the
+    Step 3b preview and Step 4 execution paths.
+    """
+    file_field_updates: dict[str, dict[str, str]] = {}
+
+    for field_name, candidate_list in decisions_data.items():
+        if not isinstance(candidate_list, list):
+            continue
+
+        for candidate in candidate_list:
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("status") == "Rejected":
+                continue
+
+            if _is_approved(candidate):
+                approved_term = str(candidate.get("term") or "").strip()
+                if approved_term:
+                    for source_file in _evidence_source_files(candidate):
+                        file_field_updates.setdefault(source_file, {})[
+                            field_name
+                        ] = approved_term
+
+            for source_file, dataset_decision in _iter_dataset_decisions(candidate):
+                if not _is_approved(dataset_decision):
+                    continue
+                approved_term = str(
+                    dataset_decision.get("accepted_term")
+                    or dataset_decision.get("term")
+                    or ""
+                ).strip()
+                if approved_term:
+                    file_field_updates.setdefault(source_file, {})[
+                        field_name
+                    ] = approved_term
+
+    return file_field_updates
+
+
+def get_approved_schema_terms(
+    decisions_data: dict[str, Any],
+) -> dict[str, list[str]]:
+    """Return deduplicated globally approved and dataset-approved schema terms."""
+    approved_terms: dict[str, list[str]] = {}
+
+    for field_name, candidate_list in decisions_data.items():
+        if not isinstance(candidate_list, list):
+            continue
+
+        for candidate in candidate_list:
+            if not isinstance(candidate, dict):
+                continue
+
+            terms_for_field: list[str] = []
+            if _is_approved(candidate):
+                terms_for_field.append(str(candidate.get("term") or "").strip())
+
+            for _, dataset_decision in _iter_dataset_decisions(candidate):
+                if _is_approved(dataset_decision):
+                    terms_for_field.append(
+                        str(
+                            dataset_decision.get("accepted_term")
+                            or dataset_decision.get("term")
+                            or ""
+                        ).strip()
+                    )
+
+            for term in terms_for_field:
+                if term and term not in approved_terms.setdefault(field_name, []):
+                    approved_terms[field_name].append(term)
+
+    return approved_terms
+
+
 def preview_backfill_changes(
     step2_dir: str | Path,
     decisions_data: dict[str, Any] | str | Path,
