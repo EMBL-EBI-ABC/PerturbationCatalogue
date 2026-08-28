@@ -390,7 +390,7 @@ def make_adata_mavedb(
     OBS_df["perturbation_name"] = hgvs_str_list
 
     OBS_df["significant"] = None
-    OBS_df["significance_criteria"] = None
+    OBS_df["significance_criteria"] = OBS_df["significance_criteria"] if "significance_criteria" in OBS_df.columns else None
     OBS_df["guide_sequence"] = None
 
     VAR_df = pd.DataFrame(index=X_df.columns, data={"score_name": X_df.columns})
