@@ -461,7 +461,7 @@ def curate_mavedb(
         slot="obs",
         input_column="perturbed_target_symbol",
         multiple_entries=False,
-        keep_unmapped=False
+        keep_unmapped=True
     )
 
     # count number of perturbations in each sample
