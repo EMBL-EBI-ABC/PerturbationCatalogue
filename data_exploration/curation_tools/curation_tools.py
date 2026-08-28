@@ -34,6 +34,77 @@ from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
 logger = logging.getLogger(__name__)
 
 
+def _coerce_metadata_for_polars(
+    metadata_df: pd.DataFrame, polars_schema: dict
+) -> pd.DataFrame:
+    """Normalize metadata columns before applying the Polars schema.
+
+    Metadata can arrive from CSV or Excel files as strings, including integer
+    values formatted as decimal strings such as ``"20724.0"``. Polars cannot
+    cast those strings directly to ``Int64``, so numeric schema columns must be
+    normalized in pandas first.
+    """
+
+    normalized_df = metadata_df.copy()
+
+    for column_name, polars_dtype in polars_schema.items():
+        if column_name not in normalized_df.columns:
+            continue
+
+        series = normalized_df[column_name].replace("None", pd.NA)
+
+        if polars_dtype == pl.Int64:
+            numeric = pd.to_numeric(series, errors="coerce")
+            invalid = series.notna() & (numeric.isna() | ~np.isfinite(numeric))
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-integer values: "
+                    f"{invalid_values}"
+                )
+
+            non_integer = numeric.notna() & ((numeric % 1) != 0)
+            if non_integer.any():
+                invalid_values = series[non_integer].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-integer values: "
+                    f"{invalid_values}"
+                )
+
+            normalized_df[column_name] = numeric.astype("Int64")
+        elif polars_dtype == pl.Float64:
+            numeric = pd.to_numeric(series, errors="coerce")
+            invalid = series.notna() & numeric.isna()
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-numeric values: "
+                    f"{invalid_values}"
+                )
+
+            normalized_df[column_name] = numeric.astype("Float64")
+        elif polars_dtype == pl.Boolean:
+            boolean = (
+                series.astype("string")
+                .str.strip()
+                .str.lower()
+                .map({"true": True, "false": False})
+            )
+            invalid = series.notna() & boolean.isna()
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-boolean values: "
+                    f"{invalid_values}"
+                )
+
+            normalized_df[column_name] = boolean.astype("boolean")
+        elif polars_dtype == pl.String:
+            normalized_df[column_name] = series.astype("string")
+
+    return normalized_df
+
+
 # function to add a new synonym to the ontology
 def add_synonym(
     ontology_type=Literal["genes", "cell_types", "cell_lines", "tissues", "diseases"],
@@ -341,16 +412,10 @@ class CuratedDataset:
 
         polars_schema = self.polars_schema_from_pandera_model()
 
-        # Concatenate the adata.obs and uns_df DataFrames
-        full_metadata_df = adata.obs
-        
-        # replace NaN with with None
-        full_metadata_df = full_metadata_df.astype(object).mask(pd.isna(full_metadata_df), None)
-        # convert to string
-        full_metadata_df = full_metadata_df.astype(str)
-        # convert "None" to None
-        full_metadata_df = full_metadata_df.mask(full_metadata_df.eq("None"), None)
-        
+        # Normalize metadata according to the schema without stringifying
+        # numeric columns before converting to Polars.
+        full_metadata_df = _coerce_metadata_for_polars(adata.obs, polars_schema)
+
         metadata_columns = full_metadata_df.columns.to_list()
         id_columns = metadata_columns[0:2]
 
