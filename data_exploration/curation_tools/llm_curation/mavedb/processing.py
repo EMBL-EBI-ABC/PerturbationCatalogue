@@ -110,6 +110,19 @@ def _is_doi_excluded(
     return False
 
 
+def filter_excluded_dois(
+    dois: list[str] | tuple[str, ...] | None,
+    excluded_dois: (
+        set[str] | list[str] | tuple[str, ...] | str | Path | None
+    ) = DEFAULT_EXCLUDED_DOIS,
+) -> list[str]:
+    """Remove configured excluded DOIs while preserving input order."""
+    parsed_excluded = parse_excluded_dois(excluded_dois)
+    return [
+        doi for doi in dois or [] if not _is_doi_excluded(doi, parsed_excluded)
+    ]
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for the MaveDB text collection pipeline."""
     parser = argparse.ArgumentParser(
