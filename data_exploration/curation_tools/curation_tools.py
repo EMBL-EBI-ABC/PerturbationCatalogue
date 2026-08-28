@@ -361,7 +361,7 @@ class CuratedDataset:
             parquet_path = self.curated_path.replace(
                 ".h5ad", "_unified.parquet"
             ).replace("h5ad", "parquet")
-            if os.path.exists(parquet_path):
+            if os.path.exists(parquet_path) and not overwrite:
                 raise FileExistsError(
                     f"File {parquet_path} already exists. Skipping write."
                 )
