@@ -9,7 +9,6 @@ from curation_tools.curation_tools import (
     CuratedDataset,
     ObsSchema,
     VarSchema,
-    Experiment,
 )
 
 
@@ -446,7 +445,6 @@ def curate_mavedb(
     cur_data = CuratedDataset(
         obs_schema=ObsSchema,
         var_schema=VarSchema,
-        exp_metadata_schema=Experiment,
         noncurated_path=adata_h5ad_path.as_posix(),
     )
 
