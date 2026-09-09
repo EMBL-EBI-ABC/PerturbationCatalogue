@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Perturbation Catalogue: An Integrated Resource for Exploring the Impact of Genetic Perturbations</title>
+  <style>
+    @page { size: 841mm 1189mm; margin: 0; }
+    :root {
+      --ink: #14242a;
+      --muted: #55656a;
+      --green: #00865f;
+      --green-dark: #006b4d;
+      --mint: #e7f4ee;
+      --wash: #f1f4f2;
+      --paper: #fffefb;
+      --code: #10262e;
+      --graphite: #3d4b50;
+      /* Four sizes only: title/metrics, headings/authors, body, notes. */
+      --fs-title: 116pt;
+      --fs-heading: 48pt;
+      --fs-body: 30pt;
+      --fs-note: 16pt;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 841mm; height: 1189mm; margin: 0; overflow: hidden; background: var(--paper); color: var(--ink); font-family: "Noto Sans", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { padding: 23mm; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 104mm 112mm 165mm 135mm 324mm 95mm 70mm; gap: 23mm; font-size: var(--fs-body); }
+    h1, h2, h3, p, figure, pre { margin: 0; }
+    h1 { font-size: var(--fs-title); line-height: .98; letter-spacing: -2.8pt; font-weight: 850; }
+    h2, .subtitle { font-size: var(--fs-heading); line-height: 1.08; letter-spacing: -.7pt; font-weight: 800; }
+    .subtitle { letter-spacing: -.6pt; font-weight: 680; }
+    h3, .large { font-size: var(--fs-body); line-height: 1.15; font-weight: 800; }
+    p, .regular { font-size: var(--fs-body); line-height: 1.3; }
+    .muted, .caption { color: var(--muted); }
+    .caption a { color: inherit; text-decoration: none; }
+    .green { color: var(--green-dark); }
+    header { display: grid; grid-template-columns: 1fr 160mm; grid-template-rows: auto auto; column-gap: 15mm; align-items: start; }
+    header > div:first-child { grid-column: 1; grid-row: 1; }
+    .subtitle { margin-top: 4mm; white-space: nowrap; }
+    .authors { grid-column: 1; grid-row: 2; margin-top: 4mm; color: var(--muted); font-size: var(--fs-heading); font-weight: 400; line-height: 1.08; letter-spacing: -.6pt; }
+    .affiliation { margin-top: 2mm; color: var(--muted); font-size: var(--fs-body); line-height: 1.2; }
+    .header-logo { grid-column: 2; grid-row: 1 / span 3; width: 98mm; height: 98mm; object-fit: contain; justify-self: end; align-self: start; margin-top: 3mm; margin-right: 0; }
+    .browser { overflow: hidden; background: #fff; border: .55mm solid #d7dedb; border-radius: 2.5mm; box-shadow: 0 3mm 9mm rgba(23, 47, 39, .13); }
+    .browser-bar { min-height: 14mm; padding: 2.7mm 4mm; display: flex; align-items: center; gap: 2.4mm; background: #eef2f0; color: var(--muted); font-size: var(--fs-note); }
+    .browser-dot { width: 2.6mm; height: 2.6mm; border-radius: 50%; background: #9baba5; flex: none; }
+    .browser-url { margin-left: 2mm; padding: 1.2mm 4mm; flex: 1; background: rgba(255,255,255,.84); border-radius: 4mm; }
+    .shot { display: block; width: 100%; height: auto; background: #fff; }
+    .caption { margin-top: 3mm; font-size: var(--fs-note); line-height: 1.25; font-style: italic; }
+    .case { padding: 9mm 12mm; background: var(--wash); display: grid; grid-template-columns: 1fr 250mm; gap: 14mm; align-items: center; }
+    .case > * { min-width: 0; }
+    .case h2 { margin-bottom: 5mm; }
+    .case-copy { line-height: 1.3; }
+    .small-chart { padding-top: 1mm; margin-left: 9mm; background: transparent; }
+    .small-chart strong, .small-chart figcaption { position: relative; left: 10mm; }
+    .small-chart strong { display: block; font-size: var(--fs-body); line-height: 1.03; top: -1mm; }
+    .small-chart .chart-subhead { display: inline-block; margin-top: 1mm; }
+    .small-chart svg text { font-size: var(--fs-note); }
+    .small-chart svg { width: 100%; height: 44mm; display: block; margin-top: -8mm; }
+    .current h2 { margin-bottom: 5mm; }
+    .metric-value, .context-metrics strong, .field-total strong { display: block; color: var(--green-dark); font-size: var(--fs-title); line-height: .9; letter-spacing: -2pt; font-weight: 400; }
+    .coverage-metrics { display: flex; justify-content: space-between; align-items: start; gap: 0; margin-top: 9mm; }
+    .coverage-metric { flex: 0 0 auto; min-width: 0; width: auto; padding: 0; text-align: center; }
+    .coverage-metric strong { display: block; color: var(--green-dark); font-size: var(--fs-title); line-height: .9; letter-spacing: -2pt; font-weight: 400; white-space: nowrap; }
+    .coverage-metric span { display: block; margin-top: 3mm; color: var(--muted); font-size: var(--fs-heading); line-height: .95; font-weight: 600; }
+    .modality-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18mm; margin-top: 12mm; }
+    .modality-card { display: grid; grid-template-columns: 36mm 1fr; gap: 6mm; align-items: center; padding: 6mm; background: var(--mint); min-height: 62mm; }
+    .modality-card figure { margin: 0; }
+    .modality-card svg { display: block; width: 34mm; height: 34mm; }
+    .modality-card h3 { color: var(--green-dark); margin-bottom: 3mm; }
+    .modality-card p { color: var(--muted); }
+    .context-metrics span { color: var(--muted); font-size: var(--fs-heading); line-height: .95; font-weight: 600; }
+    .metadata-reprocess { display: grid; grid-template-columns: 375mm 1fr; gap: 18mm; align-items: start; }
+    .metadata-reprocess > * { min-width: 0; }
+    .metadata-column h2 { margin-bottom: 6mm; }
+    .field-summary { display: grid; grid-template-columns: 58mm 1fr; gap: 7mm; align-items: start; }
+    .field-total strong { display: block; color: var(--green-dark); font-size: var(--fs-title); line-height: .9; letter-spacing: -2pt; font-weight: 400; }
+    .field-total span { display: block; width: 58mm; margin-top: 3mm; color: var(--muted); font-size: var(--fs-heading); line-height: .95; font-weight: 600; }
+    .field-groups { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6mm 8mm; }
+    .field-link { margin: 0; line-height: 1.15; }
+    .metadata-column .field-group h3, .metadata-column .field-link strong { color: var(--graphite); }
+    .field-group h3 { margin-bottom: 2mm; }
+    .field-group p { color: var(--muted); }
+    .reprocess h2 { margin-bottom: 6mm; }
+    .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
+    .stage { min-height: 59mm; padding: 5mm; background: var(--wash); position: relative; }
+    .stage:not(:last-child)::after { content: "→"; position: absolute; right: -5mm; top: 11mm; transform: translateY(-50%); z-index: 2; color: var(--ink); font-size: var(--fs-body); font-weight: 900; }
+    .stage strong { display: block; color: var(--graphite); font-size: var(--fs-body); white-space: nowrap; }
+    .stage span { display: block; margin-top: 2mm; color: var(--muted); font-size: var(--fs-body); }
+    .reprocess-note { margin-top: 6mm; color: var(--muted); font-size: var(--fs-body); }
+    .methods-api { display: grid; grid-template-columns: 525mm 1fr; grid-template-rows: 1fr auto; gap: 18mm; align-items: stretch; }
+    .methods-api > * { min-width: 0; }
+    .website { grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; }
+    .api { grid-column: 2; grid-row: 1; }
+    .download { grid-column: 2; grid-row: 2; }
+    .website figure { margin: 0; }
+    .access-strip { display: flex; align-items: center; gap: 5mm; margin: -1mm 0 6mm; color: var(--green-dark); font-size: var(--fs-body); font-weight: 700; }
+    .access-strip i { font-style: normal; color: #8da89f; font-size: var(--fs-heading); line-height: .8; }
+    .website-figures { display: grid; grid-template-columns: 1.45fr .55fr; gap: 8mm; align-items: stretch; flex: 1; min-height: 0; }
+    .website-figures > .browser, .access-thumbs .browser { height: 100%; display: flex; flex-direction: column; }
+    .access-thumbs { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8mm; min-height: 0; }
+    .access-thumbs .browser-bar { min-height: 8mm; padding: 1.5mm 2mm; gap: 1.5mm; }
+    .access-thumbs .browser-dot { width: 1.6mm; height: 1.6mm; }
+    .access-thumbs .browser-url { margin-left: 1mm; padding: .7mm 2mm; }
+    .website-figures .shot { flex: 1; min-height: 0; object-fit: contain; }
+    .website, .download { padding: 7mm 8mm; background: var(--wash); min-height: 0; overflow: hidden; }
+    .website h2, .api h2, .download h2 { margin-bottom: 5mm; font-size: var(--fs-heading); white-space: nowrap; }
+    .api { height: 100%; padding: 7mm 8mm; background: var(--code); color: #f5faf7; overflow: hidden; }
+    .api h2 { color: #fff; }
+    .api .regular { color: #bfd0ca; }
+    .endpoint { margin-top: 5mm; padding: 3mm; background: #07181e; color: #7ee2ba; font: 700 var(--fs-body)/.95 "Noto Sans Mono", monospace; white-space: normal; }
+    .json { margin-top: 5mm; padding: 4mm; background: #07181e; color: #dbe9e4; font: var(--fs-body)/.9 "Noto Sans Mono", monospace; white-space: pre-wrap; }
+    .json .key { color: #7ee2ba; }
+    .json .value { color: #f3d67c; }
+    .download { background: #e8eff8; padding-top: 6mm; padding-bottom: 6mm; align-self: end; }
+    .next { display: flex; flex-direction: column; justify-content: flex-start; gap: 4mm; padding-top: 0; }
+    .next h2 { margin-bottom: 6mm; }
+    .next-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18mm; }
+    .next-item { display: grid; grid-template-columns: 22mm 1fr; gap: 5mm; padding-right: 4mm; align-items: start; }
+    .next-item figure { margin: 1mm 0 0; }
+    .next-item svg { display: block; width: 20mm; height: 20mm; }
+    .next-item > div { min-width: 0; }
+    .next-item h3 { color: var(--green-dark); }
+    .next-item p { margin-top: 5mm; color: var(--muted); }
+    .footer { display: grid; grid-template-rows: auto auto; gap: 23mm; align-content: start; align-items: center; }
+    .footer-links { display: flex; justify-content: center; gap: 18mm; align-items: center; padding: 6mm 8mm; background: #004c3f; color: #fff; border-radius: 3mm; text-align: center; font-size: var(--fs-heading); line-height: 1.08; font-weight: 400; white-space: nowrap; }
+    .footer-links a { color: #fff; text-decoration: none; font-weight: 800; }
+    .sponsor-line { display: flex; align-items: center; justify-content: center; gap: 18mm; white-space: nowrap; }
+    .sponsor-label { display: none; }
+    .sponsor-line img { width: 58mm; max-height: 20mm; height: auto; object-fit: contain; }
+    .partner-logos { display: flex; align-items: center; gap: 18mm; }
+    .partner-logos img { width: 50mm; max-height: 18mm; height: auto; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Perturbation Catalogue</h1><p class="subtitle">An Integrated Resource for Exploring the Impact of Genetic Perturbations</p><p class="authors">Kirill Tsukanov, Aleksandr Zakirov, Alexey Sokolov, Mallory Freeberg</p><p class="affiliation">European Bioinformatics Institute, Wellcome Genome Campus, Hinxton, United Kingdom</p></div>
+    <img class="header-logo" src="assets/catalogue-qr.svg" alt="QR code to the Perturbation Catalogue">
+  </header>
+  <section class="case">
+    <div><h2>Perturbation evidence is multiplying<br>faster than it can be organised</h2><p class="case-copy">A single pooled genome-scale Perturb-Seq dataset can <strong class="green">simultaneously profile tens of millions of cells across hundreds of thousands of perturbations</strong>. That scale could reveal robust biology across studies, but identifiers, metadata, assays and processing pipelines differ. The Perturbation Catalogue aims to unify datasets across modalities and provide a shared access path for this evidence.</p></div>
+    <figure class="small-chart"><strong><span class="green">36× growth</span><br><span class="chart-subhead">in perturbation papers<br>over two decades</span></strong><svg viewBox="0 0 1000 180" role="img" aria-label="Perturbation-screen publications grew 36-fold from 2005 to 2025"><g transform="scale(1.66 1)"><path d="M0 133 C55 131 95 129 136 127 C184 124 216 112 248 106 C292 98 326 91 360 88 C404 82 438 68 472 62 C513 56 540 43 564 32 L564 137 L0 137 Z" fill="#00865f" opacity=".13"/><path d="M0 133 C55 131 95 129 136 127 C184 124 216 112 248 106 C292 98 326 91 360 88 C404 82 438 68 472 62 C513 56 540 43 564 32" fill="none" stroke="#00865f" stroke-width="6" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/></g><g font-family="Noto Sans" fill="#55656a"><text x="0" y="157">2005</text><text x="984" y="157" text-anchor="end">2025</text></g><g font-family="Noto Sans" font-weight="700" fill="#14242a"><text x="0" y="119">18</text><text x="984" y="25" text-anchor="end">655</text></g></svg><figcaption class="caption">Europe PMC title/abstract query; 24 Aug 2026.<br>Scale example: <a href="https://firstwordpharma.com/story/7139212">FirstWord Pharma, story 7139212</a>.</figcaption></figure>
+  </section>
+  <section class="current">
+    <h2>Our approach turns scattered datasets into a unified resource</h2>
+    <div class="coverage-metrics">
+      <div class="coverage-metric"><strong>1,237</strong><span>datasets</span></div>
+      <div class="coverage-metric"><strong>19,235</strong><span>targets</span></div>
+      <div class="coverage-metric"><strong>36</strong><span>tissues</span></div>
+      <div class="coverage-metric"><strong>34</strong><span>cell types</span></div>
+      <div class="coverage-metric"><strong>1,200</strong><span>cell lines</span></div>
+      <div class="coverage-metric"><strong>169</strong><span>diseases</span></div>
+    </div>
+    <div class="modality-cards">
+      <article class="modality-card"><figure aria-label="Pooled guide library to gene phenotypes"><svg viewBox="0 0 120 120" role="img"><g fill="none" stroke="#006b4d" stroke-width="4" stroke-linecap="round"><path d="M10 24h26M10 48h26M10 72h26M10 96h26M38 24l25 36M38 48l25 12M38 72l25-12M38 96l25-36M63 60h22"/><circle cx="10" cy="24" r="5" fill="#00865f"/><circle cx="10" cy="48" r="5" fill="#00865f"/><circle cx="10" cy="72" r="5" fill="#00865f"/><circle cx="10" cy="96" r="5" fill="#00865f"/><circle cx="88" cy="60" r="20" fill="#e7f4ee"/></g></svg></figure><div><h3>CRISPR screens · 1,201 datasets</h3><p>Perturbed gene → phenotype / fitness changes.</p></div></article>
+      <article class="modality-card"><figure aria-label="Guide identity paired with single-cell RNA sequencing"><svg viewBox="0 0 120 120" role="img"><g fill="none" stroke="#006b4d" stroke-width="4" stroke-linecap="round"><circle cx="28" cy="28" r="10" fill="#e7f4ee"/><circle cx="28" cy="60" r="10" fill="#e7f4ee"/><circle cx="28" cy="92" r="10" fill="#e7f4ee"/><path d="M40 28h22M40 60h22M40 92h22M70 22v76M82 28v64M94 35v50"/></g></svg></figure><div><h3>Perturb-Seq · 26 datasets</h3><p>Perturbed gene → scRNA-seq, cell-wide transcriptome changes.</p></div></article>
+      <article class="modality-card"><figure aria-label="Variant library to sequence-function map"><svg viewBox="0 0 120 120" role="img"><g fill="none" stroke="#006b4d" stroke-width="4" stroke-linecap="round"><path d="M10 28h100M10 60h100M10 92h100"/><path d="M26 20v16M50 20v16M74 20v16M98 20v16M26 52v16M50 52v16M74 52v16M98 52v16M26 84v16M50 84v16M74 84v16M98 84v16"/><circle cx="50" cy="60" r="7" fill="#00865f"/></g></svg></figure><div><h3>MAVE · 10 datasets</h3><p>Combinatorial variant library → sequence-function maps.</p></div></article>
+    </div>
+  </section>
+  <section class="integration">
+    <div class="metadata-reprocess">
+      <div class="metadata-column"><h2>We extensively curate metadata…</h2><div class="field-summary"><div class="field-total"><strong>84</strong><span>meta-<br>data<br>fields</span></div><div class="field-groups"><div class="field-group"><h3>Study &amp; provenance</h3><p>Title, authors, year, URI, licence</p></div><div class="field-group"><h3>Perturbation &amp; library</h3><p>Targets, guides, library, variants</p></div><div class="field-group"><h3>Model system</h3><p>Organism, tissue, cell line, disease</p></div><div class="field-group"><h3>Readout &amp; processing</h3><p>Assay, technology, kit, reference</p></div><p class="field-link"><strong class="green">Ensembl gene IDs</strong></p><p class="field-link"><strong class="green">Ontology term mapping</strong></p></div></div></div>
+      <div class="reprocess"><h2>And reprocess data from scratch</h2><div class="flow"><div class="stage"><strong>SRA / FASTQ</strong><span>Raw reads + study-specific probes</span></div><div class="stage"><strong>Cell × gene counts</strong><span>Shared reference + gene annotation</span></div><div class="stage"><strong>Guide assignment</strong><span>Map cells to perturbations</span></div><div class="stage"><strong>QC + filtering</strong><span>Final analysis-ready H5AD</span></div></div><p class="reprocess-note"><strong class="green">Five Perturb-Seq datasets are live.</strong> Perturbation-control comparisons feed DEA and Hallmark GSEA. More datasets and modalities coming soon.</p></div>
+    </div>
+  </section>
+  <section class="methods-api">
+    <div class="website"><h2>Browse the Catalogue</h2><div class="access-strip"><span>Search</span><i>→</i><span>Context</span><i>→</i><span>Filter</span><i>→</i><span>Explore</span></div><div class="website-figures"><figure class="browser"><div class="browser-bar"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-url">ebi.ac.uk/perturbation-catalogue</span></div><img class="shot" src="assets/catalogue-home-poster-v28.png" alt="Perturbation Catalogue homepage at a wide desktop viewport"></figure><div class="access-thumbs"><figure class="browser"><div class="browser-bar"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-url">/target/ENSG00000139618</span></div><img class="shot" src="assets/target-profile-v28.png" alt="BRCA2 target profile in the Perturbation Catalogue"></figure><figure class="browser"><div class="browser-bar"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-url">/dataset/nadig_2025_jurkat</span></div><img class="shot" src="assets/nadig-dataset-v28.png" alt="Perturbation Catalogue dataset metadata page"></figure></div></div></div>
+    <div class="api"><h2>Access records via API</h2><p class="regular">Structured JSON for custom pipelines, reproducible analysis and machine learning.</p><div class="endpoint">GET /v1/perturb-seq/nadig_2025_jurkat/search?perturbation_gene_name=TFAM&amp;limit=1</div><pre class="json">{
+  <span class="key">"perturbation"</span>: {
+    <span class="key">"perturbed_target_ensg"</span>: <span class="value">"ENSG00000108064"</span>,
+    <span class="key">"gene_symbol"</span>: <span class="value">"TFAM"</span>
+  },
+  <span class="key">"effect"</span>: {
+    <span class="key">"effect_gene_ensg"</span>: <span class="value">"ENSG00000210082"</span>,
+    <span class="key">"gene_symbol"</span>: <span class="value">"MT-RNR2"</span>,
+    <span class="key">"log2fc"</span>: <span class="value">-2.682</span>
+  }
+}</pre></div>
+    <div class="download"><h2>Download entire datasets</h2><p class="regular">Data is available in <strong>Parquet</strong> and <strong>CSV.gz</strong>, and metadata as <strong>JSON</strong>.</p></div>
+  </section>
+  <section class="next"><h2>Stay tuned for more exciting things coming soon</h2><div class="next-grid"><div class="next-item"><figure aria-label="Structured metadata review"><svg viewBox="0 0 80 80" role="img"><g fill="none" stroke="#00865f" stroke-width="5" stroke-linecap="round"><rect x="12" y="12" width="56" height="56" rx="8"/><path d="M24 28h32M24 40h20M24 52h25"/></g><circle cx="60" cy="55" r="9" fill="#e7f4ee" stroke="#006b4d" stroke-width="4"/></svg></figure><div><h3>Extract structured metadata faster</h3><p>AI-assisted drafting with curator review and validated ontology mapping.</p></div></div><div class="next-item"><figure aria-label="Independent reanalysis"><svg viewBox="0 0 80 80" role="img"><g fill="none" stroke="#00865f" stroke-width="5" stroke-linecap="round"><path d="M16 24h20M16 40h20M16 56h20M42 24h22M42 40h22M42 56h22"/><path d="M36 20l6 4-6 4M36 36l6 4-6 4M36 52l6 4-6 4"/></g></svg></figure><div><h3>Reanalyse more designs</h3><p>More kits, experimental structures and independent quality metrics.</p></div></div><div class="next-item"><figure aria-label="Versioned releases"><svg viewBox="0 0 80 80" role="img"><g fill="#e7f4ee" stroke="#00865f" stroke-width="5"><rect x="14" y="14" width="52" height="14" rx="3"/><rect x="14" y="33" width="52" height="14" rx="3"/><rect x="14" y="52" width="52" height="14" rx="3"/></g></svg></figure><div><h3>Publish regular, versioned releases</h3><p>Explicit provenance and stable snapshots for reproducible downstream use.</p></div></div><div class="next-item"><figure aria-label="MAVE enrichment"><svg viewBox="0 0 80 80" role="img"><g fill="none" stroke="#00865f" stroke-width="5" stroke-linecap="round"><path d="M12 25c10-14 20 14 30 0s20 14 26 0M12 43c10-14 20 14 30 0s20 14 26 0"/><path d="M20 63h42"/><circle cx="32" cy="63" r="6" fill="#e7f4ee"/></g></svg></figure><div><h3>Reanalyse MAVE data</h3><p>Enrich variant-to-function coverage with harmonised scores.</p></div></div></div></section>
+<footer class="footer"><div class="footer-links"><span>Visit: <a href="https://ebi.ac.uk/perturbation-catalogue">ebi.ac.uk/perturbation-catalogue</a></span><span>Contact: <a href="mailto:perturbation-catalogue-help@ebi.ac.uk">perturbation-catalogue-help@ebi.ac.uk</a></span></div><div class="sponsor-line"><img src="assets/embl-ebi-logo.png" alt="EMBL-EBI"><img src="assets/open-targets-logo.png" alt="Open Targets"><div class="partner-logos"><img src="assets/partners/genentech.png" alt="Genentech"><img src="assets/partners/gsk.png" alt="GSK"><img src="assets/partners/msd.png" alt="MSD"><img src="assets/partners/pfizer.png" alt="Pfizer"><img src="assets/partners/sanofi.png" alt="Sanofi"><img src="assets/partners/sanger.png" alt="Wellcome Sanger Institute"></div></div></footer>
+</body>
+</html>
