@@ -68,7 +68,8 @@ are found on PATH. `--limit N` selects the first N sample groups for small tests
 ## Streaming and processing
 
 Each sample/modality has one task with three overlapping stages: sequential SRA
-retrieval, `fasterq-dump` extraction to an uncompressed FASTQ file containing all
+archive retrieval using 32 parallel curl HTTPS byte ranges per file,
+`fasterq-dump` extraction to an uncompressed FASTQ file containing all
 technical and biological reads, and feeding one persistent `kb count --inleaved`
 process. An archive is deleted immediately after successful extraction; the
 FASTQ file is deleted after successful routing into the counter pipe.
@@ -78,6 +79,13 @@ waiting archive in addition to the archive being extracted, and at most one
 waiting FASTQ set in addition to the set being fed. In-progress downloads and
 fasterq extraction scratch also consume storage. A completed FASTQ buffer prevents
 further extraction; an occupied archive buffer prevents another download.
+
+The NCBI locator supplies the full-quality SRA URL, size and MD5. Every range's
+Content-Range and length is checked; the assembled archive must match the
+published size and MD5 before extraction. Curl retries transient errors with
+bounded timeouts. Range parts are removed as they are assembled, so assembly
+adds at most one range's size to the archive footprint. No prefetch download or
+SRA Lite substitution is used. Curl 7.68 or later is required for parallel transfers.
 
 The C++ reader is compiled with `g++` in the task environment and processes files
 using buffered I/O. It verifies FASTQ structure, sequence/quality lengths,

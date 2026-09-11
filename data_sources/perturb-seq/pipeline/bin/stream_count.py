@@ -2,6 +2,7 @@
 """Overlap bounded SRA downloading, disk extraction and one sample's kb counting."""
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,133 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit
+
+
+def download_sra(accession, directory, logdir, execute):
+    """Fetch one full-quality archive using 32 checked HTTPS ranges."""
+    if not re.fullmatch(r"(SRR|ERR|DRR)\d+", accession):
+        raise ValueError("Invalid SRA accession")
+    target = directory / accession
+    target.mkdir()
+    options = [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--connect-timeout",
+        "30",
+        "--max-time",
+        "900",
+        "--retry",
+        "3",
+        "--retry-delay",
+        "2",
+        "--retry-max-time",
+        "1800",
+    ]
+    metadata = target / "locator.json"
+    execute(
+        [
+            "curl",
+            *options,
+            "--max-filesize",
+            "1048576",
+            "--output",
+            str(metadata),
+            "https://locate.ncbi.nlm.nih.gov/sdl/2/retrieve?acc="
+            + accession
+            + "&accept-proto=https",
+        ],
+        logdir / (accession + ".locator.log"),
+    )
+    bundles = json.loads(metadata.read_text())["result"]
+    files = [
+        f
+        for b in bundles
+        if b.get("bundle") == accession and b.get("status") == 200
+        for f in b.get("files", [])
+        if f.get("type") == "sra" and f.get("accession") == accession
+    ]
+    if len(files) != 1:
+        raise RuntimeError("Expected one full-quality SRA archive: " + accession)
+    source = files[0]
+    size, digest = source.get("size"), source.get("md5", "")
+    urls = [
+        loc["link"]
+        for loc in source.get("locations", [])
+        if urlsplit(loc.get("link", "")).scheme == "https"
+    ]
+    if (
+        type(size) is not int
+        or not 0 < size <= 100 * 1024**3
+        or not re.fullmatch(r"[0-9a-fA-F]{32}", digest)
+        or not urls
+    ):
+        raise RuntimeError("Missing or invalid archive size, checksum or HTTPS URL")
+    url = urls[0]
+    if not urlsplit(url).hostname or urlsplit(url).username or urlsplit(url).password:
+        raise RuntimeError("Invalid archive URL")
+    count = min(32, size)
+    ranges = [(size * i // count, size * (i + 1) // count - 1) for i in range(count)]
+    command = [
+        "curl",
+        "--parallel",
+        "--parallel-immediate",
+        "--parallel-max",
+        str(count),
+    ]
+    for i, (start, end) in enumerate(ranges):
+        if i:
+            command += ["--next"]
+        command += [
+            *options,
+            "--range",
+            f"{start}-{end}",
+            "--max-filesize",
+            str(end - start + 1),
+            "--dump-header",
+            str(target / f"headers-{i}"),
+            "--output",
+            str(target / f"part-{i}"),
+            url,
+        ]
+    execute(command, logdir / (accession + ".curl.log"))
+    checksum = hashlib.md5()
+    temporary = target / (accession + ".sra.partial")
+    with temporary.open("xb") as output:
+        for i, (start, end) in enumerate(ranges):
+            part, header = target / f"part-{i}", target / f"headers-{i}"
+            returned = re.findall(
+                r"(?im)^content-range:\s*bytes (\d+)-(\d+)/(\d+)\s*$",
+                header.read_text(),
+            )
+            if (
+                not returned
+                or tuple(map(int, returned[-1])) != (start, end, size)
+                or part.stat().st_size != end - start + 1
+            ):
+                raise RuntimeError(
+                    f"Invalid or incomplete HTTP range for {accession}: {i}"
+                )
+            with part.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    output.write(block)
+                    checksum.update(block)
+            # Reclaim each part as it is assembled, bounding the extra space to one range.
+            part.unlink()
+            header.unlink()
+    if temporary.stat().st_size != size or checksum.hexdigest() != digest.lower():
+        raise RuntimeError("Archive checksum mismatch: " + accession)
+    temporary.replace(target / (accession + ".sra"))
+    metadata.unlink()
+    return dict(
+        archive_bytes=size, archive_md5=digest.lower(), download_connections=count
+    )
 
 
 def disk_bytes(root):
@@ -175,21 +303,9 @@ def main():
                 acquire(archive_slot)  # Reserve space before producing another archive.
 
                 def action():
-                    execute(
-                        [
-                            tool("prefetch"),
-                            accession,
-                            "-O",
-                            str(downloads),
-                            "--max-size",
-                            "100G",
-                        ],
-                        logdir / (accession + ".prefetch.log"),
+                    metrics[accession].update(
+                        download_sra(accession, downloads, logdir, execute)
                     )
-                    archive = downloads / accession
-                    if not (archive / (accession + ".sra")).is_file():
-                        raise RuntimeError("Missing downloaded archive: " + accession)
-                    metrics[accession]["archive_bytes"] = disk_bytes(archive)
 
                 stage("download", accession, action)
                 archives.put(accession)

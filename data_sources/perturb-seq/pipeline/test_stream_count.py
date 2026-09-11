@@ -83,16 +83,38 @@ def test():
         fake = root / "tools"
         fake.mkdir()
         program = """#!/usr/bin/env python3
-import json, os, pathlib, sys, time
+import hashlib, json, os, pathlib, sys, time
+from urllib.parse import urlsplit, parse_qs
 p = pathlib.Path
 args = sys.argv[1:]
 name = p(sys.argv[0]).name
-if name == 'prefetch':
-    base = p(args[args.index('-O')+1]); acc = args[0]
-    assert len(list(base.glob('*/*.sra'))) <= 1
-    target = base / acc; target.mkdir()
-    time.sleep(0.03)
-    (target / (acc+'.sra')).write_text(acc)
+if name == 'curl':
+    if 'locate.ncbi.nlm.nih.gov' in args[-1]:
+        acc = parse_qs(urlsplit(args[-1]).query)['acc'][0]
+        target = p(args[args.index('--output')+1])
+        assert len(list(target.parent.parent.glob('*/*.sra'))) <= 1
+        data = acc.encode()*64
+        source = dict(type='sra', accession=acc, size=len(data), md5=hashlib.md5(data).hexdigest(),
+                      locations=[dict(link='https://fixture.invalid/'+acc)])
+        target.write_text(json.dumps({'result':[dict(bundle=acc,status=200,files=[source])]}))
+    else:
+        sections = [[]]
+        for arg in args:
+            if arg == '--next': sections.append([])
+            else: sections[-1].append(arg)
+        assert len(sections) == 32
+        time.sleep(0.03)
+        for section in sections:
+            acc = section[-1].rsplit('/',1)[1]; data = acc.encode()*64
+            start,end = map(int,section[section.index('--range')+1].split('-'))
+            part = data[start:end+1]
+            failure = os.environ.get('FAIL_DOWNLOAD') if acc == 'SRR2' else ''
+            if failure == 'checksum': part = b'X'*len(part)
+            if failure == 'truncated': part = part[:-1]
+            p(section[section.index('--output')+1]).write_bytes(part)
+            header = 'HTTP/1.1 206 Partial Content\\r\\nContent-Range: bytes '+str(start)+'-'+str(end)+'/'+str(len(data))+'\\r\\n\\r\\n'
+            if failure == 'range': header = 'HTTP/1.1 200 OK\\r\\n\\r\\n'
+            p(section[section.index('--dump-header')+1]).write_text(header)
 elif name == 'fasterq-dump':
     target = p(args[args.index('-o')+1]); acc = p(args[0]).name
     assert len(list(target.parent.parent.glob('*/reads.fastq'))) <= 1
@@ -114,7 +136,7 @@ else:
     p('out/run_info.json').write_text(json.dumps({'n_processed': nlines//8}))
     p('out/counts_unfiltered/adata.h5ad').write_text('fixture')
 """
-        for name in ("prefetch", "fasterq-dump", "kb"):
+        for name in ("curl", "fasterq-dump", "kb"):
             path = fake / name
             path.write_text(program)
             path.chmod(0o755)
@@ -137,13 +159,18 @@ else:
             "SRR3",
             "SRR4",
         ]
-        for fail in (False, True):
-            work = root / ("failure" if fail else "success")
+        for failure in ("success", "extract", "checksum", "truncated", "range"):
+            fail = failure != "success"
+            work = root / failure
             work.mkdir()
             result = subprocess.run(
                 command,
                 cwd=work,
-                env=dict(env, FAIL_EXTRACT="SRR2" if fail else ""),
+                env=dict(
+                    env,
+                    FAIL_EXTRACT="SRR2" if failure == "extract" else "",
+                    FAIL_DOWNLOAD=failure,
+                ),
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -153,6 +180,7 @@ else:
             if not fail:
                 m = json.loads((work / "stream_metrics.json").read_text())
                 assert m["total_spots"] == 16000 and len(m["runs"]) == 4
+                assert all(r["download_connections"] == 32 for r in m["runs"].values())
                 events = [
                     json.loads(line)
                     for line in (work / "stream_events.jsonl").read_text().splitlines()
@@ -165,7 +193,7 @@ else:
                 )
                 assert starts["extract_start", "SRR2"] < starts["feed_complete", "SRR1"]
     print(
-        "Native routing, malformed-input rejection, bounded overlap, totals and producer-failure cleanup passed"
+        "Native routing, verified 32-range downloads, bounded overlap, totals and failure cleanup passed"
     )
 
 
