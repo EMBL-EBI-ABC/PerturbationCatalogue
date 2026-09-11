@@ -42,6 +42,9 @@ Here, SAMN40972597 corresponds to Perturbation Catalogue dataset accession nadig
 
 To download data for a dataset:
 
+Raw FASTQs are stored under `$HPS_PATH/perturb_seq_fastq/source_fastq/<sample-id>/`.
+The downloader creates the sample directory and keeps temporary extraction files inside it.
+
 1. Log in to cluster
 2. Set up cluster secrets from `cluster.sh`
 3. `cd $HPS_PATH/PerturbationCatalogue/data_sources/perturb-seq/fastq`
@@ -60,7 +63,7 @@ while read -r SAMPLE_ID <&3; do
     --wrap="
       python3 ena_download.py \
         --sample-id ${SAMPLE_ID} \
-        --out-dir $HPS_PATH/perturb_seq_fastq \
+        --out-dir $HPS_PATH/perturb_seq_fastq/source_fastq \
         --jobs 96
     "
 
