@@ -11,6 +11,7 @@ From: python:3.10-slim
         build-essential \
         libhdf5-dev \
         hdf5-tools \
+        procps \
         curl \
         ca-certificates \
         zlib1g-dev \
