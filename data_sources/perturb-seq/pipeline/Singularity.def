@@ -3,7 +3,7 @@ From: python:3.10-slim
 
 %labels
     Maintainer PerturbationCatalogue
-    Version 1.1.0
+    Version 1.2.0
     Description Singularity image for Perturb-seq pipeline containing kb-python and scanpy/anndata stack.
 
 %post
@@ -17,9 +17,13 @@ From: python:3.10-slim
         libbz2-dev \
         liblzma-dev
 
+    curl -fL https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/3.4.1/sratoolkit.3.4.1-ubuntu64.tar.gz -o /tmp/sra.tar.gz
+    tar -xzf /tmp/sra.tar.gz -C /opt
+    rm /tmp/sra.tar.gz
+
     # Install kb-python and the data science stack
     pip install --no-cache-dir \
-        kb-python \
+        kb-python==0.30.2 \
         anndata \
         pandas \
         numpy \
@@ -32,6 +36,7 @@ From: python:3.10-slim
     rm -rf /var/lib/apt/lists/*
 
 %environment
+    export PATH=/opt/sratoolkit.3.4.1-ubuntu64/bin:$PATH
     export LC_ALL=C.UTF-8
     export LANG=C.UTF-8
 
