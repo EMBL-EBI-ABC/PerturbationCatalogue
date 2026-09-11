@@ -1,8 +1,8 @@
 # Perturb-seq SRA download and counting pipeline
 
 This Nextflow pipeline downloads the SRA runs in a sample sheet, streams their
-FASTQ records into kb-python, and produces a unified H5AD count matrix. FASTQ
-files are neither stored nor gzip-compressed. Comparison, QC, probe assignment
+FASTQ records into kb-python, and produces a unified H5AD count matrix. Raw
+uncompressed FASTQs are buffered on disk and deleted after feeding the counter. Comparison, QC, probe assignment
 and DEA/GSEA are separate workflows.
 
 ## Dependencies and references
@@ -67,27 +67,40 @@ are found on PATH. `--limit N` selects the first N sample groups for small tests
 
 ## Streaming and processing
 
-Each sample/modality has one download/count task. It prefetches at most two SRA
-archives: the current run and the next run. `fasterq-dump --split-spot --stdout
---include-technical` sends all reads through a pipe. The parser groups records
-by spot and selects one 20–40 bp barcode/UMI read and one biological read longer
-than 40 bp, matching this pipeline's supported read layout. Other reads, such as
-short sample indexes, are consumed without being forwarded. Malformed records,
-ambiguous or changing layouts, missing reads and duplicate spot/read IDs fail the
-task. Supporting other layouts requires an explicit parser/chemistry update.
+Each sample/modality has one task with three overlapping stages: sequential SRA
+retrieval, `fasterq-dump` extraction to an uncompressed FASTQ file containing all
+technical and biological reads, and feeding one persistent `kb count --inleaved`
+process. An archive is deleted immediately after successful extraction; the
+FASTQ file is deleted after successful routing into the counter pipe.
 
-Pairs enter a single `kb count --inleaved` process through standard input. Sample
-barcode correction, UMI deduplication and counting happen after every run has
-been streamed. Consumed archives are deleted; SRA extraction scratch and BUS
-intermediates still require disk space. Each task verifies that kallisto's
-processed-pair count matches the producer's total and writes per-run counts and
-timestamps to `stream_metrics.json`.
+Capacity is reserved before downloading/extracting. Each task has at most one
+waiting archive in addition to the archive being extracted, and at most one
+waiting FASTQ set in addition to the set being fed. In-progress downloads and
+fasterq extraction scratch also consume storage. A completed FASTQ buffer prevents
+further extraction; an occupied archive buffer prevents another download.
 
-The SLURM profile allows eight concurrent count tasks per modality, each with 16
-CPUs and 32 GB RAM. Two CPUs are assigned to extraction, one to read routing and
-the remainder to kb. Download/count failures terminate the workflow; tasks are
-not automatically retried. Successful Nextflow tasks can be reused with
-`-resume`; an incomplete task needs its runs downloaded again.
+The C++ reader is compiled with `g++` in the task environment and processes files
+using buffered I/O. It verifies FASTQ structure, sequence/quality lengths,
+consecutive spot IDs, unique increasing read IDs and a fixed layout throughout
+each accession. It selects exactly one 20–40 bp barcode/UMI read and one biological
+read longer than 40 bp; short index reads are validated and consumed. Other
+layouts require an explicit reader/chemistry update. Its spot/read totals must
+match fasterq's extraction summary, and kallisto's processed-pair total must match
+all runs. UMI deduplication and sample-level counting combine all runs.
+
+The SLURM profile has no pipeline concurrency cap (`executor.queueSize=0`); SLURM
+schedules tasks against account resources. Each count task requests 16 CPUs and
+32 GB RAM, with four extraction threads, ten kb threads and capacity for the
+reader and downloader. Smaller local allocations reduce those thread counts.
+Download/count failures terminate the workflow. Completed Nextflow tasks can be
+reused with `-resume`; an incomplete task needs its runs downloaded again.
+
+`stream_events.jsonl` records stage starts/completions and samples task/buffer
+allocated disk bytes every five seconds. `stream_status.json` holds an atomic
+current snapshot, including completed runs and per-stage timing. Final
+`stream_metrics.json` includes per-run archive/FASTQ sizes, processing times,
+spot counts and sampled disk peaks. Sampling can miss short peaks; extraction
+scratch and final matrix/BUS intermediates must be included in storage estimates.
 
 mRNA counts use bustools cell filtering. KITE counts use `counts_unfiltered`, then
 align to the mRNA cell barcodes. The existing guide-barcode transformation
@@ -101,6 +114,7 @@ disk; the final H5AD is compressed with HDF5 gzip compression.
 - `experiment_final.h5ad`: unified count matrix.
 - Nextflow trace: task timing, resource use and completion status.
 
-Run `python3 -B test_stream_count.py` for parser checks. Stream-to-counter
+Run `python3 -B test_stream_count.py` for native reader, bounded-stage overlap
+and failure-cleanup checks. Stream-to-counter
 integration should also be compared with ordinary paired-input counting using
 the same references and runs before changing the streaming implementation.
