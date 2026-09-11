@@ -96,7 +96,7 @@ Download/count failures terminate the workflow. Completed Nextflow tasks can be
 reused with `-resume`; an incomplete task needs its runs downloaded again.
 
 `stream_events.jsonl` records stage starts/completions and samples task/buffer
-allocated disk bytes every five seconds. `stream_status.json` holds an atomic
+disk bytes every five seconds (the larger of logical and allocated size). `stream_status.json` holds an atomic
 current snapshot, including completed runs and per-stage timing. Final
 `stream_metrics.json` includes per-run archive/FASTQ sizes, processing times,
 spot counts and sampled disk peaks. Sampling can miss short peaks; extraction

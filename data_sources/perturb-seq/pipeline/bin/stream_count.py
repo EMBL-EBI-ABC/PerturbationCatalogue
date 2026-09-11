@@ -16,14 +16,14 @@ import time
 
 
 def disk_bytes(root):
-    """Allocated bytes without following symlinks; files can disappear during sampling."""
+    """Conservative file bytes; shared filesystems can delay allocated-block accounting."""
     total = 0
     for directory, dirs, files in os.walk(root, followlinks=False):
         dirs[:] = [d for d in dirs if not (Path(directory) / d).is_symlink()]
         for name in files:
             try:
                 stat = (Path(directory) / name).lstat()
-                total += stat.st_blocks * 512
+                total += max(stat.st_size, stat.st_blocks * 512)
             except FileNotFoundError:
                 pass
     return total

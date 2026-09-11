@@ -8,6 +8,8 @@ import sys
 import tempfile
 
 BIN = Path(__file__).parent.resolve() / "bin"
+sys.path.insert(0, str(BIN))
+from stream_count import disk_bytes
 
 
 def fastq(spot, read_id, length, accession="SRR1"):
@@ -49,6 +51,7 @@ def test():
         )
         source = root / "reads.fastq"
         source.write_text(valid)
+        assert disk_bytes(root) >= source.stat().st_size
         result = subprocess.run(
             [str(router), "SRR1", str(source)],
             capture_output=True,
