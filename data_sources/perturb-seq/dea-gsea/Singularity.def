@@ -28,6 +28,8 @@ From: python:3.11-slim
         "h5py>=3.10,<4" \
         "pyarrow>=15,<22" \
         "statsmodels>=0.14,<1" \
+        matplotlib \
+        seaborn \
         "PyYAML>=6,<7"
 
     apt-get clean

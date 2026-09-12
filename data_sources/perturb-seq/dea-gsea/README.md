@@ -1,7 +1,7 @@
-# Perturb-seq DEA + GSEA Pipeline
+# Perturb-seq DEA/GSEA analysis
 
-This Nextflow pipeline runs differential expression and preranked GSEA from the
-filtered H5AD produced by the comparison/guide-calling step.
+These Python analysis scripts and their container are used by the
+[unified Nextflow pipeline](../pipeline/README.md), after QC and guide calling.
 
 ## Method
 
@@ -35,27 +35,9 @@ wget -O ${HPS_PATH}/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt \
 
 ## Run
 
-Set dataset name, for example `DATASET_ID=nadig_2025_jurkat`, then run:
-
-```bash
-cd ${HPS_PATH}/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
-module load nextflow/25.04.6
-mkdir -p logs
-time srun --mem=16G --time=7-00:00:00 --unbuffered \
-  nextflow -log logs/${DATASET_ID}.dea_gsea.nextflow.log \
-    run main.nf \
-    -profile slurm,singularity \
-    -name ${DATASET_ID}_dea_gsea \
-    -work-dir work/${DATASET_ID} \
-    --dataset_id ${DATASET_ID} \
-    --h5ad ${HPS_PATH}/perturb_seq_fastq/results/${DATASET_ID}/experiment_final.filtered.h5ad \
-    --gmt ${HPS_PATH}/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt \
-    --outdir ${HPS_PATH}/perturb_seq_fastq/results/${DATASET_ID}/dea_gsea \
-    --batch_size 50 \
-    --limit_perturbations 0 \
-    --min_cells_per_perturbation 10 \
-    --gsea_permutations 1000
-```
+Use the unified pipeline entry point and its `--gmt`, `--batch_size`,
+`--min_cells_per_perturbation` and GSEA options. The workflow preserves preparation
+metadata, batch products and merged results under `${OUTDIR}/dea_gsea/`.
 
 Increase `--batch_size` to reduce repeated control-cell reads, or decrease it to
 lower per-job memory. The default Slurm profile uses 4 CPUs and 64 GB per
@@ -64,7 +46,7 @@ values are only intended for smoke tests.
 
 ## Outputs
 
-Final files are published directly under `--outdir`:
+Final files are published under `${OUTDIR}/dea_gsea/`:
 
 - `${DATASET_ID}.dea.parquet`
 - `${DATASET_ID}.gsea.parquet`
@@ -72,11 +54,11 @@ Final files are published directly under `--outdir`:
 
 Per-batch Parquet files and metrics are published under:
 
-- `${OUTDIR}/batch_results/`
+- `${OUTDIR}/dea_gsea/batch_results/`
 
 Preparation metadata is published under:
 
-- `${OUTDIR}/prep/analysis_inputs/manifest.json`
+- `${OUTDIR}/dea_gsea/prep/analysis_inputs/manifest.json`
 
 The preparation step logs cell filtering and batching metrics.
 

@@ -1,24 +1,12 @@
-# Perturb-seq Curated vs. Reprocessed Comparison
+# Perturb-seq QC, probe calling and comparison
 
-## Running the pipeline
+The [unified Nextflow pipeline](../pipeline/README.md) runs this stage after
+counting and before DEA/GSEA, using the analysis container. It receives explicit
+curated/raw H5AD and GTF paths and publishes the filtered H5AD plus every report.
 
-### Install required dependencies:
-```bash
-pip install anndata h5py pandas numpy matplotlib seaborn scipy
-```
-
-### Run
-
-`datasets.txt` should contain list of dataset IDs, one per line.
-
-```bash
-mkdir -p logs
-cat datasets.txt | parallel \
-  sbatch --mem=128G --time=12:00:00 \
-    --output="logs/{}.comparison.log" \
-    --error="logs/{}.comparison.err" \
-    --wrap=\"python3 comparison.py {}\"
-```
+The Python entry point accepts `--dataset-id`, `--curated-h5ad`,
+`--reprocessed-h5ad`, `--gtf` and optional `--filtered-h5ad`. Reports are
+written under `comparison_results/<dataset_id>/` in the task directory.
 
 ## Metrics and Visualizations
 
@@ -44,6 +32,6 @@ The script generates the following outputs in the `comparison_results/` folder:
 *   **Aggressive Alignment**: Gene names are aligned even if they are stored in different `var` columns (e.g., `gene_symbols` vs index).
 *   **Structural Validation**: Sampled cell-wise correlations are computed on shared cells and genes. Raw count matrices are normalized/log-transformed per sampled chunk before correlation.
 *   **Control Annotation**: `non-targeting_*` guides are recorded separately from gene-targeting guides. A control cell is one with at least one non-targeting guide and zero gene-targeting guides. A valid perturbation cell is one with exactly one gene-targeting gene and zero non-targeting guides.
-*   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names`. Author-supplied `var["gene_name"]` is used when present; otherwise symbols are resolved from `/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz`. The script fails if that GTF is missing. Gene-ID-only reprocessed features whose GTF records do not contain `gene_name` are removed before QC.
+*   **Gene Symbols**: The filtered H5AD stores expression feature symbols in `var["gene_symbol"]` and uses symbol-based `var_names`. Author-supplied `var["gene_name"]` is used when present; otherwise symbols are resolved from the supplied `--gtf`. The script fails if that GTF is missing. Gene-ID-only reprocessed features whose GTF records do not contain `gene_name` are removed before QC.
 *   **Metric Sources**: Cell and gene metric columns are detected from metadata when available (`obs["UMI_count"]`, `obs["qc_total_counts"]`, `var["mean"]`, etc.). Metrics that cannot be recovered from a transformed curated matrix, such as detected genes or dropout, are reported as skipped instead of inferred from signed values.
 *   **Sampling Controls**: `PERTURBSEQ_SCATTER_MAX_POINTS`, `PERTURBSEQ_CELL_CORR_SAMPLE_SIZE`, and `PERTURBSEQ_RANDOM_SEED` control deterministic sampling for large cell-level visualizations and correlations.
