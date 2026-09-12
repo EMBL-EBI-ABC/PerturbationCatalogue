@@ -103,12 +103,10 @@ reader and downloader. Smaller local allocations reduce those thread counts.
 Download/count failures terminate the workflow. Completed Nextflow tasks can be
 reused with `-resume`; an incomplete task needs its runs downloaded again.
 
-`stream_events.jsonl` records stage starts/completions and samples task/buffer
-disk bytes every five seconds (the larger of logical and allocated size). `stream_status.json` holds an atomic
-current snapshot, including completed runs and per-stage timing. Final
-`stream_metrics.json` includes per-run archive/FASTQ sizes, processing times,
-spot counts and sampled disk peaks. Sampling can miss short peaks; extraction
-scratch and final matrix/BUS intermediates must be included in storage estimates.
+`stream_metrics.json` records per-run archive/FASTQ sizes, checksums, processing
+times and spot counts for output verification. Command logs remain in
+`stream_logs/`. Storage estimates must include extraction scratch and final
+matrix/BUS intermediates as well as the bounded input buffers.
 
 mRNA counts use bustools cell filtering. KITE counts use `counts_unfiltered`, then
 align to the mRNA cell barcodes. The existing guide-barcode transformation
@@ -121,11 +119,6 @@ disk; the final H5AD is compressed with HDF5 gzip compression.
 - `merged_samples/`: per-sample H5AD files and guide-overlap diagnostics.
 - `experiment_final.h5ad`: unified count matrix.
 - Nextflow trace: task timing, resource use and completion status.
-
-Run `python3 -B test_stream_count.py` for native reader, bounded-stage overlap
-and failure-cleanup checks. Stream-to-counter
-integration should also be compared with ordinary paired-input counting using
-the same references and runs before changing the streaming implementation.
 
 ## Verified dataset benchmark
 

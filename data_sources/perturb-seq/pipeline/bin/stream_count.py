@@ -143,20 +143,6 @@ def download_sra(accession, directory, logdir, execute):
     )
 
 
-def disk_bytes(root):
-    """Conservative file bytes; shared filesystems can delay allocated-block accounting."""
-    total = 0
-    for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = [d for d in dirs if not (Path(directory) / d).is_symlink()]
-        for name in files:
-            try:
-                stat = (Path(directory) / name).lstat()
-                total += max(stat.st_size, stat.st_blocks * 512)
-            except FileNotFoundError:
-                pass
-    return total
-
-
 def extraction_summary(path):
     text = path.read_text()
     result = {}
@@ -211,17 +197,7 @@ def main():
     stopped = threading.Event()
     lock = threading.RLock()
     processes, errors = set(), []
-    state = {"download": None, "extract": None, "feed": None}
-    completed = {key: 0 for key in state}
     metrics = {acc: {} for acc in args.accessions}
-    peaks = {"task_bytes": 0, "buffer_bytes": 0}
-    events = Path("stream_events.jsonl").open("w", buffering=1)
-
-    def event(kind, **values):
-        with lock:
-            events.write(
-                json.dumps(dict(event=kind, timestamp=time.time(), **values)) + "\n"
-            )
 
     def acquire(semaphore):
         while not stopped.is_set():
@@ -263,16 +239,10 @@ def main():
         return str(Path(args.sra_bin) / name) if args.sra_bin else name
 
     def stage(name, accession, action):
-        with lock:
-            state[name] = accession
-        event(name + "_start", accession=accession)
         begin = time.monotonic()
         action()
         with lock:
             metrics[accession][name + "_seconds"] = time.monotonic() - begin
-            completed[name] += 1
-            state[name] = None
-        event(name + "_complete", accession=accession, **metrics[accession])
 
     def guard(action):
         try:
@@ -281,7 +251,6 @@ def main():
             with lock:
                 errors.append(repr(error))
             stopped.set()
-            event("failure", error=repr(error))
             with lock:
                 for child in list(processes):
                     if child.poll() is None:
@@ -321,8 +290,6 @@ def main():
                 if accession is None:
                     fastqs.put(None)
                     return
-                with lock:
-                    state["extract"] = accession
                 archive_slot.release()
 
                 def action():
@@ -359,39 +326,6 @@ def main():
                 stage("extract", accession, action)
                 fastqs.put(accession)
 
-        def sample():
-            while not stopped.is_set():
-                task_size, buffer_size = disk_bytes(Path.cwd()), disk_bytes(scratch)
-                with lock:
-                    peaks["task_bytes"] = max(peaks["task_bytes"], task_size)
-                    peaks["buffer_bytes"] = max(peaks["buffer_bytes"], buffer_size)
-                    snapshot = dict(
-                        timestamp=time.time(),
-                        elapsed_seconds=time.monotonic() - started,
-                        workflow=args.workflow,
-                        state=dict(state),
-                        completed=dict(completed),
-                        runs_total=len(args.accessions),
-                        task_bytes=task_size,
-                        buffer_bytes=buffer_size,
-                        peaks=dict(peaks),
-                        allocated_cpus=args.cpus,
-                        extraction_threads=extract_threads,
-                        counting_threads=count_threads,
-                        runs={acc: dict(values) for acc, values in metrics.items()},
-                    )
-                temporary = Path("stream_status.json.tmp")
-                temporary.write_text(json.dumps(snapshot) + "\n")
-                temporary.replace("stream_status.json")
-                event(
-                    "sample",
-                    task_bytes=task_size,
-                    buffer_bytes=buffer_size,
-                    state=snapshot["state"],
-                    completed=snapshot["completed"],
-                )
-                stopped.wait(5)
-
         command = [
             "kb",
             "count",
@@ -419,7 +353,7 @@ def main():
                 command, stdin=subprocess.PIPE, start_new_session=True, bufsize=0
             )
             processes.add(counter)
-            for action in (download, extract, sample):
+            for action in (download, extract):
                 worker = threading.Thread(target=guard, args=(action,))
                 workers.append(worker)
                 worker.start()
@@ -427,8 +361,6 @@ def main():
                 accession = receive(fastqs)
                 if accession is None:
                     break
-                with lock:
-                    state["feed"] = accession
                 fastq_slot.release()
 
                 def feed():
@@ -453,10 +385,9 @@ def main():
 
                 stage("feed", accession, feed)
             counter.stdin.close()
-            event("count_finalize_start")
             if counter.wait(timeout=12 * 3600):
                 raise RuntimeError("kb count failed")
-            for worker in workers[:2]:
+            for worker in workers:
                 worker.join(timeout=5)
                 if worker.is_alive():
                     raise RuntimeError("Producer did not finish")
@@ -474,7 +405,6 @@ def main():
             )
             if not (Path("out") / output / "adata.h5ad").is_file():
                 raise RuntimeError("Missing count matrix")
-            event("count_finalize_complete")
         finally:
             stopped.set()
             with lock:
@@ -491,7 +421,6 @@ def main():
                 worker.join()
             if counter and counter.stdin and not counter.stdin.closed:
                 counter.stdin.close()
-            events.close()
     result = dict(
         started_at=started_at,
         finished_at=datetime.now(timezone.utc).isoformat(),
@@ -500,8 +429,6 @@ def main():
         total_spots=sum(row["spots"] for row in metrics.values()),
         runs=metrics,
         spots_per_accession={acc: row["spots"] for acc, row in metrics.items()},
-        sampled_peaks=peaks,
-        sample_interval_seconds=5,
     )
     Path("stream_metrics.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result), flush=True)
