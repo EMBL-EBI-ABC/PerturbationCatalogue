@@ -8,7 +8,7 @@ import json
 import re
 import textwrap
 from collections import Counter, defaultdict
-import sys
+import argparse
 
 import anndata as ad
 import h5py
@@ -25,21 +25,22 @@ except ImportError:
     display = print
 
 
-DATASET_ID = sys.argv[1]
-CURATED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
+parser = argparse.ArgumentParser(
+    description="QC, probe calling and curated-data comparison"
 )
-REPROCESSED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    f"{DATASET_ID}/experiment_final.h5ad"
-)
-FILTERED_REPROCESSED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    f"{DATASET_ID}/experiment_final.filtered.h5ad"
-)
-REFERENCE_GTF_PATH = (
-    "/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz"
-)
+parser.add_argument("--dataset-id", required=True)
+parser.add_argument("--curated-h5ad", required=True)
+parser.add_argument("--reprocessed-h5ad", required=True)
+parser.add_argument("--gtf", required=True)
+parser.add_argument("--filtered-h5ad", default="experiment_final.filtered.h5ad")
+args = parser.parse_args()
+DATASET_ID = args.dataset_id
+if not re.fullmatch(r"[A-Za-z0-9_-]+", DATASET_ID):
+    parser.error("Invalid dataset ID")
+CURATED_H5AD_PATH = args.curated_h5ad
+REPROCESSED_H5AD_PATH = args.reprocessed_h5ad
+FILTERED_REPROCESSED_H5AD_PATH = args.filtered_h5ad
+REFERENCE_GTF_PATH = args.gtf
 
 ROW_CHUNK_SIZE = int(os.environ.get("PERTURBSEQ_ROW_CHUNK_SIZE", "2048"))
 SCATTER_MAX_POINTS = int(os.environ.get("PERTURBSEQ_SCATTER_MAX_POINTS", "200000"))

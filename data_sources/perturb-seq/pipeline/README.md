@@ -1,9 +1,9 @@
-# Perturb-seq SRA download and counting pipeline
+# Unified Perturb-seq pipeline
 
 This Nextflow pipeline downloads the SRA runs in a sample sheet, streams their
-FASTQ records into kb-python, and produces a unified H5AD count matrix. Raw
-uncompressed FASTQs are buffered on disk and deleted after feeding the counter. Comparison, QC, probe assignment
-and DEA/GSEA are separate workflows.
+FASTQ records into kb-python, and produces raw and QC-filtered H5ADs, comparison
+reports, probe calls, DEA and GSEA Parquet data products in one workflow.
+Uncompressed FASTQs are buffered on disk and deleted after feeding the counter.
 
 ## Dependencies and references
 
@@ -11,9 +11,11 @@ Use Nextflow 25.04.6 and the container built from `Singularity.def`, which inclu
 kb-python 0.30.2 and SRA Toolkit 3.4.1. The `slurm,singularity` profiles use
 `kb_python.sif` in this directory. Build the image where Singularity builds are
 supported, and place it directly in the pipeline directory using your site's
-approved transfer procedure.
+approved transfer procedure. QC/comparison and DEA/GSEA use
+`../dea-gsea/dea_gsea.sif`, built from that directory's `Singularity.def`.
 
-Provide a genome FASTA, its GTF, and the dataset's guide-feature TSV. The reference
+Provide a genome FASTA, its GTF, the dataset's guide-feature TSV, the curated
+(author) H5AD for comparison, and a gene-set GMT for GSEA. The reference
 example uses Ensembl release 115:
 
 ```bash
@@ -53,6 +55,9 @@ nextflow -log "logs/${DATASET_ID}.nextflow.log" run main.nf \
   -profile slurm,singularity \
   -work-dir "work/$DATASET_ID" \
   -with-trace "logs/${DATASET_ID}.trace.tsv" \
+  --dataset_id "$DATASET_ID" \
+  --curated_h5ad "$HPS_PATH/perturb_seq_fastq/source_h5ad/$DATASET_ID.h5ad" \
+  --gmt "$HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt" \
   --sample_sheet datasets/nadig_2025/jurkat_samples.tsv \
   --features_tsv datasets/nadig_2025/features.tsv \
   --transcriptome_fa "$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz" \
@@ -113,14 +118,41 @@ align to the mRNA cell barcodes. The existing guide-barcode transformation
 complements bases 8–9 before alignment. All merged samples are concatenated on
 disk; the final H5AD is compressed with HDF5 gzip compression.
 
+## QC, comparison, probe calling and DEA/GSEA
+
+After raw H5AD compression, QC and Gaussian–Poisson probe calling produce
+`experiment_final.filtered.h5ad` and curated-data comparison reports. Cell/gene
+filtering and control assignment are described in [comparison](../comparison/README.md).
+The same GTF is used for counting and gene-symbol resolution.
+
+DEA compares each eligible single-gene perturbation against the shared
+non-targeting controls using normalized/log-transformed counts and Scanpy
+Wilcoxon scores. GSEApy prerank uses those scores and the supplied GMT.
+See [DEA/GSEA](../dea-gsea/README.md) for methods and output schemas.
+
+`--batch_size 50` and `--min_cells_per_perturbation 10` control analysis batching
+and eligibility. `--limit_perturbations 0` analyzes every eligible perturbation.
+GSEA defaults: 1,000 permutations, minimum/maximum gene-set sizes 15/500 and
+seed 1. Existing analysis controls `--target_sum`, `--matrix_key`,
+`--gene_map` and `--tie_correct` remain available.
+
+Nextflow stages every downstream input from its producer, rather than reading
+asynchronously published files. The filtered H5AD is shared by all analysis
+batches. One `-resume` covers the entire workflow.
+
 ## Outputs and checks
 
 - `counts_standard/<sample>/` and `counts_kite/<sample>/`: count matrices and streaming metrics.
 - `merged_samples/`: per-sample H5AD files and guide-overlap diagnostics.
-- `experiment_final.h5ad`: unified count matrix.
+- `experiment_final.h5ad`: raw unified count matrix.
+- `experiment_final.filtered.h5ad`: QC-filtered counts, guide calls and control annotations.
+- `comparison_results/<dataset_id>/`: all comparison reports and plots; override the parent with `--comparison_outdir`.
+- `dea_gsea/prep/analysis_inputs/`: manifest, gene metadata, controls and batch definitions.
+- `dea_gsea/batch_results/`: per-batch DEA/GSEA Parquet files and metrics.
+- `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
-## Verified dataset benchmark
+## Verified download/count benchmark
 
 `nadig_2025_jurkat` was run on a SLURM cluster on 11 September 2026 using commit
 `66bb6de`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1, curl 7.76.1,
