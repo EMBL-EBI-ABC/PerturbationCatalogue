@@ -126,3 +126,33 @@ Run `python3 -B test_stream_count.py` for native reader, bounded-stage overlap
 and failure-cleanup checks. Stream-to-counter
 integration should also be compared with ordinary paired-input counting using
 the same references and runs before changing the streaming implementation.
+
+## Verified dataset benchmark
+
+`nadig_2025_jurkat` was run on a SLURM cluster on 11 September 2026 using commit
+`66bb6de`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1, curl 7.76.1,
+Ensembl release 115 and the sample sheet/reference inputs shown above.
+
+| Measurement | Result |
+|---|---:|
+| Samples / SRA accessions | 56 / 1,792 |
+| Downloaded archive volume | 1.074 TB |
+| Full pipeline wall time | **1h 14m 59s** |
+| Including independent output verification | **1h 15m 07s** |
+| Maximum observed disk footprint | **1.465 TB (1.332 TiB)** |
+| Successful tasks | 172, without retries |
+| Final H5AD | 739,766 cells × 78,899 genes; 5,341 guides |
+| Compressed H5AD size | 5.818 GB |
+
+Wall time includes fresh index construction through final compressed H5AD
+publication, but not the separate comparison/QC or DEA/GSEA workflows. All
+accession spot totals matched archive metadata, all 56 samples were represented,
+and no temporary SRA/FASTQ buffers remained. Median per-accession download times
+were 33.736 seconds for RNA and 7.570 seconds for guides. The largest RNA group
+took 59m 43s and was limited by counting rather than download latency.
+
+The disk peak covers work, published outputs and controller runtime files,
+sampled every five seconds using the larger of logical and allocated file sizes.
+It excludes shared pre-existing references and other datasets; short peaks can
+be missed. These dataset- and cluster-specific measurements are not universal
+throughput or storage guarantees.
