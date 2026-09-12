@@ -508,11 +508,10 @@ workflow {
     // Step 5: Final HDF5 Compression
     raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
     filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf)
-    filtered_h5ad = filtered.h5ad.first()
     gene_map_path = params.gene_map ? file(params.gene_map, checkIfExists: true).toString() : ""
-    prep = PREPARE_INPUTS(filtered_h5ad, gene_map_path, gtf)
+    prep = PREPARE_INPUTS(filtered.h5ad, gene_map_path, gtf)
     analysis_inputs = prep.batches.flatten().combine(prep.analysis_dir)
-    analyzed = ANALYZE_BATCH(analysis_inputs, filtered_h5ad, gene_sets)
+    analyzed = ANALYZE_BATCH(analysis_inputs, filtered.h5ad, gene_sets)
     MERGE_RESULTS(analyzed.dea.collect(), analyzed.gsea.collect(),
                   analyzed.metrics.collect(), prep.manifest, params.dataset_id)
 }
