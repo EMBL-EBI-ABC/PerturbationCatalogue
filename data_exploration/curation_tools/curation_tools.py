@@ -1852,8 +1852,7 @@ def _upload_parquet_to_bq(
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        schema=target_schema
-        )
+    )
 
     # create the staging table
     with open(parquet_path, "rb") as parquet_file:
