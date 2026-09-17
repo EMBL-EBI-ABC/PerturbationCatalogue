@@ -4,65 +4,36 @@ from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
 
-_TREATMENT_TYPE_LABELS = frozenset(
-    {
-        "untreated control",
-        "scrambled control oligonucleotide",
-        "culture medium",
-        "chemical entity",
-        "protein",
-        "protein complex",
-        "peptide",
-        "antibody",
-        "lipid",
-        "PNA",
-        "DNA",
-        "RNA",
-        "mRNA",
-        "rRNA",
-        "tRNA",
-        "cDNA",
-        "genomic DNA",
-        "plasmid DNA",
-        "miRNA",
-        "shRNA",
-        "siRNA",
-        "LNA",
-        "RNA aptamer",
-        "riboswitch",
-        "esiRNA",
-    }
-)
+_TREATMENT_TYPE_ID_BY_LABEL = {
+    "untreated control": "NCIT:C184729",
+    "scrambled control oligonucleotide": "XCO:0001141",
+    "culture medium": "BAO:0000114",
+    "chemical entity": "CHEBI:24431",
+    "protein": "BAO:0000175",
+    "protein complex": "BAO:0002554",
+    "peptide": "BAO:0000325",
+    "antibody": "BAO:0000502",
+    "lipid": "BAO:0000171",
+    "PNA": "BAO:0000226",
+    "DNA": "BAO:0000269",
+    "RNA": "BAO:0000270",
+    "mRNA": "BAO:0000274",
+    "rRNA": "BAO:0000275",
+    "tRNA": "BAO:0000276",
+    "cDNA": "BAO:0000315",
+    "genomic DNA": "BAO:0000316",
+    "plasmid DNA": "BAO:0000317",
+    "miRNA": "BAO:0000322",
+    "shRNA": "BAO:0000323",
+    "siRNA": "BAO:0000324",
+    "LNA": "BAO:0000412",
+    "RNA aptamer": "BAO:0000496",
+    "riboswitch": "BAO:0000498",
+    "esiRNA": "BAO:0000544",
+}
 
-_TREATMENT_TYPE_IDS = frozenset(
-    {
-        "NCIT:C184729",
-        "XCO:0001141",
-        "BAO:0000114",
-        "CHEBI:24431",
-        "BAO:0000175",
-        "BAO:0002554",
-        "BAO:0000325",
-        "BAO:0000502",
-        "BAO:0000171",
-        "BAO:0000226",
-        "BAO:0000269",
-        "BAO:0000270",
-        "BAO:0000274",
-        "BAO:0000275",
-        "BAO:0000276",
-        "BAO:0000315",
-        "BAO:0000316",
-        "BAO:0000317",
-        "BAO:0000322",
-        "BAO:0000323",
-        "BAO:0000324",
-        "BAO:0000412",
-        "BAO:0000496",
-        "BAO:0000498",
-        "BAO:0000544",
-    }
-)
+_TREATMENT_TYPE_LABELS = frozenset(_TREATMENT_TYPE_ID_BY_LABEL)
+_TREATMENT_TYPE_IDS = frozenset(_TREATMENT_TYPE_ID_BY_LABEL.values())
 
 _TREATMENT_UNITS = frozenset(
     {
@@ -131,6 +102,19 @@ def _series_has_allowed_tokens(
 def _token_count(value: object) -> int | None:
     tokens = _split_pipe_value(value)
     return None if tokens is None else len(tokens)
+
+
+def _treatment_type_values_correspond(label_value: object, id_value: object) -> bool:
+    labels = _split_pipe_value(label_value)
+    ids = _split_pipe_value(id_value)
+
+    if labels is None or ids is None:
+        return labels is None and ids is None
+
+    return len(labels) == len(ids) and all(
+        _TREATMENT_TYPE_ID_BY_LABEL.get(label) == treatment_id
+        for label, treatment_id in zip(labels, ids)
+    )
 
 
 class ObsSchema(DataFrameModel):
@@ -1191,6 +1175,17 @@ class ObsSchema(DataFrameModel):
     def treatment_type_ids_are_valid(cls, df: pd.DataFrame) -> pd.Series:
         return _series_has_allowed_tokens(
             df["treatment_type_id"], _TREATMENT_TYPE_IDS
+        )
+
+    @dataframe_check(
+        error="Each treatment_type_label must correspond to its treatment_type_id, including within pipe-delimited values.",
+    )
+    def treatment_type_labels_and_ids_correspond(cls, df: pd.DataFrame) -> pd.Series:
+        return df[["treatment_type_label", "treatment_type_id"]].apply(
+            lambda row: _treatment_type_values_correspond(
+                row["treatment_type_label"], row["treatment_type_id"]
+            ),
+            axis=1,
         )
 
     @dataframe_check(
