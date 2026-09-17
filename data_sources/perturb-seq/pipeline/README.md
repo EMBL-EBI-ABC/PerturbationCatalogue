@@ -32,14 +32,14 @@ move into HPS from an allocation (the connector rejects other home paths):
 
 ```bash
 scp perturb_seq.sif Singularity.def \
-  ktsukanov@codon-slurm-login-02.ebi.ac.uk:/home/ktsukanov/
+  ktsukanov@codon-slurm-login-02.ebi.ac.uk:/homes/ktsukanov/
 python3 -B PerturbationCatalogueContext/cluster.py submit \
   --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
-  -- /usr/bin/mv /home/ktsukanov/perturb_seq.sif \
+  -- /usr/bin/mv /homes/ktsukanov/perturb_seq.sif \
   /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/perturb_seq.sif
 python3 -B PerturbationCatalogueContext/cluster.py submit \
   --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
-  -- /usr/bin/mv /home/ktsukanov/Singularity.def \
+  -- /usr/bin/mv /homes/ktsukanov/Singularity.def \
   /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/Singularity.def
 ```
 
