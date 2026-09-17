@@ -50,7 +50,7 @@ _MODEL_SYSTEM_ID_BY_LABEL = {
     "animal_model": "NCIT:C71164",
     "cell_free_system": "mesh:D002474",
 }
-_MODEL_SYSTEM_LABELS = frozenset((*_MODEL_SYSTEM_ID_BY_LABEL, "Other"))
+_MODEL_SYSTEM_LABELS = frozenset(_MODEL_SYSTEM_ID_BY_LABEL)
 _MODEL_SYSTEM_IDS = frozenset(_MODEL_SYSTEM_ID_BY_LABEL.values())
 
 _SPECIES = frozenset({"Homo sapiens"})
@@ -100,7 +100,6 @@ _LIBRARY_GENERATION_METHOD_LABELS = frozenset(
         "solid-phase oligonucleotide synthesis",
         "microchip-based massive parallel oligo synthesis",
         "mutagenesis by integrated tiles",
-        "Other",
     )
 )
 _LIBRARY_GENERATION_METHOD_IDS = frozenset(
@@ -122,7 +121,6 @@ _ENZYME_DELIVERY_METHOD_LABELS = frozenset(
         "chemical-mediated transfection",
         "hydrodynamic injection",
         "influenza A virus infection",
-        "Other",
     }
 )
 _LIBRARY_DELIVERY_METHOD_LABELS = frozenset(
@@ -140,7 +138,6 @@ _LIBRARY_DELIVERY_METHOD_LABELS = frozenset(
         "hydrodynamic injection",
         "molecular cloning",
         "influenza A virus infection",
-        "Other",
     }
 )
 
@@ -151,7 +148,7 @@ _INTEGRATION_STATE_ID_BY_LABEL = {
     "non-integrative transgene expression": "EFO:0920085",
 }
 _INTEGRATION_STATE_LABELS = frozenset(
-    (*_INTEGRATION_STATE_ID_BY_LABEL, "bacteriophage genome integration", "Other")
+    (*_INTEGRATION_STATE_ID_BY_LABEL, "bacteriophage genome integration")
 )
 _INTEGRATION_STATE_IDS = frozenset(_INTEGRATION_STATE_ID_BY_LABEL.values())
 
@@ -163,7 +160,6 @@ _ENZYME_EXPRESSION_CONTROL_LABELS = frozenset(
         "degradation domain-based transgene control",
         "transient transgene expression",
         "minimal promoter-driven transgene expression",
-        "Other",
     }
 )
 _LIBRARY_EXPRESSION_CONTROL_LABELS = _ENZYME_EXPRESSION_CONTROL_LABELS
@@ -180,7 +176,6 @@ _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL = {
     "base editing": "EFO:0022873",
     "prime editing": "EFO:0022872",
     "mutagenesis": "NCIT:C17376",
-    "Other": "Other",
 }
 _LIBRARY_PERTURBATION_TYPE_LABELS = frozenset(
     _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL
@@ -197,7 +192,6 @@ _READOUT_TYPE_ID_BY_LABEL = {
     "transcriptomic": "EFO:0001032",
     "proteomic": "EFO:0000746",
     "phenotypic": "EFO:0920062",
-    "Other": "Other",
 }
 _READOUT_TYPE_LABELS = frozenset(_READOUT_TYPE_ID_BY_LABEL)
 _READOUT_TYPE_IDS = frozenset(_READOUT_TYPE_ID_BY_LABEL.values())
@@ -209,7 +203,6 @@ _READOUT_TECHNOLOGY_ID_BY_LABEL = {
     "high-throughput dna sequencing": "EFO:0002693",
     "patch-clamp electrophysiology": "EFO:0022948",
     "fluorometry": "mesh:D005470",
-    "Other": "Other",
 }
 _READOUT_TECHNOLOGY_LABELS = frozenset(_READOUT_TECHNOLOGY_ID_BY_LABEL)
 _READOUT_TECHNOLOGY_IDS = frozenset(_READOUT_TECHNOLOGY_ID_BY_LABEL.values())
@@ -227,7 +220,6 @@ _READOUT_MEASUREMENT_ID_BY_LABEL = {
     "ligand binding": "NCIT:C178030",
     "ion channel activity": "BAO:0002997",
     "fluorescence": "BAO:0000363",
-    "Other": "Other",
 }
 _READOUT_MEASUREMENT_LABELS = frozenset(
     (
@@ -278,7 +270,6 @@ _METHOD_NAME_LABELS = frozenset(
         "MITE",
         "VAMP-seq",
         "polysome profiling",
-        "Other",
     )
 )
 _METHOD_NAME_IDS = frozenset(_METHOD_NAME_ID_BY_LABEL.values())
@@ -306,7 +297,6 @@ _SEQUENCING_LIBRARY_KIT_LABELS = frozenset(
         "PacBio SMRTbell Template Prep Kit v2",
         "PacBio SMRTbell Template Prep Kit v3",
         "Beckman Coulter DTCS DNA sequencing kit",
-        "Other",
     )
 )
 _SEQUENCING_LIBRARY_KIT_IDS = frozenset(
@@ -374,7 +364,6 @@ _SEQUENCING_PLATFORM_LABELS = frozenset(
         "Illumina sequencer (model unspecified)",
         "Illumina HiSeq (model unspecified)",
         "PacBio sequencer (model unspecified)",
-        "Other",
     )
 )
 _SEQUENCING_PLATFORM_IDS = frozenset(_SEQUENCING_PLATFORM_ID_BY_LABEL.values())
@@ -385,7 +374,6 @@ _SEQUENCING_STRATEGY_LABELS = frozenset(
         "barcode sequencing",
         "direct sequencing",
         "barcode sequencing|direct sequencing",
-        "Other",
     }
 )
 _SEQUENCING_STRATEGY_IDS = frozenset(_SEQUENCING_STRATEGY_ID_BY_LABEL.values())
@@ -415,7 +403,6 @@ _SOFTWARE_COUNTS_LABELS = frozenset(
         "pysamstats",
         "Jellyfish",
         "Tagdust2",
-        "Other",
     }
 )
 _SOFTWARE_ANALYSIS_LABELS = frozenset(
@@ -448,7 +435,6 @@ _SOFTWARE_ANALYSIS_LABELS = frozenset(
         "Cluster",
         "ORFcall",
         "samtools",
-        "Other",
     }
 )
 _REFERENCE_GENOME_LABELS = frozenset(
@@ -461,7 +447,6 @@ _REFERENCE_GENOME_LABELS = frozenset(
         "hg19",
         "Wuhan-Hu-1",
         "non-standard reference sequence",
-        "Other",
     }
 )
 
@@ -499,7 +484,7 @@ _LICENSE_ID_BY_LABEL = {
     "CC BY-SA 3.0 US": "SWO:1000093",
     "CC BY-SA 4.0": "SWO:1000094",
 }
-_LICENSE_LABELS = frozenset((*_LICENSE_ID_BY_LABEL, "Other"))
+_LICENSE_LABELS = frozenset(_LICENSE_ID_BY_LABEL)
 _LICENSE_IDS = frozenset(_LICENSE_ID_BY_LABEL.values())
 
 _TREATMENT_UNITS = frozenset(
