@@ -7,12 +7,41 @@ Uncompressed FASTQs are buffered on disk and deleted after feeding the counter.
 
 ## Dependencies and references
 
-Use Nextflow 25.04.6 and the container built from `Singularity.def`, which includes
-kb-python 0.30.2 and SRA Toolkit 3.4.1. The `slurm,singularity` profiles use
-`kb_python.sif` in this directory. Build the image where Singularity builds are
-supported, and place it directly in the pipeline directory using your site's
-approved transfer procedure. QC/comparison and DEA/GSEA use
-`../dea-gsea/dea_gsea.sif`, built from that directory's `Singularity.def`.
+Use Nextflow 25.04.6 and the single pipeline-wide image `perturb_seq.sif` built
+from `Singularity.def` in this directory. It contains kb-python 0.30.2, SRA
+Toolkit 3.4.1, QC/comparison and DEA/GSEA dependencies; every process uses this
+same image.
+
+## Build and install the image
+
+Build the image locally, never on the cluster:
+
+```bash
+cd data_sources/perturb-seq/pipeline
+singularity build --fakeroot perturb_seq.sif Singularity.def
+```
+
+Transfer the finished image (and, if needed, the definition for inspection) to
+the cluster staging location. Move it into the HPS pipeline directory only from
+inside a SLURM job using the context repository's checked connector. The final
+pipeline directory must contain only `perturb_seq.sif`; do not install separate
+`kb_python.sif` or `dea_gsea.sif` images.
+
+For the EBI cluster, transfer to the explicitly reserved home staging paths, then
+move into HPS from an allocation (the connector rejects other home paths):
+
+```bash
+scp perturb_seq.sif Singularity.def \
+  ktsukanov@codon-slurm-login-02.ebi.ac.uk:/home/ktsukanov/
+python3 -B PerturbationCatalogueContext/cluster.py submit \
+  --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
+  -- /usr/bin/mv /home/ktsukanov/perturb_seq.sif \
+  /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/perturb_seq.sif
+python3 -B PerturbationCatalogueContext/cluster.py submit \
+  --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
+  -- /usr/bin/mv /home/ktsukanov/Singularity.def \
+  /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/Singularity.def
+```
 
 Provide a genome FASTA, its GTF, the dataset's guide-feature TSV, the curated
 (author) H5AD for comparison, and a gene-set GMT for GSEA. The reference

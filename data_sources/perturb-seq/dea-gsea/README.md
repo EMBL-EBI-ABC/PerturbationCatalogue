@@ -1,7 +1,9 @@
 # Perturb-seq DEA/GSEA analysis
 
-These Python analysis scripts and their container are used by the
+These Python analysis scripts are used by the
 [unified Nextflow pipeline](../pipeline/README.md), after QC and guide calling.
+They run in the pipeline's single `../pipeline/perturb_seq.sif` image; this
+directory has no separate container.
 
 ## Method
 
@@ -15,15 +17,6 @@ perturbation's GSEA result table.
 
 The pipeline batches perturbations across Slurm jobs. Each batch reads only the
 control rows plus that batch's perturbation rows from the H5AD CSR matrix.
-
-## Build Image
-
-Build the image locally or in an interactive cluster session with Singularity:
-
-```bash
-cd ${HPS_PATH}/PerturbationCatalogue/data_sources/perturb-seq/dea-gsea
-singularity build --force dea_gsea.sif Singularity.def
-```
 
 ## Download Gene Sets
 
