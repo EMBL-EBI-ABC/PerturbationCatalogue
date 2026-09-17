@@ -432,24 +432,34 @@ class ObsSchema(DataFrameModel):
         nullable=True,
         description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
         isin=[
-            "doped oligo synthesis",
-            "error-prone PCR",
-            "microarray synthesis",
-            "nicking mutagenesis",
-            "oligo-directed mutagenic PCR",
-            "site-directed mutagenesis",
-            "silicon microarray synthesis",
-            "POPCode mutagenesis",
-            "insertional mutagenesis",
-            "solid-phase oligonucleotide synthesis",
-            "multiplexed site-directed mutagenesis",
-            "microchip-based massive parallel oligo synthesis",
+            "doped oligo synthesis",  # EFO:0022900
+            "error-prone PCR",  # EFO:0022901
+            "microarray synthesis",  # EFO:0022902
+            "nicking mutagenesis",  # EFO:0022903
+            "oligo-directed mutagenic PCR",  # EFO:0022904
+            "site-directed mutagenesis",  # EFO:0022905
+            "insertional mutagenesis",  # NCIT:C17377
+            "silicon microarray synthesis", #
+            "POPCode mutagenesis",  #
+            "solid-phase oligonucleotide synthesis",  #
+            "multiplexed site-directed mutagenesis",  #
+            "microchip-based massive parallel oligo synthesis",  #
+            "mutagenesis by integrated tiles",
             "Other",
         ],
     )
     library_generation_method_id: Series[String] = Field(
         nullable=True,
         description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        isin=[
+            "EFO:0022900",  # doped oligo synthesis
+            "EFO:0022901",  # error-prone PCR
+            "EFO:0022902",  # microarray synthesis; silicon microarray synthesis
+            "EFO:0022903",  # nicking mutagenesis
+            "EFO:0022904",  # oligo-directed mutagenic PCR
+            "EFO:0022905",  # site-directed mutagenesis; POPCode/multiplexed site-directed mutagenesis
+            "NCIT:C17377",  # insertional mutagenesis
+        ],
     )
     enzyme_delivery_method_label: Series[String] = Field(
         nullable=True,
@@ -463,10 +473,10 @@ class ObsSchema(DataFrameModel):
             "retrovirus transduction", # EFO:0920068
             "lentivirus transduction", # EFO:0920067
             "nanoparticle-mediated transfection", # EFO:0920077
+            "molecular cloning", # mesh:D003001
             "transformation",
             "chemical-mediated transfection",
             "hydrodynamic injection",
-            "molecular cloning",
             "influenza A virus infection",
             "Other",
         ],
@@ -715,6 +725,7 @@ class ObsSchema(DataFrameModel):
             "ligand binding", # NCIT:C178030
             "ion channel activity", # BAO:0002997
             "fluorescence", # BAO:0000363
+            "viral growth",
             "Other",
         ],
     )
@@ -751,19 +762,30 @@ class ObsSchema(DataFrameModel):
             "bacterial two-hybrid assay", # OBI:0001682
             "mammalian two-hybrid assay", # BAO:0002493
             "phage display", # MI:0084
+            "mRNA display", # MI:0073
             "abundance protein fragment complementation assay", # MI:0090
             "pooled growth competition assay", # EFO:0002907
             "massively parallel reporter assay", # EFO:0008822
             "patch-clamp electrophysiology", # EFO:0022948
+            "computational meta-analysis", # NCIT:C17886
             "DMS-TileSeq",
             "DMS-BarSeq",
             "Joined and refined DMS-BarSeq and DMS-TileSeq",
             "Combined DMS-BarSeq and DMS-TileSeq",
             "flow cytometry-based sequencing assay",
-            "MITE",
-            "VAMP-seq",
+            "CRISPR mutagenesis screen",
+            "Saturation-Selection-Sequencing assay",
+            "fluorescence-based homology-directed repair assay",
+            "gap repair assay",
+            "homology-directed repair assay",
+            "phage-assisted continuous selection",
+            "pooled deep mutational scanning",
+            "protein folding sensor assay",
             "saturation genome editing",
             "saturation prime editing",
+            "saturation base editing",
+            "MITE",
+            "VAMP-seq",
             "polysome profiling",
             "Other",
         ],
@@ -781,9 +803,11 @@ class ObsSchema(DataFrameModel):
             "BAO:0002493", # mammalian two-hybrid assay
             "OBI:0001681", # yeast one-hybrid assay
             "MI:0084", # phage display
+            "MI:0073", # mRNA display
             "BAO:0002494", # yeast two-hybrid assay
             "EFO:0022948", # patch-clamp electrophysiology
             "MI:0090", # abundance protein fragment complementation assay
+            "NCIT:C17886", # computational meta-analysis
         ],
     )
     method_uri: Series[String] = Field(
@@ -878,7 +902,14 @@ class ObsSchema(DataFrameModel):
             "Element Aviti", # "EFO:0920008"
             "Illumina MiSeq i100", # "EFO:0920010"
             "MGI DNBSEQ-T7", # "EFO:0920057"
+            "Roche 454 GS FLX", # "EFO:0004432"
+            "Roche 454 GS FLX+",
+            "Illumina NextSeq (model unspecified)",
+            "Illumina sequencer (model unspecified)",
+            "Illumina HiSeq (model unspecified)",
+            "PacBio sequencer (model unspecified)",
             "Ion Torrent PGM", # GENEPIO:0100136
+            "Ultima Genomics UG100", # "EFO:0920005"
             "Other",
         ],
     )
@@ -973,6 +1004,14 @@ class ObsSchema(DataFrameModel):
             "CRISPResso2",
             "mapmuts",
             "ORFcall",
+            "ABSSeq",
+            "satmut_utils",
+            "bcftools",
+            "TagDust2",
+            "Subassembly",
+            "pysamstats",
+            "Jellyfish",
+            "Tagdust2",
             "Other",
         ],
     )
@@ -1002,6 +1041,16 @@ class ObsSchema(DataFrameModel):
             "phydms",
             "Enrich",
             "Rosetta",
+            "dms_variants",
+            "mapmuts",
+            "maveLLR",
+            "tileseq_package",
+            "tileseqMave",
+            "TileseqMave",
+            "ABSSeq",
+            "Cluster",
+            "ORFcall",
+            "samtools",
             "Other",
         ],
     )
