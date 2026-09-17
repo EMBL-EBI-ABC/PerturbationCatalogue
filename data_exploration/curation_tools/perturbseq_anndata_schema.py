@@ -4,6 +4,135 @@ from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
 
+_TREATMENT_TYPE_LABELS = frozenset(
+    {
+        "untreated control",
+        "scrambled control oligonucleotide",
+        "culture medium",
+        "chemical entity",
+        "protein",
+        "protein complex",
+        "peptide",
+        "antibody",
+        "lipid",
+        "PNA",
+        "DNA",
+        "RNA",
+        "mRNA",
+        "rRNA",
+        "tRNA",
+        "cDNA",
+        "genomic DNA",
+        "plasmid DNA",
+        "miRNA",
+        "shRNA",
+        "siRNA",
+        "LNA",
+        "RNA aptamer",
+        "riboswitch",
+        "esiRNA",
+    }
+)
+
+_TREATMENT_TYPE_IDS = frozenset(
+    {
+        "NCIT:C184729",
+        "XCO:0001141",
+        "BAO:0000114",
+        "CHEBI:24431",
+        "BAO:0000175",
+        "BAO:0002554",
+        "BAO:0000325",
+        "BAO:0000502",
+        "BAO:0000171",
+        "BAO:0000226",
+        "BAO:0000269",
+        "BAO:0000270",
+        "BAO:0000274",
+        "BAO:0000275",
+        "BAO:0000276",
+        "BAO:0000315",
+        "BAO:0000316",
+        "BAO:0000317",
+        "BAO:0000322",
+        "BAO:0000323",
+        "BAO:0000324",
+        "BAO:0000412",
+        "BAO:0000496",
+        "BAO:0000498",
+        "BAO:0000544",
+    }
+)
+
+_TREATMENT_UNITS = frozenset(
+    {
+        "pM",
+        "nM",
+        "uM",
+        "mM",
+        "M",
+        "pg/mL",
+        "ng/mL",
+        "ug/mL",
+        "mg/mL",
+        "g/mL",
+        "pg/kg",
+        "ug/kg",
+        "mg/kg",
+        "g/kg",
+        "cells/uL",
+        "cells/mL",
+        "MOI",
+        "uL",
+        "mL",
+        "%",
+        "IU/mL",
+    }
+)
+
+_TREATMENT_FIELDS = (
+    "treatment_type_label",
+    "treatment_type_id",
+    "treatment_label",
+    "treatment_id",
+    "treatment_dose",
+    "treatment_unit",
+)
+
+
+def _split_pipe_value(value: object) -> list[str] | None:
+    if pd.isna(value):
+        return None
+    return [token.strip() for token in str(value).split("|")]
+
+
+def _value_has_allowed_tokens(value: object, allowed_values: frozenset[str]) -> bool:
+    tokens = _split_pipe_value(value)
+    return tokens is None or all(token in allowed_values for token in tokens)
+
+
+def _series_has_allowed_tokens(
+    values: pd.Series, allowed_values: frozenset[str]
+) -> pd.Series:
+    string_values = values.astype("string")
+    is_pipe_delimited = string_values.str.contains("|", regex=False, na=False)
+    result = values.isna() | (
+        ~is_pipe_delimited & string_values.isin(allowed_values)
+    )
+
+    if is_pipe_delimited.any():
+        result.loc[is_pipe_delimited] = string_values.loc[
+            is_pipe_delimited
+        ].map(lambda value: _value_has_allowed_tokens(value, allowed_values))
+
+    return result
+
+
+def _token_count(value: object) -> int | None:
+    tokens = _split_pipe_value(value)
+    return None if tokens is None else len(tokens)
+
+
 class ObsSchema(DataFrameModel):
     dataset_id: Series[String] = Field(
         nullable=False,
@@ -99,64 +228,10 @@ class ObsSchema(DataFrameModel):
     treatment_type_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label describing the treatment type.",
-        isin=[
-            "untreated control", # NCIT:C184729
-            "scrambled control oligonucleotide", # XCO:0001141
-            "culture medium", # BAO:0000114
-            "chemical entity", # CHEBI:24431
-            "protein", # BAO:0000175
-            "protein complex", # BAO:0002554
-            "peptide", # BAO:0000325
-            "antibody", # BAO:0000502
-            "lipid", # BAO:0000171
-            "PNA", # BAO:0000226
-            "DNA", # BAO:0000269
-            "RNA", # BAO:0000270
-            "mRNA", # BAO:0000274
-            "rRNA", # BAO:0000275
-            "tRNA", # BAO:0000276
-            "cDNA", # BAO:0000315
-            "genomic DNA", # BAO:0000316
-            "plasmid DNA", # BAO:0000317
-            "miRNA", # BAO:0000322
-            "shRNA", # BAO:0000323
-            "siRNA", # BAO:0000324
-            "LNA", # BAO:0000412
-            "RNA aptamer", # BAO:0000496
-            "riboswitch", # BAO:0000498
-            "esiRNA", # BAO:0000544
-        ],
     )
     treatment_type_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID for the treatment type.",
-        isin=[
-            "NCIT:C184729",  # untreated control
-            "XCO:0001141",  # scrambled control oligonucleotide
-            "BAO:0000114",  # culture medium
-            "CHEBI:24431",  # chemical entity
-            "BAO:0000175",  # protein
-            "BAO:0002554",  # protein complex
-            "BAO:0000325",  # peptide
-            "BAO:0000502",  # antibody
-            "BAO:0000171",  # lipid
-            "BAO:0000226",  # peptide nucleic acid (PNA)
-            "BAO:0000269",  # DNA
-            "BAO:0000270",  # RNA
-            "BAO:0000274",  # messenger RNA (mRNA)
-            "BAO:0000275",  # ribosomal RNA (rRNA)
-            "BAO:0000276",  # transfer RNA (tRNA)
-            "BAO:0000315",  # complementary DNA (cDNA)
-            "BAO:0000316",  # genomic DNA
-            "BAO:0000317",  # plasmid DNA
-            "BAO:0000322",  # microRNA (miRNA)
-            "BAO:0000323",  # short hairpin RNA (shRNA)
-            "BAO:0000324",  # small interfering RNA (siRNA)
-            "BAO:0000412",  # locked nucleic acid (LNA)
-            "BAO:0000496",  # RNA aptamer
-            "BAO:0000498",  # riboswitch
-            "BAO:0000544",  # endoribonuclease-prepared siRNA (esiRNA)
-        ],
     )
     treatment_label: Series[String] = Field(
         nullable=True,
@@ -175,35 +250,6 @@ class ObsSchema(DataFrameModel):
     treatment_unit: Series[String] = Field(
         nullable=True,
         description="Treatment/compound unit used to stimulate the investigated sample. Use 'u' for micro (e.g., 'uM' instead of 'μM').",
-        isin=[
-            # Concentration (molar)
-            "pM",
-            "nM",
-            "uM",
-            "mM",
-            "M",
-            # Mass/volume concentration
-            "pg/mL",
-            "ng/mL",
-            "ug/mL",
-            "mg/mL",
-            "g/mL",
-            # Mass/mass concentration
-            "pg/kg",
-            "ug/kg",
-            "mg/kg",
-            "g/kg",
-            # Count-based
-            "cells/uL",
-            "cells/mL",
-            "MOI",
-            # Volume
-            "uL",
-            "mL",
-            # Other
-            "%",
-            "IU/mL",
-        ],
     )
     technical_replicate: Series[String] = Field(
         nullable=True, description="Technical replicate id."
@@ -1081,6 +1127,130 @@ class ObsSchema(DataFrameModel):
     def perturbseq_requires_cell_barcode(cls, df: pd.DataFrame) -> pd.Series:
         is_perturbseq = df["data_modality"].eq("Perturb-seq")
         return ~is_perturbseq | df["cell_barcode"].notna()
+
+    @dataframe_check(
+        error="Each treatment_type_label must be an allowed term, including within pipe-delimited values.",
+    )
+    def treatment_type_labels_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_type_label"], _TREATMENT_TYPE_LABELS
+        )
+
+    @dataframe_check(
+        error="Each treatment_type_id must be an allowed term, including within pipe-delimited values.",
+    )
+    def treatment_type_ids_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_type_id"], _TREATMENT_TYPE_IDS
+        )
+
+    @dataframe_check(
+        error="Each treatment_unit must be an allowed unit, including within pipe-delimited values.",
+    )
+    def treatment_units_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_unit"], _TREATMENT_UNITS
+        )
+
+    @dataframe_check(
+        ignore_na=False,
+        error="treatment_dose must be a float or a pipe-delimited list of floats.",
+    )
+    def treatment_dose_values_are_floats(cls, df: pd.DataFrame) -> pd.Series:
+        def is_valid_float_list(value: object) -> bool:
+            tokens = _split_pipe_value(value)
+            if tokens is None:
+                return True
+            for token in tokens:
+                try:
+                    float(token)
+                except (TypeError, ValueError):
+                    return False
+            return True
+
+        return df["treatment_dose"].map(is_valid_float_list)
+
+    @dataframe_check(
+        error="treatment_type_label and treatment_type_id must either both be present or both be absent.",
+    )
+    def treatment_type_label_and_id_are_paired(cls, df: pd.DataFrame) -> pd.Series:
+        return df["treatment_type_label"].notna() == df["treatment_type_id"].notna()
+
+    @dataframe_check(
+        error="treatment_type_label and treatment_label must either both be present or both be absent.",
+    )
+    def treatment_type_label_and_treatment_label_are_paired(
+        cls, df: pd.DataFrame
+    ) -> pd.Series:
+        return df["treatment_type_label"].notna() == df["treatment_label"].notna()
+
+    @dataframe_check(
+        error="Pipe-delimited treatment fields must contain the same number of values.",
+    )
+    def treatment_fields_are_aligned(cls, df: pd.DataFrame) -> pd.Series:
+        string_values = df[list(_TREATMENT_FIELDS)].astype("string")
+        has_pipe_delimited_values = string_values.apply(
+            lambda column: column.str.contains("|", regex=False, na=False)
+        ).any(axis=1)
+        result = pd.Series(True, index=df.index)
+
+        if has_pipe_delimited_values.any():
+            token_counts = string_values.loc[has_pipe_delimited_values].map(
+                _token_count
+            )
+            result.loc[has_pipe_delimited_values] = token_counts.notna().all(
+                axis=1
+            ) & token_counts.nunique(axis=1).eq(1)
+
+        return result
+
+    @dataframe_check(
+        error="Chemical entity treatments require a treatment_label.",
+    )
+    def chemical_entity_requires_treatment_id(cls, df: pd.DataFrame) -> pd.Series:
+        treatment_type_labels = df["treatment_type_label"].astype("string")
+        treatment_labels = df["treatment_label"].astype("string")
+        is_pipe_delimited = treatment_type_labels.str.contains(
+            "|", regex=False, na=False
+        )
+        is_chemical_entity = treatment_type_labels.eq("chemical entity").fillna(False)
+        treatment_label_is_present = treatment_labels.notna()
+        result = ~is_chemical_entity | treatment_label_is_present
+
+        if not is_pipe_delimited.any():
+            return result
+
+        def row_is_valid(row: pd.Series) -> bool:
+            treatment_type_labels = _split_pipe_value(row["treatment_type_label"])
+            if treatment_type_labels is None:
+                return True
+
+            chemical_entity_positions = [
+                index
+                for index, label in enumerate(treatment_type_labels)
+                if label == "chemical entity"
+            ]
+            if not chemical_entity_positions:
+                return True
+
+            treatment_labels = _split_pipe_value(row["treatment_label"])
+            if treatment_labels is None or len(treatment_labels) != len(
+                treatment_type_labels
+            ):
+                return False
+
+            return all(treatment_labels[index] for index in chemical_entity_positions)
+
+        result.loc[is_pipe_delimited] = df.loc[
+            is_pipe_delimited, ["treatment_type_label", "treatment_label"]
+        ].apply(row_is_valid, axis=1)
+        return result
+
+    @dataframe_check(
+        error="treatment_dose and treatment_unit must either both be present or both be absent.",
+    )
+    def treatment_dose_and_unit_are_paired(cls, df: pd.DataFrame) -> pd.Series:
+        return df["treatment_dose"].notna() == df["treatment_unit"].notna()
 
     @dataframe_check(
         ignore_na=False,
