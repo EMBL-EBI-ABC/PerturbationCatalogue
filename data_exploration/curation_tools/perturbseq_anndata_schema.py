@@ -239,12 +239,12 @@ class ObsSchema(DataFrameModel):
     )
     treatment_id: Series[String] = Field(
         nullable=True,
-        str_contains=":",
         description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
     )
-    treatment_dose: Series[Float32] = Field(
+    treatment_dose: Series[String] = Field(
         nullable=True,
         coerce=True,
+        ignore_na=True,
         description="Treatment/compound dose used to stimulate the investigated sample.",
     )
     treatment_unit: Series[String] = Field(
