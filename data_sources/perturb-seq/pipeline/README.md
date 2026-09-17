@@ -181,32 +181,33 @@ batches. One `-resume` covers the entire workflow.
 - `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
-## Verified download/count benchmark
+## Verified end-to-end benchmark
 
-`nadig_2025_jurkat` was run on a SLURM cluster on 11 September 2026 using commit
-`66bb6de`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1, curl 7.76.1,
+`nadig_2025_jurkat` was run cleanly on a SLURM cluster on 17 September 2026
+using commit `f20badf`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1,
 Ensembl release 115 and the sample sheet/reference inputs shown above.
 
 | Measurement | Result |
 |---|---:|
 | Samples / SRA accessions | 56 / 1,792 |
-| Downloaded archive volume | 1.074 TB |
-| Full pipeline wall time | **1h 14m 59s** |
-| Including independent output verification | **1h 15m 07s** |
-| Maximum observed disk footprint | **1.465 TB (1.332 TiB)** |
-| Successful tasks | 172, without retries |
-| Final H5AD | 739,766 cells × 78,899 genes; 5,341 guides |
-| Compressed H5AD size | 5.818 GB |
+| End-to-end wall time, SRA to merged DEA/GSEA | **1h 25m 24.989s** |
+| Maximum sampled disk footprint | **1.459 TB (1.327 TiB)** |
+| Successful / failed / retried tasks | **222 / 0 / 0** |
+| Nextflow peak running tasks / CPUs | 57 / 904 |
+| Raw H5AD | 739,766 cells × 78,899 genes; 5,341 guides; 5.818 GB |
+| Filtered H5AD | 588,498 cells × 12,926 genes; 4.737 GB |
+| Merged DEA / GSEA | 30,078,802 / 114,023 rows |
+| DEA/GSEA batches | 47 |
 
-Wall time includes fresh index construction through final compressed H5AD
-publication, but not the separate comparison/QC or DEA/GSEA workflows. All
-accession spot totals matched archive metadata, all 56 samples were represented,
-and no temporary SRA/FASTQ buffers remained. Median per-accession download times
-were 33.736 seconds for RNA and 7.570 seconds for guides. The largest RNA group
-took 59m 43s and was limited by counting rather than download latency.
-
-The disk peak covers work, published outputs and controller runtime files,
-sampled every five seconds using the larger of logical and allocated file sizes.
-It excludes shared pre-existing references and other datasets; short peaks can
-be missed. These dataset- and cluster-specific measurements are not universal
+Wall time includes fresh index construction, SRA retrieval, extraction,
+counting, sample merges, H5AD compression, comparison/QC/probe calling, input
+preparation, all DEA/GSEA batches and final publication. It excludes image
+deployment and local pre-run tests. The disk peak covers work, published outputs
+and controller runtime files, sampled every five seconds using the larger of
+logical and allocated file sizes. GPFS reporting and sampling can miss brief
+peaks; these dataset- and cluster-specific measurements are not universal
 throughput or storage guarantees.
+
+The QC comparison accesses backed CSR data in bounded row chunks, so the full
+H5AD is not loaded into memory. The large
+`replogle_2022_k562_gw_normalized` dataset is the next validation target.
