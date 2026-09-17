@@ -1261,14 +1261,11 @@ class ObsSchema(DataFrameModel):
         return ~is_enhancer | df["perturbed_target_coord"].notna()
 
     @dataframe_check(
-        error="If model system is cell_line, then cell_line_label and cell_line_id must be present.",
+        error="If model system is cell_line, then cell_line_label must be present.",
     )
     def cell_line_requires_metadata(cls, df: pd.DataFrame) -> pd.Series:
         is_cell_line = df["model_system_label"].eq("cell_line")
-        has_cell_line_metadata = df["cell_line_label"].notna() & df[
-            "cell_line_id"
-        ].notna()
-        return ~is_cell_line | has_cell_line_metadata
+        return ~is_cell_line | df["cell_line_label"].notna()
 
     @dataframe_check(
         error="If model system is anything other than cell_line, then cell_line_label and cell_line_id must be absent.",
