@@ -61,7 +61,7 @@ This will produce the $FEATURES_PATH and $SAMPLE_SHEET_PATH files in the same di
 export DATASET_ID=nadig_2025_jurkat
 export FEATURES_PATH=datasets/nadig_2025/features.tsv
 export SAMPLE_SHEET_PATH=datasets/nadig_2025/jurkat_samples.tsv
-export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN40972597
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/source_fastq/SAMN40972597
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
 # Chemistry
 export CHEMISTRY=10xv3
@@ -76,7 +76,7 @@ export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 export DATASET_ID=nadig_2025_hepg2
 export FEATURES_PATH=datasets/nadig_2025/features.tsv
 export SAMPLE_SHEET_PATH=datasets/nadig_2025/hepg2_samples.tsv
-export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN40972598
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/source_fastq/SAMN40972598
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
 # Chemistry
 export CHEMISTRY=10xv3
@@ -91,7 +91,7 @@ export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 export DATASET_ID=replogle_2022_k562_essential_normalized
 export FEATURES_PATH=datasets/replogle_2022/replogle_2022_k562_essential_normalized_features.tsv
 export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_k562_essential_normalized_samples.tsv
-export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561243
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/source_fastq/SAMN28561243
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
 # Chemistry
 export CHEMISTRY=10xv3
@@ -106,7 +106,7 @@ export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 export DATASET_ID=replogle_2022_rpe1_essential_normalized
 export FEATURES_PATH=datasets/replogle_2022/replogle_2022_rpe1_essential_normalized_features.tsv
 export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_rpe1_essential_normalized_samples.tsv
-export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561244
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/source_fastq/SAMN28561244
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
 # Chemistry
 export CHEMISTRY=10xv3
@@ -121,7 +121,7 @@ export GTF=$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz
 export DATASET_ID=replogle_2022_k562_gw_normalized
 export FEATURES_PATH=datasets/replogle_2022/replogle_2022_k562_gw_normalized_features.tsv
 export SAMPLE_SHEET_PATH=datasets/replogle_2022/replogle_2022_k562_gw_normalized_samples.tsv
-export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/SAMN28561242
+export FASTQ_DIR_PATH=$HPS_PATH/perturb_seq_fastq/source_fastq/SAMN28561242
 export OUTPUT_DIR=$HPS_PATH/perturb_seq_fastq/results/$DATASET_ID
 # Chemistry
 export CHEMISTRY=10xv3
