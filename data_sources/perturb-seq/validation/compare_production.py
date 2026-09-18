@@ -107,7 +107,10 @@ def query_gsea(base_url: str, target: str) -> list[dict]:
     payload = json_request(f"{base_url}/v1/perturb-seq-gsea?{query}")
     return [
         effect
-        | {"perturbed_target_ensg": result["perturbation"]["perturbed_target_ensg"]}
+        | {
+            "perturbed_target_ensg": result["perturbation"]["perturbed_target_ensg"],
+            "perturbed_target_symbol": result["perturbation"].get("gene_symbol"),
+        }
         for result in payload
         for effect in result.get("effects", [])
     ]
@@ -170,11 +173,23 @@ def sign_agreement(left: list[float], right: list[float]) -> float | None:
     return float(np.mean([np.sign(a) == np.sign(b) for a, b in pairs]))
 
 
-def dea_metrics(cluster: list[dict], production: list[dict]) -> dict:
+def dea_metrics(
+    cluster: list[dict], production: list[dict], by_symbol: bool = False
+) -> dict:
     def cluster_key(row):
-        return (row["perturbed_target_ensg"], row["effect_gene_ensg"])
+        fields = (
+            ("perturbed_target_symbol", "effect_gene_symbol")
+            if by_symbol
+            else ("perturbed_target_ensg", "effect_gene_ensg")
+        )
+        return tuple(row[field] for field in fields)
 
     def production_key(row):
+        if by_symbol:
+            return (
+                row["perturbation"].get("gene_symbol"),
+                row["effect"].get("gene_symbol"),
+            )
         return (
             row["perturbation"]["perturbed_target_ensg"],
             row["effect"]["effect_gene_ensg"],
@@ -217,9 +232,14 @@ def dea_metrics(cluster: list[dict], production: list[dict]) -> dict:
     }
 
 
-def gsea_metrics(cluster: list[dict], production: list[dict]) -> dict:
+def gsea_metrics(
+    cluster: list[dict], production: list[dict], by_symbol: bool = False
+) -> dict:
     def key(row):
-        return (row["perturbed_target_ensg"], row["term"])
+        target_field = (
+            "perturbed_target_symbol" if by_symbol else "perturbed_target_ensg"
+        )
+        return (row[target_field], row["term"])
 
     cluster_map = {key(row): row for row in cluster}
     production_map = {key(row): row for row in production}
@@ -325,9 +345,19 @@ def main() -> None:
 
     production_dea = []
     production_gsea = []
+    per_target = []
     for target in target_symbols:
-        production_dea.extend(query_dea(args.production_url.rstrip("/"), target))
-        production_gsea.extend(query_gsea(args.production_url.rstrip("/"), target))
+        target_dea = query_dea(args.production_url.rstrip("/"), target)
+        target_gsea = query_gsea(args.production_url.rstrip("/"), target)
+        production_dea.extend(target_dea)
+        production_gsea.extend(target_gsea)
+        per_target.append(
+            {
+                "target_symbol": target,
+                "production_dea_rows": len(target_dea),
+                "production_gsea_rows": len(target_gsea),
+            }
+        )
     production_dea = [
         row
         for row in production_dea
@@ -350,8 +380,15 @@ def main() -> None:
             "target_symbols": target_symbols,
             "effect_symbols_sha256_ordered_sample": effect_symbols,
         },
-        "dea": dea_metrics(cluster_dea, production_dea),
-        "gsea": gsea_metrics(cluster_gsea, production_gsea),
+        "per_target": per_target,
+        "dea": {
+            "ensg_keys": dea_metrics(cluster_dea, production_dea),
+            "symbol_keys": dea_metrics(cluster_dea, production_dea, by_symbol=True),
+        },
+        "gsea": {
+            "ensg_keys": gsea_metrics(cluster_gsea, production_gsea),
+            "symbol_keys": gsea_metrics(cluster_gsea, production_gsea, by_symbol=True),
+        },
     }
     json_path = outdir / "replogle-production-comparison.json"
     json_path.write_text(json.dumps(report, indent=2) + "\n")
@@ -367,7 +404,7 @@ def main() -> None:
         "|---|---:|---:|---:|---:|---:|",
     ]
     for name in ("dea", "gsea"):
-        result = report[name]
+        result = report[name]["symbol_keys"]
         markdown.append(
             f"| {name.upper()} | {result['cluster_rows']:,} | {result['production_rows']:,} | {result['common_rows']:,} | {result['cluster_to_production_coverage']:.3%} | {result['production_to_cluster_coverage']:.3%} |"
         )
