@@ -76,16 +76,16 @@ def json_request(url: str) -> object:
     raise AssertionError("unreachable")
 
 
-def query_dea(base_url: str, target: str) -> list[dict]:
+def query_dea(base_url: str, target_query: str) -> list[dict]:
     rows: list[dict] = []
     offset = 0
     # The production service returns HTTP 500 for some targets at 20k rows;
     # smaller pages are equivalent and keep each response bounded.
     limit = 5_000
     while True:
-        print(f"Fetching DEA target {target} offset {offset}", flush=True)
+        print(f"Fetching DEA target {target_query} offset {offset}", flush=True)
         query = urllib.parse.urlencode(
-            {"limit": limit, "offset": offset, "perturbation_gene_name": target}
+            {"limit": limit, "offset": offset, "perturbation_gene_name": target_query}
         )
         payload = json_request(
             f"{base_url}/v1/perturb-seq/replogle_2022_k562_gw_normalized/search?{query}"
@@ -97,11 +97,13 @@ def query_dea(base_url: str, target: str) -> list[dict]:
         offset += len(page)
 
 
-def query_gsea(base_url: str, target: str) -> list[dict]:
+def query_gsea(
+    base_url: str, target_query: str, target_symbol: str | None = None
+) -> list[dict]:
     query = urllib.parse.urlencode(
         {
             "dataset_id": "replogle_2022_k562_gw_normalized",
-            "perturbation_gene_name": target,
+            "perturbation_gene_name": target_query,
         }
     )
     payload = json_request(f"{base_url}/v1/perturb-seq-gsea?{query}")
@@ -109,7 +111,8 @@ def query_gsea(base_url: str, target: str) -> list[dict]:
         effect
         | {
             "perturbed_target_ensg": result["perturbation"]["perturbed_target_ensg"],
-            "perturbed_target_symbol": result["perturbation"].get("gene_symbol"),
+            "perturbed_target_symbol": target_symbol
+            or result["perturbation"].get("gene_symbol"),
         }
         for result in payload
         for effect in result.get("effects", [])
@@ -342,18 +345,25 @@ def main() -> None:
     effect_ensgs = {
         row["effect_gene_ensg"] for row in cluster_dea if row["effect_gene_ensg"]
     }
+    target_ensg_by_symbol = {
+        row["perturbed_target_symbol"]: row["perturbed_target_ensg"]
+        for row in cluster_dea
+        if row["perturbed_target_ensg"]
+    }
 
     production_dea = []
     production_gsea = []
     per_target = []
     for target in target_symbols:
-        target_dea = query_dea(args.production_url.rstrip("/"), target)
-        target_gsea = query_gsea(args.production_url.rstrip("/"), target)
+        target_query = target_ensg_by_symbol[target]
+        target_dea = query_dea(args.production_url.rstrip("/"), target_query)
+        target_gsea = query_gsea(args.production_url.rstrip("/"), target_query, target)
         production_dea.extend(target_dea)
         production_gsea.extend(target_gsea)
         per_target.append(
             {
                 "target_symbol": target,
+                "target_ensg": target_query,
                 "production_dea_rows": len(target_dea),
                 "production_gsea_rows": len(target_gsea),
             }
@@ -377,6 +387,7 @@ def main() -> None:
             "effect_genes_in_full_dea": len(unique["effect_gene_symbol"]),
             "effect_genes_sampled": len(effect_symbols),
             "perturbation_targets_sampled": len(target_symbols),
+            "production_target_query": "cluster perturbed_target_ensg",
             "target_symbols": target_symbols,
             "effect_symbols_sha256_ordered_sample": effect_symbols,
         },
@@ -396,7 +407,7 @@ def main() -> None:
         "# Replogle unified pipeline vs production API",
         "",
         f"Generated `{report['created_at']}` from live `{report['production_api']}`.",
-        "The cluster sample uses 2% of the 12,420 effect genes (deterministically selected by SHA-256 order) across 12 deterministic perturbation targets.",
+        "The cluster sample uses 2% of the 12,420 effect genes (deterministically selected by SHA-256 order) across 12 deterministic perturbation targets; production queries use the cluster target Ensembl IDs to avoid alias-only symbol mismatches.",
         "",
         "## Results",
         "",
@@ -404,7 +415,7 @@ def main() -> None:
         "|---|---:|---:|---:|---:|---:|",
     ]
     for name in ("dea", "gsea"):
-        result = report[name]["symbol_keys"]
+        result = report[name]["ensg_keys"]
         markdown.append(
             f"| {name.upper()} | {result['cluster_rows']:,} | {result['production_rows']:,} | {result['common_rows']:,} | {result['cluster_to_production_coverage']:.3%} | {result['production_to_cluster_coverage']:.3%} |"
         )
