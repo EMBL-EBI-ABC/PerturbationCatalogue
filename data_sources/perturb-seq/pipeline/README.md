@@ -70,6 +70,9 @@ For example, `python3 datasets/nadig_2025/generate_inputs.py` produces
 `datasets/nadig_2025/features.tsv`, `jurkat_samples.tsv` and `hepg2_samples.tsv`.
 Replogle inputs are under `datasets/replogle_2022/`, named
 `<dataset_id>_features.tsv` and `<dataset_id>_samples.tsv`.
+The K562 genome-wide sample sheet intentionally excludes the unavailable
+sgRNA run `SRR19331204` from `KD8_17`; the exclusion is encoded in its input
+generator as well as the committed sample sheet.
 
 ## Run Jurkat
 

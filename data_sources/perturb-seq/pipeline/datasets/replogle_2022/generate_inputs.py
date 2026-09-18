@@ -45,6 +45,8 @@ DATASETS = [
         "accession": "SAMN28561242",
         "guide_sheet": "TabA_K562_day8_library",
         "library_pattern": K562_GW_LIBRARY_PATTERN,
+        # This small sgRNA run has a persistent NCBI S3 authorization failure.
+        "excluded_runs": {"SRR19331204"},
     },
 ]
 
@@ -188,6 +190,11 @@ def parse_replogle_library(library_name, library_pattern=DEFAULT_LIBRARY_PATTERN
 
 def generate_samples_tsv(dataset):
     metadata = fetch_ena_metadata(dataset["accession"])
+    excluded_runs = set(dataset.get("excluded_runs", ()))
+    if excluded_runs:
+        present = excluded_runs & set(metadata["run_accession"].astype(str))
+        metadata = metadata[~metadata["run_accession"].astype(str).isin(excluded_runs)]
+        print(f"Excluded {len(present)} unavailable runs: {', '.join(sorted(present))}")
     library_pattern = dataset.get("library_pattern", DEFAULT_LIBRARY_PATTERN)
     metadata[["modality", "sample_id"]] = metadata["library_name"].apply(
         lambda value: pd.Series(parse_replogle_library(value, library_pattern))
