@@ -9,6 +9,7 @@ import json
 import math
 import urllib.parse
 import urllib.request
+from urllib.error import HTTPError
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -65,6 +66,10 @@ def json_request(url: str) -> object:
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 return json.load(response)
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:1000]
+            if attempt == 2:
+                raise RuntimeError(f"HTTP {exc.code} for {url}: {detail}") from exc
         except Exception:
             if attempt == 2:
                 raise
@@ -76,6 +81,7 @@ def query_dea(base_url: str, target: str) -> list[dict]:
     offset = 0
     limit = 20_000
     while True:
+        print(f"Fetching DEA target {target} offset {offset}", flush=True)
         query = urllib.parse.urlencode(
             {"limit": limit, "offset": offset, "perturbation_gene_name": target}
         )
