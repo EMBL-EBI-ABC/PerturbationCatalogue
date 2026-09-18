@@ -1,6 +1,6 @@
 # `nadig_2025_jurkat` benchmark
 
-Clean end-to-end run on Codon, 17 September 2026, from SRA retrieval through
+Clean end-to-end run on a Slurm cluster, 17 September 2026, from SRA retrieval through
 merged DEA/GSEA. The run used main-repository commit `f20badf`, Nextflow
 25.04.6, Ensembl release 115 and the single image
 `perturb_seq.sif` (SHA-256

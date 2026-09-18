@@ -1,6 +1,6 @@
 # `replogle_2022_k562_gw_normalized` benchmark
 
-Large-dataset end-to-end validation completed on Codon, 18 September 2026,
+Large-dataset end-to-end validation completed on a Slurm cluster, 18 September 2026,
 through backed comparison/QC/probe calling, DEA and GSEA. This was a resumed
 completion: index and KITE stages were cached, while the standard count wave,
 aggregate H5AD and all downstream products completed in the final run.
