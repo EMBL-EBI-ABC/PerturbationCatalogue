@@ -79,7 +79,9 @@ def json_request(url: str) -> object:
 def query_dea(base_url: str, target: str) -> list[dict]:
     rows: list[dict] = []
     offset = 0
-    limit = 20_000
+    # The production service returns HTTP 500 for some targets at 20k rows;
+    # smaller pages are equivalent and keep each response bounded.
+    limit = 5_000
     while True:
         print(f"Fetching DEA target {target} offset {offset}", flush=True)
         query = urllib.parse.urlencode(
