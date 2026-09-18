@@ -184,33 +184,16 @@ batches. One `-resume` covers the entire workflow.
 - `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
-## Verified end-to-end benchmark
+## Verified end-to-end benchmarks
 
-`nadig_2025_jurkat` was run cleanly on a SLURM cluster on 17 September 2026
-using commit `f20badf`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1,
-Ensembl release 115 and the sample sheet/reference inputs shown above.
+Both benchmark records cover the full scope from SRA retrieval through merged
+DEA/GSEA publication. They include the backed H5AD QC/probe-calling stage,
+resource sampling and the expected large-dataset `MERGE_RESULTS` retry:
 
-| Measurement | Result |
-|---|---:|
-| Samples / SRA accessions | 56 / 1,792 |
-| End-to-end wall time, SRA to merged DEA/GSEA | **1h 25m 24.989s** |
-| Maximum sampled disk footprint | **1.459 TB (1.327 TiB)** |
-| Successful / failed / retried tasks | **222 / 0 / 0** |
-| Nextflow peak running tasks / CPUs | 57 / 904 |
-| Raw H5AD | 739,766 cells × 78,899 genes; 5,341 guides; 5.818 GB |
-| Filtered H5AD | 588,498 cells × 12,926 genes; 4.737 GB |
-| Merged DEA / GSEA | 30,078,802 / 114,023 rows |
-| DEA/GSEA batches | 47 |
+- [`nadig_2025_jurkat` benchmark](benchmarks/nadig_2025_jurkat.md)
+- [`replogle_2022_k562_gw_normalized` benchmark](benchmarks/replogle_2022_k562_gw_normalized.md)
 
-Wall time includes fresh index construction, SRA retrieval, extraction,
-counting, sample merges, H5AD compression, comparison/QC/probe calling, input
-preparation, all DEA/GSEA batches and final publication. It excludes image
-deployment and local pre-run tests. The disk peak covers work, published outputs
-and controller runtime files, sampled every five seconds using the larger of
-logical and allocated file sizes. GPFS reporting and sampling can miss brief
-peaks; these dataset- and cluster-specific measurements are not universal
-throughput or storage guarantees.
-
-The QC comparison accesses backed CSR data in bounded row chunks, so the full
-H5AD is not loaded into memory. The large
-`replogle_2022_k562_gw_normalized` dataset is the next validation target.
+The QC comparison opens H5AD files with `backed="r"`, reads CSR rows in bounded
+chunks, and writes filtered CSR output on disk; it does not load the full
+expression or guide matrix into RAM. The Replogle run completed this stage for
+1,314,345 cells and then completed all 191 DEA/GSEA batches successfully.
