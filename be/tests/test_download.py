@@ -11,6 +11,19 @@ from starlette.requests import Request
 DATASET_ID = "replogle_2022_rpe1_essential_normalized"
 
 
+def test_dataset_order_clause_is_total():
+    order = data_query._build_order_by_clause(
+        "perturb-seq",
+        "effect_padj:asc,effect_gene_ensg:asc",
+        data_query.get_api_to_db_mapping("perturb-seq"),
+    )
+
+    assert order == (
+        "ORDER BY padj ASC, effect_gene_ensg ASC, "
+        "perturbed_target_ensg ASC, ctid ASC"
+    )
+
+
 def test_download_streams_csv_from_postgres(run_with_dev_db):
     async def download():
         response = await data_query.download_dataset_data(
@@ -33,9 +46,9 @@ def test_download_streams_csv_from_postgres(run_with_dev_db):
         "Effect Gene Name,Log2FC,Padj,Score Name,Score Value,Cell Type"
     )
     assert {tuple(line.split(",")[:4]) for line in lines[1:]} == {
-        ("ENSG00000171421", "MRPL36", "ENSG00000198804", "MT-CO1"),
-        ("ENSG00000075624", "ACTB", "ENSG00000180914", "OXTR"),
-        ("ENSG00000108064", "TFAM", "ENSG00000198804", "MT-CO1"),
+        ("ENSG00000072506", "HSD17B10", "ENSG00000198712", "MT-CO2"),
+        ("ENSG00000072506", "HSD17B10", "ENSG00000198727", "MT-CYB"),
+        ("ENSG00000072506", "HSD17B10", "ENSG00000198804", "MT-CO1"),
     }
     assert all(line.split(",")[6] for line in lines[1:])
     assert len(lines) == 4

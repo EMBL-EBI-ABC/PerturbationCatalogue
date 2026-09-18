@@ -125,6 +125,15 @@ DEFAULT_SORTS = {
     "perturb-seq": "effect_padj:asc",
 }
 
+# The public API uses OFFSET pagination, so every SQL result set needs a total
+# order.  The final ctid tie-breaker keeps physically distinct duplicate rows
+# distinct without exposing an implementation column in the response.
+STABLE_ORDER_FIELDS = {
+    "perturb-seq": ("perturbed_target_ensg", "effect_gene_ensg"),
+    "crispr-screen": ("perturbed_target_ensg", "sample_id", "score_name"),
+    "mave": ("perturbed_target_ensg", "sample_id", "perturbation_name"),
+}
+
 # Load dataset metadata configuration
 METADATA_PATH = os.path.join(os.path.dirname(__file__), "dataset_metadata.json")
 with open(METADATA_PATH) as f:
@@ -531,6 +540,36 @@ def get_api_to_db_mapping(modality: MODALITIES) -> Dict[str, str]:
     return PG_MAPPINGS.get(modality, {})
 
 
+def _build_order_by_clause(
+    modality: MODALITIES,
+    sort: Optional[str],
+    api_to_db: Dict[str, str],
+    table_alias: str = "",
+) -> str:
+    """Build a validated total SQL order for OFFSET-paginated result sets."""
+    prefix = f"{table_alias}." if table_alias else ""
+    clauses = []
+    seen = set()
+
+    if sort:
+        for sort_param in sort.split(","):
+            field, _, direction = sort_param.partition(":")
+            if field in api_to_db:
+                db_field = api_to_db[field]
+                if db_field not in seen:
+                    direction = "DESC" if direction == "desc" else "ASC"
+                    clauses.append(f"{prefix}{db_field} {direction}")
+                    seen.add(db_field)
+
+    for db_field in STABLE_ORDER_FIELDS[modality]:
+        if db_field not in seen:
+            clauses.append(f"{prefix}{db_field} ASC")
+            seen.add(db_field)
+
+    clauses.append(f"{prefix}ctid ASC")
+    return f"ORDER BY {', '.join(clauses)}"
+
+
 def validate_query_params(
     query_params: Dict[str, Any], modality: MODALITIES, dataset_id: Optional[str] = None
 ):
@@ -784,7 +823,8 @@ async def _fetch_perturb_seq_gsea(
         FROM perturb_seq_gsea g
         LEFT JOIN perturb_seq_summary_perturbation p USING (dataset_id, perturbed_target_ensg)
         {where_clause}
-        ORDER BY g.sidak ASC
+        ORDER BY g.sidak ASC, g.perturbed_target_ensg ASC, g.term ASC,
+                 g.cell_type ASC, g.ctid ASC
         LIMIT 50
     """
     rows = await conn.fetch(query, *pg_params)
@@ -849,7 +889,8 @@ async def _search_modality_impl(
             FROM {pg_table}
             {where_clause}
             GROUP BY dataset_id
-            ORDER BY MAX(CASE WHEN significant = 'True' THEN 1 ELSE 0 END) DESC
+            ORDER BY MAX(CASE WHEN significant = 'True' THEN 1 ELSE 0 END) DESC,
+                     dataset_id ASC
         """
     elif modality == "perturb-seq":
         prefilter_query = f"""
@@ -857,10 +898,13 @@ async def _search_modality_impl(
             FROM {pg_table}
             {where_clause}
             GROUP BY dataset_id
-            ORDER BY COUNT(*) FILTER (WHERE padj < 0.05) DESC
+            ORDER BY COUNT(*) FILTER (WHERE padj < 0.05) DESC, dataset_id ASC
         """
     else:
-        prefilter_query = f"SELECT DISTINCT dataset_id FROM {pg_table} {where_clause}"
+        prefilter_query = (
+            f"SELECT DISTINCT dataset_id FROM {pg_table} {where_clause} "
+            "ORDER BY dataset_id ASC"
+        )
 
     try:
         prefiltered_dataset_ids = [
@@ -945,16 +989,7 @@ async def _search_modality_impl(
 
         where_clause = f"WHERE {' AND '.join(current_pg_filters)}"
 
-        order_by_clause = ""
-        if sort:
-            sort_clauses = []
-            for sort_param in sort.split(","):
-                field, __, direction = sort_param.partition(":")
-                direction = "DESC" if direction == "desc" else "ASC"
-                if field in api_to_db:
-                    sort_clauses.append(f"{api_to_db[field]} {direction}")
-            if sort_clauses:
-                order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
+        order_by_clause = _build_order_by_clause(modality, sort, api_to_db)
 
         # Only apply LIMIT if not using position range filter (which should return all matching rows)
         limit_clause = (
@@ -1102,16 +1137,7 @@ async def _search_dataset_impl(
         count_params = pg_params
 
     # 2. Fetch Rows
-    order_by_clause = ""
-    if sort:
-        sort_clauses = []
-        for sort_param in sort.split(","):
-            field, __, direction = sort_param.partition(":")
-            direction = "DESC" if direction == "desc" else "ASC"
-            if field in api_to_db:
-                sort_clauses.append(f"{api_to_db[field]} {direction}")
-        if sort_clauses:
-            order_by_clause = f"ORDER BY {', '.join(sort_clauses)}"
+    order_by_clause = _build_order_by_clause(modality, sort, api_to_db)
 
     # Only apply LIMIT/OFFSET if not using position range filter (which should return all matching rows)
     if has_position_range:
