@@ -228,7 +228,14 @@ def main():
             try:
                 code = child.wait(timeout=timeout)
                 if code:
-                    raise RuntimeError(f"{command[0]} exited {code}; see {log}")
+                    with lock:
+                        concurrent = "; ".join(errors)
+                    detail = (
+                        "; concurrent producer error: " + concurrent
+                        if concurrent
+                        else ""
+                    )
+                    raise RuntimeError(f"{command[0]} exited {code}; see {log}{detail}")
             finally:
                 # Keep live children registered until shutdown can kill them.
                 if child.poll() is not None:
