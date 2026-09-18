@@ -5,7 +5,7 @@ nextflow.enable.dsl=2
 // =============================================================================
 // PIPELINE PARAMETERS
 // =============================================================================
-params.fastq_dir = null
+params.sra_bin = ""
 params.sample_sheet = null
 params.outdir = "results"
 params.chemistry = "10xv3"
@@ -66,111 +66,53 @@ process BUILD_INDEX_KITE {
     """
 }
 
-/**
- * Standard cDNA quantification per sample using Kallisto-Bustools.
- * Groups all lanes (L001-L004) for a single physical well.
- */
+/** Downloads and counts all runs for one sample's standard library. */
 process KB_COUNT_STANDARD {
-    tag "std_${sample_id}"
+    tag "standard_${sample_id}"
     publishDir "${params.outdir}/counts_standard/${sample_id}", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(reads)
+    tuple val(sample_id), val(accessions)
     path index
     path t2g
     val chemistry
 
     output:
     tuple val(sample_id), path("out/counts_filtered/adata.h5ad"), emit: h5ad
+    path "stream_metrics.json", emit: metrics
 
     script:
+    def sraArg = params.sra_bin ? "--sra-bin '${params.sra_bin}'" : ""
     """
-    mkdir -p out
-    > batch.txt
-    > file_map.txt
-    
-    # Map SRRs to their constituent FASTQ files
-    for fq in ${reads.join(' ')}; do
-        base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
-        echo "\$base \$fq" >> file_map.txt
-    done
-    
-    # Pair R1 (Barcode/UMI) and R2 (Transcript) based on read length
-    awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
-        r1=""
-        r2=""
-        for fq in \$(grep "^\$base " file_map.txt | awk '{print \$2}'); do
-            seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
-            if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
-                r1=\$fq
-            elif [ "\$seq_len" -gt 40 ]; then
-                r2=\$fq
-            fi
-        done
-        if [ -n "\$r1" ] && [ -n "\$r2" ]; then
-            echo -e "${sample_id}\t\$r1\t\$r2" >> batch.txt
-        fi
-    done
-
-    kb count -i ${index} -g ${t2g} -x ${chemistry} -o out --h5ad --filter bustools -t ${task.cpus} batch.txt
+    python ${projectDir}/bin/stream_count.py \
+      --accessions ${accessions.join(' ')} \
+      --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
+      --workflow standard --cpus ${task.cpus} ${sraArg}
     """
 }
 
-/**
- * KITE Guide RNA quantification per sample.
- */
+/** Downloads and counts all runs for one sample's kite library. */
 process KB_COUNT_KITE {
     tag "kite_${sample_id}"
     publishDir "${params.outdir}/counts_kite/${sample_id}", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(reads)
+    tuple val(sample_id), val(accessions)
     path index
     path t2g
     val chemistry
 
     output:
     tuple val(sample_id), path("out/counts_unfiltered/adata.h5ad"), emit: h5ad
+    path "stream_metrics.json", emit: metrics
 
     script:
+    def sraArg = params.sra_bin ? "--sra-bin '${params.sra_bin}'" : ""
     """
-    mkdir -p out
-    > file_map.txt
-    > paired_fastqs.tsv
-    > fastq_args.txt
-    
-    for fq in ${reads.join(' ')}; do
-        base=\$(echo \$fq | sed -E 's/_[0-9]+\\.fastq\\.gz\$//')
-        echo "\$base \$fq" >> file_map.txt
-    done
-    
-    awk '{print \$1}' file_map.txt | sort | uniq | while read base; do
-        r1=""
-        r2=""
-        for fq in \$(grep "^\$base " file_map.txt | awk '{print \$2}'); do
-            seq_len=\$(zcat \$fq | head -n 2 | tail -n 1 | tr -d '\\n' | wc -c)
-            if [ "\$seq_len" -ge 20 ] && [ "\$seq_len" -le 40 ]; then
-                r1=\$fq
-            elif [ "\$seq_len" -gt 40 ]; then
-                r2=\$fq
-            fi
-        done
-        if [ -n "\$r1" ] && [ -n "\$r2" ]; then
-            echo -e "\$r1\t\$r2" >> paired_fastqs.tsv
-            echo "\$r1" >> fastq_args.txt
-            echo "\$r2" >> fastq_args.txt
-        fi
-    done
-
-    if [ ! -s paired_fastqs.tsv ]; then
-        echo "No valid R1/R2 sgRNA FASTQ pairs found for sample ${sample_id}" >&2
-        exit 1
-    fi
-
-    echo "KITE sample ${sample_id}: using \$(wc -l < paired_fastqs.tsv) R1/R2 FASTQ pairs"
-    fastq_args=\$(tr '\\n' ' ' < fastq_args.txt)
-
-    kb count -i ${index} -g ${t2g} -x ${chemistry} -o out --workflow kite --h5ad -t ${task.cpus} \$fastq_args
+    python ${projectDir}/bin/stream_count.py \
+      --accessions ${accessions.join(' ')} \
+      --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
+      --workflow kite --cpus ${task.cpus} ${sraArg}
     """
 }
 
@@ -375,8 +317,8 @@ process COMPRESS_FINAL_H5AD {
 // =============================================================================
 
 workflow {
-    if (!params.fastq_dir || !params.sample_sheet || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
-        error "Please provide --fastq_dir, --sample_sheet, --transcriptome_fa, --gtf, and --features_tsv"
+    if (!params.sample_sheet || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
+        error "Please provide --sample_sheet, --transcriptome_fa, --gtf, and --features_tsv"
     }
     
     fa = file(params.transcriptome_fa)
@@ -391,10 +333,12 @@ workflow {
             def mrna_srrs = row.mRNA_srrs.tokenize(';')
             def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
             
-            def mrna_files = mrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
-            def sgrna_files = sgrna_srrs.collect { srr -> file("${params.fastq_dir}/${srr}_{1,2,3}.fastq.gz") }.flatten()
-            
-            return [sid, mrna_files, sgrna_files]
+            if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
+            for (runs in [mrna_srrs, sgrna_srrs]) {
+                if (!runs || runs.toSet().size() != runs.size() || runs.any { !(it ==~ /(SRR|ERR|DRR)[0-9]+/) })
+                    error "Invalid or duplicate run accessions for sample ${sid}"
+            }
+            return [sid, mrna_srrs, sgrna_srrs]
         }
 
     if (params.limit > 0) {
