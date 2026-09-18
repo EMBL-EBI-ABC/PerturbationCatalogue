@@ -37,11 +37,12 @@ def download_sra(accession, directory, logdir, execute):
         "--max-time",
         "900",
         "--retry",
-        "3",
+        "8",
+        "--retry-all-errors",
         "--retry-delay",
         "2",
         "--retry-max-time",
-        "1800",
+        "3600",
     ]
     metadata = target / "locator.json"
     execute(
