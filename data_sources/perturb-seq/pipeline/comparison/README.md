@@ -1,6 +1,6 @@
 # Perturb-seq QC, probe calling and comparison
 
-The [unified Nextflow pipeline](../pipeline/README.md) runs this stage after
+The [unified Nextflow pipeline](../README.md) runs this stage after
 counting and before DEA/GSEA, using the unified pipeline-wide Singularity image.
 It receives explicit
 curated/raw H5AD and GTF paths and publishes the filtered H5AD plus every report.

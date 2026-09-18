@@ -25,5 +25,4 @@ counting, sample merges, H5AD compression, backed QC/probe calling, input
 preparation, all DEA/GSEA batches and final publication. Disk was sampled every
 five seconds over work files, published outputs and controller files.
 
-Finished output root:
-`/hps/nobackup/mfreeberg/perturb_seq_fastq/results/nadig_2025_jurkat/`.
+Finished products were published under the configured pipeline `--outdir`.

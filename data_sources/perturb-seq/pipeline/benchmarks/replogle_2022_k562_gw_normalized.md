@@ -30,5 +30,5 @@ behaviour, not an unrecovered pipeline failure.
 The run used the single image `perturb_seq.sif` (SHA-256
 `8165d68e8f2f6b26ef5421879ccefb88de3206a3a32745c1105edf32edda935b`). Disk was
 sampled every five seconds over work files, published outputs and controller
-files. Finished output root:
-`/hps/nobackup/mfreeberg/perturb_seq_fastq/results/replogle_2022_k562_gw_normalized_unified/`.
+files. Finished products were published under the configured pipeline
+`--outdir`.

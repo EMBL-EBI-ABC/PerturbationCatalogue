@@ -11,7 +11,7 @@ Original raw-availability audit scope: the 23 rows then labelled `Conditions = S
 - `Data size TB` is the size of the selected compressed archive files in decimal TB (bytes / 10^12), rounded to three decimals. The format being counted is stated in each row. These are download sizes, not extracted FASTQ sizes or processing-space estimates. BAM indexes, processed count products and alternative representations of the same reads are excluded.
 - Blank accession/size means not found or unknown, not zero. An archive record alone is not evidence that the current pipeline can process it. BAM conversion, technical barcode reads, Flex probe demultiplexing and Ultima read layouts need attention where noted.
 - Zhu sizes repeat the whole shared input pool on each of its four output rows. Count each pool once, not once per donor/condition. Missing guide libraries are not included in the size.
-- The older `fastq/ena_report.py` divides by 1024^4 despite calling its output TB, and sums only ENA `fastq_bytes`. It therefore reports TiB and misses the source-only records found here. This audit did not change that script or reinterpret unaudited rows such as Arce.
+- The size table uses decimal TB (bytes / 10^12) and states which source representation is counted; it does not estimate extracted FASTQ or processing scratch space.
 
 ## Sources and accounting
 

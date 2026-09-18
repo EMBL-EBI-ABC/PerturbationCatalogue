@@ -5,43 +5,20 @@ FASTQ records into kb-python, and produces raw and QC-filtered H5ADs, comparison
 reports, probe calls, DEA and GSEA Parquet data products in one workflow.
 Uncompressed FASTQs are buffered on disk and deleted after feeding the counter.
 
-## Dependencies and references
-
-Use Nextflow 25.04.6 and the single pipeline-wide image `perturb_seq.sif` built
-from `Singularity.def` in this directory. It contains kb-python 0.30.2, SRA
-Toolkit 3.4.1, QC/comparison and DEA/GSEA dependencies; every process uses this
-same image.
-
 ## Build and install the image
 
-Build the image locally, never on the cluster:
+Build the image locally:
 
 ```bash
 cd data_sources/perturb-seq/pipeline
 singularity build --fakeroot perturb_seq.sif Singularity.def
 ```
 
-Transfer the finished image (and, if needed, the definition for inspection) to
-the cluster staging location. Move it into the HPS pipeline directory only from
-inside a SLURM job using the context repository's checked connector. The final
-pipeline directory must contain only `perturb_seq.sif`; do not install separate
-`kb_python.sif` or `dea_gsea.sif` images.
+The workflow runs with `perturb_seq.sif` built from `Singularity.def`.
 
-For the EBI cluster, transfer to the explicitly reserved home staging paths, then
-move into HPS from an allocation (the connector rejects other home paths):
-
-```bash
-scp perturb_seq.sif Singularity.def \
-  ktsukanov@codon-slurm-login-02.ebi.ac.uk:/homes/ktsukanov/
-python3 -B PerturbationCatalogueContext/cluster.py submit \
-  --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
-  -- /usr/bin/mv /homes/ktsukanov/perturb_seq.sif \
-  /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/perturb_seq.sif
-python3 -B PerturbationCatalogueContext/cluster.py submit \
-  --cwd /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline \
-  -- /usr/bin/mv /homes/ktsukanov/Singularity.def \
-  /hps/nobackup/mfreeberg/PerturbationCatalogue/data_sources/perturb-seq/pipeline/Singularity.def
-```
+Make the finished image available at
+`$HPS_PATH/data_sources/perturb-seq/pipeline/perturb_seq.sif` in the execution
+environment.
 
 Provide a genome FASTA, its GTF, the dataset's guide-feature TSV, the curated
 (author) H5AD for comparison, and a gene-set GMT for GSEA. The reference
@@ -154,13 +131,13 @@ disk; the final H5AD is compressed with HDF5 gzip compression.
 
 After raw H5AD compression, QC and Gaussian–Poisson probe calling produce
 `experiment_final.filtered.h5ad` and curated-data comparison reports. Cell/gene
-filtering and control assignment are described in [comparison](../comparison/README.md).
+filtering and control assignment are described in [comparison](comparison/README.md).
 The same GTF is used for counting and gene-symbol resolution.
 
 DEA compares each eligible single-gene perturbation against the shared
 non-targeting controls using normalized/log-transformed counts and Scanpy
 Wilcoxon scores. GSEApy prerank uses those scores and the supplied GMT.
-See [DEA/GSEA](../dea-gsea/README.md) for methods and output schemas.
+See [DEA/GSEA](dea-gsea/README.md) for methods and output schemas.
 
 `--batch_size 50` and `--min_cells_per_perturbation 10` control analysis batching
 and eligibility. `--limit_perturbations 0` analyzes every eligible perturbation.

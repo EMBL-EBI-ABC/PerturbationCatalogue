@@ -345,7 +345,7 @@ process QC_COMPARISON {
 
     script:
     """
-    python ${projectDir}/../comparison/comparison.py \
+    python ${projectDir}/comparison/comparison.py \
       --dataset-id ${params.dataset_id} \
       --curated-h5ad ${curated_h5ad} \
       --reprocessed-h5ad ${reprocessed_h5ad} \
@@ -371,7 +371,7 @@ process PREPARE_INPUTS {
     def geneMapArg = gene_map_path ? "--gene-map ${gene_map_path}" : ""
     def gtfArg = gtf_path ? "--gtf ${gtf_path}" : ""
     """
-    python ${projectDir}/../dea-gsea/bin/prepare_inputs.py \
+    python ${projectDir}/dea-gsea/prepare_inputs.py \
       --h5ad ${h5ad} \
       --outdir analysis_inputs \
       --dataset-id ${params.dataset_id} \
@@ -402,7 +402,7 @@ process ANALYZE_BATCH {
     def tieCorrectArg = params.tie_correct ? "--tie-correct" : ""
     def gmtArg = gmt_path ? "--gmt ${gmt_path}" : ""
     """
-    python ${projectDir}/../dea-gsea/bin/analyze_batch.py \
+    python ${projectDir}/dea-gsea/analyze_batch.py \
       --h5ad ${h5ad} \
       --batch-json ${batch_json} \
       --control-indices ${analysis_dir}/control_indices.npy \
@@ -440,7 +440,7 @@ process MERGE_RESULTS {
 
     script:
     """
-    python ${projectDir}/../dea-gsea/bin/merge_results.py \
+    python ${projectDir}/dea-gsea/merge_results.py \
       --dataset-id ${dataset_id} \
       --outdir . \
       --manifest ${manifest} \

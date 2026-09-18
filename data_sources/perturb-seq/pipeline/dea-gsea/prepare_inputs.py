@@ -261,7 +261,7 @@ def prepare_batches(args: argparse.Namespace) -> dict[str, Any]:
         if not h5ad_column_exists(handle, "obs", "called_control_probe_count"):
             raise KeyError(
                 "Missing required control annotation obs['called_control_probe_count']. "
-                "Re-run data_sources/perturb-seq/comparison/comparison.py after the "
+                "Re-run data_sources/perturb-seq/pipeline/comparison/comparison.py after the "
                 "non-targeting control annotation update."
             )
         control_probe_counts = read_h5ad_column_full(

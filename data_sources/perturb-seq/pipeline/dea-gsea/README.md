@@ -1,9 +1,7 @@
 # Perturb-seq DEA/GSEA analysis
 
 These Python analysis scripts are used by the
-[unified Nextflow pipeline](../pipeline/README.md), after QC and guide calling.
-They run in the pipeline's single `../pipeline/perturb_seq.sif` image; this
-directory has no separate container.
+[unified Nextflow pipeline](../README.md), after QC and guide calling.
 
 ## Method
 
@@ -55,4 +53,4 @@ Preparation metadata is published under:
 
 The preparation step logs cell filtering and batching metrics.
 
-Output schemas are defined in `bin/io_schemas.py`.
+Output schemas are defined in `io_schemas.py`.
