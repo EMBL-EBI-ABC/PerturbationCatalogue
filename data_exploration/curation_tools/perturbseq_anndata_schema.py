@@ -4,7 +4,15 @@ from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
 
-_TREATMENT_TYPE_ID_BY_LABEL = {
+def _labels_from_id_map(id_by_label: dict[str, str | None]) -> frozenset[str]:
+    return frozenset(id_by_label)
+
+
+def _ids_from_id_map(id_by_label: dict[str, str | None]) -> frozenset[str]:
+    return frozenset(term_id for term_id in id_by_label.values() if term_id is not None)
+
+
+_TREATMENT_TYPE_ID_BY_LABEL: dict[str, str | None] = {
     "untreated control": "NCIT:C184729",
     "scrambled control oligonucleotide": "XCO:0001141",
     "culture medium": "BAO:0000114",
@@ -32,15 +40,26 @@ _TREATMENT_TYPE_ID_BY_LABEL = {
     "esiRNA": "BAO:0000544",
 }
 
-_TREATMENT_TYPE_LABELS = frozenset(_TREATMENT_TYPE_ID_BY_LABEL)
-_TREATMENT_TYPE_IDS = frozenset(_TREATMENT_TYPE_ID_BY_LABEL.values())
+_TREATMENT_TYPE_LABELS = _labels_from_id_map(_TREATMENT_TYPE_ID_BY_LABEL)
+_TREATMENT_TYPE_IDS = _ids_from_id_map(_TREATMENT_TYPE_ID_BY_LABEL)
 
-_DATA_MODALITIES = frozenset({"Perturb-seq", "CRISPR screen", "MAVE"})
+_DATA_MODALITY_ID_BY_LABEL: dict[str, str | None] = {
+    "Perturb-seq": None,
+    "CRISPR screen": None,
+    "MAVE": None,
+}
+_DATA_MODALITIES = _labels_from_id_map(_DATA_MODALITY_ID_BY_LABEL)
 _SIGNIFICANCE_VALUES = frozenset({"True", "False"})
 _CURATION_AGENT_TYPES = frozenset({"human", "LLM"})
-_PERTURBATION_TYPE_LABELS = frozenset({"CRISPRn", "CRISPRi", "CRISPRa", "DMS"})
+_PERTURBATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "CRISPRn": None,
+    "CRISPRi": None,
+    "CRISPRa": None,
+    "DMS": None,
+}
+_PERTURBATION_TYPE_LABELS = _labels_from_id_map(_PERTURBATION_TYPE_ID_BY_LABEL)
 
-_MODEL_SYSTEM_ID_BY_LABEL = {
+_MODEL_SYSTEM_ID_BY_LABEL: dict[str, str | None] = {
     "cell_line": "CLO:0000031",
     "primary_cell": "BAO:0000239",
     "organoid": "NCIT:C172259",
@@ -50,20 +69,22 @@ _MODEL_SYSTEM_ID_BY_LABEL = {
     "animal_model": "NCIT:C71164",
     "cell_free_system": "mesh:D002474",
 }
-_MODEL_SYSTEM_LABELS = frozenset(_MODEL_SYSTEM_ID_BY_LABEL)
-_MODEL_SYSTEM_IDS = frozenset(_MODEL_SYSTEM_ID_BY_LABEL.values())
+_MODEL_SYSTEM_LABELS = _labels_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
+_MODEL_SYSTEM_IDS = _ids_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
 
-_SPECIES = frozenset({"Homo sapiens"})
+_SPECIES_ID_BY_LABEL: dict[str, str | None] = {"Homo sapiens": None}
+_SPECIES = _labels_from_id_map(_SPECIES_ID_BY_LABEL)
 
-_SEX_ID_BY_LABEL = {
+_SEX_ID_BY_LABEL: dict[str, str | None] = {
     "female": "PATO:0000383",
     "male": "PATO:0000384",
     "hermaphrodite": "PATO:0001340",
+    "unknown": None,
 }
-_SEX_LABELS = frozenset((*_SEX_ID_BY_LABEL, "unknown"))
-_SEX_IDS = frozenset(_SEX_ID_BY_LABEL.values())
+_SEX_LABELS = _labels_from_id_map(_SEX_ID_BY_LABEL)
+_SEX_IDS = _ids_from_id_map(_SEX_ID_BY_LABEL)
 
-_DEVELOPMENTAL_STAGE_ID_BY_LABEL = {
+_DEVELOPMENTAL_STAGE_ID_BY_LABEL: dict[str, str | None] = {
     "embryonic": "HsapDv:0000002",
     "fetal": "HsapDv:0000037",
     "neonatal": "HsapDv:0000262",
@@ -72,17 +93,19 @@ _DEVELOPMENTAL_STAGE_ID_BY_LABEL = {
     "adult": "HsapDv:0000258",
     "elderly": "HsapDv:0000227",
 }
-_DEVELOPMENTAL_STAGE_LABELS = frozenset(_DEVELOPMENTAL_STAGE_ID_BY_LABEL)
-_DEVELOPMENTAL_STAGE_IDS = frozenset(_DEVELOPMENTAL_STAGE_ID_BY_LABEL.values())
+_DEVELOPMENTAL_STAGE_LABELS = _labels_from_id_map(_DEVELOPMENTAL_STAGE_ID_BY_LABEL)
+_DEVELOPMENTAL_STAGE_IDS = _ids_from_id_map(_DEVELOPMENTAL_STAGE_ID_BY_LABEL)
 
-_LIBRARY_GENERATION_TYPE_ID_BY_LABEL = {
+_LIBRARY_GENERATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
     "endogenous genetic perturbation method": "EFO:0022868",
     "exogenous genetic perturbation method": "EFO:0022869",
 }
-_LIBRARY_GENERATION_TYPE_LABELS = frozenset(_LIBRARY_GENERATION_TYPE_ID_BY_LABEL)
-_LIBRARY_GENERATION_TYPE_IDS = frozenset(_LIBRARY_GENERATION_TYPE_ID_BY_LABEL.values())
+_LIBRARY_GENERATION_TYPE_LABELS = _labels_from_id_map(
+    _LIBRARY_GENERATION_TYPE_ID_BY_LABEL
+)
+_LIBRARY_GENERATION_TYPE_IDS = _ids_from_id_map(_LIBRARY_GENERATION_TYPE_ID_BY_LABEL)
 
-_LIBRARY_GENERATION_METHOD_ID_BY_LABEL = {
+_LIBRARY_GENERATION_METHOD_ID_BY_LABEL: dict[str, str | None] = {
     "doped oligo synthesis": "EFO:0022900",
     "error-prone PCR": "EFO:0022901",
     "microarray synthesis": "EFO:0022902",
@@ -93,83 +116,75 @@ _LIBRARY_GENERATION_METHOD_ID_BY_LABEL = {
     "POPCode mutagenesis": "EFO:0022905",
     "multiplexed site-directed mutagenesis": "EFO:0022905",
     "insertional mutagenesis": "NCIT:C17377",
+    "solid-phase oligonucleotide synthesis": None,
+    "microchip-based massive parallel oligo synthesis": None,
+    "mutagenesis by integrated tiles": None,
 }
-_LIBRARY_GENERATION_METHOD_LABELS = frozenset(
-    (
-        *_LIBRARY_GENERATION_METHOD_ID_BY_LABEL,
-        "solid-phase oligonucleotide synthesis",
-        "microchip-based massive parallel oligo synthesis",
-        "mutagenesis by integrated tiles",
-    )
+_LIBRARY_GENERATION_METHOD_LABELS = _labels_from_id_map(
+    _LIBRARY_GENERATION_METHOD_ID_BY_LABEL
 )
-_LIBRARY_GENERATION_METHOD_IDS = frozenset(
-    _LIBRARY_GENERATION_METHOD_ID_BY_LABEL.values()
+_LIBRARY_GENERATION_METHOD_IDS = _ids_from_id_map(
+    _LIBRARY_GENERATION_METHOD_ID_BY_LABEL
 )
 
-_ENZYME_DELIVERY_METHOD_LABELS = frozenset(
-    {
-        "lipofection",
-        "nucleofection",
-        "electroporation",
-        "adeno-associated virus transduction",
-        "adenovirus transduction",
-        "retrovirus transduction",
-        "lentivirus transduction",
-        "nanoparticle-mediated transfection",
-        "molecular cloning",
-        "transformation",
-        "chemical-mediated transfection",
-        "hydrodynamic injection",
-        "influenza A virus infection",
-    }
-)
-_LIBRARY_DELIVERY_METHOD_LABELS = frozenset(
-    {
-        "lipofection",
-        "nucleofection",
-        "electroporation",
-        "adeno-associated virus transduction",
-        "adenovirus transduction",
-        "retrovirus transduction",
-        "lentivirus transduction",
-        "nanoparticle-mediated transfection",
-        "transformation",
-        "chemical-mediated transfection",
-        "hydrodynamic injection",
-        "molecular cloning",
-        "influenza A virus infection",
-    }
-)
+_DELIVERY_METHOD_ID_BY_LABEL: dict[str, str | None] = {
+    "lipofection": None,
+    "nucleofection": None,
+    "electroporation": None,
+    "adeno-associated virus transduction": None,
+    "adenovirus transduction": None,
+    "retrovirus transduction": None,
+    "lentivirus transduction": None,
+    "nanoparticle-mediated transfection": None,
+    "molecular cloning": None,
+    "transformation": None,
+    "chemical-mediated transfection": None,
+    "hydrodynamic injection": None,
+    "influenza A virus infection": None,
+}
+_ENZYME_DELIVERY_METHOD_LABELS = _labels_from_id_map(_DELIVERY_METHOD_ID_BY_LABEL)
+_LIBRARY_DELIVERY_METHOD_LABELS = _labels_from_id_map(_DELIVERY_METHOD_ID_BY_LABEL)
 
-_INTEGRATION_STATE_ID_BY_LABEL = {
+_INTEGRATION_STATE_ID_BY_LABEL: dict[str, str | None] = {
     "random locus integration": "EFO:0920082",
     "targeted locus integration": "EFO:0920083",
     "native locus replacement": "EFO:0920084",
     "non-integrative transgene expression": "EFO:0920085",
+    "bacteriophage genome integration": None,
 }
-_INTEGRATION_STATE_LABELS = frozenset(
-    (*_INTEGRATION_STATE_ID_BY_LABEL, "bacteriophage genome integration")
-)
-_INTEGRATION_STATE_IDS = frozenset(_INTEGRATION_STATE_ID_BY_LABEL.values())
+_INTEGRATION_STATE_LABELS = _labels_from_id_map(_INTEGRATION_STATE_ID_BY_LABEL)
+_INTEGRATION_STATE_IDS = _ids_from_id_map(_INTEGRATION_STATE_ID_BY_LABEL)
 
-_ENZYME_EXPRESSION_CONTROL_LABELS = frozenset(
-    {
-        "constitutive transgene expression",
-        "inducible transgene expression",
-        "native promoter-driven transgene expression",
-        "degradation domain-based transgene control",
-        "transient transgene expression",
-        "minimal promoter-driven transgene expression",
-    }
+_EXPRESSION_CONTROL_ID_BY_LABEL: dict[str, str | None] = {
+    "constitutive transgene expression": None,
+    "inducible transgene expression": None,
+    "native promoter-driven transgene expression": None,
+    "degradation domain-based transgene control": None,
+    "transient transgene expression": None,
+    "minimal promoter-driven transgene expression": None,
+}
+_ENZYME_EXPRESSION_CONTROL_LABELS = _labels_from_id_map(
+    _EXPRESSION_CONTROL_ID_BY_LABEL
 )
-_LIBRARY_EXPRESSION_CONTROL_LABELS = _ENZYME_EXPRESSION_CONTROL_LABELS
-
-_LIBRARY_FORMAT_LABELS = frozenset(
-    {"pooled", "arrayed", "arrayed|pooled", "in vivo"}
+_LIBRARY_EXPRESSION_CONTROL_LABELS = _labels_from_id_map(
+    _EXPRESSION_CONTROL_ID_BY_LABEL
 )
-_LIBRARY_SCOPE_LABELS = frozenset({"focused", "genome-wide"})
 
-_LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL = {
+_LIBRARY_FORMAT_ID_BY_LABEL: dict[str, str | None] = {
+    "pooled": None,
+    "arrayed": None,
+    "arrayed|pooled": None,
+    "in vivo": None,
+}
+_LIBRARY_FORMAT_LABELS = _labels_from_id_map(_LIBRARY_FORMAT_ID_BY_LABEL)
+
+_LIBRARY_SCOPE_ID_BY_LABEL: dict[str, str | None] = {
+    "focused": None,
+    "genome-wide": None,
+}
+_LIBRARY_SCOPE_LABELS = _labels_from_id_map(_LIBRARY_SCOPE_ID_BY_LABEL)
+
+_LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
     "knockout": "EFO:0000506",
     "inhibition": "INO:0000085",
     "activation": "INO:0000075",
@@ -177,26 +192,30 @@ _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL = {
     "prime editing": "EFO:0022872",
     "mutagenesis": "NCIT:C17376",
 }
-_LIBRARY_PERTURBATION_TYPE_LABELS = frozenset(
+_LIBRARY_PERTURBATION_TYPE_LABELS = _labels_from_id_map(
     _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL
 )
-_LIBRARY_PERTURBATION_TYPE_IDS = frozenset(
-    _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL.values()
+_LIBRARY_PERTURBATION_TYPE_IDS = _ids_from_id_map(
+    _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL
 )
 
-_READOUT_DIMENSIONALITY_LABELS = frozenset(
-    {"single-dimensional assay", "high-dimensional assay"}
+_READOUT_DIMENSIONALITY_ID_BY_LABEL: dict[str, str | None] = {
+    "single-dimensional assay": None,
+    "high-dimensional assay": None,
+}
+_READOUT_DIMENSIONALITY_LABELS = _labels_from_id_map(
+    _READOUT_DIMENSIONALITY_ID_BY_LABEL
 )
 
-_READOUT_TYPE_ID_BY_LABEL = {
+_READOUT_TYPE_ID_BY_LABEL: dict[str, str | None] = {
     "transcriptomic": "EFO:0001032",
     "proteomic": "EFO:0000746",
     "phenotypic": "EFO:0920062",
 }
-_READOUT_TYPE_LABELS = frozenset(_READOUT_TYPE_ID_BY_LABEL)
-_READOUT_TYPE_IDS = frozenset(_READOUT_TYPE_ID_BY_LABEL.values())
+_READOUT_TYPE_LABELS = _labels_from_id_map(_READOUT_TYPE_ID_BY_LABEL)
+_READOUT_TYPE_IDS = _ids_from_id_map(_READOUT_TYPE_ID_BY_LABEL)
 
-_READOUT_TECHNOLOGY_ID_BY_LABEL = {
+_READOUT_TECHNOLOGY_ID_BY_LABEL: dict[str, str | None] = {
     "single-cell rna-seq": "EFO:0008913",
     "population growth assay": "EFO:0002907",
     "flow cytometry": "BAO:0000005",
@@ -204,10 +223,10 @@ _READOUT_TECHNOLOGY_ID_BY_LABEL = {
     "patch-clamp electrophysiology": "EFO:0022948",
     "fluorometry": "mesh:D005470",
 }
-_READOUT_TECHNOLOGY_LABELS = frozenset(_READOUT_TECHNOLOGY_ID_BY_LABEL)
-_READOUT_TECHNOLOGY_IDS = frozenset(_READOUT_TECHNOLOGY_ID_BY_LABEL.values())
+_READOUT_TECHNOLOGY_LABELS = _labels_from_id_map(_READOUT_TECHNOLOGY_ID_BY_LABEL)
+_READOUT_TECHNOLOGY_IDS = _ids_from_id_map(_READOUT_TECHNOLOGY_ID_BY_LABEL)
 
-_READOUT_MEASUREMENT_ID_BY_LABEL = {
+_READOUT_MEASUREMENT_ID_BY_LABEL: dict[str, str | None] = {
     "protein abundance": "BAO:0010252",
     "protein stability": "BAO:0002804",
     "protein activity": "APO:0000022",
@@ -220,17 +239,15 @@ _READOUT_MEASUREMENT_ID_BY_LABEL = {
     "ligand binding": "NCIT:C178030",
     "ion channel activity": "BAO:0002997",
     "fluorescence": "BAO:0000363",
+    "surface protein expression": None,
+    "viral growth": None,
 }
-_READOUT_MEASUREMENT_LABELS = frozenset(
-    (
-        *_READOUT_MEASUREMENT_ID_BY_LABEL,
-        "surface protein expression",
-        "viral growth",
-    )
+_READOUT_MEASUREMENT_LABELS = _labels_from_id_map(
+    _READOUT_MEASUREMENT_ID_BY_LABEL
 )
-_READOUT_MEASUREMENT_IDS = frozenset(_READOUT_MEASUREMENT_ID_BY_LABEL.values())
+_READOUT_MEASUREMENT_IDS = _ids_from_id_map(_READOUT_MEASUREMENT_ID_BY_LABEL)
 
-_METHOD_NAME_ID_BY_LABEL = {
+_METHOD_NAME_ID_BY_LABEL: dict[str, str | None] = {
     "Perturb-seq": "EFO:0008860",
     "scRNA-seq": "EFO:0008913",
     "pooled growth competition assay": "EFO:0002907",
@@ -245,65 +262,59 @@ _METHOD_NAME_ID_BY_LABEL = {
     "patch-clamp electrophysiology": "EFO:0022948",
     "abundance protein fragment complementation assay": "MI:0090",
     "computational meta-analysis": "NCIT:C17886",
+    "Perturb-CITE-seq": None,
+    "proliferation CRISPR screen": None,
+    "DMS-TileSeq": None,
+    "DMS-BarSeq": None,
+    "Joined and refined DMS-BarSeq and DMS-TileSeq": None,
+    "Combined DMS-BarSeq and DMS-TileSeq": None,
+    "flow cytometry-based sequencing assay": None,
+    "CRISPR mutagenesis screen": None,
+    "Saturation-Selection-Sequencing assay": None,
+    "fluorescence-based homology-directed repair assay": None,
+    "gap repair assay": None,
+    "homology-directed repair assay": None,
+    "phage-assisted continuous selection": None,
+    "pooled deep mutational scanning": None,
+    "protein folding sensor assay": None,
+    "saturation genome editing": None,
+    "saturation prime editing": None,
+    "saturation base editing": None,
+    "MITE": None,
+    "VAMP-seq": None,
+    "polysome profiling": None,
 }
-_METHOD_NAME_LABELS = frozenset(
-    (
-        *_METHOD_NAME_ID_BY_LABEL,
-        "Perturb-CITE-seq",
-        "proliferation CRISPR screen",
-        "DMS-TileSeq",
-        "DMS-BarSeq",
-        "Joined and refined DMS-BarSeq and DMS-TileSeq",
-        "Combined DMS-BarSeq and DMS-TileSeq",
-        "flow cytometry-based sequencing assay",
-        "CRISPR mutagenesis screen",
-        "Saturation-Selection-Sequencing assay",
-        "fluorescence-based homology-directed repair assay",
-        "gap repair assay",
-        "homology-directed repair assay",
-        "phage-assisted continuous selection",
-        "pooled deep mutational scanning",
-        "protein folding sensor assay",
-        "saturation genome editing",
-        "saturation prime editing",
-        "saturation base editing",
-        "MITE",
-        "VAMP-seq",
-        "polysome profiling",
-    )
-)
-_METHOD_NAME_IDS = frozenset(_METHOD_NAME_ID_BY_LABEL.values())
+_METHOD_NAME_LABELS = _labels_from_id_map(_METHOD_NAME_ID_BY_LABEL)
+_METHOD_NAME_IDS = _ids_from_id_map(_METHOD_NAME_ID_BY_LABEL)
 
-_SEQUENCING_LIBRARY_KIT_ID_BY_LABEL = {
+_SEQUENCING_LIBRARY_KIT_ID_BY_LABEL: dict[str, str | None] = {
     "10x Genomics Single Cell 3-prime v1": "EFO:0009901",
     "10x Genomics Single Cell 3-prime v2": "EFO:0009899",
     "10x Genomics Single Cell 3-prime v3": "EFO:0009922",
     "10x Genomics Single Cell 3-prime v3.1": "EFO:0022980",
     "10x Genomics Chromium GEM-X Flex v1": "EFO:0920088",
+    "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3": None,
+    "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2": None,
+    "Nextera XT DNA Library Preparation Kit": None,
+    "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit": None,
+    "TruSeq Nano DNA Library Prep Kit": None,
+    "Ovation Ultralow Library System": None,
+    "custom PCR library preparation": None,
+    "Nextera DNA Library Preparation Kit": None,
+    "PacBio SMRTbell Template Prep Kit": None,
+    "PacBio SMRTbell Template Prep Kit v1": None,
+    "PacBio SMRTbell Template Prep Kit v2": None,
+    "PacBio SMRTbell Template Prep Kit v3": None,
+    "Beckman Coulter DTCS DNA sequencing kit": None,
 }
-_SEQUENCING_LIBRARY_KIT_LABELS = frozenset(
-    (
-        *_SEQUENCING_LIBRARY_KIT_ID_BY_LABEL,
-        "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
-        "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2",
-        "Nextera XT DNA Library Preparation Kit",
-        "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit",
-        "TruSeq Nano DNA Library Prep Kit",
-        "Ovation Ultralow Library System",
-        "custom PCR library preparation",
-        "Nextera DNA Library Preparation Kit",
-        "PacBio SMRTbell Template Prep Kit",
-        "PacBio SMRTbell Template Prep Kit v1",
-        "PacBio SMRTbell Template Prep Kit v2",
-        "PacBio SMRTbell Template Prep Kit v3",
-        "Beckman Coulter DTCS DNA sequencing kit",
-    )
+_SEQUENCING_LIBRARY_KIT_LABELS = _labels_from_id_map(
+    _SEQUENCING_LIBRARY_KIT_ID_BY_LABEL
 )
-_SEQUENCING_LIBRARY_KIT_IDS = frozenset(
-    _SEQUENCING_LIBRARY_KIT_ID_BY_LABEL.values()
+_SEQUENCING_LIBRARY_KIT_IDS = _ids_from_id_map(
+    _SEQUENCING_LIBRARY_KIT_ID_BY_LABEL
 )
 
-_SEQUENCING_PLATFORM_ID_BY_LABEL = {
+_SEQUENCING_PLATFORM_ID_BY_LABEL: dict[str, str | None] = {
     "Illumina Genome Analyzer": "EFO:0004200",
     "Illumina Genome Analyzer II": "EFO:0004201",
     "Illumina Genome Analyzer IIx": "EFO:0004202",
@@ -355,102 +366,99 @@ _SEQUENCING_PLATFORM_ID_BY_LABEL = {
     "Roche 454 GS FLX": "EFO:0004432",
     "Ion Torrent PGM": "GENEPIO:0100136",
     "Ultima Genomics UG100": "EFO:0920005",
+    "Roche 454 GS FLX+": None,
+    "Illumina NextSeq (model unspecified)": None,
+    "Illumina sequencer (model unspecified)": None,
+    "Illumina HiSeq (model unspecified)": None,
+    "PacBio sequencer (model unspecified)": None,
 }
-_SEQUENCING_PLATFORM_LABELS = frozenset(
-    (
-        *_SEQUENCING_PLATFORM_ID_BY_LABEL,
-        "Roche 454 GS FLX+",
-        "Illumina NextSeq (model unspecified)",
-        "Illumina sequencer (model unspecified)",
-        "Illumina HiSeq (model unspecified)",
-        "PacBio sequencer (model unspecified)",
-    )
+_SEQUENCING_PLATFORM_LABELS = _labels_from_id_map(
+    _SEQUENCING_PLATFORM_ID_BY_LABEL
 )
-_SEQUENCING_PLATFORM_IDS = frozenset(_SEQUENCING_PLATFORM_ID_BY_LABEL.values())
+_SEQUENCING_PLATFORM_IDS = _ids_from_id_map(_SEQUENCING_PLATFORM_ID_BY_LABEL)
 
-_SEQUENCING_STRATEGY_ID_BY_LABEL = {"direct sequencing": "NCIT:C116154"}
-_SEQUENCING_STRATEGY_LABELS = frozenset(
-    {
-        "barcode sequencing",
-        "direct sequencing",
-        "barcode sequencing|direct sequencing",
-    }
+_SEQUENCING_STRATEGY_ID_BY_LABEL: dict[str, str | None] = {
+    "barcode sequencing": None,
+    "direct sequencing": "NCIT:C116154",
+    "barcode sequencing|direct sequencing": None,
+}
+_SEQUENCING_STRATEGY_LABELS = _labels_from_id_map(
+    _SEQUENCING_STRATEGY_ID_BY_LABEL
 )
-_SEQUENCING_STRATEGY_IDS = frozenset(_SEQUENCING_STRATEGY_ID_BY_LABEL.values())
+_SEQUENCING_STRATEGY_IDS = _ids_from_id_map(_SEQUENCING_STRATEGY_ID_BY_LABEL)
 
-_SOFTWARE_COUNTS_LABELS = frozenset(
-    {
-        "custom",
-        "MaGeCK",
-        "CellRanger",
-        "Drop-seq Tools",
-        "Enrich2",
-        "Enrich",
-        "Novoalign",
-        "TileSEQ Analysis Package",
-        "DiMSum",
-        "dms_tools",
-        "dms_tools2",
-        "dms_variants",
-        "CRISPResso2",
-        "mapmuts",
-        "ORFcall",
-        "ABSSeq",
-        "satmut_utils",
-        "bcftools",
-        "TagDust2",
-        "Subassembly",
-        "pysamstats",
-        "Jellyfish",
-        "Tagdust2",
-    }
-)
-_SOFTWARE_ANALYSIS_LABELS = frozenset(
-    {
-        "custom",
-        "MAGeCK",
-        "Achilles",
-        "TRADE",
-        "Seurat",
-        "MAST",
-        "scanpy",
-        "Enrich2",
-        "DiMSum",
-        "DESeq2",
-        "dms_tools",
-        "dms_tools2",
-        "ALDEx2",
-        "multidms",
-        "dmsPipeline",
-        "phydms",
-        "Enrich",
-        "Rosetta",
-        "dms_variants",
-        "mapmuts",
-        "maveLLR",
-        "tileseq_package",
-        "tileseqMave",
-        "TileseqMave",
-        "ABSSeq",
-        "Cluster",
-        "ORFcall",
-        "samtools",
-    }
-)
-_REFERENCE_GENOME_LABELS = frozenset(
-    {
-        "GRCh38",
-        "GRCh37",
-        "cDNA reference sequence",
-        "mm9",
-        "S288c",
-        "hg19",
-        "Wuhan-Hu-1",
-        "non-standard reference sequence",
-    }
-)
+_SOFTWARE_COUNTS_ID_BY_LABEL: dict[str, str | None] = {
+    "custom": None,
+    "MaGeCK": None,
+    "CellRanger": None,
+    "Drop-seq Tools": None,
+    "Enrich2": None,
+    "Enrich": None,
+    "Novoalign": None,
+    "TileSEQ Analysis Package": None,
+    "DiMSum": None,
+    "dms_tools": None,
+    "dms_tools2": None,
+    "dms_variants": None,
+    "CRISPResso2": None,
+    "mapmuts": None,
+    "ORFcall": None,
+    "ABSSeq": None,
+    "satmut_utils": None,
+    "bcftools": None,
+    "TagDust2": None,
+    "Subassembly": None,
+    "pysamstats": None,
+    "Jellyfish": None,
+    "Tagdust2": None,
+}
+_SOFTWARE_COUNTS_LABELS = _labels_from_id_map(_SOFTWARE_COUNTS_ID_BY_LABEL)
 
-_LICENSE_ID_BY_LABEL = {
+_SOFTWARE_ANALYSIS_ID_BY_LABEL: dict[str, str | None] = {
+    "custom": None,
+    "MAGeCK": None,
+    "Achilles": None,
+    "TRADE": None,
+    "Seurat": None,
+    "MAST": None,
+    "scanpy": None,
+    "Enrich2": None,
+    "DiMSum": None,
+    "DESeq2": None,
+    "dms_tools": None,
+    "dms_tools2": None,
+    "ALDEx2": None,
+    "multidms": None,
+    "dmsPipeline": None,
+    "phydms": None,
+    "Enrich": None,
+    "Rosetta": None,
+    "dms_variants": None,
+    "mapmuts": None,
+    "maveLLR": None,
+    "tileseq_package": None,
+    "tileseqMave": None,
+    "TileseqMave": None,
+    "ABSSeq": None,
+    "Cluster": None,
+    "ORFcall": None,
+    "samtools": None,
+}
+_SOFTWARE_ANALYSIS_LABELS = _labels_from_id_map(_SOFTWARE_ANALYSIS_ID_BY_LABEL)
+
+_REFERENCE_GENOME_ID_BY_LABEL: dict[str, str | None] = {
+    "GRCh38": None,
+    "GRCh37": None,
+    "cDNA reference sequence": None,
+    "mm9": None,
+    "S288c": None,
+    "hg19": None,
+    "Wuhan-Hu-1": None,
+    "non-standard reference sequence": None,
+}
+_REFERENCE_GENOME_LABELS = _labels_from_id_map(_REFERENCE_GENOME_ID_BY_LABEL)
+
+_LICENSE_ID_BY_LABEL: dict[str, str | None] = {
     "CC0": "SWO:1000049",
     "CC BY": "SWO:1000050",
     "CC BY-SA": "SWO:1000052",
@@ -484,8 +492,8 @@ _LICENSE_ID_BY_LABEL = {
     "CC BY-SA 3.0 US": "SWO:1000093",
     "CC BY-SA 4.0": "SWO:1000094",
 }
-_LICENSE_LABELS = frozenset(_LICENSE_ID_BY_LABEL)
-_LICENSE_IDS = frozenset(_LICENSE_ID_BY_LABEL.values())
+_LICENSE_LABELS = _labels_from_id_map(_LICENSE_ID_BY_LABEL)
+_LICENSE_IDS = _ids_from_id_map(_LICENSE_ID_BY_LABEL)
 
 _TREATMENT_UNITS = frozenset(
     {
