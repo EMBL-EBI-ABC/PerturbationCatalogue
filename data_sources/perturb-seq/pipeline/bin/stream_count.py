@@ -37,11 +37,12 @@ def download_sra(accession, directory, logdir, execute):
         "--max-time",
         "900",
         "--retry",
-        "3",
+        "8",
+        "--retry-all-errors",
         "--retry-delay",
         "2",
         "--retry-max-time",
-        "1800",
+        "3600",
     ]
     metadata = target / "locator.json"
     execute(
@@ -228,7 +229,14 @@ def main():
             try:
                 code = child.wait(timeout=timeout)
                 if code:
-                    raise RuntimeError(f"{command[0]} exited {code}; see {log}")
+                    with lock:
+                        concurrent = "; ".join(errors)
+                    detail = (
+                        "; concurrent producer error: " + concurrent
+                        if concurrent
+                        else ""
+                    )
+                    raise RuntimeError(f"{command[0]} exited {code}; see {log}{detail}")
             finally:
                 # Keep live children registered until shutdown can kill them.
                 if child.poll() is not None:

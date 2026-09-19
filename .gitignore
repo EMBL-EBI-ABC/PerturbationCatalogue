@@ -8,6 +8,7 @@ fe/env
 *.h5ad
 *.parquet
 *.log
+data_sources/perturb-seq/pipeline/perturb_seq.sif
 __pycache__
 data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump

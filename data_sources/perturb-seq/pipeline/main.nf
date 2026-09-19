@@ -5,6 +5,21 @@ nextflow.enable.dsl=2
 // =============================================================================
 // PIPELINE PARAMETERS
 // =============================================================================
+params.dataset_id = null
+params.curated_h5ad = null
+params.gmt = null
+params.comparison_outdir = null
+params.batch_size = 50
+params.min_cells_per_perturbation = 10
+params.limit_perturbations = 0
+params.target_sum = 10000
+params.matrix_key = "X"
+params.gene_map = ""
+params.gsea_permutations = 1000
+params.gsea_min_size = 15
+params.gsea_max_size = 500
+params.gsea_seed = 1
+params.tie_correct = false
 params.sra_bin = ""
 params.sample_sheet = null
 params.outdir = "results"
@@ -304,7 +319,7 @@ process COMPRESS_FINAL_H5AD {
     path uncompressed_h5ad
 
     output:
-    path "experiment_final.h5ad"
+    path "experiment_final.h5ad", emit: h5ad
 
     script:
     """
@@ -312,18 +327,148 @@ process COMPRESS_FINAL_H5AD {
     """
 }
 
+process QC_COMPARISON {
+    tag "${params.dataset_id}"
+    publishDir "${params.outdir}", mode: 'copy', pattern: '*.filtered.h5ad'
+    publishDir { params.comparison_outdir ?: "${params.outdir}/comparison_results" },
+        mode: 'copy', pattern: "comparison_results/${params.dataset_id}",
+        saveAs: { filename -> filename.tokenize('/').last() }
+
+    input:
+    path reprocessed_h5ad, stageAs: 'reprocessed.h5ad'
+    path curated_h5ad, stageAs: 'curated.h5ad'
+    path reference_gtf
+
+    output:
+    path 'experiment_final.filtered.h5ad', emit: h5ad
+    path "comparison_results/${params.dataset_id}", emit: reports
+
+    script:
+    """
+    python ${projectDir}/comparison/comparison.py \
+      --dataset-id ${params.dataset_id} \
+      --curated-h5ad ${curated_h5ad} \
+      --reprocessed-h5ad ${reprocessed_h5ad} \
+      --gtf ${reference_gtf}
+    """
+}
+
+process PREPARE_INPUTS {
+    tag "${params.dataset_id}"
+    publishDir "${params.outdir}/dea_gsea/prep", mode: "copy"
+
+    input:
+    path h5ad
+    val gene_map_path
+    path gtf_path
+
+    output:
+    path "analysis_inputs", emit: analysis_dir
+    path "analysis_inputs/batches/*.json", emit: batches
+    path "analysis_inputs/manifest.json", emit: manifest
+
+    script:
+    def geneMapArg = gene_map_path ? "--gene-map ${gene_map_path}" : ""
+    def gtfArg = gtf_path ? "--gtf ${gtf_path}" : ""
+    """
+    python ${projectDir}/dea-gsea/prepare_inputs.py \
+      --h5ad ${h5ad} \
+      --outdir analysis_inputs \
+      --dataset-id ${params.dataset_id} \
+      --batch-size ${params.batch_size} \
+      --min-cells-per-perturbation ${params.min_cells_per_perturbation} \
+      --limit-perturbations ${params.limit_perturbations} \
+      ${geneMapArg} \
+      ${gtfArg}
+    """
+}
+
+
+process ANALYZE_BATCH {
+    tag "${batch_json.baseName}"
+    publishDir "${params.outdir}/dea_gsea/batch_results", mode: "copy"
+
+    input:
+    tuple path(batch_json), path(analysis_dir)
+    path h5ad
+    path gmt_path
+
+    output:
+    path "*.dea.parquet", emit: dea
+    path "*.gsea.parquet", emit: gsea
+    path "*.metrics.json", emit: metrics
+
+    script:
+    def tieCorrectArg = params.tie_correct ? "--tie-correct" : ""
+    def gmtArg = gmt_path ? "--gmt ${gmt_path}" : ""
+    """
+    python ${projectDir}/dea-gsea/analyze_batch.py \
+      --h5ad ${h5ad} \
+      --batch-json ${batch_json} \
+      --control-indices ${analysis_dir}/control_indices.npy \
+      --gene-metadata ${analysis_dir}/gene_metadata.parquet \
+      --outdir . \
+      --dataset-id ${params.dataset_id} \
+      --matrix-key ${params.matrix_key} \
+      --target-sum ${params.target_sum} \
+      --threads ${task.cpus} \
+      --gsea-permutations ${params.gsea_permutations} \
+      --gsea-min-size ${params.gsea_min_size} \
+      --gsea-max-size ${params.gsea_max_size} \
+      --gsea-seed ${params.gsea_seed} \
+      ${gmtArg} \
+      ${tieCorrectArg}
+    """
+}
+
+
+process MERGE_RESULTS {
+    tag "${dataset_id}"
+    publishDir "${params.outdir}/dea_gsea", mode: "copy"
+
+    input:
+    path dea_files
+    path gsea_files
+    path metrics_files
+    path manifest
+    val dataset_id
+
+    output:
+    path "${dataset_id}.dea.parquet", emit: dea
+    path "${dataset_id}.gsea.parquet", emit: gsea
+    path "${dataset_id}.summary.json", emit: summary
+
+    script:
+    """
+    python ${projectDir}/dea-gsea/merge_results.py \
+      --dataset-id ${dataset_id} \
+      --outdir . \
+      --manifest ${manifest} \
+      --dea-files ${dea_files.join(" ")} \
+      --gsea-files ${gsea_files.join(" ")} \
+      --metrics-files ${metrics_files.join(" ")}
+    """
+}
+
+
 // =============================================================================
 // WORKFLOW
 // =============================================================================
 
 workflow {
+    if (!params.dataset_id || !(params.dataset_id ==~ /[A-Za-z0-9_-]+/))
+        error "Please provide a valid --dataset_id"
+    if (!params.curated_h5ad || !params.gmt)
+        error "Please provide --curated_h5ad and --gmt"
     if (!params.sample_sheet || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
         error "Please provide --sample_sheet, --transcriptome_fa, --gtf, and --features_tsv"
     }
     
-    fa = file(params.transcriptome_fa)
-    gtf = file(params.gtf)
-    features = file(params.features_tsv)
+    fa = file(params.transcriptome_fa, checkIfExists: true)
+    gtf = file(params.gtf, checkIfExists: true)
+    features = file(params.features_tsv, checkIfExists: true)
+    curated = file(params.curated_h5ad, checkIfExists: true)
+    gene_sets = file(params.gmt, checkIfExists: true)
     
     samples_ch = Channel
         .fromPath(params.sample_sheet)
@@ -361,5 +506,12 @@ workflow {
     uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 
     // Step 5: Final HDF5 Compression
-    COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
+    raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
+    filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf)
+    gene_map_path = params.gene_map ? file(params.gene_map, checkIfExists: true).toString() : ""
+    prep = PREPARE_INPUTS(filtered.h5ad, gene_map_path, gtf)
+    analysis_inputs = prep.batches.flatten().combine(prep.analysis_dir)
+    analyzed = ANALYZE_BATCH(analysis_inputs, filtered.h5ad, gene_sets)
+    MERGE_RESULTS(analyzed.dea.collect(), analyzed.gsea.collect(),
+                  analyzed.metrics.collect(), prep.manifest, params.dataset_id)
 }

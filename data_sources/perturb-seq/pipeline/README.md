@@ -1,19 +1,27 @@
-# Perturb-seq SRA download and counting pipeline
+# Unified Perturb-seq pipeline
 
 This Nextflow pipeline downloads the SRA runs in a sample sheet, streams their
-FASTQ records into kb-python, and produces a unified H5AD count matrix. Raw
-uncompressed FASTQs are buffered on disk and deleted after feeding the counter. Comparison, QC, probe assignment
-and DEA/GSEA are separate workflows.
+FASTQ records into kb-python, and produces raw and QC-filtered H5ADs, comparison
+reports, probe calls, DEA and GSEA Parquet data products in one workflow.
+Uncompressed FASTQs are buffered on disk and deleted after feeding the counter.
 
-## Dependencies and references
+## Build and install the image
 
-Use Nextflow 25.04.6 and the container built from `Singularity.def`, which includes
-kb-python 0.30.2 and SRA Toolkit 3.4.1. The `slurm,singularity` profiles use
-`kb_python.sif` in this directory. Build the image where Singularity builds are
-supported, and place it directly in the pipeline directory using your site's
-approved transfer procedure.
+Build the image locally:
 
-Provide a genome FASTA, its GTF, and the dataset's guide-feature TSV. The reference
+```bash
+cd data_sources/perturb-seq/pipeline
+singularity build --fakeroot perturb_seq.sif Singularity.def
+```
+
+The workflow runs with `perturb_seq.sif` built from `Singularity.def`.
+
+Make the finished image available at
+`$HPS_PATH/data_sources/perturb-seq/pipeline/perturb_seq.sif` in the execution
+environment.
+
+Provide a genome FASTA, its GTF, the dataset's guide-feature TSV, the curated
+(author) H5AD for comparison, and a gene-set GMT for GSEA. The reference
 example uses Ensembl release 115:
 
 ```bash
@@ -39,6 +47,9 @@ For example, `python3 datasets/nadig_2025/generate_inputs.py` produces
 `datasets/nadig_2025/features.tsv`, `jurkat_samples.tsv` and `hepg2_samples.tsv`.
 Replogle inputs are under `datasets/replogle_2022/`, named
 `<dataset_id>_features.tsv` and `<dataset_id>_samples.tsv`.
+The K562 genome-wide sample sheet intentionally excludes the unavailable
+sgRNA run `SRR19331204` from `KD8_17`; the exclusion is encoded in its input
+generator as well as the committed sample sheet.
 
 ## Run Jurkat
 
@@ -53,6 +64,9 @@ nextflow -log "logs/${DATASET_ID}.nextflow.log" run main.nf \
   -profile slurm,singularity \
   -work-dir "work/$DATASET_ID" \
   -with-trace "logs/${DATASET_ID}.trace.tsv" \
+  --dataset_id "$DATASET_ID" \
+  --curated_h5ad "$HPS_PATH/perturb_seq_fastq/source_h5ad/$DATASET_ID.h5ad" \
+  --gmt "$HPS_PATH/cache/msigdb/h.all.v2025.1.Hs.symbols.gmt" \
   --sample_sheet datasets/nadig_2025/jurkat_samples.tsv \
   --features_tsv datasets/nadig_2025/features.tsv \
   --transcriptome_fa "$HPS_PATH/cache/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz" \
@@ -113,39 +127,42 @@ align to the mRNA cell barcodes. The existing guide-barcode transformation
 complements bases 8–9 before alignment. All merged samples are concatenated on
 disk; the final H5AD is compressed with HDF5 gzip compression.
 
+## QC, comparison, probe calling and DEA/GSEA
+
+After raw H5AD compression, QC and Gaussian–Poisson probe calling produce
+`experiment_final.filtered.h5ad` and curated-data comparison reports. Cell/gene
+filtering and control assignment are described in [comparison](comparison/README.md).
+The same GTF is used for counting and gene-symbol resolution.
+
+DEA compares each eligible single-gene perturbation against the shared
+non-targeting controls using normalized/log-transformed counts and Scanpy
+Wilcoxon scores. GSEApy prerank uses those scores and the supplied GMT.
+See [DEA/GSEA](dea-gsea/README.md) for methods and output schemas.
+
+`--batch_size 50` and `--min_cells_per_perturbation 10` control analysis batching
+and eligibility. `--limit_perturbations 0` analyzes every eligible perturbation.
+GSEA defaults: 1,000 permutations, minimum/maximum gene-set sizes 15/500 and
+seed 1. Existing analysis controls `--target_sum`, `--matrix_key`,
+`--gene_map` and `--tie_correct` remain available.
+
+Nextflow stages every downstream input from its producer, rather than reading
+asynchronously published files. The filtered H5AD is shared by all analysis
+batches. One `-resume` covers the entire workflow.
+
 ## Outputs and checks
 
 - `counts_standard/<sample>/` and `counts_kite/<sample>/`: count matrices and streaming metrics.
 - `merged_samples/`: per-sample H5AD files and guide-overlap diagnostics.
-- `experiment_final.h5ad`: unified count matrix.
+- `experiment_final.h5ad`: raw unified count matrix.
+- `experiment_final.filtered.h5ad`: QC-filtered counts, guide calls and control annotations.
+- `comparison_results/<dataset_id>/`: all comparison reports and plots; override the parent with `--comparison_outdir`.
+- `dea_gsea/prep/analysis_inputs/`: manifest, gene metadata, controls and batch definitions.
+- `dea_gsea/batch_results/`: per-batch DEA/GSEA Parquet files and metrics.
+- `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
-## Verified dataset benchmark
+## Benchmarks
 
-`nadig_2025_jurkat` was run on a SLURM cluster on 11 September 2026 using commit
-`66bb6de`, Nextflow 25.04.6, kb-python 0.30.2, SRA Toolkit 3.4.1, curl 7.76.1,
-Ensembl release 115 and the sample sheet/reference inputs shown above.
-
-| Measurement | Result |
-|---|---:|
-| Samples / SRA accessions | 56 / 1,792 |
-| Downloaded archive volume | 1.074 TB |
-| Full pipeline wall time | **1h 14m 59s** |
-| Including independent output verification | **1h 15m 07s** |
-| Maximum observed disk footprint | **1.465 TB (1.332 TiB)** |
-| Successful tasks | 172, without retries |
-| Final H5AD | 739,766 cells × 78,899 genes; 5,341 guides |
-| Compressed H5AD size | 5.818 GB |
-
-Wall time includes fresh index construction through final compressed H5AD
-publication, but not the separate comparison/QC or DEA/GSEA workflows. All
-accession spot totals matched archive metadata, all 56 samples were represented,
-and no temporary SRA/FASTQ buffers remained. Median per-accession download times
-were 33.736 seconds for RNA and 7.570 seconds for guides. The largest RNA group
-took 59m 43s and was limited by counting rather than download latency.
-
-The disk peak covers work, published outputs and controller runtime files,
-sampled every five seconds using the larger of logical and allocated file sizes.
-It excludes shared pre-existing references and other datasets; short peaks can
-be missed. These dataset- and cluster-specific measurements are not universal
-throughput or storage guarantees.
+Clean full-run measurements are recorded for [Nadig Jurkat](benchmarks/nadig_2025_jurkat.md)
+and [Replogle K562 GW](benchmarks/replogle_2022_k562_gw_normalized.md), including
+wall time, resource footprint and final DEA/GSEA product sizes.

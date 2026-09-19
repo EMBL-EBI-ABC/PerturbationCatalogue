@@ -8,7 +8,7 @@ import json
 import re
 import textwrap
 from collections import Counter, defaultdict
-import sys
+import argparse
 
 import anndata as ad
 import h5py
@@ -25,21 +25,22 @@ except ImportError:
     display = print
 
 
-DATASET_ID = sys.argv[1]
-CURATED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/source_h5ad/{DATASET_ID}.h5ad"
+parser = argparse.ArgumentParser(
+    description="QC, probe calling and curated-data comparison"
 )
-REPROCESSED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    f"{DATASET_ID}/experiment_final.h5ad"
-)
-FILTERED_REPROCESSED_H5AD_PATH = (
-    f"/hps/nobackup/mfreeberg/perturb_seq_fastq/results/"
-    f"{DATASET_ID}/experiment_final.filtered.h5ad"
-)
-REFERENCE_GTF_PATH = (
-    "/hps/nobackup/mfreeberg/cache/reference/Homo_sapiens.GRCh38.115.gtf.gz"
-)
+parser.add_argument("--dataset-id", required=True)
+parser.add_argument("--curated-h5ad", required=True)
+parser.add_argument("--reprocessed-h5ad", required=True)
+parser.add_argument("--gtf", required=True)
+parser.add_argument("--filtered-h5ad", default="experiment_final.filtered.h5ad")
+args = parser.parse_args()
+DATASET_ID = args.dataset_id
+if not re.fullmatch(r"[A-Za-z0-9_-]+", DATASET_ID):
+    parser.error("Invalid dataset ID")
+CURATED_H5AD_PATH = args.curated_h5ad
+REPROCESSED_H5AD_PATH = args.reprocessed_h5ad
+FILTERED_REPROCESSED_H5AD_PATH = args.filtered_h5ad
+REFERENCE_GTF_PATH = args.gtf
 
 ROW_CHUNK_SIZE = int(os.environ.get("PERTURBSEQ_ROW_CHUNK_SIZE", "2048"))
 SCATTER_MAX_POINTS = int(os.environ.get("PERTURBSEQ_SCATTER_MAX_POINTS", "200000"))
@@ -516,6 +517,13 @@ class DatasetView:
         self.label = label
         self.adata = ad.read_h5ad(path, backed="r")
         self.h5 = h5py.File(path, "r")
+        x_obj = self.h5["X"]
+        self.expression_matrix = (
+            H5CSRMatrix(x_obj)
+            if isinstance(x_obj, h5py.Group)
+            and x_obj.attrs.get("encoding-type") == "csr_matrix"
+            else self.adata.X
+        )
         self.obs = self.adata.obs.copy()
         self.var = self.adata.var.copy()
         self.guide_matrix = None
@@ -529,7 +537,7 @@ class DatasetView:
         self._prepare_barcodes()
         self._prepare_gene_symbols()
         self.expression_profile = sample_matrix_profile(
-            self.adata.X, self.obs_pos, self.var_pos
+            self.expression_matrix, self.obs_pos, self.var_pos
         )
         log_record(
             "preprocess_input",
@@ -660,7 +668,9 @@ def detect_perturbation_column(obs):
 
 
 def filter_low_signal_cells_and_genes(rep):
-    totals, n_genes = matrix_row_sum_nnz(rep.adata.X, rep.obs_pos, rep.var_pos)
+    totals, n_genes = matrix_row_sum_nnz(
+        rep.expression_matrix, rep.obs_pos, rep.var_pos
+    )
     min_total = lower_quantile_threshold(
         totals, CELL_MIN_COUNTS_FLOOR, CELL_QC_LOWER_QUANTILE
     )
@@ -672,7 +682,9 @@ def filter_low_signal_cells_and_genes(rep):
         raise ValueError("Expression QC removed all cells")
 
     cell_pos = rep.obs_pos[cell_keep]
-    gene_sums, gene_ncells = matrix_col_sum_nnz(rep.adata.X, cell_pos, rep.var_pos)
+    gene_sums, gene_ncells = matrix_col_sum_nnz(
+        rep.expression_matrix, cell_pos, rep.var_pos
+    )
     min_cells = int(
         max(GENE_MIN_CELLS_FLOOR, np.ceil(GENE_MIN_CELLS_PCT * len(cell_pos)))
     )
@@ -1130,9 +1142,16 @@ def write_filtered_h5ad(rep, path):
     }
     n_guides = len(rep.guide_names) if hasattr(rep, "guide_names") else 0
     create_shell_h5ad(
-        path, obs, var, uns, n_guides, getattr(rep.adata.X, "dtype", np.float32)
+        path,
+        obs,
+        var,
+        uns,
+        n_guides,
+        getattr(rep.expression_matrix, "dtype", np.float32),
     )
-    replace_sparse_group(path, "X", rep.adata.X, rep.final_obs_pos, rep.final_var_pos)
+    replace_sparse_group(
+        path, "X", rep.expression_matrix, rep.final_obs_pos, rep.final_var_pos
+    )
     if n_guides:
         replace_sparse_group(path, "obsm/guides", rep.guide_matrix, rep.final_obs_pos)
     with h5py.File(path, "r+") as handle:
@@ -1166,7 +1185,7 @@ def value_by_cells(ds, cells, names, transformed_ok=False):
     ):
         return np.full(len(cells), np.nan), "unavailable for signed transformed X"
     pos = ds.obs_pos_by_name.loc[cells].to_numpy()
-    sums, nnz = matrix_row_sum_nnz(ds.adata.X, pos, ds.var_pos)
+    sums, nnz = matrix_row_sum_nnz(ds.expression_matrix, pos, ds.var_pos)
     return (sums if names == "total" else nnz.astype(float)), "X row metrics"
 
 
@@ -1205,7 +1224,7 @@ def gene_metric_values(ds, genes, metric):
         return np.full(len(genes), np.nan), "unavailable for signed transformed X"
     cell_pos = ds.obs_pos_by_name.loc[ds.obs_names].to_numpy()
     gene_pos = ds.var_pos_by_name.loc[genes].to_numpy()
-    sums, nnz = matrix_col_sum_nnz(ds.adata.X, cell_pos, gene_pos)
+    sums, nnz = matrix_col_sum_nnz(ds.expression_matrix, cell_pos, gene_pos)
     return (
         sums / len(cell_pos) if metric == "mean" else 100 - nnz / len(cell_pos) * 100
     ), "X column metrics"
@@ -1362,11 +1381,11 @@ def cell_correlations(cur, rep, common_cells, common_genes):
     corrs = []
     for i in range(0, n, 256):
         c_block = transform_expression_block(
-            read_block(cur.adata.X, cur_rows[i : i + 256], cur_cols),
+            read_block(cur.expression_matrix, cur_rows[i : i + 256], cur_cols),
             cur.expression_profile,
         )
         r_block = transform_expression_block(
-            read_block(rep.adata.X, rep_rows[i : i + 256], rep_cols),
+            read_block(rep.expression_matrix, rep_rows[i : i + 256], rep_cols),
             rep.expression_profile,
         )
         c_arr = c_block.toarray() if sp.issparse(c_block) else np.asarray(c_block)
