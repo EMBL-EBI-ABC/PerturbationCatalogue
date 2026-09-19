@@ -1,0 +1,134 @@
+%%%CONTEMPORARY%%%
+\documentclass[unnumsec,webpdf,contemporary,large]{oup-authoring-template}
+
+\graphicspath{{.}}
+
+\begin{document}
+
+\journaltitle{Bioinformatics}
+\DOI{DOI added during production}
+\copyrightyear{2026}
+\pubyear{2026}
+\vol{XX}
+\issue{x}
+\access{Published: Date added during production}
+\appnotes{Original Paper}
+
+\firstpage{1}
+
+\title[The Perturbation Catalogue]{The Perturbation Catalogue: an integrated resource for exploring the impact of genetic perturbations}
+
+\author[1,$\ast$]{Kirill Tsukanov}
+\author[1]{Aleksandr Zakirov}
+\author[1]{Alexey Sokolov}
+\author[1]{Mallory Freeberg}
+
+\address[1]{\orgdiv{European Bioinformatics Institute (EMBL-EBI)}, \orgname{European Molecular Biology Laboratory}, \orgaddress{\street{Wellcome Genome Campus}, \postcode{CB10 1SD}, \state{Hinxton, Cambridge}, \country{United Kingdom}}}
+
+\corresp[$\ast$]{Corresponding author. \href{mailto:ktsukanov@ebi.ac.uk}{ktsukanov@ebi.ac.uk}}
+
+\received{Date}{0}{Year}
+\revised{Date}{0}{Year}
+\accepted{Date}{0}{Year}
+
+\abstract{
+\textbf{Motivation:} Understanding the phenotypic consequences of genetic perturbations is essential for uncovering gene function, mapping disease mechanisms, and prioritizing drug targets. Despite the rapid growth of large-scale perturbation datasets (ranging from CRISPR knockouts to deep mutational scanning (MAVE) and single-cell expression profiles (Perturb-seq)), their heterogeneous formats and fragmented storage across disparate repositories hinder systematic integration and meta-analysis. \\
+\textbf{Results:} We present the Perturbation Catalogue, an integrated, curated resource that harmonizes human gene perturbation, variant analysis, and expression data. Central to the Catalogue is a highly unified metadata schema, implemented as an extensible Pydantic model, which standardizes experimental designs, readout assays, and model systems across diverse paradigms. A robust data warehousing architecture powers a responsive, user-friendly portal and a versatile API for exploring complex datasets. The platform features standardized Differential Expression Analysis (DEA) and Gene Set Enrichment Analysis (GSEA) for Perturb-seq datasets, alongside dynamic visualizations such as heatmaps for MAVE and comprehensive lists of significant hits. By seamlessly linking functional scores from CRISPR screens (e.g., DepMap), single-nucleotide variants (SNVs) from MAVE screens (e.g., MaveDB) and transcriptional responses from Perturb-seq screens, the Catalogue bridges the gap between target identification and functional validation. \\
+\textbf{Availability and Implementation:} The Perturbation Catalogue is freely available online to the scientific community. \\
+\textbf{Contact:} \href{mailto:perturbation-catalogue-help@ebi.ac.uk}{perturbation-catalogue-help@ebi.ac.uk} \\
+\textbf{Supplementary information:} Supplementary data are available online.
+}
+
+\keywords{CRISPR, Perturb-seq, Deep Mutational Scanning, Functional Genomics, Data Harmonization}
+\keywords[Scientific Areas]{Primary: Genomics, epigenomics, and genome editing; Secondary: Systems biology, multi-omics integration and modelling}
+
+\maketitle
+
+\section{Introduction}
+Understanding the relationship between genotype and phenotype is a foundational goal of computational biology. High-throughput genetic perturbation assays are transforming this landscape, enabling researchers to systematically probe gene function, map complex regulatory networks, and identify novel therapeutic targets. However, the sheer diversity of experimental modalities, including CRISPR-based perturbations (knockout, interference, activation), base and prime editing, deep mutational scanning (MAVE), and single-cell transcriptional profiling (Perturb-seq), presents a massive data integration challenge. 
+
+Critically, even within a single modality, data and metadata are frequently not harmonized. Datasets are often stored across disparate repositories such as DepMap for cancer dependencies \citep{tsherniak2017defining} and MaveDB for variant effects \citep{rubin2025mavedb}, each with varying file formats, inconsistent annotation standards, and differing access methods. This fragmentation makes it difficult for researchers to seamlessly navigate from a phenotype or disease to a gene, and finally to the specific variants that drive the observed effects.
+
+To address these challenges, we have developed the Perturbation Catalogue, an integrated and curated resource that unifies disparate human gene perturbation datasets under a single, cohesive framework. By prioritizing highly unified data and metadata schemas, the Catalogue facilitates the cross-modal exploration of perturbation effects. Furthermore, the inclusion of standardized Differential Expression Analysis (DEA) and Gene Set Enrichment Analysis (GSEA) pipelines enhances the statistical power and interpretability of complex transcriptional datasets. 
+
+\section{System and Methods}
+
+\subsection{Highly Unified Data and Metadata Schemas}
+A central feature of the Perturbation Catalogue is its highly unified data and metadata schema. Given the heterogeneity of perturbation systems, experimental models, and readout assays, we developed a schema that maximizes parameter overlap across paradigms, harmonizing disparate data sources into a common structure.
+
+Implemented as an extensible Pydantic data model \citep{pydantic}, the metadata schema ensures rigorous validation, seamless serialization, and straightforward conversion between data formats. It captures essential parameters such as experimental design, perturbation modality, assay type, model system, perturbed target sequences, and associated phenotypes. To ensure consistency, interoperability, and discoverability, the schema actively incorporates controlled vocabularies from the Experimental Factor Ontology (EFO), UBERON, Cell Line Ontology (CLO), Cell Ontology (CL), and Mondo Disease Ontology (MONDO). This unified approach standardizes data from CRISPR screens (incl. DepMap cancer dependency screens), MaveDB variant effect maps, and Perturb-seq transcriptional profiles, ensuring they can be cross-referenced and queried jointly.
+
+\subsection{Data Ingestion and Processing Architecture}
+To accommodate the scale and complexity of multi-modal perturbation data, the Catalogue employs a robust, distributed data processing pipeline (Figure~\ref{fig:workflow}). Raw and processed data are ingested from various existing centralised repositories (e.g. scPerturb, pertpy, DepMap, BioGrid ORCS, MaveDB) and through literature mining. The data are first loaded into Google BigQuery, serving as an easily scalable data warehouse.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.9\textwidth]{processing_overview.png}
+\caption{Data workflow through the Perturbation Catalogue. The pipeline includes data sourcing, input handling (FASTQ for Perturb-seq, scores for other modalities), comprehensive metadata curation, downstream analysis, and final visualization and download options.}\label{fig:workflow}
+\end{figure*}
+
+From BigQuery, high-performance projectors transform and transfer the data into a PostgreSQL relational database, utilizing Parquet as an intermediate format for fast ingestion. An analytics engineering layer, implemented using \texttt{dbt} (Data Build Tool), refines and models the data into clean, queryable data marts. Finally, these optimized data structures are indexed into Elasticsearch, enabling ultra-fast, faceted search and real-time data retrieval. 
+
+The Perturbation Catalogue provides access to this processed data through both a user-friendly web portal and a versatile, programmatic API. The API is designed to handle complex queries, allowing users to programmatically retrieve comprehensive dataset metadata as well as granular, individual data points across different experimental modalities. This dual access model ensures that the Catalogue serves both the broader scientific community conducting targeted queries and power users requiring bulk data for downstream computational analysis. The backend API, written in Python, serves this data to a dynamic user interface built with Dash.
+
+\subsection{DEA and GSEA Analysis}
+Transcriptional readouts from Perturb-seq experiments provide deep insights into cellular responses but are often complex to analyze \citep{norman2019exploring}. The Perturbation Catalogue includes automated pipelines that perform Differential Expression Analysis (DEA) to identify genes significantly upregulated or downregulated in response to specific perturbations. 
+
+Our analysis framework utilizes the \texttt{pertpy} package \citep{pertpy} for robust processing of single-cell perturbation data. We implement both Wilcoxon rank-sum tests for rapid assessment and DESeq2-based models for more rigorous statistical inference of differential expression. Building upon DEA, the platform also integrates Gene Set Enrichment Analysis (GSEA). By mapping expression changes to established biological pathways and functional signatures, GSEA helps elucidate the broader mechanistic impact of a perturbation. Currently, we utilize the MSigDB Hallmark gene sets for GSEA, providing a high-level overview of affected biological processes. We are planning to expand our enrichment analysis to include broader gene sets and pathway databases in the future. The results of these analyses are pre-computed and readily accessible through both the web portal and the programmatic API.
+
+\section{Results}
+
+\subsection{Web Portal and Data Exploration}
+The Perturbation Catalogue provides an intuitive web portal that supports comprehensive data exploration. The home page (Figure~\ref{fig:portals}A) offers an entry point for global search and highlights the diverse data modalities available. The gene search page (Figure~\ref{fig:portals}B) provides instant, fuzzy-matched search results, faceted by data source, perturbation type, and experimental model.
+
+\begin{figure*}[!t]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth,height=0.385\textheight,keepaspectratio]{home-page.png}
+\\ (A)
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth,height=0.385\textheight,keepaspectratio]{gene-search-page.png}
+\\ (B)
+\end{minipage}
+\caption{The Perturbation Catalogue web interface (February 2, 2026). (A) The home page provides a unified search interface across CRISPR, MAVE, and Perturb-seq datasets. (B) The gene search interface allows users to filter perturbation targets across multiple parameters simultaneously.}\label{fig:portals}
+\end{figure*}
+
+Once a target gene is selected, the gene details page (Figure~\ref{fig:details}) provides a synthesized overview of all associated perturbation data. For Perturb-seq experiments, the interface prioritizes biologically significant hits, presenting them through interactive data tables and GSEA results. This enables researchers to rapidly assess the magnitude and significance of perturbation effects on downstream targets. For MAVE datasets, rich mutation-level details (including wild-type amino acids, specific substitutions, and variant effect scores) are prominently displayed alongside interactive heatmaps. The integration of DepMap dependency scores allows for immediate cross-referencing between variant-level functional data and cell-line-specific essentiality.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.9\textwidth,height=0.605\textheight,keepaspectratio]{gene-details-page.png}
+\caption{The gene details page (February 2, 2026) integrates multimodal data for a selected target, including interactive heatmaps for MAVE variant effects, dependency scores from DepMap, and significant hits from CRISPR and Perturb-seq screens. The interface is designed to facilitate rapid data interpretation and hypothesis generation.}\label{fig:details}
+\end{figure*}
+
+\subsection{Target Prioritization for Drug Discovery}
+By streamlining access to harmonized functional genetics data, the Perturbation Catalogue directly supports target prioritization in pharmaceutical research. A researcher can seamlessly navigate from a specific cancer cell line to identify genes essential for its survival (via DepMap), evaluate the functional consequences of targeting those genes (via MaveDB), and explore the systems-level transcriptional response of perturbing those genes (via Perturb-seq). This end-to-end line of sight greatly accelerates the identification of viable therapeutic targets and provides a robust foundation for subsequent experimental validation.
+
+\section{Discussion and Future Directions}
+The initial releases of the Perturbation Catalogue have successfully established a unified schema, a high-performance search infrastructure, and a user-friendly frontend. However, standardizing biological data remains an ongoing challenge, particularly as new experimental paradigms emerge.
+
+We are actively developing several major enhancements to further increase the utility of the Catalogue:
+\begin{itemize}
+    \item \textbf{Reprocessing from FASTQ:} To eliminate analytical biases introduced by varying upstream processing pipelines, we are building infrastructure to reprocess Perturb-seq data directly from raw FASTQ files. This will ensure that all transcriptomic datasets are strictly harmonized and directly comparable, enabling more powerful meta-analyses.
+    \item \textbf{Semantic Distance and Data Harmonisation:} We are developing advanced metrics to compute the semantic distance between different perturbations (within and between datasets) based on their metadata and phenotypic profiles. We plan to explore further data harmonisation by leveraging high-dimensional embeddings from future Large Language Models (LLMs) to enhance semantic search capabilities. This will allow users to discover biologically similar or functionally analogous experiments automatically.
+    \item \textbf{Integration with Pathway Databases:} Expanding upon our current GSEA capabilities, we plan to deeply integrate established pathway databases (e.g., Reactome, KEGG). This will enable interactive network visualizations, allowing researchers to trace perturbation effects through complex signaling cascades and identify key regulatory nodes.
+\end{itemize}
+
+\section{Conclusion}
+The Perturbation Catalogue bridges a critical gap in functional genomics by unifying CRISPR, MAVE, and Perturb-seq data into a single, standardized resource. Through its rigorous manual data curation, automated DEA and GSEA pipelines, and highly responsive web portal, the platform empowers researchers to uncover novel causal genes and explore disease mechanisms. As the volume of perturbation data continues to expand, the Catalogue will serve as an essential tool for unlocking the full potential of functional genetics in basic science and drug discovery.
+
+\section{Conflicts of interest}
+The authors declare that they have no competing interests.
+
+\section{Funding}
+This work is supported by Open Targets and EMBL-EBI.
+
+\bibliographystyle{oup-abbrvnat}
+\bibliography{manuscript}
+
+\end{document}
+
