@@ -160,3 +160,9 @@ batches. One `-resume` covers the entire workflow.
 - `dea_gsea/batch_results/`: per-batch DEA/GSEA Parquet files and metrics.
 - `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
+
+## Benchmarks
+
+Clean full-run measurements are recorded for [Nadig Jurkat](benchmarks/nadig_2025_jurkat.md)
+and [Replogle K562 GW](benchmarks/replogle_2022_k562_gw_normalized.md), including
+wall time, resource footprint and final DEA/GSEA product sizes.
