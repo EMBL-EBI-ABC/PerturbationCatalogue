@@ -1,0 +1,11 @@
+requests
+pandas
+numpy
+scipy
+torch
+transformers
+peft
+trl
+bitsandbytes
+accelerate
+wandb
