@@ -787,7 +787,7 @@ def guide_target_ensg(guide_name):
     match = re.search(r"ENSG\d+(?:\.\d+)?", str(guide_name))
     if match:
         return strip_ensembl_version(match.group(0))
-    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(str(guide_name).strip(), "")
+    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(guide_target_name(guide_name), "")
 
 
 def call_info(label):
