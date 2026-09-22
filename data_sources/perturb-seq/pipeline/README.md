@@ -38,15 +38,18 @@ allocated project storage.
 ## Sample sheet
 
 Dataset preparation scripts under `datasets/` produce a headerless guide-feature
-TSV (20 bp sequence and probe name carrying the target ENSG) and a sample sheet
-with columns `sample_id`, `mRNA_srrs`, `sgRNA_srrs`. Each SRR list is
-semicolon-separated. Put all runs for one physical sample/well in one row;
-combine neither different wells nor different modalities.
+TSV (guide-barcode sequence and probe name) and a sample sheet with columns
+`sample_id`, `mRNA_srrs`, `sgRNA_srrs`. Each SRR list is semicolon-separated.
+Put all runs for one physical sample/well in one row; combine neither different
+wells nor different modalities. The sequence length is assay-specific: Norman
+2019 uses its 18 bp GBCs rather than protospacer sequences.
 
 For example, `python3 datasets/nadig_2025/generate_inputs.py` produces
 `datasets/nadig_2025/features.tsv`, `jurkat_samples.tsv` and `hepg2_samples.tsv`.
 Replogle inputs are under `datasets/replogle_2022/`, named
 `<dataset_id>_features.tsv` and `<dataset_id>_samples.tsv`.
+Norman 2019 inputs are under `datasets/norman_2019/`; its generator preserves
+the author guide table and maps each gemgroup's two GEX and two guide runs.
 The K562 genome-wide sample sheet intentionally excludes the unavailable
 sgRNA run `SRR19331204` from `KD8_17`; the exclusion is encoded in its input
 generator as well as the committed sample sheet.
