@@ -16,6 +16,10 @@ FEATURES_TSV = DATASET_DIR / "features.tsv"
 SAMPLES_TSV = DATASET_DIR / "norman_2019_raw_samples.tsv"
 ENA_API_URL = "https://www.ebi.ac.uk/ena/portal/api/filereport"
 PROJECT = "PRJNA551220"
+GUIDE_SOURCE_URL = (
+    "https://pmc.ncbi.nlm.nih.gov/articles/instance/6746554/bin/"
+    "NIHMS1045467-supplement-Table_S2.xlsx"
+)
 
 
 def target_label(row):

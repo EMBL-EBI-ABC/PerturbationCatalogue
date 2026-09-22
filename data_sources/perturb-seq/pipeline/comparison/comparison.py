@@ -723,43 +723,20 @@ def filter_low_signal_cells_and_genes(rep):
 
 def guide_aliases(guide_name):
     aliases = [
-        str(part).strip()
-        for part in re.split(r"[;,]", str(guide_name))
+        str(part).strip().replace(",", "-")
+        for part in str(guide_name).split(";")
         if str(part).strip()
     ]
-    return aliases or [str(guide_name).strip()]
-
-
-def is_control_target(guide_name):
-    normalized = re.sub(r"[^a-z0-9]+", "-", str(guide_name).strip().lower()).strip("-")
-    return bool(
-        re.fullmatch(r"negctrl\d*", normalized)
-        or normalized
-        in {
-            "non-targeting",
-            "negative-control",
-            "control-nontargeting",
-        }
-    )
+    return aliases or [str(guide_name).strip().replace(",", "-")]
 
 
 def guide_target_name(guide_name):
-    guide_name = str(guide_name).strip()
+    guide_name = str(guide_name).strip().replace(",", "-")
     return (
         CONTROL_TARGET_SYMBOL
-        if is_control_target(guide_name)
+        if guide_name.startswith(CONTROL_TARGET_SYMBOL)
         else guide_name.split("_", 1)[0]
     )
-
-
-def normalized_guide_identity(value):
-    """Convert Norman-style paired identities to the flat probe labels used here."""
-    value = str(value).strip()
-    if value.lower() in {"", "nan", "none"}:
-        return ""
-    parts = value.split("__", 1)[0].split("_")
-    targets = [part for part in parts if part and not is_control_target(part)]
-    return ";".join(targets) if targets else CONTROL_TARGET_SYMBOL
 
 
 def strip_ensembl_version(value):
@@ -778,10 +755,7 @@ def call_info(label):
         probes = []
     else:
         probes = sorted(
-            p.strip()
-            for field in label.split("|")
-            for p in field.split(",")
-            if p.strip()
+            p.strip().replace(",", "-") for p in label.split("|") if p.strip()
         )
     gene_names = set()
     gene_ensgs = defaultdict(set)
@@ -1473,17 +1447,12 @@ def compare_perturbations(cur, rep, common_cells):
     column = detect_perturbation_column(cur.obs)
     if not column or not hasattr(rep, "called_probe_labels"):
         return None
-    curated_obs = cur.obs.iloc[cur.obs_pos_by_name.loc[common_cells].to_numpy()]
-    cur_values = curated_obs[column].astype(str).set_axis(common_cells)
-    if "guide_identity" in curated_obs:
-        missing = cur_values.str.strip().isin({"", "nan", "None"})
-        if missing.any():
-            identities = (
-                curated_obs["guide_identity"].astype(str).set_axis(common_cells)
-            )
-            cur_values.loc[missing] = identities.loc[missing].map(
-                normalized_guide_identity
-            )
+    cur_values = pd.Series(
+        cur.obs.iloc[cur.obs_pos_by_name.loc[common_cells].to_numpy()][column]
+        .astype(str)
+        .to_numpy(),
+        index=common_cells,
+    )
     rep_values = rep.called_probe_labels.loc[common_cells]
     cur_outcomes = Counter()
     rep_outcomes = Counter()
