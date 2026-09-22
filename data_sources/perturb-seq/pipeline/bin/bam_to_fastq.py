@@ -23,7 +23,8 @@ def locator(accession):
         for bundle in result
         if bundle.get("status") == 200
         for file in bundle.get("files", [])
-        if file.get("type") == "bam" and file.get("accession") == accession
+        if file.get("accession") == accession
+        and file.get("type", "").lower() in {"bam", "tenx"}
     ]
     urls = [
         location["link"]
