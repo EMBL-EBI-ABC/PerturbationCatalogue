@@ -56,6 +56,25 @@ TARGET_SUM = 1e4
 CONTROL_TARGET_SYMBOL = "non-targeting"
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
 GUIDE_TARGET_ENSG_BY_SYMBOL = {}
+GUIDE_TARGET_ENSG_ALIASES = {
+    "ATP5F1": "ENSG00000116459",
+    "ATP5J2": "ENSG00000241468",
+    "ATPIF1": "ENSG00000130770",
+    "C16orf91": "ENSG00000174109",
+    "C21orf59": "ENSG00000159079",
+    "C6orf48": "ENSG00000204387",
+    "CCDC58": "ENSG00000160124",
+    "FAM96A": "ENSG00000166797",
+    "FAM96B": "ENSG00000166595",
+    "H3F3B": "ENSG00000132475",
+    "MRPS36": "ENSG00000134056",
+    "MTRNR2L8": "ENSG00000255823",
+    "NARS": "ENSG00000134440",
+    "SEPT11": "ENSG00000138758",
+    "TARS": "ENSG00000113407",
+    "TMEM99": "ENSG00000167920",
+    "WDR61": "ENSG00000140395",
+}
 
 CELL_TOTAL_COUNT_COLUMNS = [
     "UMI_count",
@@ -787,7 +806,10 @@ def guide_target_ensg(guide_name):
     match = re.search(r"ENSG\d+(?:\.\d+)?", str(guide_name))
     if match:
         return strip_ensembl_version(match.group(0))
-    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(guide_target_name(guide_name), "")
+    target_name = guide_target_name(guide_name)
+    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(
+        target_name
+    ) or GUIDE_TARGET_ENSG_ALIASES.get(target_name, "")
 
 
 def call_info(label):
