@@ -179,8 +179,7 @@ def choose_reads(reads, workflow, cr11):
     r1, r2 = nonempty("R1"), nonempty("R2")
     i1, i2 = nonempty("I1"), nonempty("I2")
     if cr11:
-        barcode = i1 + r2
-        if not barcode:
+        if not i1 or not r2:
             raise RuntimeError(
                 "Cell barcode/UMI tags are missing from a Cell Ranger 1.x BAM"
             )
@@ -191,9 +190,13 @@ def choose_reads(reads, workflow, cr11):
             raise RuntimeError(
                 "No feature read was reconstructed from a Cell Ranger 1.x BAM"
             )
-        return (barcode, reads["I1"][1] + reads["R2"][1]), (
-            feature,
-            reads["R1"][1],
+        return (
+            reads["I1"],
+            reads["R2"],
+            (
+                feature,
+                reads["R1"][1],
+            ),
         )
 
     candidates = [(name, value) for name, value in reads.items() if value[0]]
@@ -256,11 +259,28 @@ def main():
                     )
                     for name, spec in specs.items()
                 }
-                (barcode, barcode_quality), (feature, feature_quality) = choose_reads(
-                    reads,
-                    args.workflow,
-                    "I1" in specs and "I2" in specs and specs["R2"] == [("UR", "UQ")],
-                )
+                cr11 = "I1" in specs and "I2" in specs and specs["R2"] == [("UR", "UQ")]
+                selected = choose_reads(reads, args.workflow, cr11)
+                if cr11:
+                    (
+                        (cell, cell_quality),
+                        (umi, umi_quality),
+                        (
+                            feature,
+                            feature_quality,
+                        ),
+                    ) = selected
+                    output_reads = [
+                        (cell, cell_quality),
+                        (umi, umi_quality),
+                        (feature, feature_quality),
+                    ]
+                else:
+                    (barcode, barcode_quality), (feature, feature_quality) = selected
+                    output_reads = [
+                        (barcode, barcode_quality),
+                        (feature, feature_quality),
+                    ]
                 if args.feature_offset or args.feature_length:
                     end = (
                         args.feature_offset + args.feature_length
@@ -273,11 +293,12 @@ def main():
                         )
                     feature = feature[args.feature_offset : end]
                     feature_quality = feature_quality[args.feature_offset : end]
-                if not barcode or not feature:
+                    output_reads[-1] = (feature, feature_quality)
+                if any(not read for read, _ in output_reads):
                     continue
                 spot = f"bam.{spots + 1}"
-                output.extend(f"@{spot}/1\n{barcode}\n+\n{barcode_quality}\n".encode())
-                output.extend(f"@{spot}/2\n{feature}\n+\n{feature_quality}\n".encode())
+                for index, (read, quality) in enumerate(output_reads, 1):
+                    output.extend(f"@{spot}/{index}\n{read}\n+\n{quality}\n".encode())
                 spots += 1
                 if len(output) >= 1 << 20:
                     sys.stdout.buffer.write(output)

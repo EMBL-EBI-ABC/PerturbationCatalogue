@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         auto emit = [&]() {
             std::vector<std::pair<uint64_t, size_t>> current;
             const Read *barcode = nullptr, *biological = nullptr;
-            Read combined;
+            const Read *cell = nullptr, *umi = nullptr;
             for (const auto& r : reads) {
                 current.emplace_back(r.id, r.sequence.size());
                 if (r.sequence.size() > 40) {
@@ -53,7 +53,6 @@ int main(int argc, char** argv) {
                 }
             }
             if (v1) {
-                const Read *cell = nullptr, *umi = nullptr;
                 std::vector<const Read*> short_reads;
                 for (const auto& r : reads) {
                     if (&r == biological) continue;
@@ -84,10 +83,6 @@ int main(int argc, char** argv) {
                     if (guide) biological = guide;
                 }
                 if (!biological) throw std::runtime_error("Missing biological read");
-                combined = *cell;
-                combined.sequence += umi->sequence;
-                combined.quality += umi->quality;
-                barcode = &combined;
             } else {
                 for (const auto& r : reads) {
                     if (r.sequence.size() >= 20 && r.sequence.size() <= 40) {
@@ -96,15 +91,23 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            if (!barcode || !biological) {
+            if (v1 ? (!cell || !umi || !biological) : (!barcode || !biological)) {
                 throw std::runtime_error("Missing barcode or biological read");
             }
             if (layout.empty()) layout = current;
             if (current != layout) throw std::runtime_error("Read layout changed within accession");
-            for (const auto* r : {barcode, biological}) {
-                output.append(r->header).push_back('\n');
-                output.append(r->sequence).append("\n+\n");
-                output.append(r->quality).push_back('\n');
+            if (v1) {
+                for (const auto* r : {cell, umi, biological}) {
+                    output.append(r->header).push_back('\n');
+                    output.append(r->sequence).append("\n+\n");
+                    output.append(r->quality).push_back('\n');
+                }
+            } else {
+                for (const auto* r : {barcode, biological}) {
+                    output.append(r->header).push_back('\n');
+                    output.append(r->sequence).append("\n+\n");
+                    output.append(r->quality).push_back('\n');
+                }
             }
             if (output.size() >= (1 << 20)) flush();
             ++spots;
