@@ -196,11 +196,16 @@ def main():
     parser.add_argument("--t2g", required=True)
     parser.add_argument("--chemistry", default="10xv3")
     parser.add_argument("--workflow", choices=("standard", "kite"), required=True)
+    parser.add_argument("--feature-offset", type=int, default=0)
+    parser.add_argument("--feature-length", type=int, default=0)
     parser.add_argument("--cpus", type=int, default=4)
     parser.add_argument("--sra-bin", default="")
     args = parser.parse_args()
     if (
         args.cpus < 4
+        or args.feature_offset < 0
+        or args.feature_length < 0
+        or args.feature_length == 1
         or len(set(args.accessions)) != len(args.accessions)
         or any(not valid_source(source) for source in args.accessions)
     ):
@@ -449,6 +454,10 @@ def main():
                                 source,
                                 "--workflow",
                                 args.workflow,
+                                "--feature-offset",
+                                str(args.feature_offset),
+                                "--feature-length",
+                                str(args.feature_length),
                             ],
                             logfile,
                             stdout=counter.stdin,

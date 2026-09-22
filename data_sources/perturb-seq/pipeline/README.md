@@ -38,10 +38,12 @@ allocated project storage.
 ## Sample sheet
 
 Dataset preparation scripts under `datasets/` produce a headerless guide-feature
-TSV (20 bp sequence and probe name carrying the target ENSG) and a sample sheet
-with columns `sample_id`, `mRNA_srrs`, `sgRNA_srrs`. Each SRR list is
+TSV (20 bp sequence and probe name carrying the target) and a sample sheet with
+columns `sample_id`, `mRNA_srrs`, and `sgRNA_srrs`. Each run list is
 semicolon-separated. Put all runs for one physical sample/well in one row;
-combine neither different wells nor different modalities.
+combine neither different wells nor different modalities. A dataset may add
+`guide_feature_offset` and `guide_feature_length` to trim a captured guide from
+a longer read; both default to zero.
 
 For example, `python3 datasets/nadig_2025/generate_inputs.py` produces
 `datasets/nadig_2025/features.tsv`, `jurkat_samples.tsv` and `hepg2_samples.tsv`.
@@ -50,6 +52,11 @@ Replogle inputs are under `datasets/replogle_2022/`, named
 The K562 genome-wide sample sheet intentionally excludes the unavailable
 sgRNA run `SRR19331204` from `KD8_17`; the exclusion is encoded in its input
 generator as well as the committed sample sheet.
+
+Adamson 2016 inputs are under `datasets/adamson_2016/`. Gasperini 2019 inputs
+are under `datasets/gasperini_2019/`; run
+`python3 datasets/gasperini_2019/generate_inputs.py` to regenerate its guide
+reference and ENA-derived sample sheet.
 
 ## Run Jurkat
 

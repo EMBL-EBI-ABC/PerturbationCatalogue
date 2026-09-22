@@ -56,7 +56,7 @@ def source_parts(source):
 
 
 @contextmanager
-def stream_sam(source):
+def stream_sam(source, tolerate_sigpipe=False):
     value, group = source_parts(source)
     curl = None
     handle = None
@@ -107,7 +107,7 @@ def stream_sam(source):
             curl_code = curl.wait()
             if curl_code:
                 raise RuntimeError(f"curl exited with status {curl_code}")
-        if sam_code:
+        if sam_code and not (tolerate_sigpipe and sam_code == -13):
             raise RuntimeError(f"samtools view exited with status {sam_code}")
         if handle and not handle.closed:
             handle.close()
@@ -184,14 +184,16 @@ def choose_reads(reads, workflow, cr11):
             raise RuntimeError(
                 "Cell barcode/UMI tags are missing from a Cell Ranger 1.x BAM"
             )
-        feature = i2 if workflow == "kite" and i2 else r1
+        # In the legacy 10x v1 layout I2/BC is the sample index.  The
+        # captured guide or cDNA is the long SEQ/R1 read in both workflows.
+        feature = r1
         if not feature:
             raise RuntimeError(
                 "No feature read was reconstructed from a Cell Ranger 1.x BAM"
             )
         return (barcode, reads["I1"][1] + reads["R2"][1]), (
             feature,
-            reads["I2"][1] if workflow == "kite" and i2 else reads["R1"][1],
+            reads["R1"][1],
         )
 
     candidates = [(name, value) for name, value in reads.items() if value[0]]
@@ -210,10 +212,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True)
     parser.add_argument("--workflow", choices=("standard", "kite"), required=True)
+    parser.add_argument("--feature-offset", type=int, default=0)
+    parser.add_argument("--feature-length", type=int, default=0)
     parser.add_argument("--max-spots", type=int, default=0)
     args = parser.parse_args()
-    if args.max_spots < 0:
-        parser.error("--max-spots must be nonnegative")
+    if args.max_spots < 0 or args.feature_offset < 0 or args.feature_length < 0:
+        parser.error("spot and feature trim values must be nonnegative")
+    if args.feature_length == 1:
+        parser.error("--feature-length must be zero or at least two")
+    if args.workflow != "kite" and (args.feature_offset or args.feature_length):
+        parser.error("feature trimming is only valid for the kite workflow")
 
     output = bytearray()
     spots = records = 0
@@ -221,7 +229,10 @@ def main():
     specs = None
     group = None
     try:
-        with stream_sam(args.source) as (lines, requested_group):
+        with stream_sam(args.source, tolerate_sigpipe=bool(args.max_spots)) as (
+            lines,
+            requested_group,
+        ):
             group = requested_group
             for line in lines:
                 if line.startswith("@"):
@@ -250,6 +261,18 @@ def main():
                     args.workflow,
                     "I1" in specs and "I2" in specs and specs["R2"] == [("UR", "UQ")],
                 )
+                if args.feature_offset or args.feature_length:
+                    end = (
+                        args.feature_offset + args.feature_length
+                        if args.feature_length
+                        else len(feature)
+                    )
+                    if end > len(feature):
+                        raise RuntimeError(
+                            "Feature trim exceeds reconstructed feature read length"
+                        )
+                    feature = feature[args.feature_offset : end]
+                    feature_quality = feature_quality[args.feature_offset : end]
                 if not barcode or not feature:
                     continue
                 spot = f"bam.{spots + 1}"

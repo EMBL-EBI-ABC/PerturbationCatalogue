@@ -113,7 +113,7 @@ process KB_COUNT_KITE {
     publishDir "${params.outdir}/counts_kite/${sample_id}", mode: 'copy'
 
     input:
-    tuple val(sample_id), val(accessions)
+    tuple val(sample_id), val(accessions), val(feature_offset), val(feature_length)
     path index
     path t2g
     val chemistry
@@ -129,7 +129,8 @@ process KB_COUNT_KITE {
     python ${projectDir}/bin/stream_count.py \
       --accessions ${sourceArgs} \
       --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
-      --workflow kite --cpus ${task.cpus} ${sraArg}
+      --workflow kite --feature-offset ${feature_offset} \
+      --feature-length ${feature_length} --cpus ${task.cpus} ${sraArg}
     """
 }
 
@@ -499,11 +500,15 @@ workflow {
             }
             
             if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
+            def feature_offset = (row.guide_feature_offset ?: "0") as Integer
+            def feature_length = (row.guide_feature_length ?: "0") as Integer
+            if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
+                error "Invalid guide feature trim for sample ${sid}"
             for (runs in [mrna_srrs, sgrna_srrs]) {
                 if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
                     error "Invalid or duplicate sequencing sources for sample ${sid}"
             }
-            return [sid, mrna_srrs, sgrna_srrs]
+            return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
         }
 
     if (params.limit > 0) {
@@ -515,8 +520,8 @@ workflow {
     kite_idx = BUILD_INDEX_KITE(features)
 
     // Step 2: Quantify cDNA and Guides in parallel per sample
-    std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
-    kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna -> [sid, sgrna] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
+    std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
+    kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
 
     // Step 3: Merge modalities per sample
     merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
