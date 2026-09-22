@@ -10,3 +10,7 @@ and uses `NegCtrl` names or blank guide IDs. `prepare_curated.py` derives the
 standard `obs["perturbation"]` column (`AHR`, `AHR;FEV`, or `non-targeting`)
 without loading the expression matrix, so the shared comparison code receives
 the same label vocabulary as the pipeline output.
+
+`gene_ensg.tsv` records the four historical Norman symbols whose current
+reference annotation uses updated names; those labels are emitted with their
+Ensembl IDs.

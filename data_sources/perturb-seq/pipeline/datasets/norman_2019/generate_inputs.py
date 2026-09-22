@@ -12,6 +12,7 @@ import pandas as pd
 
 DATASET_DIR = Path(__file__).resolve().parent
 GUIDE_XLSX = DATASET_DIR / "norman_2019_guide_info.xlsx"
+GENE_MAP = DATASET_DIR / "gene_ensg.tsv"
 FEATURES_TSV = DATASET_DIR / "features.tsv"
 SAMPLES_TSV = DATASET_DIR / "norman_2019_raw_samples.tsv"
 ENA_API_URL = "https://www.ebi.ac.uk/ena/portal/api/filereport"
@@ -22,13 +23,32 @@ GUIDE_SOURCE_URL = (
 )
 
 
-def target_label(row):
+def load_gene_map():
+    table = pd.read_csv(GENE_MAP, sep="\t")
+    expected = {"symbol", "ensembl_gene_id"}
+    if set(table.columns) != expected:
+        raise ValueError(f"Expected columns {sorted(expected)} in {GENE_MAP}")
+    mapping = dict(
+        zip(table["symbol"].astype(str), table["ensembl_gene_id"].astype(str))
+    )
+    if len(mapping) != len(table):
+        raise ValueError(f"Duplicate symbols in {GENE_MAP}")
+    return mapping
+
+
+def target_label(row, gene_map):
     genes = [
         str(row[column]).strip()
         for column in ("gene_A", "gene_B")
         if not str(row[column]).strip().startswith("NegCtrl")
     ]
-    return ";".join(genes) if genes else "non-targeting"
+    return (
+        ";".join(
+            f"{gene}__{gene_map[gene]}" if gene in gene_map else gene for gene in genes
+        )
+        if genes
+        else "non-targeting"
+    )
 
 
 def generate_features():
@@ -45,9 +65,10 @@ def generate_features():
     if missing:
         raise ValueError(f"Missing guide-table columns: {sorted(missing)}")
 
+    gene_map = load_gene_map()
     features = []
     for _, row in table.iterrows():
-        label = target_label(row)
+        label = target_label(row, gene_map)
         for sequence in str(row["GBC"]).split(";"):
             sequence = sequence.strip().upper()
             if not re.fullmatch(r"[ACGT]{18}", sequence):

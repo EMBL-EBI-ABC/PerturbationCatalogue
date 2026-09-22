@@ -7,16 +7,32 @@ import shutil
 
 import h5py
 import numpy as np
+import pandas as pd
 
 
 CONTROL_PREFIX = "NegCtrl"
+DATASET_DIR = Path(__file__).resolve().parent
+GENE_MAP = DATASET_DIR / "gene_ensg.tsv"
 
 
 def text(value):
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
-def standard_label(value):
+def load_gene_map():
+    table = pd.read_csv(GENE_MAP, sep="\t")
+    expected = {"symbol", "ensembl_gene_id"}
+    if set(table.columns) != expected:
+        raise ValueError(f"Expected columns {sorted(expected)} in {GENE_MAP}")
+    mapping = dict(
+        zip(table["symbol"].astype(str), table["ensembl_gene_id"].astype(str))
+    )
+    if len(mapping) != len(table):
+        raise ValueError(f"Duplicate symbols in {GENE_MAP}")
+    return mapping
+
+
+def standard_label(value, gene_map):
     identity = text(value).strip()
     if identity.lower() in {"", "nan", "none"}:
         return ""
@@ -26,7 +42,14 @@ def standard_label(value):
         for target in pair.split("_")
         if target and not target.startswith(CONTROL_PREFIX)
     ]
-    return ";".join(targets) if targets else "non-targeting"
+    return (
+        ";".join(
+            f"{target}__{gene_map[target]}" if target in gene_map else target
+            for target in targets
+        )
+        if targets
+        else "non-targeting"
+    )
 
 
 def prepare(source, output):
@@ -38,6 +61,7 @@ def prepare(source, output):
     if output.exists() or temporary.exists():
         raise FileExistsError(output)
 
+    gene_map = load_gene_map()
     with h5py.File(source, "r") as handle:
         obs = handle["obs"]
         categories = handle["uns"]["guide_identity_categories"][:]
@@ -46,7 +70,7 @@ def prepare(source, output):
         labels = np.asarray(
             [
                 (
-                    standard_label(categories[int(code)])
+                    standard_label(categories[int(code)], gene_map)
                     if 0 <= int(code) < len(categories)
                     else ""
                 )
