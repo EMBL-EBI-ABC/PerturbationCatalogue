@@ -130,7 +130,7 @@ def log_record(event, **fields):
         print(
             f"Gene symbol filtering - {fields['dataset']}: "
             f"removed {format_count_pct(fields['n_removed'], fields['n_before'])} "
-            "features without gene_name in the reference GTF"
+            f"features without a usable gene symbol (source={fields['source']})"
         )
     elif event == "gene_symbol_annotation":
         print(
@@ -587,16 +587,42 @@ class DatasetView:
     def _prepare_gene_symbols(self):
         original_index = pd.Index(self.adata.var_names.astype(str))
         var = self.var.copy()
-        if "gene_id" not in var.columns:
+        columns = {normalize_column_name(column): column for column in var.columns}
+        gene_id_column = next(
+            (
+                columns.get(name)
+                for name in ("geneid", "ensemblid", "featureid")
+                if columns.get(name)
+            ),
+            None,
+        )
+        if gene_id_column is None:
             var["gene_id"] = original_index.to_numpy()
+        else:
+            gene_ids = var[gene_id_column].astype("string").str.strip()
+            var["gene_id"] = gene_ids.where(
+                gene_ids.notna() & (gene_ids.str.len() > 0), original_index
+            )
 
-        if "gene_name" in var.columns:
-            symbols = var["gene_name"].astype("string").str.strip()
-            source = "var['gene_name']"
-            keep = ~(symbols.isna() | (symbols.str.len() == 0))
+        symbol_column = next(
+            (
+                columns.get(name)
+                for name in ("genename", "genesymbol", "symbol")
+                if columns.get(name)
+            ),
+            None,
+        )
+        if symbol_column is not None:
+            symbols = var[symbol_column].astype("string").str.strip()
+            source = f"var['{symbol_column}']"
+            keep = symbols.notna() & (symbols.str.len() > 0)
             if not keep.all():
-                raise ValueError(
-                    f"{self.label} has {int((~keep).sum())} empty var['gene_name'] values"
+                log_record(
+                    "gene_symbol_filter",
+                    dataset=self.label,
+                    n_removed=int((~keep).sum()),
+                    n_before=len(keep),
+                    source=source,
                 )
         else:
             mapping = load_gtf_gene_symbols(REFERENCE_GTF_PATH)
@@ -616,6 +642,7 @@ class DatasetView:
                     dataset=self.label,
                     n_removed=int((~keep).sum()),
                     n_before=len(keep),
+                    source=REFERENCE_GTF_PATH,
                 )
             source = REFERENCE_GTF_PATH
 
@@ -1856,11 +1883,15 @@ def main():
                 [
                     {
                         "Metric": "Cell Overlap",
-                        "Value": f"{len(common_cells)} ({len(common_cells) / len(cur.obs_names):.1%})",
+                        "Value": format_count_pct(
+                            len(common_cells), len(cur.obs_names)
+                        ),
                     },
                     {
                         "Metric": "Gene Overlap",
-                        "Value": f"{len(common_genes)} ({len(common_genes) / len(cur.var_names):.1%})",
+                        "Value": format_count_pct(
+                            len(common_genes), len(cur.var_names)
+                        ),
                     },
                     {
                         "Metric": "Counts Correlation",
