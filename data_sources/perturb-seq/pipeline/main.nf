@@ -350,6 +350,7 @@ process QC_COMPARISON {
     path reprocessed_h5ad, stageAs: 'reprocessed.h5ad'
     path curated_h5ad, stageAs: 'curated.h5ad'
     path reference_gtf
+    path comparison_script
 
     output:
     path 'experiment_final.filtered.h5ad', emit: h5ad
@@ -357,7 +358,7 @@ process QC_COMPARISON {
 
     script:
     """
-    python ${projectDir}/comparison/comparison.py \
+    python ${comparison_script} \
       --dataset-id ${params.dataset_id} \
       --curated-h5ad ${curated_h5ad} \
       --reprocessed-h5ad ${reprocessed_h5ad} \
@@ -519,7 +520,8 @@ workflow {
 
     // Step 5: Final HDF5 Compression
     raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
-    filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf)
+    comparison_script = file("${projectDir}/comparison/comparison.py")
+    filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf, comparison_script)
     gene_map_path = params.gene_map ? file(params.gene_map, checkIfExists: true).toString() : ""
     prep = PREPARE_INPUTS(filtered.h5ad, gene_map_path, gtf)
     analysis_inputs = prep.batches.flatten().combine(prep.analysis_dir)
