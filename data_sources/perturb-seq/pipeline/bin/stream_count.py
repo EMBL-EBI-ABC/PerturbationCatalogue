@@ -11,6 +11,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -157,6 +158,37 @@ def extraction_summary(path):
     return result
 
 
+def is_bam_source(source):
+    return source.startswith(("BAM:", "BAMFILE:"))
+
+
+def valid_source(source):
+    if re.fullmatch(r"(SRR|ERR|DRR)\d+", source):
+        return True
+    if not is_bam_source(source):
+        return False
+    value = source.split(":", 1)[1]
+    value, _, group = value.partition("#")
+    if group and not group.isdigit():
+        return False
+    return bool(
+        re.fullmatch(r"(SRR|ERR|DRR)\d+", value)
+        or value.startswith("/")
+        or urlsplit(value).scheme == "https"
+    )
+
+
+def log_json(path):
+    for line in reversed(path.read_text().splitlines()):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise RuntimeError("Missing JSON metrics: " + str(path))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--accessions", nargs="+", required=True)
@@ -170,9 +202,9 @@ def main():
     if (
         args.cpus < 4
         or len(set(args.accessions)) != len(args.accessions)
-        or any(not re.fullmatch(r"(SRR|ERR|DRR)\d+", acc) for acc in args.accessions)
+        or any(not valid_source(source) for source in args.accessions)
     ):
-        parser.error("Use at least four CPUs and unique SRA run accessions")
+        parser.error("Use at least four CPUs and unique SRA/BAM sources")
     extract_threads = min(4, args.cpus - 3)
     count_threads = args.cpus - extract_threads - 2
     started = time.monotonic()
@@ -198,7 +230,7 @@ def main():
     stopped = threading.Event()
     lock = threading.RLock()
     processes, errors = set(), []
-    metrics = {acc: {} for acc in args.accessions}
+    metrics = {source: {} for source in args.accessions}
 
     def acquire(semaphore):
         while not stopped.is_set():
@@ -276,7 +308,12 @@ def main():
         extracted.mkdir()
 
         def download():
-            for accession in args.accessions:
+            for source in args.accessions:
+                if is_bam_source(source):
+                    acquire(fastq_slot)
+                    fastqs.put(("bam", source))
+                    continue
+                accession = source
                 acquire(archive_slot)  # Reserve space before producing another archive.
 
                 def action():
@@ -285,7 +322,7 @@ def main():
                     )
 
                 stage("download", accession, action)
-                archives.put(accession)
+                archives.put(("sra", accession))
             acquire(archive_slot)
             archives.put(None)
 
@@ -294,10 +331,13 @@ def main():
                 acquire(
                     fastq_slot
                 )  # Includes in-progress extraction, so completed FASTQs cannot accumulate.
-                accession = receive(archives)
-                if accession is None:
+                item = receive(archives)
+                if item is None:
                     fastqs.put(None)
                     return
+                kind, accession = item
+                if kind != "sra":
+                    raise RuntimeError("Unexpected archive queue item: " + repr(item))
                 archive_slot.release()
 
                 def action():
@@ -332,7 +372,7 @@ def main():
                     shutil.rmtree(downloads / accession)
 
                 stage("extract", accession, action)
-                fastqs.put(accession)
+                fastqs.put(("sra", accession))
 
         command = [
             "kb",
@@ -366,32 +406,62 @@ def main():
                 workers.append(worker)
                 worker.start()
             while True:
-                accession = receive(fastqs)
-                if accession is None:
+                item = receive(fastqs)
+                if item is None:
                     break
                 fastq_slot.release()
+                kind, source = item
 
                 def feed():
-                    logfile = logdir / (accession + ".router.log")
-                    target = extracted / accession
-                    execute(
-                        [str(router), accession, str(target / "reads.fastq")],
-                        logfile,
-                        stdout=counter.stdin,
-                        timeout=12 * 3600,
+                    logfile = logdir / (
+                        re.sub(r"[^A-Za-z0-9_.-]", "_", source) + ".router.log"
                     )
-                    actual = json.loads(logfile.read_text())
-                    expected = {
-                        key: metrics[accession][key]
-                        for key in ("spots", "input_records")
-                    }
-                    if actual != expected:
-                        raise RuntimeError(
-                            f"{accession}: router/extraction counts differ: {actual} != {expected}"
+                    if kind == "sra":
+                        target = extracted / source
+                        execute(
+                            [
+                                str(router),
+                                source,
+                                str(target / "reads.fastq"),
+                                args.workflow,
+                                args.chemistry,
+                            ],
+                            logfile,
+                            stdout=counter.stdin,
+                            timeout=12 * 3600,
                         )
-                    shutil.rmtree(target)
+                        actual = json.loads(logfile.read_text())
+                        expected = {
+                            key: metrics[source][key]
+                            for key in ("spots", "input_records")
+                        }
+                        if actual != expected:
+                            raise RuntimeError(
+                                f"{source}: router/extraction counts differ: {actual} != {expected}"
+                            )
+                        shutil.rmtree(target)
+                    else:
+                        execute(
+                            [
+                                sys.executable,
+                                str(Path(__file__).with_name("bam_to_fastq.py")),
+                                "--source",
+                                source,
+                                "--workflow",
+                                args.workflow,
+                            ],
+                            logfile,
+                            stdout=counter.stdin,
+                            timeout=12 * 3600,
+                        )
+                        actual = log_json(logfile)
+                        if actual.get("spots", 0) <= 0:
+                            raise RuntimeError(f"{source}: BAM produced no spots")
+                        metrics[source].update(
+                            spots=actual["spots"], input_records=actual["input_records"]
+                        )
 
-                stage("feed", accession, feed)
+                stage("feed", source, feed)
             counter.stdin.close()
             if counter.wait(timeout=12 * 3600):
                 raise RuntimeError("kb count failed")

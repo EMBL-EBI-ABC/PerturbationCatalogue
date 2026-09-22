@@ -15,6 +15,7 @@ From: python:3.10-slim
         libhdf5-dev \
         hdf5-tools \
         procps \
+        samtools \
         zlib1g-dev \
         libbz2-dev \
         liblzma-dev

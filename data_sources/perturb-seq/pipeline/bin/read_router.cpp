@@ -21,7 +21,10 @@ uint64_t number(const std::string& s, size_t begin, size_t end) {
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 3) throw std::runtime_error("Usage: read_router ACCESSION FASTQ");
+        if (argc != 5)
+            throw std::runtime_error("Usage: read_router ACCESSION FASTQ WORKFLOW CHEMISTRY");
+        const bool kite = std::string(argv[3]) == "kite";
+        const bool v1 = std::string(argv[4]) == "10xv1";
         std::array<char, 1 << 20> input_buffer;
         std::ifstream input;
         input.rdbuf()->pubsetbuf(input_buffer.data(), input_buffer.size());
@@ -41,17 +44,61 @@ int main(int argc, char** argv) {
         auto emit = [&]() {
             std::vector<std::pair<uint64_t, size_t>> current;
             const Read *barcode = nullptr, *biological = nullptr;
+            Read combined;
             for (const auto& r : reads) {
                 current.emplace_back(r.id, r.sequence.size());
-                if (r.sequence.size() >= 20 && r.sequence.size() <= 40) {
-                    if (barcode) throw std::runtime_error("Ambiguous barcode read");
-                    barcode = &r;
-                } else if (r.sequence.size() > 40) {
+                if (r.sequence.size() > 40) {
                     if (biological) throw std::runtime_error("Ambiguous biological read");
                     biological = &r;
                 }
             }
-            if (!barcode || !biological) throw std::runtime_error("Missing barcode/biological read");
+            if (v1) {
+                const Read *cell = nullptr, *umi = nullptr;
+                std::vector<const Read*> short_reads;
+                for (const auto& r : reads) {
+                    if (&r == biological) continue;
+                    if (r.sequence.size() >= 13 && r.sequence.size() <= 16) {
+                        if (cell) throw std::runtime_error("Ambiguous 10x v1 cell-barcode read");
+                        cell = &r;
+                    } else if (r.sequence.size() >= 8 && r.sequence.size() <= 12) {
+                        short_reads.push_back(&r);
+                    }
+                }
+                for (const auto* r : short_reads) {
+                    if (r->sequence.size() == 10) {
+                        if (umi) throw std::runtime_error("Ambiguous 10x v1 UMI read");
+                        umi = r;
+                    }
+                }
+                if (!umi && short_reads.size() == 1) umi = short_reads.front();
+                if (!cell || !umi) {
+                    throw std::runtime_error("Missing 10x v1 cell-barcode/UMI reads");
+                }
+                if (kite) {
+                    const Read *guide = nullptr;
+                    for (const auto& r : reads) {
+                        if (&r == cell || &r == umi || &r == biological) continue;
+                        if (guide) throw std::runtime_error("Ambiguous 10x v1 guide read");
+                        guide = &r;
+                    }
+                    if (guide) biological = guide;
+                }
+                if (!biological) throw std::runtime_error("Missing biological read");
+                combined = *cell;
+                combined.sequence += umi->sequence;
+                combined.quality += umi->quality;
+                barcode = &combined;
+            } else {
+                for (const auto& r : reads) {
+                    if (r.sequence.size() >= 20 && r.sequence.size() <= 40) {
+                        if (barcode) throw std::runtime_error("Ambiguous barcode read");
+                        barcode = &r;
+                    }
+                }
+            }
+            if (!barcode || !biological) {
+                throw std::runtime_error("Missing barcode or biological read");
+            }
             if (layout.empty()) layout = current;
             if (current != layout) throw std::runtime_error("Read layout changed within accession");
             for (const auto* r : {barcode, biological}) {

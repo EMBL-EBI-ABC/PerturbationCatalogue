@@ -98,9 +98,10 @@ process KB_COUNT_STANDARD {
 
     script:
     def sraArg = params.sra_bin ? "--sra-bin '${params.sra_bin}'" : ""
+    def sourceArgs = accessions.collect { "'${it}'" }.join(' ')
     """
     python ${projectDir}/bin/stream_count.py \
-      --accessions ${accessions.join(' ')} \
+      --accessions ${sourceArgs} \
       --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
       --workflow standard --cpus ${task.cpus} ${sraArg}
     """
@@ -123,9 +124,10 @@ process KB_COUNT_KITE {
 
     script:
     def sraArg = params.sra_bin ? "--sra-bin '${params.sra_bin}'" : ""
+    def sourceArgs = accessions.collect { "'${it}'" }.join(' ')
     """
     python ${projectDir}/bin/stream_count.py \
-      --accessions ${accessions.join(' ')} \
+      --accessions ${sourceArgs} \
       --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
       --workflow kite --cpus ${task.cpus} ${sraArg}
     """
@@ -490,11 +492,16 @@ workflow {
             def sid = row.sample_id
             def mrna_srrs = row.mRNA_srrs.tokenize(';')
             def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
+            def valid_source = { source ->
+                source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
+                    (source.startsWith('BAM:') && source.size() > 4) ||
+                    (source.startsWith('BAMFILE:') && source.size() > 8)
+            }
             
             if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
             for (runs in [mrna_srrs, sgrna_srrs]) {
-                if (!runs || runs.toSet().size() != runs.size() || runs.any { !(it ==~ /(SRR|ERR|DRR)[0-9]+/) })
-                    error "Invalid or duplicate run accessions for sample ${sid}"
+                if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
+                    error "Invalid or duplicate sequencing sources for sample ${sid}"
             }
             return [sid, mrna_srrs, sgrna_srrs]
         }
