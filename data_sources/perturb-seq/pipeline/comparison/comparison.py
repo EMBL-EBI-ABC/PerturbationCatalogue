@@ -55,6 +55,7 @@ GENE_MIN_CELLS_PCT = 0.01
 TARGET_SUM = 1e4
 CONTROL_TARGET_SYMBOL = "non-targeting"
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
+GUIDE_TARGET_ENSG_BY_SYMBOL = {}
 
 CELL_TOTAL_COUNT_COLUMNS = [
     "UMI_count",
@@ -448,6 +449,17 @@ def load_gtf_gene_symbols(path):
     return mapping
 
 
+def load_gtf_gene_ensgs_by_symbol(path):
+    ids_by_symbol = defaultdict(set)
+    for gene_id, symbol in load_gtf_gene_symbols(path).items():
+        ids_by_symbol[str(symbol)].add(str(gene_id).split(".", 1)[0])
+    return {
+        symbol: next(iter(gene_ids))
+        for symbol, gene_ids in ids_by_symbol.items()
+        if len(gene_ids) == 1
+    }
+
+
 def make_unique_index(values):
     seen = {}
     result = []
@@ -746,7 +758,9 @@ def strip_ensembl_version(value):
 
 def guide_target_ensg(guide_name):
     match = re.search(r"ENSG\d+(?:\.\d+)?", str(guide_name))
-    return strip_ensembl_version(match.group(0)) if match else ""
+    if match:
+        return strip_ensembl_version(match.group(0))
+    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(str(guide_name).strip(), "")
 
 
 def call_info(label):
@@ -1609,6 +1623,8 @@ def plot_overlap_distributions(rep, common_cells, common_genes):
 
 
 def main():
+    global GUIDE_TARGET_ENSG_BY_SYMBOL
+    GUIDE_TARGET_ENSG_BY_SYMBOL = load_gtf_gene_ensgs_by_symbol(REFERENCE_GTF_PATH)
     os.makedirs(f"comparison_results/{DATASET_ID}", exist_ok=True)
     log_record(
         "input_paths",
