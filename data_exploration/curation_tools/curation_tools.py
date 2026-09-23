@@ -1889,20 +1889,26 @@ def merge_staging_to_target(
     client, staging_table_id, target_table_id, key_columns, update_columns
 ):
     """
-    Merge staging table (all STRING columns) into target table (typed columns).
+    Merge a Parquet-inferred staging table into a typed target table.
 
-    Staging table is assumed to contain only STRING-typed columns.
+    The staging table schema is inferred from the Parquet source.
     Columns are CAST into the correct types defined in the target table schema
     during INSERT and UPDATE.
     """
 
     # Fetch target table schema from BigQuery
     target_schema = {field.name.lower(): field for field in client.get_table(target_table_id).schema}
+    cast_type_aliases = {
+        "INTEGER": "INT64",
+        "FLOAT": "FLOAT64",
+        "BOOLEAN": "BOOL",
+    }
 
     def cast_expression(col):
         """Return CAST(S.col AS <typename>) based on target schema."""
         target_field = target_schema[col.lower()]
-        bq_type = target_field.field_type  # e.g., STRING, INT64, FLOAT64, BOOL, DATE
+        field_type = target_field.field_type.upper()
+        bq_type = cast_type_aliases.get(field_type, field_type)
         return f"CAST(S.{col} AS {bq_type})"
 
     # Join condition always cast key columns to their target types
