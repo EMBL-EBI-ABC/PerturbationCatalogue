@@ -1381,7 +1381,7 @@ class CuratedDataset:
 
         schema = self.obs_schema if slot == "obs" else self.var_schema
 
-        schema_columns = schema.to_schema().columns.keys()
+        schema_columns = list(schema.to_schema().columns.keys())
 
         df = df[schema_columns]
 
