@@ -489,6 +489,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "solid-phase oligonucleotide synthesis",
             "multiplexed site-directed mutagenesis",
             "microchip-based massive parallel oligo synthesis",
+            "mutagenesis by integrated tiles",
             "Other",
         ]
         | None
@@ -714,6 +715,7 @@ class SpecificTermExtractionSchema(BaseModel):
             "protein ubiquitination",
             "DNA repair",
             "fluorescence",
+            "viral growth",
             "Other",
         ]
         | None
@@ -748,6 +750,17 @@ class SpecificTermExtractionSchema(BaseModel):
             "saturation prime editing",
             "polysome profiling",
             "abundance protein fragment complementation assay",
+            "pooled deep mutational scanning",
+            "mRNA display",
+            "phage-assisted continuous selection",
+            "gap repair assay",
+            "homology-directed repair assay",
+            "fluorescence-based homology-directed repair assay",
+            "saturation base editing",
+            "computational meta-analysis",
+            "protein folding sensor assay",
+            "CRISPR mutagenesis screen",
+            "Saturation-Selection-Sequencing assay",
             "Other",
         ]
         | None
@@ -842,6 +855,11 @@ class SpecificTermExtractionSchema(BaseModel):
             "Element Aviti",
             "Illumina MiSeq i100",
             "MGI DNBSEQ-T7",
+            "Roche 454 GS FLX+",
+            "Illumina NextSeq (model unspecified)",
+            "Illumina sequencer (model unspecified)",
+            "Illumina HiSeq (model unspecified)",
+            "PacBio sequencer (model unspecified)",
             "Other",
         ]
         | None
@@ -880,6 +898,14 @@ class SpecificTermExtractionSchema(BaseModel):
             "CRISPResso2",
             "mapmuts",
             "ORFcall",
+            "ABSSeq",
+            "satmut_utils",
+            "bcftools",
+            "TagDust2",
+            "Subassembly",
+            "pysamstats",
+            "Jellyfish",
+            "Tagdust2",
             "Other",
         ]
         | None
@@ -908,6 +934,16 @@ class SpecificTermExtractionSchema(BaseModel):
             "phydms",
             "Enrich",
             "Rosetta",
+            "tileseqMave",
+            "dms_variants",
+            "samtools",
+            "mapmuts",
+            "TileseqMave",
+            "Cluster",
+            "tileseq_package",
+            "ABSSeq",
+            "ORFcall",
+            "maveLLR",
             "Other",
         ]
         | None
