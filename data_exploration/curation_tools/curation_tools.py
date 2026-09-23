@@ -1834,16 +1834,8 @@ def _upload_parquet_to_bq(
     target_table_base = f"{project_id}.{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
     
-    # get the target table schema
-    target_table = client.get_table(target_table_base)
-    # define the staging table schema (all STRING except ingested_at - it's added later)
-    target_schema = [
-        bigquery.SchemaField(col.name, "STRING")
-        for col in target_table.schema
-        if col.name != "ingested_at"
-    ]
-
-
+    # Verify that the target table exists before creating the staging table.
+    client.get_table(target_table_base)
     if verbose:
         print(
             f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
