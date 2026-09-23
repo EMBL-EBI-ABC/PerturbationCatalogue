@@ -477,7 +477,7 @@ def curate_mavedb(
     cur_data.match_schema_columns(slot="obs")
 
     # validate the data against the schema
-    cur_data.validate_data(slot="obs", verbose=False)
+    cur_data.validate_data(slot="obs", verbose=False, collect_errors=False)
 
     if save_curated_h5ad:
         cur_data.save_curated_data_h5ad()
