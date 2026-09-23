@@ -1389,7 +1389,9 @@ class CuratedDataset:
 
         print(f"Matched columns of adata.{slot} to the {slot+'_schema'}.")
 
-    def validate_data(self, slot=Literal["var", "obs"], verbose=True):
+    def validate_data(
+        self, slot=Literal["var", "obs"], verbose=True, collect_errors=None
+    ):
         """
         Validate the data in the specified slot of the adata object against the schema.
         Parameters
@@ -1398,9 +1400,16 @@ class CuratedDataset:
             The slot to validate. Can be either "obs" or "var".
         verbose : bool
             Whether to print the validation results. Defaults to True.
+        collect_errors : bool, optional
+            Whether Pandera should collect all validation errors. Defaults to the
+            value of ``verbose``. Set to False for large batch jobs to reduce
+            memory usage when validation failures are expected.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
+
+        if collect_errors is None:
+            collect_errors = verbose
 
         df = getattr(self.adata, slot)
         if df.empty:
@@ -1424,7 +1433,7 @@ class CuratedDataset:
             schema = self.var_schema
 
         try:
-            validated_obs = schema.validate(df, lazy=True)
+            validated_obs = schema.validate(df, lazy=collect_errors)
 
             setattr(self.adata, slot, validated_obs)
 
@@ -1439,7 +1448,9 @@ class CuratedDataset:
                         validated_obs.head(5).to_string(),
                     )
                 except Exception:
-                    logger.debug("Validated adata.%s (shape=%s)", slot, validated_obs.shape)
+                    logger.debug(
+                        "Validated adata.%s (shape=%s)", slot, validated_obs.shape
+                    )
                 # Keep notebook-friendly display for interactive use, if available
                 try:
                     display(validated_obs)
@@ -1447,12 +1458,13 @@ class CuratedDataset:
                     # If display is unavailable, we've already logged a preview
                     pass
 
-        except pa.errors.SchemaErrors as e:
-            try:
-                msg = json.dumps(e.message, indent=2)
-            except Exception:
-                msg = str(e)
-            logger.error("Validation errors for adata.%s: %s", slot, msg)
+        except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
+            if verbose:
+                try:
+                    msg = json.dumps(e.message, indent=2)
+                except Exception:
+                    msg = str(e)
+                logger.error("Validation errors for adata.%s: %s", slot, msg)
 
     def _get_vals(self, column):
         """
