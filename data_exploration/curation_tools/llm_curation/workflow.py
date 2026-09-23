@@ -43,6 +43,8 @@ STEP_NAMES = {"step1", "step2", "step3", "step4", "step5"}
 
 @dataclass(frozen=True)
 class SourceDocumentInput:
+    """Publication text and provenance to snapshot as a run source."""
+
     source_label: str
     content_text: str
     original_path: str | Path
@@ -51,6 +53,8 @@ class SourceDocumentInput:
 
 @dataclass(frozen=True)
 class MaveDBSnapshotInput:
+    """MaveDB record payload and provenance to snapshot into a run."""
+
     urn: str
     source_label: str
     payload: Mapping[str, Any]
@@ -59,6 +63,8 @@ class MaveDBSnapshotInput:
 
 @dataclass(frozen=True)
 class CurationItemInput:
+    """Connect source snapshots and prompt context for one curation item."""
+
     item_label: str
     document_labels: tuple[str, ...]
     source_urns: tuple[str, ...]
@@ -68,6 +74,8 @@ class CurationItemInput:
 
 @dataclass(frozen=True)
 class CreateRunRequest:
+    """Inputs and settings required to create a fully snapshotted run."""
+
     run_name: str
     documents: tuple[SourceDocumentInput, ...]
     mavedb_snapshots: tuple[MaveDBSnapshotInput, ...]
@@ -80,6 +88,8 @@ class CreateRunRequest:
 
 @dataclass(frozen=True)
 class StepSummary:
+    """Outcome and item-level details for one workflow step execution."""
+
     run: RunSummary
     step: str
     execution_id: str | None
@@ -91,6 +101,8 @@ class StepSummary:
 
 @dataclass(frozen=True)
 class RunStatus:
+    """Current run summary together with its items, executions, and events."""
+
     summary: RunSummary
     items: tuple[dict[str, Any], ...]
     executions: tuple[dict[str, Any], ...]
@@ -99,18 +111,24 @@ class RunStatus:
 
 @dataclass(frozen=True)
 class ReviewState:
+    """Candidate review rows at the run's current revision."""
+
     revision: int
     candidates: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
 class ReviewRevision:
+    """Revision and event count produced by committing review changes."""
+
     revision: int
     event_count: int
 
 
 @dataclass(frozen=True)
 class BackfillChange:
+    """Proposed field change produced by the metadata backfill preview."""
+
     item_id: str
     artifact_id: str
     field_name: str
@@ -120,6 +138,8 @@ class BackfillChange:
 
 @dataclass(frozen=True)
 class ExportResult:
+    """Paths and identifier for a completed final metadata export."""
+
     output_dir: Path
     json_paths: tuple[Path, ...]
     csv_path: Path
@@ -170,6 +190,13 @@ class CurationWorkflow:
         runs_root: str | Path = "curation_runs",
         llm_call: LLMCallable | None = None,
     ) -> None:
+        """Configure the run store location and optional LLM implementation.
+
+        Args:
+            runs_root: Directory where curation runs are persisted.
+            llm_call: Callable used for model requests; defaults to the
+                Instructor-backed implementation.
+        """
         self.runs_root = Path(runs_root).resolve()
         self._llm_call = llm_call or self._call_instructor
 
@@ -296,6 +323,7 @@ class CurationWorkflow:
         )
 
     def get_status(self, run_ref: str) -> RunStatus:
+        """Return the run summary, item rows, step history, and recent events."""
         store = self._store(run_ref)
         return RunStatus(
             store.summary(),
@@ -402,6 +430,7 @@ class CurationWorkflow:
         return tuple(result)
 
     def load_review(self, run_ref: str) -> ReviewState:
+        """Load candidate review rows and their current revision."""
         store = self._store(run_ref)
         return ReviewState(store.summary().revision, tuple(store.load_review_rows()))
 
@@ -412,6 +441,11 @@ class CurationWorkflow:
         expected_revisions: Mapping[str, int | None] | None,
         session_id: str,
     ) -> ReviewRevision:
+        """Persist review edits, checking supplied revisions for conflicts.
+
+        Changes may be ``ReviewChange`` instances or mappings. Missing expected
+        event identifiers are filled from ``expected_revisions`` when available.
+        """
         store = self._store(run_ref)
         queued: list[ReviewChange] = []
         for change in changes:
@@ -438,6 +472,7 @@ class CurationWorkflow:
         return ReviewRevision(revision, len(queued))
 
     def preview_backfill(self, run_ref: str) -> list[BackfillChange]:
+        """Return proposed metadata backfills without changing persisted data."""
         store = self._store(run_ref)
         return self._backfill_changes(
             store, self._source_artifacts(store, "normalized")
@@ -446,6 +481,11 @@ class CurationWorkflow:
     def apply_schema_terms(
         self, run_ref: str, expected_schema_hash: str
     ) -> SchemaOperation:
+        """Apply approved schema terms if the source still matches its hash.
+
+        Raises:
+            CurationRunError: If the schema changed after it was reviewed.
+        """
         store = self._store(run_ref)
         configuration = store.configuration()
         schema_path = Path(configuration["schema_path"]).resolve()
@@ -486,6 +526,7 @@ class CurationWorkflow:
         edits: Iterable[Mapping[str, Any]],
         session_id: str,
     ) -> int:
+        """Append final field edits for an active run and return their count."""
         store = self._store(run_ref)
         self._require_active(store)
         count = 0
@@ -502,6 +543,7 @@ class CurationWorkflow:
         return count
 
     def seal_run(self, run_ref: str) -> RunSummary:
+        """Mark a run complete and return its final summary."""
         store = self._store(run_ref)
         store.log_event("INFO", "Run sealed")
         store.complete_run()
@@ -513,6 +555,11 @@ class CurationWorkflow:
         output_dir: str | Path,
         overwrite: bool = False,
     ) -> ExportResult:
+        """Write final per-item JSON and combined CSV deliverables.
+
+        The run must be sealed before export. A non-empty destination is kept
+        unless ``overwrite`` is true.
+        """
         store = self._store(run_ref)
         if store.summary().state != "completed":
             raise CurationRunError("Seal the run before exporting final deliverables")

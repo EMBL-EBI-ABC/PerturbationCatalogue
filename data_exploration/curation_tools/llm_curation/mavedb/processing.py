@@ -779,6 +779,7 @@ def run_full_text_collection_pipeline(
 
 
 def main() -> None:
+    """Parse command-line options and run the publication text pipeline."""
     args = build_parser().parse_args()
     excluded_dois = (
         parse_excluded_dois(args.excluded_dois)
