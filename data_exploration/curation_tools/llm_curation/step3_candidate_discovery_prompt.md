@@ -11,7 +11,7 @@ Name: {field_name}
 
 You are an Expert Ontology Curator. Your task is to analyze the provided list of verbatim evidence strings (which could not be mapped to any existing terms in the controlled vocabulary for `{field_name}` and were thus classified as `"Other"`) and identify distinct, recurring, and missing ontological concepts.
 
-For this field, synthesize the evidence strings into a few concise, reusable ontology candidate terms.
+For this field, synthesize the evidence strings into concise, reusable ontology candidate terms. Do not omit an evidence source merely because it appears once: when a singleton has a defensible label, return it as a candidate too.
 
 ### Key Guidelines:
 1. **Identify Distinct, Recurring Concepts:** 
@@ -23,5 +23,8 @@ For this field, synthesize the evidence strings into a few concise, reusable ont
    - For each proposed term, provide a clear rationale explaining why this concept should be added to the ontology.
    - List the direct quotes from the input evidence supporting this concept.
    - Provide the source file for each piece of supporting evidence.
+4. **Cover Every Source:**
+   - Include every supplied source file in the supporting evidence for at least one candidate whenever a defensible term can be proposed.
+   - Do not invent a label when the evidence is insufficient; the application will explicitly route uncovered evidence to manual curator review.
 
 Your output must strictly conform to the FieldCandidates schema.
