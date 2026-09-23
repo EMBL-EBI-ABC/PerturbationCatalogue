@@ -333,9 +333,6 @@ def main():
 
         def extract():
             while True:
-                acquire(
-                    fastq_slot
-                )  # Includes in-progress extraction, so completed FASTQs cannot accumulate.
                 item = receive(archives)
                 if item is None:
                     fastqs.put(None)
@@ -344,6 +341,9 @@ def main():
                 if kind != "sra":
                     raise RuntimeError("Unexpected archive queue item: " + repr(item))
                 archive_slot.release()
+                acquire(
+                    fastq_slot
+                )  # Reserve the output slot only after an archive is available.
 
                 def action():
                     target = extracted / accession
