@@ -398,7 +398,9 @@ class CuratedDataset:
         Parameters
         ----------
         split_metadata : bool
-            Whether to split the data and metadata into two separate files (default is False).
+            Whether to split the data and metadata into two separate files. The split
+            data file retains the identifying metadata columns needed for BigQuery
+            queries (default is False).
         save_metadata_only : bool
             Whether to save only the metadata and skip saving the data (default is False).
         overwrite : bool
@@ -421,7 +423,23 @@ class CuratedDataset:
         full_metadata_df = _coerce_metadata_for_polars(adata.obs, polars_schema)
 
         metadata_columns = full_metadata_df.columns.to_list()
-        id_columns = metadata_columns[0:2]
+        data_metadata_columns = [
+            "dataset_id",
+            "sample_id",
+            "perturbed_target_symbol",
+            "perturbed_target_ensg",
+            "perturbation_name",
+        ]
+        missing_data_metadata_columns = [
+            column for column in data_metadata_columns if column not in metadata_columns
+        ]
+        if missing_data_metadata_columns:
+            raise ValueError(
+                "Cannot construct split data Parquet because the observation "
+                "metadata is missing required columns: "
+                f"{missing_data_metadata_columns}"
+            )
+        data_index_columns = data_metadata_columns
 
         # Process features (e.g. genes or scores) in chunks
         feature_colnames = adata.var_names.tolist()
@@ -507,12 +525,14 @@ class CuratedDataset:
                     full_data_df, schema_overrides=polars_schema
                 )
 
-                # Select only the ID and feature columns for the data file
-                data_subset_df = full_data_df.select(id_columns + feature_colnames)
+                # Replicate the identifying metadata columns in every data row.
+                data_subset_df = full_data_df.select(
+                    data_index_columns + feature_colnames
+                )
 
                 data_subset_df = data_subset_df.unpivot(
                     on=feature_colnames,
-                    index=id_columns,
+                    index=data_index_columns,
                     variable_name="score_name",
                     value_name="score_value",
                 )
