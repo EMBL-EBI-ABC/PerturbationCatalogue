@@ -1830,7 +1830,7 @@ def _upload_parquet_to_bq(
     if not key_columns:
         raise ValueError("key_columns must contain at least one column.")
 
-    client = bigquery.Client()
+    client = bigquery.Client(project=project_id)
     target_table_base = f"{project_id}.{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
     
