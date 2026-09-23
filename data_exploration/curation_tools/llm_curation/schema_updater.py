@@ -5,13 +5,44 @@ type annotations with newly approved ontology candidate terms.
 """
 
 import ast
+import contextlib
 import difflib
+import hashlib
+import os
 import re
-import shutil
+import tempfile
 from pathlib import Path
-from typing import Literal, get_args, get_origin, get_type_hints
+from typing import Literal, get_args, get_origin
+
+from curation_tools.llm_curation.curation_run_store import (
+    CurationRunStore,
+    SchemaOperation,
+)
 
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "llm_curation_schema.py"
+
+
+class SchemaUpdateConflictError(RuntimeError):
+    """Raised when the schema changed after an update was rendered."""
+
+
+@contextlib.contextmanager
+def _schema_update_lock(schema_file_path: Path):
+    """Serialize cooperating schema writers with an advisory process lock."""
+    try:
+        import fcntl
+    except ImportError as exc:  # pragma: no cover - unsupported on Windows
+        raise RuntimeError(
+            "Schema updates require a platform file-lock implementation"
+        ) from exc
+
+    lock_path = schema_file_path.with_name(f".{schema_file_path.name}.lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def get_existing_literals(
@@ -107,11 +138,10 @@ def update_literal_string_in_code(
     return new_lines
 
 
-def generate_updated_schema_code(
-    approved_terms: dict[str, list[str]], schema_file_path: Path = DEFAULT_SCHEMA_PATH
+def _generate_updated_schema_code_from_source(
+    approved_terms: dict[str, list[str]], schema_file_path: Path, code: str
 ) -> str:
-    """Generate the updated Python code for llm_curation_schema.py without writing to disk."""
-    code = schema_file_path.read_text(encoding="utf-8")
+    """Render an updated schema from one already-read source snapshot."""
     tree = ast.parse(code)
 
     # Find ClassDef for SpecificTermExtractionSchema
@@ -158,7 +188,9 @@ def get_schema_diff(
 ) -> str:
     """Return unified diff string between current schema and updated schema."""
     original_code = schema_file_path.read_text(encoding="utf-8")
-    updated_code = generate_updated_schema_code(approved_terms, schema_file_path)
+    updated_code = _generate_updated_schema_code_from_source(
+        approved_terms, schema_file_path, original_code
+    )
 
     diff = difflib.unified_diff(
         original_code.splitlines(keepends=True),
@@ -171,19 +203,98 @@ def get_schema_diff(
 
 def apply_schema_update(
     approved_terms: dict[str, list[str]],
-    schema_file_path: Path = DEFAULT_SCHEMA_PATH,
-    create_backup: bool = True,
-) -> str:
-    """Apply approved terms to SpecificTermExtractionSchema in llm_curation_schema.py.
+    schema_path: Path = DEFAULT_SCHEMA_PATH,
+    run_store: CurationRunStore | None = None,
+) -> SchemaOperation:
+    """Journal and atomically apply approved schema terms for one native run."""
+    schema_path = Path(schema_path).resolve()
+    if run_store is None:
+        raise ValueError(
+            "Schema updates require a CurationRunStore for durable journaling"
+        )
 
-    Creates backup if requested, writes changes, and returns diff string.
-    """
-    if create_backup:
-        backup_path = schema_file_path.with_suffix(".py.bak")
-        shutil.copy(schema_file_path, backup_path)
+    with _schema_update_lock(schema_path):
+        original_code = schema_path.read_text(encoding="utf-8")
+        updated_code = _generate_updated_schema_code_from_source(
+            approved_terms, schema_path, original_code
+        )
+        diff = "".join(
+            difflib.unified_diff(
+                original_code.splitlines(keepends=True),
+                updated_code.splitlines(keepends=True),
+                fromfile=f"a/{schema_path.name}",
+                tofile=f"b/{schema_path.name}",
+            )
+        )
+        old_hash = _text_hash(original_code)
+        operation = run_store.begin_schema_operation(
+            schema_path,
+            original_code,
+            updated_code,
+            diff,
+            approved_terms,
+        )
 
-    updated_code = generate_updated_schema_code(approved_terms, schema_file_path)
-    diff = get_schema_diff(approved_terms, schema_file_path)
+        temporary_path: Path | None = None
+        try:
+            ast.parse(updated_code, filename=str(schema_path))
+            compile(updated_code, str(schema_path), "exec")
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{schema_path.name}.",
+                suffix=".tmp",
+                dir=schema_path.parent,
+            )
+            temporary_path = Path(temp_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as temporary:
+                temporary.write(updated_code)
+                temporary.flush()
+                os.fsync(temporary.fileno())
 
-    schema_file_path.write_text(updated_code, encoding="utf-8")
-    return diff
+            if _file_hash(schema_path) != old_hash:
+                raise SchemaUpdateConflictError(
+                    "Schema changed after rendering; update was not applied"
+                )
+            os.replace(temporary_path, schema_path)
+            temporary_path = None
+            _fsync_directory(schema_path.parent)
+            run_store.finish_schema_operation(operation.operation_id, "applied")
+            operation = SchemaOperation(
+                operation.operation_id,
+                "applied",
+                operation.old_hash,
+                operation.new_hash,
+            )
+        except Exception as exc:
+            run_store.finish_schema_operation(
+                operation.operation_id, "failed", str(exc)
+            )
+            raise
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+    return operation
+
+
+def _file_hash(file_path: Path) -> str | None:
+    """Return a SHA-256 hash for a file when it exists."""
+    if not file_path.is_file():
+        return None
+    return hashlib.sha256(file_path.read_bytes()).hexdigest()
+
+
+def _text_hash(text: str) -> str:
+    """Return a SHA-256 hash for rendered schema text."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Flush a directory entry when the platform supports directory fsync."""
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
