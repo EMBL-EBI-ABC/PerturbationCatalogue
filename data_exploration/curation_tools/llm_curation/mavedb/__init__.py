@@ -1,13 +1,11 @@
 from curation_tools.llm_curation.mavedb.processing import (
     DEFAULT_EXCLUDED_DOIS,
-    bulk_extract_evidence_for_mavedb_urns,
     bulk_fetch_mavedb_entries,
     build_mavedb_publication_full_text,
     build_mavedb_prompt_contexts,
     build_mavedb_context_signature,
     collect_publication_dois,
     extract_curated_mavedb_prompt_metadata,
-    extract_evidence_for_mavedb_urn,
     export_mavedb_urn_to_dois_json,
     fetch_mavedb_entry,
     filter_excluded_dois,
@@ -24,7 +22,6 @@ from curation_tools.llm_curation.mavedb.processing import (
     parse_excluded_dois,
     run_full_text_collection_pipeline,
 )
-
 
 __all__ = [
     "DEFAULT_EXCLUDED_DOIS",
@@ -43,9 +40,7 @@ __all__ = [
     "merge_prompt_metadata_value",
     "build_mavedb_prompt_contexts",
     "build_mavedb_publication_full_text",
-    "extract_evidence_for_mavedb_urn",
     "filter_excluded_dois",
-    "bulk_extract_evidence_for_mavedb_urns",
     "format_supplementary_mavedb_metadata",
     "export_mavedb_urn_to_dois_json",
     "collect_publication_dois",
