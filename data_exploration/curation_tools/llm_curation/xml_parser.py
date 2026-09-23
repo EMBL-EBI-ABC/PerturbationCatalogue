@@ -15,7 +15,6 @@ SECTION_TAGS = {"section", "sections", "sec"}
 SECTION_TITLE_TAGS = {"section-title", "title", "title-text"}
 LIST_TAGS = {"list", "list-item", "item", "li"}
 CAPTION_TAGS = {"caption", "legend", "caption-para"}
-ABSTRACT_TAGS = {"abstract"}
 REFERENCE_ENTRY_TAGS = {"bib-reference", "reference", "ref", "ref-info"}
 REFERENCE_TEXT_TAGS = {"source-text", "ref-fulltext", "mixed-citation", "citation"}
 KEYWORD_TAGS = {"keyword", "subject", "term"}
