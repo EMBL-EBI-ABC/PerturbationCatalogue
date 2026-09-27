@@ -790,11 +790,15 @@ def guide_aliases(guide_name):
 
 def guide_target_name(guide_name):
     guide_name = str(guide_name).strip().replace(",", "-")
-    return (
-        CONTROL_TARGET_SYMBOL
-        if guide_name.startswith(CONTROL_TARGET_SYMBOL)
-        else guide_name.split("_", 1)[0]
-    )
+    if (
+        guide_name.startswith(CONTROL_TARGET_SYMBOL)
+        or guide_name == "NTC"
+        or guide_name.startswith("NTC-")
+    ):
+        return CONTROL_TARGET_SYMBOL
+    if "_" in guide_name:
+        return guide_name.split("_", 1)[0]
+    return re.sub(r"-\d+$", "", guide_name)
 
 
 def strip_ensembl_version(value):
@@ -814,6 +818,18 @@ def guide_target_ensg(guide_name):
 
 def call_info(label):
     label = str(label).strip()
+    if label.lower() in {"multi_sgrna", "multi-guide", "multi_guide"}:
+        return {
+            "probe_label": label,
+            "n_probes": 1,
+            "control_probe_label": "None",
+            "n_control_probes": 0,
+            "gene_label": "multiple",
+            "gene_ensg_label": "None",
+            "n_genes": 2,
+            "outcome": ">1_gene",
+            "perturbation_call_type": "multi_gene",
+        }
     if label.lower() in {"", "none", "nan"}:
         probes = []
     else:
@@ -1944,4 +1960,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if os.environ.get("PERTURBSEQ_SELF_TEST"):
+        assert guide_target_name("ARMC5-1") == "ARMC5"
+        assert guide_target_name("HLA-DRA-2") == "HLA-DRA"
+        assert guide_target_name("NTC-001") == CONTROL_TARGET_SYMBOL
+        assert call_info("multi_sgRNA")["perturbation_call_type"] == "multi_gene"
+    else:
+        main()
