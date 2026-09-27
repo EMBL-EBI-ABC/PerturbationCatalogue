@@ -8,4 +8,6 @@ The pipeline trims that 20-base feature before KITE counting.
 The pilot feature table contains the eight observed guide barcodes coupled to
 the pilot H5AD labels. The UPR table contains the high-confidence barcode
 couplings recovered from the ten guide gemgroups; labels below the pipeline's
-minimum-cell threshold are not included.
+minimum-cell threshold are not included. UPR is split into its ten GEM groups:
+the shared GEX BAM is filtered by its corrected-barcode group suffix and each
+row is paired with the corresponding single-group guide BAM.

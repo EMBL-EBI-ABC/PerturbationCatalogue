@@ -461,7 +461,7 @@ def main():
                             ],
                             logfile,
                             stdout=counter.stdin,
-                            timeout=12 * 3600,
+                            timeout=None,
                         )
                         actual = log_json(logfile)
                         if actual.get("spots", 0) <= 0:
