@@ -27,6 +27,9 @@ params.chemistry = "10xv3"
 params.limit = 0
 params.concat_max_loaded_elems = 100000000
 params.h5repack_filter = "GZIP=4"
+params.cellranger_h5_tar = null
+params.cellranger_sample = null
+params.guide_targets = null
 
 // cDNA Reference parameters
 params.transcriptome_fa = null
@@ -342,6 +345,25 @@ process COMPRESS_FINAL_H5AD {
     """
 }
 
+/** Imports one donor/condition from a tar of Cell Ranger feature matrices. */
+process IMPORT_CELLRANGER_H5 {
+    tag "${params.dataset_id}"
+
+    input:
+    path archive
+    path guide_targets
+    val sample
+
+    output:
+    path "experiment_final_uncompressed.h5ad", emit: h5ad
+
+    script:
+    """
+    python ${projectDir}/datasets/zhu_2025/import_cellranger.py \
+      --tar ${archive} --sample ${sample} --guide-targets ${guide_targets}
+    """
+}
+
 process QC_COMPARISON {
     tag "${params.dataset_id}"
     publishDir "${params.outdir}", mode: 'copy', pattern: '*.filtered.h5ad'
@@ -474,61 +496,60 @@ process MERGE_RESULTS {
 workflow {
     if (!params.dataset_id || !(params.dataset_id ==~ /[A-Za-z0-9_-]+/))
         error "Please provide a valid --dataset_id"
-    if (!params.curated_h5ad || !params.gmt)
-        error "Please provide --curated_h5ad and --gmt"
-    if (!params.sample_sheet || !params.transcriptome_fa || !params.gtf || !params.features_tsv) {
-        error "Please provide --sample_sheet, --transcriptome_fa, --gtf, and --features_tsv"
-    }
-    
-    fa = file(params.transcriptome_fa, checkIfExists: true)
+    if (!params.curated_h5ad || !params.gmt || !params.gtf)
+        error "Please provide --curated_h5ad, --gmt, and --gtf"
+
     gtf = file(params.gtf, checkIfExists: true)
-    features = file(params.features_tsv, checkIfExists: true)
     curated = file(params.curated_h5ad, checkIfExists: true)
     gene_sets = file(params.gmt, checkIfExists: true)
-    
-    samples_ch = Channel
-        .fromPath(params.sample_sheet)
-        .splitCsv(header:true, sep:'\t')
-        .map { row -> 
-            def sid = row.sample_id
-            def mrna_srrs = row.mRNA_srrs.tokenize(';')
-            def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
-            def valid_source = { source ->
-                source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
-                    (source.startsWith('BAM:') && source.size() > 4) ||
-                    (source.startsWith('BAMFILE:') && source.size() > 8)
-            }
-            
-            if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
-            def feature_offset = (row.guide_feature_offset ?: "0") as Integer
-            def feature_length = (row.guide_feature_length ?: "0") as Integer
-            if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
-                error "Invalid guide feature trim for sample ${sid}"
-            for (runs in [mrna_srrs, sgrna_srrs]) {
-                if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
-                    error "Invalid or duplicate sequencing sources for sample ${sid}"
-            }
-            return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
-        }
 
-    if (params.limit > 0) {
-        samples_ch = samples_ch.take(params.limit)
+    if (params.cellranger_h5_tar) {
+        if (!params.cellranger_sample || !params.guide_targets)
+            error "Please provide --cellranger_sample and --guide_targets with --cellranger_h5_tar"
+        uncompressed_final = IMPORT_CELLRANGER_H5(
+            file(params.cellranger_h5_tar, checkIfExists: true),
+            file(params.guide_targets, checkIfExists: true),
+            params.cellranger_sample,
+        )
+    } else {
+        if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
+            error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
+        fa = file(params.transcriptome_fa, checkIfExists: true)
+        features = file(params.features_tsv, checkIfExists: true)
+        samples_ch = Channel
+            .fromPath(params.sample_sheet)
+            .splitCsv(header:true, sep:'\t')
+            .map { row ->
+                def sid = row.sample_id
+                def mrna_srrs = row.mRNA_srrs.tokenize(';')
+                def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
+                def valid_source = { source ->
+                    source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
+                        (source.startsWith('BAM:') && source.size() > 4) ||
+                        (source.startsWith('BAMFILE:') && source.size() > 8)
+                }
+
+                if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
+                def feature_offset = (row.guide_feature_offset ?: "0") as Integer
+                def feature_length = (row.guide_feature_length ?: "0") as Integer
+                if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
+                    error "Invalid guide feature trim for sample ${sid}"
+                for (runs in [mrna_srrs, sgrna_srrs]) {
+                    if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
+                        error "Invalid or duplicate sequencing sources for sample ${sid}"
+                }
+                return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
+            }
+        if (params.limit > 0)
+            samples_ch = samples_ch.take(params.limit)
+        std_idx = BUILD_INDEX_STANDARD(fa, gtf)
+        kite_idx = BUILD_INDEX_KITE(features)
+        std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
+        kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
+        merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
+        merged_samples = MERGE_MODALITIES(merge_ch)
+        uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
     }
-
-    // Step 1: Build Indices
-    std_idx = BUILD_INDEX_STANDARD(fa, gtf)
-    kite_idx = BUILD_INDEX_KITE(features)
-
-    // Step 2: Quantify cDNA and Guides in parallel per sample
-    std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
-    kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
-
-    // Step 3: Merge modalities per sample
-    merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
-    merged_samples = MERGE_MODALITIES(merge_ch)
-    
-    // Step 4: Final Global Concatenation
-    uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 
     // Step 5: Final HDF5 Compression
     raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)

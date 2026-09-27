@@ -35,6 +35,11 @@ Downloads, image installation and pipeline execution must follow your cluster's
 allocation and storage policies. Keep HOME, caches and temporary directories in
 allocated project storage.
 
+For Zhu 2025, where complete guide FASTQs are not public, the same workflow can
+start from the official per-lane Cell Ranger matrices. Supply
+`--cellranger_h5_tar`, `--cellranger_sample` and `--guide_targets`; counting
+parameters are then omitted. See [the Zhu dataset notes](datasets/zhu_2025/README.md).
+
 ## Sample sheet
 
 Dataset preparation scripts under `datasets/` produce a headerless guide-feature
