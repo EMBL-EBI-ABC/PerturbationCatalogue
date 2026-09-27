@@ -25,6 +25,14 @@ def lane_id(name):
     return match.group(1)
 
 
+def expected_lanes(sample):
+    return (
+        23
+        if sample.startswith(("D1_", "D2_")) and not sample.endswith("Stim48hr")
+        else 24
+    )
+
+
 def selected_members(archive, sample, limit=0):
     suffix = f"_{sample}{MATRIX_SUFFIX}"
     members = sorted(
@@ -42,7 +50,28 @@ def selected_members(archive, sample, limit=0):
     lanes = [lane_id(Path(m.name).name) for m in members]
     if len(lanes) != len(set(lanes)):
         raise ValueError(f"Duplicate lanes for {sample}: {lanes}")
+    if not limit and len(members) != expected_lanes(sample):
+        raise ValueError(
+            f"Expected {expected_lanes(sample)} lanes for {sample}, found {len(members)}"
+        )
     return members
+
+
+def selected_paths(directory, sample, limit=0):
+    paths = sorted(
+        Path(directory).glob(f"*_{sample}{MATRIX_SUFFIX}"),
+        key=lambda p: lane_id(p.name),
+    )
+    if limit:
+        paths = paths[:limit]
+    lanes = [lane_id(path.name) for path in paths]
+    if len(lanes) != len(set(lanes)):
+        raise ValueError(f"Duplicate lanes for {sample}: {lanes}")
+    if not limit and len(paths) != expected_lanes(sample):
+        raise ValueError(
+            f"Expected {expected_lanes(sample)} lanes for {sample}, found {len(paths)}"
+        )
+    return paths
 
 
 def guide_labels(path):
@@ -93,22 +122,30 @@ def run(args):
     inputs = {}
     n_cells = 0
 
-    with tarfile.open(args.tar) as archive:
-        members = selected_members(archive, args.sample, args.limit_lanes)
-        for member in members:
-            name = Path(member.name).name
-            lane = lane_id(name)
-            source = Path(f"{lane}.h5")
-            with archive.extractfile(member) as incoming, source.open("wb") as outgoing:
-                shutil.copyfileobj(incoming, outgoing, length=16 * 1024 * 1024)
-            output = lane_dir / f"{lane}.h5ad"
-            convert_lane(source, output, args.sample, lane, targets)
-            source.unlink()
-            lane_data = ad.read_h5ad(output, backed="r")
-            n_cells += lane_data.n_obs
-            lane_data.file.close()
-            inputs[lane] = str(output)
-            gc.collect()
+    def process_source(source, lane):
+        nonlocal n_cells
+        output = lane_dir / f"{lane}.h5ad"
+        convert_lane(source, output, args.sample, lane, targets)
+        lane_data = ad.read_h5ad(output, backed="r")
+        n_cells += lane_data.n_obs
+        lane_data.file.close()
+        inputs[lane] = str(output)
+        gc.collect()
+
+    if args.tar:
+        with tarfile.open(args.tar) as archive:
+            for member in selected_members(archive, args.sample, args.limit_lanes):
+                lane = lane_id(Path(member.name).name)
+                source = Path(f"{lane}.h5")
+                with archive.extractfile(member) as incoming, source.open(
+                    "wb"
+                ) as outgoing:
+                    shutil.copyfileobj(incoming, outgoing, length=16 * 1024 * 1024)
+                process_source(source, lane)
+                source.unlink()
+    else:
+        for source in selected_paths(args.matrix_dir, args.sample, args.limit_lanes):
+            process_source(source, lane_id(source.name))
 
     ad.experimental.concat_on_disk(
         inputs,
@@ -159,17 +196,22 @@ def self_test():
             ]
 
     assert [
-        lane_id(Path(m.name).name) for m in selected_members(Archive(), "D1_Rest")
+        lane_id(Path(m.name).name)
+        for m in selected_members(Archive(), "D1_Rest", limit=2)
     ] == [
         "R1L01",
         "R1L02",
     ]
+    assert expected_lanes("D1_Rest") == 23
+    assert expected_lanes("D4_Stim48hr") == 24
     assert GUIDE_ALIASES["1-Jun"] == "JUN-1"
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tar", required=True)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--tar")
+    source.add_argument("--matrix-dir")
     parser.add_argument("--sample", required=True)
     parser.add_argument("--guide-targets", required=True)
     parser.add_argument("--output", default="experiment_final_uncompressed.h5ad")
@@ -179,6 +221,8 @@ def main():
     if args.self_test:
         self_test()
     else:
+        if not args.tar and not args.matrix_dir:
+            parser.error("one of --tar or --matrix-dir is required")
         run(args)
 
 

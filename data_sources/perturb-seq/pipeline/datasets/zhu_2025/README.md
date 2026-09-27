@@ -13,7 +13,13 @@ code. The remaining 26,504 guides use the authors' curated target mapping in
 concatenated on disk before the common compression, QC/comparison,
 probe-calling, DEA and GSEA stages.
 
-Use `--cellranger_h5_tar`, `--cellranger_sample` (for example `D1_Rest`) and
+`matrix_urls.txt` is the 284-file manifest extracted from the official
+`GSE314342` family SOFT record. `download_matrices.py` downloads each file
+independently with strict byte-count checks, so a transient failure does not
+invalidate a 171 GB monolithic transfer.
+
+Use `--cellranger_h5_dir` (or `--cellranger_h5_tar`), `--cellranger_sample`
+(for example `D1_Rest`) and
 `--guide_targets datasets/zhu_2025/guide_targets.tsv` instead of a sequencing
 sample sheet and count references. The author-provided `*.assigned_guide.h5ad`
 for the same donor/condition remains the independent curated comparison input.

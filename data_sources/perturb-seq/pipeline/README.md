@@ -36,9 +36,10 @@ allocation and storage policies. Keep HOME, caches and temporary directories in
 allocated project storage.
 
 For Zhu 2025, where complete guide FASTQs are not public, the same workflow can
-start from the official per-lane Cell Ranger matrices. Supply
-`--cellranger_h5_tar`, `--cellranger_sample` and `--guide_targets`; counting
-parameters are then omitted. See [the Zhu dataset notes](datasets/zhu_2025/README.md).
+start from the official per-lane Cell Ranger matrices. Supply either
+`--cellranger_h5_dir` or `--cellranger_h5_tar`, plus `--cellranger_sample` and
+`--guide_targets`; counting parameters are then omitted. See
+[the Zhu dataset notes](datasets/zhu_2025/README.md).
 
 ## Sample sheet
 

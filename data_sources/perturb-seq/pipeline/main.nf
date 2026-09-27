@@ -28,6 +28,7 @@ params.limit = 0
 params.concat_max_loaded_elems = 100000000
 params.h5repack_filter = "GZIP=4"
 params.cellranger_h5_tar = null
+params.cellranger_h5_dir = null
 params.cellranger_sample = null
 params.guide_targets = null
 
@@ -350,7 +351,7 @@ process IMPORT_CELLRANGER_H5 {
     tag "${params.dataset_id}"
 
     input:
-    path archive
+    path matrices
     path guide_targets
     val sample
 
@@ -358,9 +359,10 @@ process IMPORT_CELLRANGER_H5 {
     path "experiment_final_uncompressed.h5ad", emit: h5ad
 
     script:
+    def sourceArg = params.cellranger_h5_dir ? "--matrix-dir ${matrices}" : "--tar ${matrices}"
     """
     python ${projectDir}/datasets/zhu_2025/import_cellranger.py \
-      --tar ${archive} --sample ${sample} --guide-targets ${guide_targets}
+      ${sourceArg} --sample ${sample} --guide-targets ${guide_targets}
     """
 }
 
@@ -503,11 +505,13 @@ workflow {
     curated = file(params.curated_h5ad, checkIfExists: true)
     gene_sets = file(params.gmt, checkIfExists: true)
 
-    if (params.cellranger_h5_tar) {
+    if (params.cellranger_h5_tar || params.cellranger_h5_dir) {
+        if (params.cellranger_h5_tar && params.cellranger_h5_dir)
+            error "Provide only one of --cellranger_h5_tar or --cellranger_h5_dir"
         if (!params.cellranger_sample || !params.guide_targets)
-            error "Please provide --cellranger_sample and --guide_targets with --cellranger_h5_tar"
+            error "Please provide --cellranger_sample and --guide_targets with Cell Ranger input"
         uncompressed_final = IMPORT_CELLRANGER_H5(
-            file(params.cellranger_h5_tar, checkIfExists: true),
+            file(params.cellranger_h5_dir ?: params.cellranger_h5_tar, checkIfExists: true),
             file(params.guide_targets, checkIfExists: true),
             params.cellranger_sample,
         )
