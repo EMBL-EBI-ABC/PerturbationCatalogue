@@ -109,6 +109,7 @@ def convert_lane(source, output, sample, lane, targets):
     genes.var["gene_name"] = genes.var_names.astype(str)
     genes.var_names = genes.var["gene_ids"].astype(str)
     genes.var_names_make_unique()
+    genes = genes[:, sorted(genes.var_names)].copy()
     genes.obs["sample_id"] = sample
     genes.obs["lane_id"] = lane
     genes.obs_names = [f"{barcode}_{lane}_{sample}" for barcode in genes.obs_names]
@@ -121,14 +122,21 @@ def run(args):
     lane_dir.mkdir()
     inputs = {}
     n_cells = 0
+    canonical_genes = None
 
     def process_source(source, lane):
-        nonlocal n_cells
+        nonlocal canonical_genes, n_cells
         output = lane_dir / f"{lane}.h5ad"
         convert_lane(source, output, args.sample, lane, targets)
         lane_data = ad.read_h5ad(output, backed="r")
-        n_cells += lane_data.n_obs
-        lane_data.file.close()
+        try:
+            lane_genes = lane_data.var_names.tolist()
+            if canonical_genes is not None and lane_genes != canonical_genes:
+                raise ValueError(f"Gene panel differs in lane {lane}")
+            canonical_genes = lane_genes
+            n_cells += lane_data.n_obs
+        finally:
+            lane_data.file.close()
         inputs[lane] = str(output)
         gc.collect()
 
@@ -151,7 +159,7 @@ def run(args):
         inputs,
         args.output,
         axis=0,
-        join="outer",
+        join="inner",
         merge=None,
         uns_merge="same",
         index_unique="-",
