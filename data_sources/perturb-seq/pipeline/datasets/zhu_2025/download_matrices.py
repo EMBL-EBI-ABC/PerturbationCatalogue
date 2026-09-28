@@ -4,6 +4,7 @@
 import argparse
 import concurrent.futures
 from pathlib import Path
+import tempfile
 import time
 import urllib.request
 
@@ -18,13 +19,16 @@ def download(url, outdir):
     url = https_url(url)
     output = outdir / url.rsplit("/", 1)[1]
     temporary = output.with_suffix(output.suffix + ".part")
+    if output.is_file():
+        size = output.stat().st_size
+        if not size:
+            raise RuntimeError(f"Empty completed file: {output}")
+        return output.name, size, "existing"
     for attempt in range(5):
         try:
             request = urllib.request.Request(url)
             with urllib.request.urlopen(request, timeout=180) as response:
                 expected = int(response.headers["Content-Length"])
-                if output.is_file() and output.stat().st_size == expected:
-                    return output.name, expected, "existing"
                 written = 0
                 with temporary.open("wb") as handle:
                     while block := response.read(4 * 1024 * 1024):
@@ -55,6 +59,14 @@ def main():
             https_url("ftp://ftp.ncbi.nlm.nih.gov/a")
             == "https://ftp.ncbi.nlm.nih.gov/a"
         )
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root) / "a"
+            output.write_bytes(b"x")
+            assert download("ftp://ftp.ncbi.nlm.nih.gov/a", Path(root)) == (
+                "a",
+                1,
+                "existing",
+            )
         return
     if not 1 <= args.workers <= 32:
         parser.error("--workers must be between 1 and 32")
