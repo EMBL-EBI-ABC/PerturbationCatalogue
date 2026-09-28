@@ -1879,7 +1879,7 @@ def main():
             fig, ax = plt.subplots(figsize=(9, 6))
             sns.histplot(
                 cell_corrs[np.isfinite(cell_corrs)],
-                bins=100,
+                bins="auto",
                 kde=True,
                 color="purple",
                 alpha=0.4,
