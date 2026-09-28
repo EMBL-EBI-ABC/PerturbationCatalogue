@@ -354,6 +354,7 @@ process IMPORT_CELLRANGER_H5 {
     path matrices
     path guide_targets
     val sample
+    path importer_script
 
     output:
     path "experiment_final_uncompressed.h5ad", emit: h5ad
@@ -361,7 +362,7 @@ process IMPORT_CELLRANGER_H5 {
     script:
     def sourceArg = params.cellranger_h5_dir ? "--matrix-dir ${matrices}" : "--tar ${matrices}"
     """
-    python ${projectDir}/datasets/zhu_2025/import_cellranger.py \
+    python ${importer_script} \
       ${sourceArg} --sample ${sample} --guide-targets ${guide_targets}
     """
 }
@@ -510,10 +511,12 @@ workflow {
             error "Provide only one of --cellranger_h5_tar or --cellranger_h5_dir"
         if (!params.cellranger_sample || !params.guide_targets)
             error "Please provide --cellranger_sample and --guide_targets with Cell Ranger input"
+        importer_script = file("${projectDir}/datasets/zhu_2025/import_cellranger.py")
         uncompressed_final = IMPORT_CELLRANGER_H5(
             file(params.cellranger_h5_dir ?: params.cellranger_h5_tar, checkIfExists: true),
             file(params.guide_targets, checkIfExists: true),
             params.cellranger_sample,
+            importer_script,
         )
     } else {
         if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
