@@ -152,16 +152,17 @@ def run(args):
         args.output,
         axis=0,
         join="outer",
-        merge="same",
+        merge=None,
         uns_merge="same",
         index_unique="-",
     )
     with h5py.File(next(iter(inputs.values())), "r") as source, h5py.File(
         args.output, "a"
     ) as target:
-        if "uns" in target:
-            del target["uns"]
-        source.copy("uns", target)
+        for key in ("var", "uns"):
+            if key in target:
+                del target[key]
+            source.copy(key, target)
 
     result = ad.read_h5ad(args.output, backed="r")
     try:
