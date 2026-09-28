@@ -68,8 +68,11 @@ GUIDE_TARGET_ENSG_ALIASES = {
     "FAM96B": "ENSG00000166595",
     "H3F3B": "ENSG00000132475",
     "MRPS36": "ENSG00000134056",
+    "MTRNR2L1": "ENSG00000256618",
+    "MTRNR2L4": "ENSG00000232196",
     "MTRNR2L8": "ENSG00000255823",
     "NARS": "ENSG00000134440",
+    "OCLM": "ENSG00000262180",
     "SEPT11": "ENSG00000138758",
     "TARS": "ENSG00000113407",
     "TMEM99": "ENSG00000167920",
@@ -1964,6 +1967,9 @@ if __name__ == "__main__":
         assert guide_target_name("ARMC5-1") == "ARMC5"
         assert guide_target_name("HLA-DRA-2") == "HLA-DRA"
         assert guide_target_name("NTC-001") == CONTROL_TARGET_SYMBOL
+        assert guide_target_ensg("MTRNR2L1-1") == "ENSG00000256618"
+        assert guide_target_ensg("MTRNR2L4-1") == "ENSG00000232196"
+        assert guide_target_ensg("OCLM-1") == "ENSG00000262180"
         assert call_info("multi_sgRNA")["perturbation_call_type"] == "multi_gene"
     else:
         main()
