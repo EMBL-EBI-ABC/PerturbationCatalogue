@@ -701,8 +701,8 @@ workflow {
         if (!(params.flex_pool_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/))
             error "Invalid --flex_pool_id"
         if (!(params.flex_max_forks.toString() ==~ /[1-9][0-9]*/) ||
-            params.flex_max_forks.toInteger() > 8)
-            error "--flex_max_forks must be between 1 and 8"
+            params.flex_max_forks.toInteger() > 24)
+            error "--flex_max_forks must be between 1 and 24"
         if (params.cell_id_columns != "lane_id")
             error "Flex comparison requires --cell_id_columns lane_id"
 
