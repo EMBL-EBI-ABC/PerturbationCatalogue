@@ -41,6 +41,15 @@ From: python:3.10-slim
         openpyxl \
         "PyYAML>=6,<7"
 
+    curl -fL https://github.com/ArcInstitute/cyto/releases/download/cyto-0.4.5/cyto-linux-x86_64 -o /tmp/cyto
+    echo "56adb8702753fb988bca0d8939ec49deba06b5f33bd4173469b3b67a7a8d87b3  /tmp/cyto" | sha256sum -c -
+    install -m 0755 /tmp/cyto /usr/local/bin/cyto
+    curl -fL https://github.com/ArcInstitute/cyto/releases/download/cyto-0.4.5/cyto-resources.tar.gz -o /tmp/cyto-resources.tar.gz
+    echo "f004e5eb5e2020c3d5c894f3c19838bbfbdad548be722f875c6a3afceace13ca  /tmp/cyto-resources.tar.gz" | sha256sum -c -
+    mkdir -p /opt/cyto
+    tar -xzf /tmp/cyto-resources.tar.gz -C /opt/cyto
+    rm /tmp/cyto /tmp/cyto-resources.tar.gz
+
     # Clean up to reduce image size
     apt-get clean
     rm -rf /var/lib/apt/lists/*
@@ -52,6 +61,12 @@ From: python:3.10-slim
 
 %runscript
     exec kb "$@"
+
+%test
+    cyto --version | grep -F "0.4.5"
+    test -s /opt/cyto/resources/737K-fixed-rna-profiling.txt.gz
+    test -s /opt/cyto/resources/probe-barcodes-fixed-rna-profiling-rna.txt
+    test -s /opt/cyto/resources/probe-barcodes-fixed-rna-profiling-crispr.txt
 
 %help
     This container provides every runtime dependency for the complete
