@@ -153,6 +153,7 @@ process SPLIT_BAM_GEM_GROUPS {
     """
     python ${projectDir}/bin/bam_to_fastq.py \
       --source '${source}' --split-groups ${groups} \
+      --download-source \
       --samtools-threads ${samtoolsThreads} --output-dir groups
     """
 }

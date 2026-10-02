@@ -2,7 +2,10 @@
 """Stream original 10x BAM tags as interleaved barcode/feature FASTQ."""
 
 import argparse
+import concurrent.futures
 from contextlib import contextmanager
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -12,13 +15,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 LOCATOR = "https://locate.ncbi.nlm.nih.gov/sdl/2/retrieve?acc={}&accept-proto=https"
 ACCESSION = re.compile(r"(?:SRR|ERR|DRR)\d+$")
 GEM_GROUP = re.compile(r"-(\d+)$")
+BAM_RANGE_SIZE = 128 * 1024**2
+BAM_RANGE_WORKERS = 16
 
 
 def locator(accession):
@@ -40,7 +47,147 @@ def locator(accession):
     ]
     if len(files) != 1 or not urls:
         raise RuntimeError(f"No unique HTTPS BAM locator result for {accession}")
-    return urls[0]
+    return {
+        "url": urls[0],
+        "size": files[0].get("size"),
+        "md5": files[0].get("md5", ""),
+    }
+
+
+def download_ranges(
+    url, size, digest, output, chunk_size=BAM_RANGE_SIZE, workers=BAM_RANGE_WORKERS
+):
+    """Download one locator-pinned object via checked parallel HTTP ranges."""
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or type(size) is not int
+        or size <= 0
+        or not re.fullmatch(r"[0-9a-fA-F]{32}", digest or "")
+        or chunk_size <= 0
+        or workers <= 0
+    ):
+        raise ValueError("Invalid ranged-download URL, size, checksum or settings")
+
+    output = Path(output)
+    partial = output.with_name(output.name + ".partial")
+    if any(path.is_symlink() or path.exists() for path in (output, partial)):
+        raise FileExistsError(f"Download target already exists: {output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd = None
+    created_partial = False
+    created_output = False
+    try:
+        fd = os.open(
+            partial,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        created_partial = True
+        os.ftruncate(fd, size)
+        ranges = [
+            (start, min(size - 1, start + chunk_size - 1))
+            for start in range(0, size, chunk_size)
+        ]
+
+        def fetch(start, end):
+            expected = end - start + 1
+            for attempt in range(5):
+                try:
+                    request = Request(url, headers={"Range": f"bytes={start}-{end}"})
+                    with urlopen(request, timeout=180) as response:
+                        try:
+                            content_length = int(
+                                response.headers.get("Content-Length", "")
+                            )
+                        except ValueError as error:
+                            raise RuntimeError("missing HTTP range length") from error
+                        returned = response.headers.get("Content-Range", "")
+                        final_url = urlsplit(response.geturl())
+                        if (
+                            response.status != 206
+                            or returned != f"bytes {start}-{end}/{size}"
+                            or content_length != expected
+                            or final_url.scheme != parsed.scheme
+                        ):
+                            raise RuntimeError(
+                                f"unexpected HTTP range response: {response.status} {returned}"
+                            )
+                        offset = start
+                        while True:
+                            block = response.read(4 * 1024 * 1024)
+                            if not block:
+                                break
+                            view = memoryview(block)
+                            while view:
+                                written = os.pwrite(fd, view, offset)
+                                if not written:
+                                    raise OSError("short ranged write")
+                                offset += written
+                                view = view[written:]
+                        if offset != end + 1:
+                            raise RuntimeError(
+                                f"short HTTP range: {offset - start}/{expected}"
+                            )
+                    return expected
+                except Exception:
+                    if attempt == 4:
+                        raise
+                    time.sleep(2**attempt)
+
+        started = time.monotonic()
+        downloaded = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(fetch, start, end) for start, end in ranges]
+            for index, future in enumerate(concurrent.futures.as_completed(futures), 1):
+                try:
+                    downloaded += future.result()
+                except BaseException:
+                    for pending in futures:
+                        pending.cancel()
+                    raise
+                if size >= 1024**3 and (index % 32 == 0 or index == len(ranges)):
+                    elapsed = time.monotonic() - started
+                    rate = downloaded / elapsed / 1024**2
+                    print(
+                        f"source_download ranges={index}/{len(ranges)} "
+                        f"bytes={downloaded} MiB_per_second={rate:.1f}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+        if downloaded != size:
+            raise RuntimeError(f"Downloaded {downloaded} of {size} bytes")
+        os.fsync(fd)
+        os.close(fd)
+        fd = None
+
+        checksum = hashlib.md5()
+        with partial.open("rb") as stream:
+            for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+                checksum.update(block)
+        if partial.stat().st_size != size or checksum.hexdigest() != digest.lower():
+            raise RuntimeError("BAM download size or MD5 mismatch")
+        os.replace(partial, output)
+        created_partial = False
+        created_output = True
+        return {
+            "bytes": size,
+            "md5": digest.lower(),
+            "ranges": len(ranges),
+            "workers": min(workers, len(ranges)),
+            "seconds": round(time.monotonic() - started, 1),
+        }
+    except BaseException:
+        if fd is not None:
+            os.close(fd)
+        if created_partial:
+            partial.unlink(missing_ok=True)
+        if created_output:
+            output.unlink(missing_ok=True)
+        raise
 
 
 def source_parts(source):
@@ -55,7 +202,7 @@ def source_parts(source):
     value = source[len("BAM:") :]
     value, _, group = value.partition("#")
     if ACCESSION.fullmatch(value):
-        value = locator(value)
+        value = locator(value)["url"]
     if not urlsplit(value).scheme and not value.startswith("/"):
         raise ValueError(f"BAM source is not an accession, URL or path: {source}")
     if urlsplit(value).scheme != "https" and not value.startswith("/"):
@@ -196,7 +343,38 @@ def sam_record_group(fields, groups):
     return group if group in groups else None
 
 
-def split_bam_by_gem_group(source, groups, output_dir, threads=0):
+def download_source_bam(source, output_dir):
+    if source.startswith("BAMFILE:"):
+        return None, None
+    if not source.startswith("BAM:"):
+        raise ValueError("--download-source is only valid for BAM inputs")
+    value, _, group = source[len("BAM:") :].partition("#")
+    if group:
+        raise ValueError("--download-source cannot select one GEM group")
+    if value.startswith("/"):
+        return None, None
+    if not ACCESSION.fullmatch(value):
+        raise ValueError(
+            "--download-source needs a BAM accession with locator metadata"
+        )
+    pinned = locator(value)
+    if (
+        type(pinned["size"]) is not int
+        or pinned["size"] <= 0
+        or not re.fullmatch(r"[0-9a-fA-F]{32}", pinned["md5"] or "")
+        or urlsplit(pinned["url"]).scheme != "https"
+    ):
+        raise RuntimeError(f"BAM locator lacks a valid size, MD5 or HTTPS URL: {value}")
+    output_dir = Path(output_dir).resolve()
+    staged = output_dir.parent / f"{value}.source.bam"
+    metrics = download_ranges(pinned["url"], pinned["size"], pinned["md5"], staged)
+    metrics["accession"] = value
+    return staged, metrics
+
+
+def split_bam_by_gem_group(
+    source, groups, output_dir, threads=0, download_source=False
+):
     groups = tuple(groups)
     if (
         not groups
@@ -223,10 +401,16 @@ def split_bam_by_gem_group(source, groups, output_dir, threads=0):
         raise FileExistsError("Gem-group output already exists")
 
     writers = {}
+    staged_source = None
     records = dict.fromkeys(groups, 0)
     unassigned_records = 0
     try:
-        with stream_sam(source, threads=threads) as (lines, requested_group):
+        if download_source:
+            staged_source, download_metrics = download_source_bam(source, output_dir)
+        else:
+            download_metrics = None
+        split_source = f"BAMFILE:{staged_source}" if staged_source else source
+        with stream_sam(split_source, threads=threads) as (lines, requested_group):
             if requested_group is not None:
                 raise ValueError("The split source must not select one gem group")
             headers = []
@@ -289,8 +473,12 @@ def split_bam_by_gem_group(source, groups, output_dir, threads=0):
             },
             "unassigned_records": unassigned_records,
         }
+        if download_metrics:
+            result["source_download"] = download_metrics
         metrics_temporary.write_text(json.dumps(result, sort_keys=True) + "\n")
         metrics_temporary.replace(metrics_path)
+        if staged_source:
+            staged_source.unlink()
     except BaseException:
         for writer in writers.values():
             if writer.poll() is None:
@@ -312,6 +500,8 @@ def split_bam_by_gem_group(source, groups, output_dir, threads=0):
             metrics_path,
         ):
             path.unlink(missing_ok=True)
+        if staged_source:
+            staged_source.unlink(missing_ok=True)
         raise
     return result
 
@@ -355,6 +545,99 @@ def choose_reads(reads, workflow, cr11):
     )
 
 
+def test_range_download():
+    data = bytes(range(256)) * 4096
+    seen = []
+    lock = threading.Lock()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            match = re.fullmatch(r"bytes=(\d+)-(\d+)", self.headers.get("Range", ""))
+            if not match:
+                self.send_error(400)
+                return
+            start, end = map(int, match.groups())
+            with lock:
+                seen.append((start, end))
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.end_headers()
+            self.wfile.write(data[start : end + 1])
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/synthetic.bam"
+    with tempfile.TemporaryDirectory(prefix="bam-range-test-", dir=Path.cwd()) as temp:
+        target = Path(temp) / "synthetic.bam"
+        digest = hashlib.md5(data).hexdigest()
+        try:
+            metrics = download_ranges(
+                url, len(data), digest, target, chunk_size=64 * 1024, workers=4
+            )
+            assert target.read_bytes() == data
+            assert metrics["ranges"] == 16 and len(seen) == 16
+
+            rejected = Path(temp) / "bad-checksum.bam"
+            try:
+                download_ranges(
+                    url,
+                    len(data),
+                    "0" * 32,
+                    rejected,
+                    chunk_size=64 * 1024,
+                    workers=4,
+                )
+            except RuntimeError as error:
+                assert "MD5 mismatch" in str(error)
+            else:
+                raise AssertionError("incorrect checksum was accepted")
+            assert not rejected.exists()
+            assert not rejected.with_name(rejected.name + ".partial").exists()
+
+            sentinel = Path(temp) / "preserve.bam"
+            sentinel.write_bytes(b"keep")
+            try:
+                download_ranges(
+                    url,
+                    len(data),
+                    digest,
+                    sentinel,
+                    chunk_size=64 * 1024,
+                    workers=4,
+                )
+            except FileExistsError:
+                pass
+            else:
+                raise AssertionError("existing output target was overwritten")
+            assert sentinel.read_bytes() == b"keep"
+
+            partial = Path(temp) / "occupied.bam.partial"
+            partial.write_bytes(b"protect")
+            try:
+                download_ranges(
+                    url,
+                    len(data),
+                    digest,
+                    partial.with_suffix(""),
+                    chunk_size=64 * 1024,
+                    workers=4,
+                )
+            except FileExistsError:
+                pass
+            else:
+                raise AssertionError("existing partial target was removed or reused")
+            assert partial.read_bytes() == b"protect"
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source")
@@ -365,6 +648,7 @@ def main():
     parser.add_argument("--samtools-threads", type=int, default=0)
     parser.add_argument("--split-groups", type=int, default=0)
     parser.add_argument("--output-dir")
+    parser.add_argument("--download-source", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -386,6 +670,8 @@ def main():
             )
         if args.feature_offset or args.feature_length or args.max_spots:
             parser.error("read trimming and spot limits are not valid in split mode")
+        if args.download_source and not args.source.startswith(("BAM:", "BAMFILE:")):
+            parser.error("--download-source requires a BAM source")
         print(
             json.dumps(
                 split_bam_by_gem_group(
@@ -393,12 +679,15 @@ def main():
                     range(1, args.split_groups + 1),
                     args.output_dir,
                     args.samtools_threads,
+                    args.download_source,
                 )
             ),
             file=sys.stderr,
             flush=True,
         )
         return
+    if args.download_source:
+        parser.error("--download-source is only valid in split mode")
     if args.output_dir or not args.workflow:
         parser.error("count mode needs --workflow and does not use --output-dir")
     if args.feature_length == 1:
@@ -503,6 +792,7 @@ def main():
 def self_test():
     if not shutil.which("samtools"):
         raise RuntimeError("--self-test requires samtools")
+    test_range_download()
 
     groups = set(range(1, 11))
     fields = [
@@ -596,8 +886,19 @@ def self_test():
         result = split_bam_by_gem_group(
             f"BAMFILE:{relative_bam_path}", (1, 2), temp / "groups", threads=1
         )
+        flagged_result = split_bam_by_gem_group(
+            f"BAMFILE:{relative_bam_path}",
+            (1, 2),
+            temp / "groups-with-download-flag",
+            threads=1,
+            download_source=True,
+        )
         assert result["groups"]["1"]["input_records"] == 2
         assert result["groups"]["2"]["input_records"] == 2
+        assert {
+            key: value["input_records"]
+            for key, value in flagged_result["groups"].items()
+        } == {key: value["input_records"] for key, value in result["groups"].items()}
         assert result["unassigned_records"] == 1
         metrics = json.loads((temp / "groups" / "split_metrics.json").read_text())
         assert metrics == result
@@ -629,6 +930,19 @@ def self_test():
                 check=True,
             )
             assert split.stdout == original.stdout
+            flagged = subprocess.run(
+                [
+                    sys.executable,
+                    script,
+                    "--source",
+                    f"BAMFILE:{flagged_result['groups'][str(group)]['bam']}",
+                    "--workflow",
+                    "standard",
+                ],
+                capture_output=True,
+                check=True,
+            )
+            assert flagged.stdout == original.stdout
 
 
 if __name__ == "__main__":
