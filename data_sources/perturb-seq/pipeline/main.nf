@@ -209,7 +209,7 @@ process CYTO_FLEX_LANE {
     cpus 16
     memory { 128.GB * task.attempt }
     time '120h'
-    maxForks { params.flex_max_forks }
+    maxForks params.flex_max_forks.toInteger()
 
     input:
     tuple val(pool_id), val(lane_id)
