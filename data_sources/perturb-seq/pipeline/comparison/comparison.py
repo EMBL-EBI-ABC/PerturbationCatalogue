@@ -9,6 +9,7 @@ import re
 import textwrap
 from collections import Counter, defaultdict
 import argparse
+from types import SimpleNamespace
 
 import anndata as ad
 import h5py
@@ -33,6 +34,11 @@ parser.add_argument("--curated-h5ad", required=True)
 parser.add_argument("--reprocessed-h5ad", required=True)
 parser.add_argument("--gtf", required=True)
 parser.add_argument("--filtered-h5ad", default="experiment_final.filtered.h5ad")
+parser.add_argument(
+    "--cell-id-columns",
+    default="",
+    help="Comma-separated obs columns to namespace barcode prefixes across libraries",
+)
 args = parser.parse_args()
 DATASET_ID = args.dataset_id
 if not re.fullmatch(r"[A-Za-z0-9_-]+", DATASET_ID):
@@ -41,6 +47,15 @@ CURATED_H5AD_PATH = args.curated_h5ad
 REPROCESSED_H5AD_PATH = args.reprocessed_h5ad
 FILTERED_REPROCESSED_H5AD_PATH = args.filtered_h5ad
 REFERENCE_GTF_PATH = args.gtf
+if args.cell_id_columns and any(
+    not column.strip() for column in args.cell_id_columns.split(",")
+):
+    parser.error("--cell-id-columns must contain nonempty comma-separated names")
+CELL_ID_COLUMNS = tuple(
+    column.strip() for column in args.cell_id_columns.split(",") if column.strip()
+)
+if len(set(CELL_ID_COLUMNS)) != len(CELL_ID_COLUMNS):
+    parser.error("--cell-id-columns contains duplicate column names")
 
 ROW_CHUNK_SIZE = int(os.environ.get("PERTURBSEQ_ROW_CHUNK_SIZE", "2048"))
 SCATTER_MAX_POINTS = int(os.environ.get("PERTURBSEQ_SCATTER_MAX_POINTS", "200000"))
@@ -546,9 +561,10 @@ def find_numeric_column(df, names, require_nonnegative=True, required_name_terms
 
 
 class DatasetView:
-    def __init__(self, path, label):
+    def __init__(self, path, label, cell_id_columns=()):
         self.path = path
         self.label = label
+        self.cell_id_columns = tuple(cell_id_columns)
         self.adata = ad.read_h5ad(path, backed="r")
         self.h5 = h5py.File(path, "r")
         x_obj = self.h5["X"]
@@ -593,6 +609,31 @@ class DatasetView:
 
     def _prepare_barcodes(self):
         base = pd.Index(self.adata.obs_names.astype(str)).str.split("-").str[0]
+        if self.cell_id_columns:
+            missing = [
+                column
+                for column in self.cell_id_columns
+                if column not in self.obs.columns
+            ]
+            if missing:
+                raise ValueError(
+                    f"{self.label} H5AD is missing cell ID columns: {', '.join(missing)}"
+                )
+            components = [pd.Series(base, dtype="string")]
+            for column in self.cell_id_columns:
+                values = self.obs[column].astype("string").str.strip()
+                if values.isna().any() or values.eq("").any():
+                    raise ValueError(
+                        f"{self.label} H5AD cell ID column {column!r} contains missing or empty values"
+                    )
+                components.append(values.reset_index(drop=True))
+            if any(part.str.contains("|", regex=False).any() for part in components):
+                raise ValueError(
+                    "Cell barcode or namespace columns cannot contain the '|' separator"
+                )
+            for component in components[1:]:
+                components[0] = components[0].str.cat(component, sep="|")
+            base = pd.Index(components[0].astype(str), name="barcode")
         counts = base.value_counts(sort=False)
         mask = np.asarray(base.isin(counts[counts == 1].index), dtype=bool)
         self.obs_pos = np.flatnonzero(mask)
@@ -1700,8 +1741,8 @@ def main():
         reprocessed_h5ad_path=REPROCESSED_H5AD_PATH,
         filtered_reprocessed_h5ad_path=FILTERED_REPROCESSED_H5AD_PATH,
     )
-    cur = DatasetView(CURATED_H5AD_PATH, "Curated")
-    rep = DatasetView(REPROCESSED_H5AD_PATH, "Reprocessed")
+    cur = DatasetView(CURATED_H5AD_PATH, "Curated", CELL_ID_COLUMNS)
+    rep = DatasetView(REPROCESSED_H5AD_PATH, "Reprocessed", CELL_ID_COLUMNS)
     try:
         qc_summary = filter_low_signal_cells_and_genes(rep)
         _, _, knockout_summary = call_probe_lists(rep)
@@ -1971,5 +2012,66 @@ if __name__ == "__main__":
         assert guide_target_ensg("MTRNR2L4-1") == "ENSG00000232196"
         assert guide_target_ensg("OCLM-1") == "ENSG00000262180"
         assert call_info("multi_sgRNA")["perturbation_call_type"] == "multi_gene"
+        shared_prefix16 = "ACGTACGTACGTACGT"
+        barcode24a = shared_prefix16 + "AAAAAAAA"
+        barcode24b = shared_prefix16 + "CCCCCCCC"
+        test_names = pd.Index(
+            [
+                barcode24a + "-1_R1L01_libA",
+                barcode24a + "-1_R1L01_libB",
+                barcode24a + "-1_R2L17_libA",
+                barcode24b + "-1_R2L17_libA",
+                shared_prefix16 + "-1_R1L01_libA",
+            ]
+        )
+        test_obs = pd.DataFrame(
+            {
+                "lane_id": [
+                    "CD4i_R1L01",
+                    "CD4i_R1L01",
+                    "CD4i_R2L17",
+                    "CD4i_R2L17",
+                    "CD4i_R1L01",
+                ]
+            }
+        )
+        scoped = DatasetView.__new__(DatasetView)
+        scoped.adata = SimpleNamespace(obs_names=test_names, n_obs=len(test_names))
+        scoped.obs = test_obs
+        scoped.label = "self-test"
+        scoped.cell_id_columns = ("lane_id",)
+        scoped._prepare_barcodes()
+        assert scoped.obs_names.tolist() == [
+            barcode24a + "|CD4i_R2L17",
+            barcode24b + "|CD4i_R2L17",
+            shared_prefix16 + "|CD4i_R1L01",
+        ]
+        legacy = DatasetView.__new__(DatasetView)
+        legacy.adata = scoped.adata
+        legacy.obs = test_obs
+        legacy.label = "self-test-legacy"
+        legacy.cell_id_columns = ()
+        legacy._prepare_barcodes()
+        assert legacy.obs_names.tolist() == [barcode24b, shared_prefix16]
+        invalid = DatasetView.__new__(DatasetView)
+        invalid.adata = scoped.adata
+        invalid.obs = test_obs.assign(
+            lane_id=["CD4i_R1L01", None, "CD4i_R2L17", "CD4i_R2L17", "CD4i_R1L01"]
+        )
+        invalid.label = "self-test-invalid"
+        invalid.cell_id_columns = ("lane_id",)
+        try:
+            invalid._prepare_barcodes()
+        except ValueError as error:
+            assert "missing or empty" in str(error)
+        else:
+            raise AssertionError("Missing namespace value was accepted")
+        invalid.obs = test_obs.drop(columns="lane_id")
+        try:
+            invalid._prepare_barcodes()
+        except ValueError as error:
+            assert "missing cell ID columns" in str(error)
+        else:
+            raise AssertionError("Missing namespace column was accepted")
     else:
         main()
