@@ -6,7 +6,7 @@ Original raw-availability audit scope: the 23 rows then labelled `Conditions = S
 
 - `Raw data access`: `FASTQ` means direct FASTQ files; `BAM only` means submitted BAMs requiring reconstruction; `SRA (FASTQ extraction)` means use SRA archives to retain technical reads omitted from the ENA FASTQs; `FASTQ + SRA` means source GEX FASTQs plus guide SRA archives. `Unavailable` means no public raw reads were found in this audit, not proof of permanent absence. `Not checked` is outside the audit scope.
 - `Data health check`: `OK` means no unresolved data/metadata anomaly was found in this audit, not proof of integrity or current pipeline compatibility. `Issues` flags missing cell type (Norman and Replogle K562 essential), the inconsistent Adamson UPR catalogue accession, missing Zhu R2 guide libraries / conflicting stimulation labels, unavailable Orion reads, or Gasperini's confirmed shared-control workflow incompatibility. Details are below; missing cell types remain a minor deferred curation issue. `Not checked` must not be interpreted as `OK`.
-- BAM/SRA extraction and Flex/Ultima support are processing requirements, not by themselves data-health anomalies. Thus the four Zhu R1 output rows have `OK` health but still require demultiplexing and platform support before running; the other eight Zhu rows have `Issues`.
+- BAM/SRA extraction and Flex/Ultima support are processing requirements, not by themselves data-health anomalies. The four Zhu R1 output rows have `OK` health; the other eight Zhu rows retain `Issues` for missing guide lanes and the stimulation-label conflict. The read-level Flex path is now implemented; full production-lane validation remains a separate processing check.
 - `ENA project` is the BioProject accession shared by ENA/SRA. `ENA sample` contains the exact, semicolon-separated BioSample accessions for both gene-expression and guide libraries, including shared pooled samples where necessary.
 - `Data size TB` is the size of the selected compressed archive files in decimal TB (bytes / 10^12), rounded to three decimals. The format being counted is stated in each row. These are download sizes, not extracted FASTQ sizes or processing-space estimates. BAM indexes, processed count products and alternative representations of the same reads are excluded.
 - Blank accession/size means not found or unknown, not zero. An archive record alone is not evidence that the current pipeline can process it. BAM conversion, technical barcode reads, Flex probe demultiplexing and Ultima read layouts need attention where noted.
@@ -75,9 +75,50 @@ All 71 GEX runs are source-only in the checked ENA/SRA run reports. The NCBI loc
 Known limitations before reanalysis:
 
 - No matching R2 guide runs were found in either ENA or SRA RunInfo for L07–L14 or L25, L26, L29, L30, L32, L36, L39, L41, L47, L48. All eight output rows drawing from R2 therefore have incomplete archived guide-library coverage. Their listed sizes cover the available files, not a hypothetical complete deposition.
-- GEO titles for R2 L25–L48 say **24 hr**, whereas their probe mapping names and the authors' sample table say **Stim48hr**. The table follows the explicit donor/probe mapping to the existing Stim48hr datasets and flags the conflict for resolution before running.
-- These are Flex libraries sequenced on Ultima UG 100. Raw inputs pool conditions even though each intended output is a single condition. The current 10x 3-prime v3 workflow must not be assumed to support them; demultiplexing and platform-specific processing remain prerequisite work, outside this discovery task.
+- GEO titles for R2 L25–L48 say **24 hr**, whereas their probe mapping names and the authors' sample table say **Stim48hr**. The input table and current workflow follow the explicit author donor/probe mapping; the conflicting GEO label remains recorded for later resolution.
+- The author sample metadata identifies these as `GEMX_flex_v1` libraries sequenced on Ultima. Raw inputs pool conditions even though each intended output is a single condition. The read-level Flex route uses Cyto's probe-aware counter, separate BC/CR barcode maps, and the pinned 10x Flex v1 probe panel; it does not route these reads through the 10x 3-prime v3 Kallisto path.
 - Other experiments in this BioProject (Tact, Th1Th2, IL10IL21 and arrayed validation) are excluded.
+
+### Zhu read-level format and implementation, 2026-10-02
+
+The source manifests in `pipeline/datasets/zhu_2025/` pin 463 original GEX
+FASTQ pairs and 253 guide SRA archives by accession, size and MD5. The three
+physical pools contain about 60.056 TB of compressed source data in total. The
+workflow processes each original GEX pair sequentially with byte-range
+validation, removes it after counting, and handles one guide archive at a time;
+it does not stage a full pool or use author count matrices as an input.
+
+Bounded inspection of [guide run SRR36475051](https://www.ncbi.nlm.nih.gov/sra/SRR36475051)
+found the SRA `SEQUENCE` table encoded as two equal blocks rather than interleaved
+mates: 103,611,851 28-base cell-barcode/UMI reads followed by 103,611,851
+variable-length guide reads. Pair reconstruction checks the equal block sizes
+and every matched spot name. In a 998-pair sample, 926 guide reads contained an
+exact reverse-complement match to one of the 26,504 author guide sequences and
+893 contained the expected 30-base anchor. Read-level evidence therefore
+supports recovering the guide library from the available SRA archives; absent
+lane accessions remain genuinely unavailable and are not filled from author
+assignments.
+
+The public workflow counts and deduplicates each physical lane once for all
+paired BC/CR aliases, then assembles the selected donor/state with the full
+16-base cell barcode, 8-base GEX probe barcode and lane identity. The pinned
+native counter is Cyto 0.4.5. Its handling of same-cell/same-UMI collisions
+between different probe identities can differ from Cell Ranger Flex: tied
+competing identities may be discarded, a unique dominant identity may be
+retained, and different UMI sequences remain distinct. The current synthetic
+native fixture is the first group in Cyto's UMI stream and returns one for its
+same-UMI/two-probe case; a broader native characterization found later tied
+groups are dropped. This first-group result should not be generalized to every
+cross-probe collision. Cell Ranger's documented Flex
+method counts ligation events per probe pair and sums probe-pair UMIs by gene
+([official algorithm](https://www.10xgenomics.com/support/cn/software/cell-ranger/latest/algorithms-overview/cr-flex-frp-algorithm)).
+This is a known counter-specific difference, not a source-integrity issue.
+
+The synthetic lane test validates native mapping, guide UMI deduplication across
+source chunks, sparse H5AD construction and donor/state aggregation. It does not
+replace the first full lane run; the first production output is
+`zhu_2025_D1_rest_cl`. The R2 L25–L48 author-versus-GEO stimulation-time label
+conflict remains unresolved.
 
 ### Orion: no public raw-read accession found
 

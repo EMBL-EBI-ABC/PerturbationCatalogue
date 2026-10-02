@@ -1,9 +1,10 @@
 # Unified Perturb-seq pipeline
 
-This Nextflow pipeline downloads the SRA runs in a sample sheet, streams their
-FASTQ records into kb-python, and produces raw and QC-filtered H5ADs, comparison
-reports, probe calls, DEA and GSEA Parquet data products in one workflow.
-Uncompressed FASTQs are buffered on disk and deleted after feeding the counter.
+This Nextflow pipeline supports read-level Kallisto/bustools counting for the
+standard and KITE assays, and probe-aware Flex/Ultima counting with Cyto. It
+produces raw and QC-filtered H5ADs, comparison reports, probe calls, DEA and
+GSEA Parquet data products. Processed author H5ADs are comparison references,
+not count inputs; the former matrix-import path is gone.
 
 ## Build and install the image
 
@@ -36,7 +37,7 @@ allocation and storage policies. Keep HOME, caches and temporary directories in
 allocated project storage.
 
 Reprocessing starts from sequencing reads. Author H5ADs provide the independent
-comparison reference. The earlier Cell Ranger matrix-import route has been removed.
+comparison reference.
 
 ## Sample sheet
 
@@ -67,6 +68,43 @@ reference `BAM:RUN_ACCESSION#GROUP`. The workflow decodes the source once and
 counts each staged group BAM separately. Split BAMs remain in Nextflow work;
 the splitter requests enough CPUs for its group writers and decoder.
 
+## Flex/Ultima inputs
+
+Flex libraries use `--assay_mode flex` and a pinned set of input manifests:
+`--flex_samples`, `--flex_gex_sources`, `--flex_guide_sources`,
+`--flex_guide_coverage`, `--flex_gene_probes`, `--flex_gene_count_features`,
+`--flex_guide_features`, `--flex_guide_count_features`,
+`--flex_guide_targets` and `--flex_probe_barcodes`. Select one physical pool and
+one donor/state with `--flex_pool_id` and `--flex_sample_id`. A physical lane is
+counted once per pool; its reusable result includes every paired GEX/CRISPR
+probe-barcode alias. `--flex_max_forks` bounds simultaneous lane tasks (default
+2, maximum 8).
+
+Each source GEX FASTQ pair is downloaded with bounded byte ranges, checked
+against the pinned byte size and MD5, mapped, and removed before the next pair
+starts. Each guide SRA's size and MD5 are checked from NCBI metadata before
+download. The pinned SRA layout is read as two equal FASTQ blocks: the helper
+reconstructs R1/R2 by row range and checks spot names/counts. Cyto then maps the
+10x Flex v1 probe panel and CRISPR guide features, uses the separate `BC` and
+`CR` barcode maps, and merges IBU records across all sources within a physical
+lane before UMI correction/counting. The native Cyto version and resources are
+pinned in `Singularity.def`.
+
+Lane H5ADs retain the full `CBC16+GEX-BC8` cell barcode and `lane_id`, so distinct
+probe-barcode aliquots and lanes cannot collapse during author comparison. A
+selected sample is assembled with bounded on-disk concatenation. Guide coverage
+status is retained per lane. An unavailable archive produces a zero-filled
+guide matrix with an explicit missing-coverage status; those zeros must not be
+read as observed absence of guide counts. Cyto 0.4.5 may discard tied competing
+probe identities for a CBC+UMI and may retain a unique dominant identity. Its
+behavior can differ from Cell Ranger's per-probe-pair ligation counting and
+gene-level UMI summation ([official algorithm](https://www.10xgenomics.com/support/cn/software/cell-ranger/latest/algorithms-overview/cr-flex-frp-algorithm)).
+The compact native fixture in `pipeline/tests/test_flex_native.py` tests one
+first-group two-probe case and exact guide deduplication across chunks; that
+fixture's count of one does not describe every cross-probe collision. For the
+Zhu 2025 inputs, the GEO pool's 48-hour versus 24-hour label conflict remains
+documented in its dataset README.
+
 ## Run Jurkat
 
 Run the Nextflow controller inside a SLURM allocation, with its own writable HOME
@@ -95,10 +133,10 @@ nextflow -log "logs/${DATASET_ID}.nextflow.log" run main.nf \
 installation; make that path visible inside the container. Otherwise the tools
 are found on PATH. `--limit N` selects the first N sample groups for small tests.
 
-## Streaming and processing
+## Standard/KITE streaming and processing
 
 Each sample/modality has one task with three overlapping stages: sequential SRA
-archive retrieval using 32 parallel curl HTTPS byte ranges per file,
+archive retrieval using 32 concurrent checked HTTPS byte ranges per file,
 `fasterq-dump` extraction to an uncompressed FASTQ file containing all
 technical and biological reads, and feeding one persistent `kb count --inleaved`
 process. An archive is deleted immediately after successful extraction; the
@@ -112,10 +150,10 @@ further extraction; an occupied archive buffer prevents another download.
 
 The NCBI locator supplies the full-quality SRA URL, size and MD5. Every range's
 Content-Range and length is checked; the assembled archive must match the
-published size and MD5 before extraction. Curl retries transient errors with
-bounded timeouts. Range parts are removed as they are assembled, so assembly
-adds at most one range's size to the archive footprint. No prefetch download or
-SRA Lite substitution is used. Curl 7.68 or later is required for parallel transfers.
+published size and MD5 before extraction. The shared Python range downloader
+retries transient errors with bounded timeouts and writes directly into the
+pre-sized archive, so no separate set of range parts is retained. No prefetch
+download or SRA Lite substitution is used.
 
 The C++ reader is compiled with `g++` in the task environment and processes files
 using buffered I/O. It verifies FASTQ structure, sequence/quality lengths,

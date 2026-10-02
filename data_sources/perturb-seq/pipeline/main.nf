@@ -6,6 +6,7 @@ nextflow.enable.dsl=2
 // PIPELINE PARAMETERS
 // =============================================================================
 params.dataset_id = null
+params.assay_mode = "standard"
 params.curated_h5ad = null
 params.gmt = null
 params.comparison_outdir = null
@@ -29,6 +30,23 @@ params.concat_max_loaded_elems = 100000000
 params.h5repack_filter = "GZIP=4"
 params.split_bam_source = ""
 params.split_bam_groups = 0
+params.cell_id_columns = ""
+params.flex_pool_id = ""
+params.flex_sample_id = ""
+params.flex_samples = ""
+params.flex_gex_sources = ""
+params.flex_guide_sources = ""
+params.flex_guide_coverage = ""
+params.flex_gene_probes = ""
+params.flex_gene_count_features = ""
+params.flex_guide_features = ""
+params.flex_guide_count_features = ""
+params.flex_guide_targets = ""
+params.flex_probe_barcodes = ""
+params.flex_source_cache = ""
+params.flex_max_forks = 2
+params.cyto_bin = "/usr/local/bin/cyto"
+params.cyto_resources = "/opt/cyto/resources"
 
 // cDNA Reference parameters
 params.transcriptome_fa = null
@@ -182,6 +200,92 @@ process KB_COUNT_KITE {
       --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
       --workflow kite --feature-offset ${feature_offset} \
       --feature-length ${feature_length} --cpus ${task.cpus} ${sraArg}
+    """
+}
+
+/** Count every source run for one physical Flex lane, then deduplicate within its barcode aliases. */
+process CYTO_FLEX_LANE {
+    tag "${lane_id}"
+    cpus 16
+    memory { 128.GB * task.attempt }
+    time '120h'
+    maxForks { params.flex_max_forks }
+
+    input:
+    tuple val(pool_id), val(lane_id)
+    path gex_sources
+    path guide_sources
+    path guide_coverage
+    path samples
+    path barcode_aliases
+    path gene_probes
+    path gene_count_features
+    path guide_features
+    path guide_count_features
+    path guide_targets
+    val source_cache_dir
+    val cyto_bin
+    val cyto_resources
+    val sra_bin
+
+    output:
+    tuple val(pool_id), val(lane_id), path("flex_lane/lane_counts/*.h5ad"), path("flex_lane/lane_metrics.json"), emit: counts
+
+    script:
+    def sraRoot = sra_bin ? sra_bin : "/opt/sratoolkit.3.4.1-ubuntu64/bin"
+    def cacheArg = source_cache_dir ? "--source-cache-dir '${source_cache_dir}'" : ""
+    """
+    python ${projectDir}/bin/cyto_flex_lane.py \
+      --pool-id '${pool_id}' --lane-id '${lane_id}' \
+      --gex-sources ${gex_sources} --guide-sources ${guide_sources} \
+      --guide-coverage ${guide_coverage} --samples ${samples} \
+      --barcode-aliases ${barcode_aliases} \
+      --gene-probes ${gene_probes} --gene-count-features ${gene_count_features} \
+      --guide-features ${guide_features} --guide-count-features ${guide_count_features} \
+      --guide-targets ${guide_targets} --cyto '${cyto_bin}' \
+      --cyto-resources '${cyto_resources}' --sra-bin '${sraRoot}' \
+      ${cacheArg} --output-dir flex_lane --threads ${task.cpus}
+    """
+}
+
+/** Reassemble one donor/state from reusable lane H5ADs using bounded on-disk concatenation. */
+process AGGREGATE_FLEX_SAMPLE {
+    tag "${sample_id}"
+    cpus 8
+    memory { 128.GB * task.attempt }
+    time '48h'
+
+    input:
+    tuple val(pool_id), val(sample_id), path(lane_counts)
+    path samples
+    path guide_coverage
+    path gex_sources
+    path guide_sources
+    path gene_probes
+    path probe_barcodes
+    path gene_count_features
+    path guide_features
+    path guide_count_features
+    path guide_targets
+    val max_loaded_elems
+
+    output:
+    path "flex_sample_uncompressed.h5ad", emit: h5ad
+    path "flex_sample_metrics.json", emit: metrics
+
+    script:
+    """
+    python ${projectDir}/bin/flex_aggregate.py \
+      --pool-id '${pool_id}' --sample-id '${sample_id}' \
+      --samples ${samples} --guide-coverage ${guide_coverage} \
+      --gex-sources ${gex_sources} --guide-sources ${guide_sources} \
+      --gene-probes ${gene_probes} --probe-barcodes ${probe_barcodes} \
+      --gene-count-features ${gene_count_features} \
+      --guide-features ${guide_features} --guide-count-features ${guide_count_features} \
+      --guide-targets ${guide_targets} \
+      --lane-counts ${lane_counts.join(' ')} \
+      --max-loaded-elems ${max_loaded_elems} \
+      --output flex_sample_uncompressed.h5ad --metrics flex_sample_metrics.json
     """
 }
 
@@ -411,12 +515,14 @@ process QC_COMPARISON {
     path "comparison_results/${params.dataset_id}", emit: reports
 
     script:
+    def cellIdArgs = params.cell_id_columns ? "--cell-id-columns '${params.cell_id_columns}'" : ""
     """
     python ${comparison_script} \
       --dataset-id ${params.dataset_id} \
       --curated-h5ad ${curated_h5ad} \
       --reprocessed-h5ad ${reprocessed_h5ad} \
-      --gtf ${reference_gtf}
+      --gtf ${reference_gtf} \
+      ${cellIdArgs}
     """
 }
 
@@ -527,102 +633,193 @@ workflow {
         error "Please provide a valid --dataset_id"
     if (!params.curated_h5ad || !params.gmt || !params.gtf)
         error "Please provide --curated_h5ad, --gmt, and --gtf"
+    if (!(params.assay_mode in ["standard", "flex"]))
+        error "--assay_mode must be standard or flex"
 
     gtf = file(params.gtf, checkIfExists: true)
     curated = file(params.curated_h5ad, checkIfExists: true)
     gene_sets = file(params.gmt, checkIfExists: true)
 
-    if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
-        error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
-    if (params.split_bam_source &&
-        !(params.split_bam_source ==~ /BAM:(SRR|ERR|DRR)[0-9]+/))
-        error "--split_bam_source must be BAM:<run accession>"
-    if (params.split_bam_source) {
-        if (!(params.split_bam_groups.toString() ==~ /[0-9]+/) ||
-            params.split_bam_groups.toInteger() < 2 ||
-            params.split_bam_groups.toInteger() > 64)
-            error "--split_bam_source must be BAM:<accession> and --split_bam_groups must be 2-64"
-    } else if (params.split_bam_groups) {
-        error "--split_bam_groups requires --split_bam_source"
-    }
-    fa = file(params.transcriptome_fa, checkIfExists: true)
-    features = file(params.features_tsv, checkIfExists: true)
-    samples_ch = Channel
-        .fromPath(params.sample_sheet)
-        .splitCsv(header:true, sep:'\t')
-        .map { row ->
-            def sid = row.sample_id
-            def mrna_srrs = row.mRNA_srrs.tokenize(';')
-            def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
-            def valid_source = { source ->
-                source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
-                    (source.startsWith('BAM:') && source.size() > 4) ||
-                    (source.startsWith('BAMFILE:') && source.size() > 8)
+    if (params.assay_mode == "flex") {
+        def requiredFlexInputs = [
+            "flex_pool_id": params.flex_pool_id,
+            "flex_sample_id": params.flex_sample_id,
+            "flex_samples": params.flex_samples,
+            "flex_gex_sources": params.flex_gex_sources,
+            "flex_guide_sources": params.flex_guide_sources,
+            "flex_guide_coverage": params.flex_guide_coverage,
+            "flex_gene_probes": params.flex_gene_probes,
+            "flex_gene_count_features": params.flex_gene_count_features,
+            "flex_guide_features": params.flex_guide_features,
+            "flex_guide_count_features": params.flex_guide_count_features,
+            "flex_guide_targets": params.flex_guide_targets,
+            "flex_probe_barcodes": params.flex_probe_barcodes
+        ]
+        def missingFlexInputs = requiredFlexInputs.findAll { key, value -> !value }
+        if (missingFlexInputs)
+            error "Missing Flex inputs: ${missingFlexInputs.keySet().join(', ')}"
+        if (!(params.flex_pool_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/))
+            error "Invalid --flex_pool_id"
+        if (!(params.flex_sample_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/))
+            error "Invalid --flex_sample_id"
+        if (!(params.flex_max_forks.toString() ==~ /[1-9][0-9]*/) ||
+            params.flex_max_forks.toInteger() > 8)
+            error "--flex_max_forks must be between 1 and 8"
+        if (params.cell_id_columns != "lane_id")
+            error "Flex comparison requires --cell_id_columns lane_id"
+
+        def samples = file(params.flex_samples, checkIfExists: true)
+        def gexManifest = file(params.flex_gex_sources, checkIfExists: true)
+        def guideManifest = file(params.flex_guide_sources, checkIfExists: true)
+        def guideCoverage = file(params.flex_guide_coverage, checkIfExists: true)
+        def geneProbes = file(params.flex_gene_probes, checkIfExists: true)
+        def geneCountFeatures = file(params.flex_gene_count_features, checkIfExists: true)
+        def guideFeatures = file(params.flex_guide_features, checkIfExists: true)
+        def guideCountFeatures = file(params.flex_guide_count_features, checkIfExists: true)
+        def guideTargets = file(params.flex_guide_targets, checkIfExists: true)
+        def probeBarcodes = file(params.flex_probe_barcodes, checkIfExists: true)
+        def cytoResources = params.cyto_resources ?: "/opt/cyto/resources"
+        def cytoBin = params.cyto_bin ?: "/usr/local/bin/cyto"
+        def flexSraBin = params.sra_bin ?: ""
+
+        def flexLanes = Channel
+            .fromPath(guideCoverage)
+            .splitCsv(header: true, sep: '\t')
+            .filter { row -> row.pool_id == params.flex_pool_id }
+            .map { row ->
+                if (!(row.lane_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/) || row.gex_source_pairs.toInteger() < 1)
+                    error "Invalid Flex lane coverage row: ${row}"
+                return [row.pool_id, row.lane_id]
             }
 
-            if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
-            def feature_offset = (row.guide_feature_offset ?: "0") as Integer
-            def feature_length = (row.guide_feature_length ?: "0") as Integer
-            if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
-                error "Invalid guide feature trim for sample ${sid}"
-            for (runs in [mrna_srrs, sgrna_srrs]) {
-                if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
-                    error "Invalid or duplicate sequencing sources for sample ${sid}"
-            }
-            return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
-        }
-    if (params.limit > 0)
-        samples_ch = samples_ch.take(params.limit)
-
-    std_idx = BUILD_INDEX_STANDARD(fa, gtf)
-    kite_idx = BUILD_INDEX_KITE(features)
-    if (params.split_bam_source) {
-        // Each selected sample maps to exactly one numbered subset of this source.
-        group_selections = samples_ch.map { sid, mrna, sgrna, offset, length ->
-            if (mrna.size() != 1)
-                error "Split BAM samples must have one mRNA source: ${sid}"
-            def prefix = params.split_bam_source + "#"
-            if (!mrna[0].startsWith(prefix))
-                error "mRNA source for ${sid} must select a group from ${params.split_bam_source}"
-            def group_text = mrna[0].substring(prefix.length())
-            if (!(group_text ==~ /[1-9][0-9]*/))
-                error "Invalid GEM group selector for ${sid}: ${mrna[0]}"
-            def group = group_text as Integer
-            if (group > params.split_bam_groups.toInteger())
-                error "GEM group ${group} exceeds --split_bam_groups for ${sid}"
-            return [group, sid]
-        }.groupTuple().map { group, sample_ids ->
-            if (sample_ids.size() != 1)
-                error "More than one sample maps to split BAM group ${group}: ${sample_ids}"
-            return [group, sample_ids[0]]
-        }
-        split_bams = SPLIT_BAM_GEM_GROUPS(
-            Channel.of([params.split_bam_source, params.split_bam_groups.toInteger()])
-        ).bams.flatten().map { bam ->
-            def match = (bam.name =~ /^group_([1-9][0-9]*)\.bam$/)
-            if (!match.matches()) error "Unexpected split BAM name: ${bam.name}"
-            return [match[0][1] as Integer, bam]
-        }
-        std_counts = KB_COUNT_STANDARD_BAM(
-            group_selections.join(split_bams).map { group, sid, bam -> [sid, bam] },
-            std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry
+        def flexLaneCounts = CYTO_FLEX_LANE(
+            flexLanes,
+            Channel.value(gexManifest), Channel.value(guideManifest),
+            Channel.value(guideCoverage), Channel.value(samples),
+            Channel.value(probeBarcodes), Channel.value(geneProbes),
+            Channel.value(geneCountFeatures), Channel.value(guideFeatures),
+            Channel.value(guideCountFeatures), Channel.value(guideTargets),
+            params.flex_source_cache ?: "", cytoBin, cytoResources, flexSraBin
         )
+        def laneFiles = flexLaneCounts.counts
+            .map { pool, lane, h5ads, metrics -> h5ads }
+            .flatten()
+            .collect()
+        def aggregationInput = laneFiles.map { h5ads ->
+            [params.flex_pool_id, params.flex_sample_id, h5ads]
+        }
+        def flexRaw = AGGREGATE_FLEX_SAMPLE(
+            aggregationInput,
+            Channel.value(samples), Channel.value(guideCoverage),
+            Channel.value(gexManifest), Channel.value(guideManifest),
+            Channel.value(geneProbes), Channel.value(probeBarcodes),
+            Channel.value(geneCountFeatures), Channel.value(guideFeatures),
+            Channel.value(guideCountFeatures),
+            Channel.value(guideTargets), params.concat_max_loaded_elems
+        )
+        uncompressed_final = flexRaw.h5ad
     } else {
-        std_counts = KB_COUNT_STANDARD(
-            samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] },
-            std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry
-        )
+        if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
+            error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
+        if (params.split_bam_source &&
+            !(params.split_bam_source ==~ /BAM:(SRR|ERR|DRR)[0-9]+/))
+            error "--split_bam_source must be BAM:<run accession>"
+        if (params.split_bam_source) {
+            if (!(params.split_bam_groups.toString() ==~ /[0-9]+/) ||
+                params.split_bam_groups.toInteger() < 2 ||
+                params.split_bam_groups.toInteger() > 64)
+                error "--split_bam_source must be BAM:<accession> and --split_bam_groups must be 2-64"
+        } else if (params.split_bam_groups) {
+            error "--split_bam_groups requires --split_bam_source"
+        }
+        def fa = file(params.transcriptome_fa, checkIfExists: true)
+        def features = file(params.features_tsv, checkIfExists: true)
+        def samplesCh = Channel
+            .fromPath(params.sample_sheet)
+            .splitCsv(header:true, sep:'\t')
+            .map { row ->
+                def sid = row.sample_id
+                def mrna_srrs = row.mRNA_srrs.tokenize(';')
+                def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
+                def valid_source = { source ->
+                    source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
+                        (source.startsWith('BAM:') && source.size() > 4) ||
+                        (source.startsWith('BAMFILE:') && source.size() > 8)
+                }
+
+                if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
+                def feature_offset = (row.guide_feature_offset ?: "0") as Integer
+                def feature_length = (row.guide_feature_length ?: "0") as Integer
+                if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
+                    error "Invalid guide feature trim for sample ${sid}"
+                for (runs in [mrna_srrs, sgrna_srrs]) {
+                    if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
+                        error "Invalid or duplicate sequencing sources for sample ${sid}"
+                }
+                return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
+            }
+        if (params.limit > 0)
+            samplesCh = samplesCh.take(params.limit)
+
+        def stdIdx = BUILD_INDEX_STANDARD(fa, gtf)
+        def kiteIdx = BUILD_INDEX_KITE(features)
+        if (params.split_bam_source) {
+            // Each selected sample maps to exactly one numbered subset of this source.
+            def groupSelections = samplesCh.map { sid, mrna, sgrna, offset, length ->
+                if (mrna.size() != 1)
+                    error "Split BAM samples must have one mRNA source: ${sid}"
+                def prefix = params.split_bam_source + "#"
+                if (!mrna[0].startsWith(prefix))
+                    error "mRNA source for ${sid} must select a group from ${params.split_bam_source}"
+                def groupText = mrna[0].substring(prefix.length())
+                if (!(groupText ==~ /[1-9][0-9]*/))
+                    error "Invalid GEM group selector for ${sid}: ${mrna[0]}"
+                def group = groupText as Integer
+                if (group > params.split_bam_groups.toInteger())
+                    error "GEM group ${group} exceeds --split_bam_groups for ${sid}"
+                return [group, sid]
+            }.groupTuple().map { group, sample_ids ->
+                if (sample_ids.size() != 1)
+                    error "More than one sample maps to split BAM group ${group}: ${sample_ids}"
+                return [group, sample_ids[0]]
+            }
+            def splitBams = SPLIT_BAM_GEM_GROUPS(
+                Channel.of([params.split_bam_source, params.split_bam_groups.toInteger()])
+            ).bams.flatten().map { bam ->
+                def match = (bam.name =~ /^group_([1-9][0-9]*)\.bam$/)
+                if (!match.matches()) error "Unexpected split BAM name: ${bam.name}"
+                return [match[0][1] as Integer, bam]
+            }
+            def stdCounts = KB_COUNT_STANDARD_BAM(
+                groupSelections.join(splitBams).map { group, sid, bam -> [sid, bam] },
+                stdIdx.index.collect(), stdIdx.t2g.collect(), params.chemistry
+            )
+            def kiteCounts = KB_COUNT_KITE(
+                samplesCh.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] },
+                kiteIdx.index.collect(), kiteIdx.t2g.collect(), params.chemistry
+            )
+            def mergeChannel = stdCounts.h5ad.join(kiteCounts.h5ad)
+            def merged = MERGE_MODALITIES(mergeChannel)
+            def uncompressed = CONCATENATE_SAMPLES(merged.h5ad.collect())
+            uncompressed_final = uncompressed.h5ad
+        } else {
+            def stdCounts = KB_COUNT_STANDARD(
+                samplesCh.map { sid, mrna, sgrna, offset, length -> [sid, mrna] },
+                stdIdx.index.collect(), stdIdx.t2g.collect(), params.chemistry
+            )
+            def kiteCounts = KB_COUNT_KITE(
+                samplesCh.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] },
+                kiteIdx.index.collect(), kiteIdx.t2g.collect(), params.chemistry
+            )
+            def mergeChannel = stdCounts.h5ad.join(kiteCounts.h5ad)
+            def merged = MERGE_MODALITIES(mergeChannel)
+            def uncompressed = CONCATENATE_SAMPLES(merged.h5ad.collect())
+            uncompressed_final = uncompressed.h5ad
+        }
     }
-    kite_counts = KB_COUNT_KITE(
-        samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] },
-        kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry
-    )
-    merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
-    merged_samples = MERGE_MODALITIES(merge_ch)
-    uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 
     // Step 5: Final HDF5 Compression
-    raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)
+    raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final)
     comparison_script = file("${projectDir}/comparison/comparison.py")
     filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf, comparison_script)
     gene_map_path = params.gene_map ? file(params.gene_map, checkIfExists: true).toString() : ""
