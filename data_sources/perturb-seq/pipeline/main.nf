@@ -32,7 +32,7 @@ params.split_bam_source = ""
 params.split_bam_groups = 0
 params.cell_id_columns = ""
 params.flex_pool_id = ""
-params.flex_sample_id = ""
+params.flex_curated_h5ads = ""
 params.flex_samples = ""
 params.flex_gex_sources = ""
 params.flex_guide_sources = ""
@@ -270,7 +270,7 @@ process AGGREGATE_FLEX_SAMPLE {
     val max_loaded_elems
 
     output:
-    path "flex_sample_uncompressed.h5ad", emit: h5ad
+    tuple val(sample_id), path("flex_sample_uncompressed.h5ad"), emit: h5ad
     path "flex_sample_metrics.json", emit: metrics
 
     script:
@@ -483,13 +483,13 @@ process CONCATENATE_SAMPLES {
  * Re-packs the final H5AD with HDF5 gzip compression.
  */
 process COMPRESS_FINAL_H5AD {
-    publishDir "${params.outdir}", mode: 'copy'
+    publishDir { params.assay_mode == "flex" ? "${params.outdir}/${dataset_id}" : params.outdir }, mode: 'copy'
 
     input:
-    path uncompressed_h5ad
+    tuple val(dataset_id), path(uncompressed_h5ad)
 
     output:
-    path "experiment_final.h5ad", emit: h5ad
+    tuple val(dataset_id), path("experiment_final.h5ad"), emit: h5ad
 
     script:
     """
@@ -498,27 +498,26 @@ process COMPRESS_FINAL_H5AD {
 }
 
 process QC_COMPARISON {
-    tag "${params.dataset_id}"
-    publishDir "${params.outdir}", mode: 'copy', pattern: '*.filtered.h5ad'
+    tag "${dataset_id}"
+    publishDir { params.assay_mode == "flex" ? "${params.outdir}/${dataset_id}" : params.outdir }, mode: 'copy', pattern: '*.filtered.h5ad'
     publishDir { params.comparison_outdir ?: "${params.outdir}/comparison_results" },
-        mode: 'copy', pattern: "comparison_results/${params.dataset_id}",
+        mode: 'copy', pattern: "comparison_results/*",
         saveAs: { filename -> filename.tokenize('/').last() }
 
     input:
-    path reprocessed_h5ad, stageAs: 'reprocessed.h5ad'
-    path curated_h5ad, stageAs: 'curated.h5ad'
+    tuple val(dataset_id), path(reprocessed_h5ad, stageAs: 'reprocessed.h5ad'), path(curated_h5ad, stageAs: 'curated.h5ad')
     path reference_gtf
     path comparison_script
 
     output:
-    path 'experiment_final.filtered.h5ad', emit: h5ad
-    path "comparison_results/${params.dataset_id}", emit: reports
+    tuple val(dataset_id), path('experiment_final.filtered.h5ad'), emit: h5ad
+    tuple val(dataset_id), path("comparison_results/${dataset_id}"), emit: reports
 
     script:
     def cellIdArgs = params.cell_id_columns ? "--cell-id-columns '${params.cell_id_columns}'" : ""
     """
     python ${comparison_script} \
-      --dataset-id ${params.dataset_id} \
+      --dataset-id ${dataset_id} \
       --curated-h5ad ${curated_h5ad} \
       --reprocessed-h5ad ${reprocessed_h5ad} \
       --gtf ${reference_gtf} \
@@ -527,18 +526,17 @@ process QC_COMPARISON {
 }
 
 process PREPARE_INPUTS {
-    tag "${params.dataset_id}"
-    publishDir "${params.outdir}/dea_gsea/prep", mode: "copy"
+    tag "${dataset_id}"
+    publishDir { (params.assay_mode == "flex" ? "${params.outdir}/${dataset_id}" : params.outdir) + "/dea_gsea/prep" }, mode: "copy"
 
     input:
-    path h5ad
+    tuple val(dataset_id), path(h5ad)
     val gene_map_path
     path gtf_path
 
     output:
-    path "analysis_inputs", emit: analysis_dir
-    path "analysis_inputs/batches/*.json", emit: batches
-    path "analysis_inputs/manifest.json", emit: manifest
+    tuple val(dataset_id), path("analysis_inputs"), path("analysis_inputs/batches/*.json"), emit: batches
+    tuple val(dataset_id), path("analysis_inputs/manifest.json"), emit: manifest
 
     script:
     def geneMapArg = gene_map_path ? "--gene-map ${gene_map_path}" : ""
@@ -547,7 +545,7 @@ process PREPARE_INPUTS {
     python ${projectDir}/dea-gsea/prepare_inputs.py \
       --h5ad ${h5ad} \
       --outdir analysis_inputs \
-      --dataset-id ${params.dataset_id} \
+      --dataset-id ${dataset_id} \
       --batch-size ${params.batch_size} \
       --min-cells-per-perturbation ${params.min_cells_per_perturbation} \
       --limit-perturbations ${params.limit_perturbations} \
@@ -559,17 +557,14 @@ process PREPARE_INPUTS {
 
 process ANALYZE_BATCH {
     tag "${batch_json.baseName}"
-    publishDir "${params.outdir}/dea_gsea/batch_results", mode: "copy"
+    publishDir { (params.assay_mode == "flex" ? "${params.outdir}/${dataset_id}" : params.outdir) + "/dea_gsea/batch_results" }, mode: "copy"
 
     input:
-    tuple path(batch_json), path(analysis_dir)
-    path h5ad
+    tuple val(dataset_id), path(batch_json), path(analysis_dir), path(h5ad)
     path gmt_path
 
     output:
-    path "*.dea.parquet", emit: dea
-    path "*.gsea.parquet", emit: gsea
-    path "*.metrics.json", emit: metrics
+    tuple val(dataset_id), path("*.dea.parquet"), path("*.gsea.parquet"), path("*.metrics.json"), emit: results
 
     script:
     def tieCorrectArg = params.tie_correct ? "--tie-correct" : ""
@@ -581,7 +576,7 @@ process ANALYZE_BATCH {
       --control-indices ${analysis_dir}/control_indices.npy \
       --gene-metadata ${analysis_dir}/gene_metadata.parquet \
       --outdir . \
-      --dataset-id ${params.dataset_id} \
+      --dataset-id ${dataset_id} \
       --matrix-key ${params.matrix_key} \
       --target-sum ${params.target_sum} \
       --threads ${task.cpus} \
@@ -597,19 +592,15 @@ process ANALYZE_BATCH {
 
 process MERGE_RESULTS {
     tag "${dataset_id}"
-    publishDir "${params.outdir}/dea_gsea", mode: "copy"
+    publishDir { (params.assay_mode == "flex" ? "${params.outdir}/${dataset_id}" : params.outdir) + "/dea_gsea" }, mode: "copy"
 
     input:
-    path dea_files
-    path gsea_files
-    path metrics_files
-    path manifest
-    val dataset_id
+    tuple val(dataset_id), path(dea_files), path(gsea_files), path(metrics_files), path(manifest)
 
     output:
-    path "${dataset_id}.dea.parquet", emit: dea
-    path "${dataset_id}.gsea.parquet", emit: gsea
-    path "${dataset_id}.summary.json", emit: summary
+    tuple val(dataset_id), path("${dataset_id}.dea.parquet"), emit: dea
+    tuple val(dataset_id), path("${dataset_id}.gsea.parquet"), emit: gsea
+    tuple val(dataset_id), path("${dataset_id}.summary.json"), emit: summary
 
     script:
     """
@@ -629,21 +620,20 @@ process MERGE_RESULTS {
 // =============================================================================
 
 workflow {
-    if (!params.dataset_id || !(params.dataset_id ==~ /[A-Za-z0-9_-]+/))
+    if (params.assay_mode == "standard" && (!params.dataset_id || !(params.dataset_id ==~ /[A-Za-z0-9_-]+/)))
         error "Please provide a valid --dataset_id"
-    if (!params.curated_h5ad || !params.gmt || !params.gtf)
-        error "Please provide --curated_h5ad, --gmt, and --gtf"
+    if (!params.gmt || !params.gtf)
+        error "Please provide --gmt and --gtf"
     if (!(params.assay_mode in ["standard", "flex"]))
         error "--assay_mode must be standard or flex"
 
     gtf = file(params.gtf, checkIfExists: true)
-    curated = file(params.curated_h5ad, checkIfExists: true)
     gene_sets = file(params.gmt, checkIfExists: true)
 
     if (params.assay_mode == "flex") {
         def requiredFlexInputs = [
             "flex_pool_id": params.flex_pool_id,
-            "flex_sample_id": params.flex_sample_id,
+            "flex_curated_h5ads": params.flex_curated_h5ads,
             "flex_samples": params.flex_samples,
             "flex_gex_sources": params.flex_gex_sources,
             "flex_guide_sources": params.flex_guide_sources,
@@ -660,8 +650,6 @@ workflow {
             error "Missing Flex inputs: ${missingFlexInputs.keySet().join(', ')}"
         if (!(params.flex_pool_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/))
             error "Invalid --flex_pool_id"
-        if (!(params.flex_sample_id ==~ /[A-Za-z0-9][A-Za-z0-9_.-]{0,127}/))
-            error "Invalid --flex_sample_id"
         if (!(params.flex_max_forks.toString() ==~ /[1-9][0-9]*/) ||
             params.flex_max_forks.toInteger() > 8)
             error "--flex_max_forks must be between 1 and 8"
@@ -705,8 +693,39 @@ workflow {
             .map { pool, lane, h5ads, metrics -> h5ads }
             .flatten()
             .collect()
-        def aggregationInput = laneFiles.map { h5ads ->
-            [params.flex_pool_id, params.flex_sample_id, h5ads]
+        def poolSamples = Channel.fromPath(samples)
+            .splitCsv(header: true, sep: '\t')
+            .filter { row -> row.pool_id == params.flex_pool_id }
+            .map { row ->
+                if (!(row.sample_id ==~ /[A-Za-z0-9_-]+/))
+                    error "Invalid Flex sample ID: ${row.sample_id}"
+                return row.sample_id
+            }
+            .collect()
+            .map { ids ->
+                if (!ids || ids.toSet().size() != ids.size())
+                    error "Flex pool must declare unique samples"
+                return ids
+            }
+        def aggregationInput = poolSamples.map { ids -> [params.flex_pool_id, ids] }
+            .join(laneFiles.map { h5ads -> [params.flex_pool_id, h5ads] })
+            .flatMap { pool, ids, h5ads ->
+            ids.collect { sid -> [params.flex_pool_id, sid, h5ads] }
+        }
+        def curatedRows = Channel.fromPath(params.flex_curated_h5ads)
+            .splitCsv(header: true, sep: '\t')
+            .map { row ->
+                if (!(row.sample_id ==~ /[A-Za-z0-9_-]+/) || !row.curated_h5ad)
+                    error "Invalid Flex comparison manifest row: ${row}"
+                return [row.sample_id, file(row.curated_h5ad, checkIfExists: true)]
+            }
+            .collect(flat: false)
+        curated_counts = poolSamples.map { ids -> [params.flex_pool_id, ids] }
+            .join(curatedRows.map { rows -> [params.flex_pool_id, rows] })
+            .flatMap { pool, ids, rows ->
+            if (rows.collect { it[0] }.toSet() != ids.toSet() || rows.size() != ids.size())
+                error "Flex comparison manifest must contain exactly one author H5AD per pool sample"
+            return rows
         }
         def flexRaw = AGGREGATE_FLEX_SAMPLE(
             aggregationInput,
@@ -719,8 +738,8 @@ workflow {
         )
         uncompressed_final = flexRaw.h5ad
     } else {
-        if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
-            error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
+        if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv || !params.curated_h5ad)
+            error "Please provide --sample_sheet, --transcriptome_fa, --features_tsv, and --curated_h5ad"
         if (params.split_bam_source &&
             !(params.split_bam_source ==~ /BAM:(SRR|ERR|DRR)[0-9]+/))
             error "--split_bam_source must be BAM:<run accession>"
@@ -801,7 +820,7 @@ workflow {
             def mergeChannel = stdCounts.h5ad.join(kiteCounts.h5ad)
             def merged = MERGE_MODALITIES(mergeChannel)
             def uncompressed = CONCATENATE_SAMPLES(merged.h5ad.collect())
-            uncompressed_final = uncompressed.h5ad
+            uncompressed_final = uncompressed.h5ad.map { h5ad -> [params.dataset_id, h5ad] }
         } else {
             def stdCounts = KB_COUNT_STANDARD(
                 samplesCh.map { sid, mrna, sgrna, offset, length -> [sid, mrna] },
@@ -814,18 +833,23 @@ workflow {
             def mergeChannel = stdCounts.h5ad.join(kiteCounts.h5ad)
             def merged = MERGE_MODALITIES(mergeChannel)
             def uncompressed = CONCATENATE_SAMPLES(merged.h5ad.collect())
-            uncompressed_final = uncompressed.h5ad
+            uncompressed_final = uncompressed.h5ad.map { h5ad -> [params.dataset_id, h5ad] }
         }
+        curated_counts = Channel.value([params.dataset_id, file(params.curated_h5ad, checkIfExists: true)])
     }
 
     // Step 5: Final HDF5 Compression
     raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final)
     comparison_script = file("${projectDir}/comparison/comparison.py")
-    filtered = QC_COMPARISON(raw_counts.h5ad, curated, gtf, comparison_script)
+    filtered = QC_COMPARISON(raw_counts.h5ad.join(curated_counts), gtf, comparison_script)
     gene_map_path = params.gene_map ? file(params.gene_map, checkIfExists: true).toString() : ""
     prep = PREPARE_INPUTS(filtered.h5ad, gene_map_path, gtf)
-    analysis_inputs = prep.batches.flatten().combine(prep.analysis_dir)
-    analyzed = ANALYZE_BATCH(analysis_inputs, filtered.h5ad, gene_sets)
-    MERGE_RESULTS(analyzed.dea.collect(), analyzed.gsea.collect(),
-                  analyzed.metrics.collect(), prep.manifest, params.dataset_id)
+    analysis_inputs = prep.batches.join(filtered.h5ad).flatMap { id, directory, batches, h5ad ->
+        (batches instanceof List ? batches : [batches]).collect { batch -> [id, batch, directory, h5ad] }
+    }
+    analyzed = ANALYZE_BATCH(analysis_inputs, gene_sets)
+    merged_inputs = analyzed.results.groupTuple()
+        .map { id, dea, gsea, metrics -> [id, dea.flatten(), gsea.flatten(), metrics.flatten()] }
+        .join(prep.manifest)
+    MERGE_RESULTS(merged_inputs)
 }
