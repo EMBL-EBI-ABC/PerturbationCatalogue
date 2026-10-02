@@ -85,7 +85,7 @@ and `--flex_probe_barcodes`. Native counting also requires
 `--flex_guide_feature_targets`, `--flex_guide_t2g`, `--flex_cbc_whitelist`
 and `--flex_bc_barcode_variants`. The reference builder creates two k=31
 indexes once per pool invocation. `--flex_max_forks` bounds concurrent lane
-tasks (default 2, maximum 8). Completed lanes remain in the Nextflow cache.
+tasks (default 2, maximum 24). Completed lanes remain in the Nextflow cache.
 An unfinished lane retries from its original sources after clearing only the
 fixed task-local `flex_lane` output directory; partial BUS/count files are not
 reused.
