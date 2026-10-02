@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Exercise lane-wide EC remapping, alias partitioning, and guide barcode joins."""
 
+import argparse
+import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
+import pandas as pd
+from scipy import sparse
 
 PIPELINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PIPELINE / "bin"))
 import kb_flex_lane as lane
+import flex_aggregate
 
 
 def run(args):
@@ -245,5 +251,223 @@ def test_lane_native():
     )
 
 
+def test_aggregate_missing_guides():
+    with tempfile.TemporaryDirectory(prefix="kb-flex-aggregate-") as temp:
+        root = Path(temp)
+        samples = root / "samples.tsv"
+        samples.write_text(
+            "sample_id\tpool_id\tbc_cr_pairs\tpool_lanes\n"
+            "S1\tP1\tBC001:CR001;BC002:CR002\tlaneA;laneB\n"
+        )
+        coverage = root / "coverage.tsv"
+        coverage.write_text(
+            "pool_id\tlane_id\tguide_status\n"
+            "P1\tlaneA\tavailable\n"
+            "P1\tlaneB\tno_archived_guide_sra\n"
+        )
+        barcode_file = root / "probe_barcodes.tsv"
+        barcode_file.write_text(
+            "bc_alias\tbc_sequence\tcr_alias\tcr_sequence\n"
+            "BC001\tAACCGGTT\tCR001\tTTCCAAGG\n"
+            "BC002\tCCGGAATT\tCR002\tGGTTAACC\n"
+            "BC003\tACGTACGT\tCR003\tTGCATGCA\n"
+        )
+        metadata_files = {}
+        for name in (
+            "gex_sources",
+            "guide_sources",
+            "gene_probes",
+            "gene_count_features",
+            "guide_features",
+            "guide_count_features",
+            "guide_targets",
+        ):
+            path = root / f"{name}.tsv"
+            path.write_text(name + "\n")
+            metadata_files[name] = path
+
+        counter_version = {
+            "kb_python": "0.30.2",
+            "kallisto": "kallisto, version 0.52.0",
+            "bustools": "bustools, version 0.45.1",
+        }
+        reference_hashes = json.dumps(
+            {"gex_index": "a" * 64, "guide_index": "b" * 64}, sort_keys=True
+        )
+        sequences = {
+            "BC001": "AACCGGTT",
+            "BC002": "CCGGAATT",
+            "BC003": "ACGTACGT",
+        }
+        cr_aliases = {"BC001": "CR001", "BC002": "CR002", "BC003": "CR003"}
+        cbc = "ACGTACGTACGTACGT"
+        products = []
+        for lane_id, guide_status in (
+            ("laneA", "available"),
+            ("laneB", "no_archived_guide_sra"),
+        ):
+            for alias, suffix in sequences.items():
+                # Same CBC across both BC8 aliases and both lanes. BC8 and lane
+                # identity must keep all nonempty cells distinct.
+                empty_alias = lane_id == "laneB" and alias == "BC002"
+                cell_ids = [] if empty_alias else [f"{cbc}{suffix}-1_{lane_id}"]
+                obs = pd.DataFrame(
+                    {
+                        column: pd.Series(values, index=cell_ids, dtype=object)
+                        for column, values in {
+                            "sample_id": ["S1"] * len(cell_ids),
+                            "lane_id": [lane_id] * len(cell_ids),
+                            "bc_alias": [alias] * len(cell_ids),
+                            "cr_alias": [cr_aliases[alias]] * len(cell_ids),
+                            "guide_coverage_status": [guide_status] * len(cell_ids),
+                        }.items()
+                    },
+                    index=pd.Index(cell_ids, dtype=object),
+                )
+                data = ad.AnnData(
+                    X=sparse.csr_matrix(np.ones((len(cell_ids), 2), dtype=np.int32)),
+                    obs=obs,
+                    var=pd.DataFrame(
+                        {"gene_name": ["G1", "G2"]},
+                        index=pd.Index(["ENSG1", "ENSG2"], name="gene_id"),
+                    ),
+                )
+                guide_matrix = sparse.lil_matrix((len(cell_ids), 1), dtype=np.int32)
+                if cell_ids and lane_id == "laneA":
+                    guide_matrix[0, 0] = 1
+                data.obsm["guides"] = guide_matrix.tocsr()
+                data.uns.update(
+                    {
+                        "guide_names": ["NTC_guide1"],
+                        "flex_counter_version": counter_version,
+                        "flex_counter_version_label": (
+                            "kb-python 0.30.2; kallisto, version 0.52.0; "
+                            "bustools, version 0.45.1"
+                        ),
+                        "flex_umi_policy": "probe IDs counted before stable ENSG sum",
+                        "flex_mapping_policy": "ambiguous ECs are not allocated",
+                        "flex_reference_hashes_json": reference_hashes,
+                        "flex_sample_id": "S1",
+                        "flex_lane_id": lane_id,
+                        "flex_bc_alias": alias,
+                        "flex_cr_alias": cr_aliases[alias],
+                        "flex_guide_coverage_status": guide_status,
+                        "flex_lane_metrics_json": json.dumps(
+                            {
+                                "pool_id": "P1",
+                                "lane_id": lane_id,
+                                "bc_alias": alias,
+                                "cr_alias": cr_aliases[alias],
+                                "guide_coverage_status": guide_status,
+                                "barcode_metrics": {
+                                    "cells": len(cell_ids),
+                                    "observed_composite_barcodes": len(cell_ids),
+                                    "retained_cells": len(cell_ids),
+                                    "expression_umis": len(cell_ids),
+                                    "genes_detected": 2 if cell_ids else 0,
+                                    "guide_positive_cells": int(guide_matrix.sum()),
+                                },
+                                "gex_mapping": {"bus_records": 10},
+                                "guide_mapping": {"bus_records": 2},
+                                "equivalence_class_metrics_scope": (
+                                    "post-correction, before allowlist"
+                                ),
+                            },
+                            sort_keys=True,
+                        ),
+                    }
+                )
+                product = root / f"{lane_id}__{alias}.h5ad"
+                data.write_h5ad(product, compression="gzip")
+                products.append(product)
+
+        output, metrics = root / "sample.h5ad", root / "metrics.json"
+        flex_aggregate.aggregate(
+            argparse.Namespace(
+                samples=samples,
+                sample_id="S1",
+                pool_id="P1",
+                probe_barcodes=barcode_file,
+                guide_coverage=coverage,
+                lane_counts=products,
+                gex_sources=metadata_files["gex_sources"],
+                guide_sources=metadata_files["guide_sources"],
+                gene_probes=metadata_files["gene_probes"],
+                gene_count_features=metadata_files["gene_count_features"],
+                guide_features=metadata_files["guide_features"],
+                guide_count_features=metadata_files["guide_count_features"],
+                guide_targets=metadata_files["guide_targets"],
+                output=output,
+                metrics=metrics,
+                max_loaded_elems=1000,
+            )
+        )
+        result = ad.read_h5ad(output)
+        try:
+            expected_ids = {
+                f"{cbc}{sequences[alias]}-1_{lane_id}"
+                for lane_id in ("laneA", "laneB")
+                for alias in ("BC001", "BC002")
+                if not (lane_id == "laneB" and alias == "BC002")
+            }
+            if set(result.obs_names.astype(str)) != expected_ids:
+                raise AssertionError(
+                    "CBC16+BC8+lane cell identities were not preserved"
+                )
+            if result.n_obs != 3 or not result.obs_names.is_unique:
+                raise AssertionError(
+                    "Duplicate or missing sample cells after aggregation"
+                )
+            if result.obsm["guides"].shape != (3, 1):
+                raise AssertionError("The sparse guide matrix has the wrong dimensions")
+            lane_b = result.obs["lane_id"].astype(str) == "laneB"
+            lane_a = result.obs["lane_id"].astype(str) == "laneA"
+            if (
+                not result.obs.loc[lane_b, "guide_coverage_status"]
+                .astype(str)
+                .eq("no_archived_guide_sra")
+                .all()
+            ):
+                raise AssertionError("Missing-guide archive status was lost")
+            if result.obsm["guides"][lane_b.to_numpy()].nnz != 0:
+                raise AssertionError("Missing-guide lane has nonzero guide counts")
+            if result.obsm["guides"][lane_a.to_numpy()].toarray().tolist() != [
+                [1],
+                [1],
+            ]:
+                raise AssertionError(
+                    "Available guide counts did not align to GEX cells"
+                )
+            if result.var["gene_name"].tolist() != ["G1", "G2"]:
+                raise AssertionError("Pinned gene annotations were lost in disk concat")
+            if any(
+                key in result.uns
+                for key in (
+                    "flex_lane_id",
+                    "flex_bc_alias",
+                    "flex_cr_alias",
+                    "flex_guide_coverage_status",
+                    "flex_lane_metrics_json",
+                )
+            ):
+                raise AssertionError("Sample H5AD retained lane-specific provenance")
+            provenance = json.loads(result.uns["flex_provenance_json"])
+            if len(provenance["lane_metrics"]) != 2:
+                raise AssertionError("Lane metrics were not retained in provenance")
+            bc2_lane_b = provenance["lane_metrics"][1]["barcode_metrics"]["BC002"]
+            if bc2_lane_b["retained_cells"] != 0:
+                raise AssertionError("Empty lane/alias products were not preserved")
+            if provenance["counter_version"]["bustools"] != "bustools, version 0.45.1":
+                raise AssertionError("Native counter version was not retained")
+        finally:
+            if result.isbacked:
+                result.file.close()
+    print(
+        "PASS: sparse on-disk aggregation, exact composite cell IDs, empty alias, "
+        "missing-guide coverage, feature annotations, and native provenance"
+    )
+
+
 if __name__ == "__main__":
     test_lane_native()
+    test_aggregate_missing_guides()

@@ -62,13 +62,19 @@ def aggregate(args):
         or any(not safe_id.fullmatch(lane) for lane in expected_lanes)
     ):
         raise ValueError("Sample metadata must list unique safe lane IDs")
-    guide_coverage = {
-        row["lane_id"]: row["guide_status"]
-        for row in read_tsv(args.guide_coverage)
-        if row["pool_id"] == args.pool_id
-    }
+    coverage_rows = [
+        row for row in read_tsv(args.guide_coverage) if row["pool_id"] == args.pool_id
+    ]
+    guide_coverage = {row["lane_id"]: row["guide_status"] for row in coverage_rows}
+    if len(guide_coverage) != len(coverage_rows):
+        raise ValueError("Guide coverage manifest has duplicate lane rows")
     if set(guide_coverage) != set(expected_lanes):
         raise ValueError("Guide coverage manifest and sample lane list differ")
+    if any(
+        status not in {"available", "partial", "no_archived_guide_sra"}
+        for status in guide_coverage.values()
+    ):
+        raise ValueError("Guide coverage manifest has an unsupported status")
 
     barcode_rows = read_tsv(args.probe_barcodes)
     barcode_pairs = {row["bc_alias"]: row["cr_alias"] for row in barcode_rows}
@@ -98,7 +104,9 @@ def aggregate(args):
             raise ValueError(f"Duplicate lane-count product: {key}")
         available[key] = path.resolve(strict=True)
 
-    selected, inputs, cell_count = [], {}, 0
+    inputs, cell_count = {}, 0
+    first_product = None
+    validated_products = 0
     all_aliases = set(barcode_pairs)
     all_expected = {(lane, bc) for lane in expected_lanes for bc in all_aliases}
     if available.keys() != all_expected:
@@ -113,27 +121,82 @@ def aggregate(args):
             f"Missing {len(expected - available.keys())} selected lane/BC count products"
         )
     expected_by_bc = dict(pairs)
-    var_ids, guide_names, cyto_version = None, None, None
+    var_ids, var_frame, guide_names = None, None, None
+    counter_version_label = None
+    counter_version = None
+    umi_policy = None
+    mapping_policy = None
+    reference_hashes_json = None
     lane_cells = {}
+    lane_metrics = {}
     for lane, bc in sorted(expected):
         path = available[(lane, bc)]
+        if first_product is None:
+            first_product = path
+        validated_products += 1
         data = ad.read_h5ad(path, backed="r")
+        product_n_obs = None
         try:
+            product_n_obs = data.n_obs
             if data.uns.get("guide_names") is None:
                 raise ValueError(f"Missing guide_names in {path}")
             current_guides = [str(value) for value in data.uns["guide_names"]]
             current_var = [str(value) for value in data.var_names]
-            current_cyto = str(data.uns.get("flex_cyto_version", ""))
-            if not current_cyto:
-                raise ValueError(f"Missing Cyto version in {path}")
+            current_var_frame = data.var
+            current_counter_label = str(data.uns.get("flex_counter_version_label", ""))
+            current_counter = dict(data.uns.get("flex_counter_version", {}))
+            current_umi_policy = str(data.uns.get("flex_umi_policy", ""))
+            current_mapping_policy = str(data.uns.get("flex_mapping_policy", ""))
+            current_reference_hashes = str(
+                data.uns.get("flex_reference_hashes_json", "")
+            )
+            lane_metrics_json = str(data.uns.get("flex_lane_metrics_json", ""))
+            if not all(
+                (
+                    current_counter_label,
+                    current_counter,
+                    current_umi_policy,
+                    current_mapping_policy,
+                    current_reference_hashes,
+                    lane_metrics_json,
+                )
+            ):
+                raise ValueError(f"Missing native Flex provenance in {path}")
+            try:
+                alias_metrics = json.loads(lane_metrics_json)
+                json.loads(current_reference_hashes)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"Malformed Flex provenance JSON in {path}") from error
+            if (
+                alias_metrics.get("lane_id") != path.name.split("__", 1)[0]
+                or alias_metrics.get("bc_alias") != path.name.rsplit("__", 1)[1][:-5]
+                or alias_metrics.get("guide_coverage_status")
+                != guide_coverage.get(alias_metrics.get("lane_id"))
+            ):
+                raise ValueError(f"Lane metrics identity is inconsistent in {path}")
+            if data.obsm["guides"].shape != (data.n_obs, len(current_guides)):
+                raise ValueError(f"Guide matrix shape is inconsistent in {path}")
             if guide_names is not None and current_guides != guide_names:
                 raise ValueError(f"Guide feature order differs in {path}")
             if var_ids is not None and current_var != var_ids:
                 raise ValueError(f"Gene feature order differs in {path}")
-            if cyto_version is not None and current_cyto != cyto_version:
-                raise ValueError(f"Cyto version differs in {path}")
+            if var_frame is not None and not current_var_frame.equals(var_frame):
+                raise ValueError(f"Gene feature annotations differ in {path}")
+            if counter_version_label is not None and (
+                current_counter_label != counter_version_label
+                or current_counter != counter_version
+                or current_umi_policy != umi_policy
+                or current_mapping_policy != mapping_policy
+                or current_reference_hashes != reference_hashes_json
+            ):
+                raise ValueError(f"Counter/reference provenance differs in {path}")
             guide_names, var_ids = current_guides, current_var
-            cyto_version = current_cyto
+            var_frame = current_var_frame.copy()
+            counter_version_label = current_counter_label
+            counter_version = current_counter
+            umi_policy = current_umi_policy
+            mapping_policy = current_mapping_policy
+            reference_hashes_json = current_reference_hashes
             expected_uns = {
                 "flex_sample_id": args.sample_id,
                 "flex_lane_id": lane,
@@ -169,28 +232,90 @@ def aggregate(args):
                         raise ValueError(
                             f"Cell identity does not match BC sequence/lane in {path}"
                         )
-            cell_count += data.n_obs
-            lane_cells[(lane, bc)] = data.n_obs
+            cell_count += product_n_obs
+            lane_cells[(lane, bc)] = product_n_obs
+            lane_entry = lane_metrics.setdefault(
+                lane,
+                {
+                    "gex_mapping": alias_metrics["gex_mapping"],
+                    "guide_mapping": alias_metrics["guide_mapping"],
+                    "equivalence_class_metrics_scope": alias_metrics[
+                        "equivalence_class_metrics_scope"
+                    ],
+                    "barcode_metrics": {},
+                },
+            )
+            for metric_name in ("gex_mapping", "guide_mapping"):
+                if lane_entry[metric_name] != alias_metrics[metric_name]:
+                    raise ValueError(
+                        f"Lane-level {metric_name} differs across aliases in {path}"
+                    )
+            if (
+                lane_entry["equivalence_class_metrics_scope"]
+                != alias_metrics["equivalence_class_metrics_scope"]
+            ):
+                raise ValueError(f"Equivalence-class metric scope differs in {path}")
+            lane_entry["barcode_metrics"][bc] = alias_metrics["barcode_metrics"]
         finally:
             data.file.close()
         key = f"{lane}_{bc}"
         if key in inputs:
             raise ValueError(f"Duplicate aggregation key: {key}")
-        inputs[key] = str(path)
-        selected.append(path)
+        if product_n_obs:
+            inputs[key] = str(path)
 
     if var_ids is None or guide_names is None:
         raise ValueError("No lane count products were selected")
-    ad.experimental.concat_on_disk(
-        inputs,
-        args.output,
-        max_loaded_elems=args.max_loaded_elems,
-        axis=0,
-        join="inner",
-        merge="same",
-        uns_merge="same",
-        index_unique=None,
-    )
+    if first_product is None:
+        raise ValueError("No lane count products were selected")
+    if inputs:
+        ad.experimental.concat_on_disk(
+            inputs,
+            args.output,
+            max_loaded_elems=args.max_loaded_elems,
+            axis=0,
+            join="inner",
+            # The installed anndata experimental writer cannot serialize the
+            # Series-valued result of merge="same" into /var. Feature order
+            # was validated above, so copy the pinned var group afterward.
+            merge=None,
+            uns_merge="same",
+            index_unique=None,
+        )
+        with h5py.File(first_product, "r") as source, h5py.File(
+            args.output, "a"
+        ) as target:
+            if "var" in target:
+                del target["var"]
+            source.copy("var", target)
+    else:
+        empty = ad.read_h5ad(first_product, backed="r")
+        try:
+            obs = pd.DataFrame(
+                {
+                    name: pd.Series(dtype=object)
+                    for name in (
+                        "sample_id",
+                        "lane_id",
+                        "bc_alias",
+                        "cr_alias",
+                        "guide_coverage_status",
+                    )
+                },
+                index=pd.Index([], dtype=object),
+            )
+            empty_data = ad.AnnData(
+                X=sparse.csr_matrix((0, len(var_ids)), dtype="int32"),
+                obs=obs,
+                var=var_frame.copy(),
+            )
+            empty_data.obsm["guides"] = sparse.csr_matrix(
+                (0, len(guide_names)), dtype="int32"
+            )
+            empty_data.uns["guide_names"] = guide_names
+            empty_data.write_h5ad(args.output, compression="gzip")
+        finally:
+            empty.file.close()
     coverage_records = [
         {
             "lane_id": lane,
@@ -200,19 +325,30 @@ def aggregate(args):
         for lane in expected_lanes
     ]
     provenance = {
-        "assay": "10x Flex v1 sequenced on Ultima",
-        "cyto_version": cyto_version,
-        "native_umi_semantics": (
-            "Cyto probe-aware UMI resolution may discard tied competing probe identities "
-            "for one CBC+UMI and retain a unique dominant identity; distinct UMIs remain "
-            "distinct. This can differ from Cell Ranger Flex probe-pair summation."
+        "assay": "10x Flex v1",
+        "counter_version": counter_version,
+        "counter_version_label": counter_version_label,
+        "umi_policy": umi_policy,
+        "mapping_policy": mapping_policy,
+        "filtering_policy": (
+            "Bustools allowlist (default threshold), correct, sort, then count; "
+            "applied per physical lane x canonical BC alias to the GEX BUS."
+        ),
+        "equivalence_class_metrics_scope": (
+            "Read-weighted EC metrics are measured after component barcode correction "
+            "and suffix replacement, before allowlist filtering."
         ),
         "sample_id": args.sample_id,
         "pool_id": args.pool_id,
         "bc_cr_pairs": pairs,
-        "lane_count_products": len(inputs),
+        "lane_count_products": validated_products,
+        "nonempty_lane_count_products": len(inputs),
         "cell_count": cell_count,
         "guide_coverage": coverage_records,
+        "lane_metrics": [
+            {"lane_id": lane, **lane_metrics[lane]} for lane in expected_lanes
+        ],
+        "reference_hashes": json.loads(reference_hashes_json),
         "gex_manifest_sha256": file_sha256(args.gex_sources),
         "guide_manifest_sha256": file_sha256(args.guide_sources),
         "guide_coverage_sha256": file_sha256(args.guide_coverage),
@@ -224,7 +360,7 @@ def aggregate(args):
         "guide_count_features_sha256": file_sha256(args.guide_count_features),
         "guide_targets_sha256": file_sha256(args.guide_targets),
     }
-    with h5py.File(selected[0], "r") as source, h5py.File(args.output, "a") as target:
+    with h5py.File(first_product, "r") as source, h5py.File(args.output, "a") as target:
         if "uns" in target:
             del target["uns"]
         if "uns" in source:
@@ -234,6 +370,7 @@ def aggregate(args):
             "flex_bc_alias",
             "flex_cr_alias",
             "flex_guide_coverage_status",
+            "flex_lane_metrics_json",
         ):
             if key in target["uns"]:
                 del target["uns"][key]
