@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import gzip
 import hashlib
 import io
 import re
@@ -27,14 +28,25 @@ AUTHOR_GUIDE_LIBRARY_SHA256 = (
 GUIDE_TARGETS_SHA256 = (
     "fa5fd9c8c7aae7ff2860c88ce961f0b0a36a5401db14a8dc289fb3c2f7c1243d"
 )
-OUTPUTS = {
-    "gene_probes.tsv",
-    "gene_count_features.tsv",
-    "guide_features.tsv",
-    "guide_count_features.tsv",
-    "samples.tsv",
-    "guide_coverage.tsv",
-}
+CBC_WHITELIST_SHA256 = (
+    "6b18ff5b43f51665496a09388cca4a8cae58b22f05d8aca5fc264fa8e1600b06"
+)
+CBC_WHITELIST_TEXT_SHA256 = (
+    "74c2c9d186f4ffb3ea86fcb35d0f7a0de91bc0aee3b88e35d84bad89bbf7f25f"
+)
+BARCODE_RNA_SOURCE_SHA256 = (
+    "7575c17676826feb98930c4829490ef87d7849d257ca71596dfe3fe1e5bdf14b"
+)
+BARCODE_CRISPR_SOURCE_SHA256 = (
+    "f6847755055653e4e2aa669cfc0a3ff20879475c4ec6fb8c28fc6a216d761c0e"
+)
+CYTO_RESOURCE_ARCHIVE_URL = (
+    "https://github.com/ArcInstitute/cyto/releases/download/"
+    "cyto-0.4.5/cyto-resources.tar.gz"
+)
+CYTO_RESOURCE_ARCHIVE_SHA256 = (
+    "f004e5eb5e2020c3d5c894f3c19838bbfbdad548be722f875c6a3afceace13ca"
+)
 
 
 def read_tsv(path):
@@ -236,17 +248,29 @@ def feature_tables():
         statuses.setdefault(row["gene_id"], set()).add(row["included"])
     if any(len(value) != 1 for value in statuses.values()):
         raise ValueError("Included status differs among probes for one gene")
-    gex_lines, seen_probes = [], set()
+    gex_lines, seen_probes, seen_probe_ids = [], set(), set()
+    gex_reference = {"fasta": [], "self_t2g": [], "probe_to_gene": []}
     for row in all_rows:
         if statuses[row["gene_id"]] != {"TRUE"}:
             continue
         sequence = row["probe_seq"]
+        probe_id = row["probe_id"]
         if len(sequence) != 50 or set(sequence) - set("ACGT"):
-            raise ValueError(f"Invalid 10x probe sequence: {row['probe_id']}")
+            raise ValueError(f"Invalid 10x probe sequence: {probe_id}")
         if sequence in seen_probes:
-            raise ValueError(f"Duplicate included probe sequence: {row['probe_id']}")
+            raise ValueError(f"Duplicate included probe sequence: {probe_id}")
+        if (
+            not probe_id
+            or any(character.isspace() for character in probe_id)
+            or probe_id in seen_probe_ids
+        ):
+            raise ValueError(f"Invalid or duplicate 10x probe ID: {probe_id}")
         seen_probes.add(sequence)
+        seen_probe_ids.add(probe_id)
         gex_lines.append("\t".join((row["gene_id"], row["gene_name"], sequence)))
+        gex_reference["fasta"].append(f">{probe_id}\n{sequence}\n")
+        gex_reference["self_t2g"].append(f"{probe_id}\t{probe_id}")
+        gex_reference["probe_to_gene"].append(f"{probe_id}\t{row['gene_id']}")
 
     author_guide_path = ROOT / "author_sgrna_library_metadata.suppl_table.csv"
     if (
@@ -274,6 +298,7 @@ def feature_tables():
         raise ValueError("Guide target/source rows must contain 26,504 unique IDs")
     complement = str.maketrans("ACGT", "TGCA")
     guide_lines, seen_ids, seen_sequences = [], set(), set()
+    guide_reference = {"fasta": [], "self_t2g": []}
     for row in sequences:
         name, seq = row["guide_id"], row["author_sequence"].upper()
         if author_guides.get(name) != seq:
@@ -297,9 +322,25 @@ def feature_tables():
                 )
             )
         )
+        guide_reference["fasta"].append(
+            f">{name}\nGCTATGCTGTTTCCAGCTTAGCTCTTAAAC"
+            f"{seq.translate(complement)[::-1]}\n"
+        )
+        guide_reference["self_t2g"].append(f"{name}\t{name}")
     if seen_ids != target_map.keys() or seen_ids != author_guides.keys():
         raise ValueError("Author guide sequence and target metadata IDs do not match")
-    return gex_lines, guide_lines
+    references = {
+        "gex_probe_targets.fa": "".join(gex_reference["fasta"]).encode(),
+        "gex_probe_t2g.tsv": ("\n".join(gex_reference["self_t2g"]) + "\n").encode(),
+        "gex_probe_to_gene.tsv": (
+            "\n".join(gex_reference["probe_to_gene"]) + "\n"
+        ).encode(),
+        "guide_feature_targets.fa": "".join(guide_reference["fasta"]).encode(),
+        "guide_features_t2g.tsv": (
+            "\n".join(guide_reference["self_t2g"]) + "\n"
+        ).encode(),
+    }
+    return gex_lines, guide_lines, references
 
 
 def barcode_aliases():
@@ -326,8 +367,103 @@ def barcode_aliases():
     return rows
 
 
-def generated_files(gex, guide, gex_lanes, guide_lanes, gex_features, guide_features):
-    barcode_aliases()
+def pinned_barcode_resources():
+    whitelist_path = ROOT / "cbc_whitelist.txt.gz"
+    whitelist_bytes = whitelist_path.read_bytes()
+    if hashlib.sha256(whitelist_bytes).hexdigest() != CBC_WHITELIST_SHA256:
+        raise ValueError("Pinned 737K CBC resource does not match its source hash")
+    whitelist_text = gzip.decompress(whitelist_bytes)
+    if hashlib.sha256(whitelist_text).hexdigest() != CBC_WHITELIST_TEXT_SHA256:
+        raise ValueError("Pinned 737K CBC resource does not match its text hash")
+    cbc_rows = whitelist_text.decode("ascii").splitlines()
+    if (
+        len(cbc_rows) != 737_280
+        or len(set(cbc_rows)) != len(cbc_rows)
+        or any(len(value) != 16 or set(value) - set("ACGT") for value in cbc_rows)
+    ):
+        raise ValueError("Pinned CBC whitelist must contain 737,280 unique 16-mers")
+
+    aliases = barcode_aliases()
+    bc_canonical = {row["bc_alias"]: row["bc_sequence"] for row in aliases}
+    cr_canonical = {row["cr_alias"]: row["cr_sequence"] for row in aliases}
+    rna_path = ROOT / "probe_barcodes_rna_source.tsv"
+    crispr_path = ROOT / "probe_barcodes_crispr_source.tsv"
+    if hashlib.sha256(rna_path.read_bytes()).hexdigest() != BARCODE_RNA_SOURCE_SHA256:
+        raise ValueError(
+            "Pinned RNA probe barcode source does not match its source hash"
+        )
+    if (
+        hashlib.sha256(crispr_path.read_bytes()).hexdigest()
+        != BARCODE_CRISPR_SOURCE_SHA256
+    ):
+        raise ValueError(
+            "Pinned CRISPR probe barcode source does not match its source hash"
+        )
+
+    def rows(path):
+        with path.open(newline="") as handle:
+            return list(csv.reader(handle, delimiter="\t"))
+
+    rna_variants = rows(rna_path)
+    cr_variants = rows(crispr_path)
+    if len(rna_variants) != 128 or len(cr_variants) != 16:
+        raise ValueError("Expected 128 RNA and 16 CRISPR probe barcode sequences")
+    for label, data, canonical_map in (
+        ("RNA", rna_variants, bc_canonical),
+        ("CRISPR", cr_variants, cr_canonical),
+    ):
+        seen_raw = set()
+        alias_counts = Counter()
+        for row in data:
+            if len(row) != 3:
+                raise ValueError(f"Malformed {label} barcode source row: {row}")
+            raw, canonical, alias = row
+            if (
+                len(raw) != 8
+                or len(canonical) != 8
+                or set(raw + canonical) - set("ACGT")
+                or canonical_map.get(alias) != canonical
+                or raw in seen_raw
+            ):
+                raise ValueError(f"Invalid or duplicate {label} barcode row: {row}")
+            seen_raw.add(raw)
+            alias_counts[alias] += 1
+        if set(alias_counts) != set(canonical_map):
+            raise ValueError(f"{label} barcode aliases do not match the sample map")
+        expected_count = 8 if label == "RNA" else 1
+        if any(count != expected_count for count in alias_counts.values()):
+            raise ValueError(f"Unexpected {label} barcode variants per alias")
+        if label == "CRISPR" and any(row[0] != row[1] for row in data):
+            raise ValueError("CRISPR probe barcode source must be canonical per alias")
+
+    def bc_variant_output(data):
+        return {
+            "bc_barcode_variants.tsv": render_tsv(
+                [
+                    {
+                        "raw_sequence": row[0],
+                        "canonical_sequence": row[1],
+                        "alias": row[2],
+                    }
+                    for row in data
+                ],
+                ["raw_sequence", "canonical_sequence", "alias"],
+            )
+        }
+
+    return whitelist_text, bc_variant_output(rna_variants)
+
+
+def generated_files(
+    gex,
+    guide,
+    gex_lanes,
+    guide_lanes,
+    gex_features,
+    guide_features,
+    references,
+):
+    cbc_whitelist, barcode_files = pinned_barcode_resources()
     author = author_samples()
     coverage = []
     for pool, (_, first, last) in POOL_RANGES.items():
@@ -383,6 +519,9 @@ def generated_files(gex, guide, gex_lanes, guide_lanes, gex_features, guide_feat
         ).encode(),
         "samples.tsv": render_tsv(samples, list(samples[0])),
         "guide_coverage.tsv": render_tsv(coverage, list(coverage[0])),
+        **references,
+        "cbc_whitelist.txt": cbc_whitelist,
+        **barcode_files,
     }
     return result
 
@@ -404,9 +543,15 @@ def main():
     )
     args = parser.parse_args()
     gex, guide, gex_lanes, guide_lanes = validate_sources()
-    gex_features, guide_features = feature_tables()
+    gex_features, guide_features, references = feature_tables()
     outputs = generated_files(
-        gex, guide, gex_lanes, guide_lanes, gex_features, guide_features
+        gex,
+        guide,
+        gex_lanes,
+        guide_lanes,
+        gex_features,
+        guide_features,
+        references,
     )
     mismatches = []
     for name, data in outputs.items():
