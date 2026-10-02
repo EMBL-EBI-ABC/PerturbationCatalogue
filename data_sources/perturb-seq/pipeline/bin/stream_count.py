@@ -171,6 +171,8 @@ def valid_source(source):
     value, _, group = value.partition("#")
     if group and not group.isdigit():
         return False
+    if source.startswith("BAMFILE:") and value and not urlsplit(value).scheme:
+        return True
     return bool(
         re.fullmatch(r"(SRR|ERR|DRR)\d+", value)
         or value.startswith("/")
@@ -212,6 +214,11 @@ def main():
         parser.error("Use at least four CPUs and unique SRA/BAM sources")
     extract_threads = min(4, args.cpus - 3)
     count_threads = args.cpus - extract_threads - 2
+    samtools_threads = (
+        args.cpus - count_threads - 2
+        if all(is_bam_source(source) for source in args.accessions)
+        else 0
+    )
     started = time.monotonic()
     started_at = datetime.now(timezone.utc).isoformat()
     logdir = Path("stream_logs")
@@ -458,6 +465,8 @@ def main():
                                 str(args.feature_offset),
                                 "--feature-length",
                                 str(args.feature_length),
+                                "--samtools-threads",
+                                str(samtools_threads),
                             ],
                             logfile,
                             stdout=counter.stdin,

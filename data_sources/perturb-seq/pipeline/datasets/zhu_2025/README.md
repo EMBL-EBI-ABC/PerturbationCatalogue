@@ -1,25 +1,16 @@
-# Zhu 2025
+# Zhu 2025 read-level inputs
 
-The public raw archive contains per-lane Cell Ranger filtered feature matrices
-rather than a complete set of sequencing reads. Eight of the twelve
-donor/condition outputs have missing public guide-read lanes, and the libraries
-use 10x Flex with Ultima sequencing, which the FASTQ counter does not support.
+These twelve donor/condition datasets use multiplexed 10x Flex libraries with
+Ultima sequencing. Gene-expression inputs are the original paired FASTQs;
+guide inputs require full-quality SRA extraction including technical reads.
+Sources, physical lane grouping and donor/state probe-barcode assignments are
+recorded in [the raw-data notes](../../../raw-data-notes.md).
 
-The unified pipeline therefore imports the complete official GEO Cell Ranger
-matrices from `GSE314342_RAW.tar`, preserving raw gene and guide UMI counts.
-`ProbeNTC-*` features are excluded, matching the authors' guide-assignment
-code. The remaining 26,504 guides use the authors' curated target mapping in
-`guide_targets.tsv`. Each lane is converted separately and the lane H5ADs are
-concatenated on disk before the common compression, QC/comparison,
-probe-calling, DEA and GSEA stages.
+Four outputs in the R1 pool have complete archived guide-lane coverage. Eight
+outputs in the R2 pools have missing guide lanes; process their available reads
+and retain this limitation in their provenance. The earlier Cell Ranger
+matrix-import route has been removed. Read-level processing requires a
+probe-aware counter and separate gene-expression/guide barcode demultiplexing.
 
-`matrix_urls.txt` is the 284-file manifest extracted from the official
-`GSE314342` family SOFT record. `download_matrices.py` downloads each file
-independently with strict byte-count checks, so a transient failure does not
-invalidate a 171 GB monolithic transfer.
-
-Use `--cellranger_h5_dir` (or `--cellranger_h5_tar`), `--cellranger_sample`
-(for example `D1_Rest`) and
-`--guide_targets datasets/zhu_2025/guide_targets.tsv` instead of a sequencing
-sample sheet and count references. The author-provided `*.assigned_guide.h5ad`
-for the same donor/condition remains the independent curated comparison input.
+`guide_targets.tsv` supplies the curated guide target metadata. Author
+`*.assigned_guide.h5ad` files are independent comparison references.

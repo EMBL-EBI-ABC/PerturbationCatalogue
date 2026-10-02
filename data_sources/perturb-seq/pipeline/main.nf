@@ -27,10 +27,8 @@ params.chemistry = "10xv3"
 params.limit = 0
 params.concat_max_loaded_elems = 100000000
 params.h5repack_filter = "GZIP=4"
-params.cellranger_h5_tar = null
-params.cellranger_h5_dir = null
-params.cellranger_sample = null
-params.guide_targets = null
+params.split_bam_source = ""
+params.split_bam_groups = 0
 
 // cDNA Reference parameters
 params.transcriptome_fa = null
@@ -108,6 +106,54 @@ process KB_COUNT_STANDARD {
       --accessions ${sourceArgs} \
       --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
       --workflow standard --cpus ${task.cpus} ${sraArg}
+    """
+}
+
+/** Count one staged BAM subset emitted by the generic GEM-group splitter. */
+process KB_COUNT_STANDARD_BAM {
+    tag "standard_${sample_id}"
+    publishDir "${params.outdir}/counts_standard/${sample_id}", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(bam)
+    path index
+    path t2g
+    val chemistry
+
+    output:
+    tuple val(sample_id), path("out/counts_filtered/adata.h5ad"), emit: h5ad
+    path "stream_metrics.json", emit: metrics
+
+    script:
+    def sraArg = params.sra_bin ? "--sra-bin '${params.sra_bin}'" : ""
+    """
+    python ${projectDir}/bin/stream_count.py \
+      --accessions 'BAMFILE:${bam}' \
+      --index ${index} --t2g ${t2g} --chemistry ${chemistry} \
+      --workflow standard --cpus ${task.cpus} ${sraArg}
+    """
+}
+
+/** Split one shared BAM in one pass into independently countable GEM groups. */
+process SPLIT_BAM_GEM_GROUPS {
+    tag "split_${source}"
+    cpus { Math.max(16, groups + 6) }
+
+    input:
+    tuple val(source), val(groups)
+
+    output:
+    path "groups/group_*.bam", emit: bams
+    path "groups/split_metrics.json", emit: metrics
+
+    script:
+    if (task.cpus < groups + 3)
+        error "BAM splitting needs at least ${groups + 3} CPUs for ${groups} groups"
+    def samtoolsThreads = task.cpus - groups - 2
+    """
+    python ${projectDir}/bin/bam_to_fastq.py \
+      --source '${source}' --split-groups ${groups} \
+      --samtools-threads ${samtoolsThreads} --output-dir groups
     """
 }
 
@@ -346,27 +392,6 @@ process COMPRESS_FINAL_H5AD {
     """
 }
 
-/** Imports one donor/condition from a tar of Cell Ranger feature matrices. */
-process IMPORT_CELLRANGER_H5 {
-    tag "${params.dataset_id}"
-
-    input:
-    path matrices
-    path guide_targets
-    val sample
-    path importer_script
-
-    output:
-    path "experiment_final_uncompressed.h5ad", emit: h5ad
-
-    script:
-    def sourceArg = params.cellranger_h5_dir ? "--matrix-dir ${matrices}" : "--tar ${matrices}"
-    """
-    python ${importer_script} \
-      ${sourceArg} --sample ${sample} --guide-targets ${guide_targets}
-    """
-}
-
 process QC_COMPARISON {
     tag "${params.dataset_id}"
     publishDir "${params.outdir}", mode: 'copy', pattern: '*.filtered.h5ad'
@@ -506,57 +531,94 @@ workflow {
     curated = file(params.curated_h5ad, checkIfExists: true)
     gene_sets = file(params.gmt, checkIfExists: true)
 
-    if (params.cellranger_h5_tar || params.cellranger_h5_dir) {
-        if (params.cellranger_h5_tar && params.cellranger_h5_dir)
-            error "Provide only one of --cellranger_h5_tar or --cellranger_h5_dir"
-        if (!params.cellranger_sample || !params.guide_targets)
-            error "Please provide --cellranger_sample and --guide_targets with Cell Ranger input"
-        importer_script = file("${projectDir}/datasets/zhu_2025/import_cellranger.py")
-        uncompressed_final = IMPORT_CELLRANGER_H5(
-            file(params.cellranger_h5_dir ?: params.cellranger_h5_tar, checkIfExists: true),
-            file(params.guide_targets, checkIfExists: true),
-            params.cellranger_sample,
-            importer_script,
+    if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
+        error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
+    if (params.split_bam_source &&
+        !(params.split_bam_source ==~ /BAM:(SRR|ERR|DRR)[0-9]+/))
+        error "--split_bam_source must be BAM:<run accession>"
+    if (params.split_bam_source) {
+        if (!(params.split_bam_groups.toString() ==~ /[0-9]+/) ||
+            params.split_bam_groups.toInteger() < 2 ||
+            params.split_bam_groups.toInteger() > 64)
+            error "--split_bam_source must be BAM:<accession> and --split_bam_groups must be 2-64"
+    } else if (params.split_bam_groups) {
+        error "--split_bam_groups requires --split_bam_source"
+    }
+    fa = file(params.transcriptome_fa, checkIfExists: true)
+    features = file(params.features_tsv, checkIfExists: true)
+    samples_ch = Channel
+        .fromPath(params.sample_sheet)
+        .splitCsv(header:true, sep:'\t')
+        .map { row ->
+            def sid = row.sample_id
+            def mrna_srrs = row.mRNA_srrs.tokenize(';')
+            def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
+            def valid_source = { source ->
+                source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
+                    (source.startsWith('BAM:') && source.size() > 4) ||
+                    (source.startsWith('BAMFILE:') && source.size() > 8)
+            }
+
+            if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
+            def feature_offset = (row.guide_feature_offset ?: "0") as Integer
+            def feature_length = (row.guide_feature_length ?: "0") as Integer
+            if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
+                error "Invalid guide feature trim for sample ${sid}"
+            for (runs in [mrna_srrs, sgrna_srrs]) {
+                if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
+                    error "Invalid or duplicate sequencing sources for sample ${sid}"
+            }
+            return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
+        }
+    if (params.limit > 0)
+        samples_ch = samples_ch.take(params.limit)
+
+    std_idx = BUILD_INDEX_STANDARD(fa, gtf)
+    kite_idx = BUILD_INDEX_KITE(features)
+    if (params.split_bam_source) {
+        // Each selected sample maps to exactly one numbered subset of this source.
+        group_selections = samples_ch.map { sid, mrna, sgrna, offset, length ->
+            if (mrna.size() != 1)
+                error "Split BAM samples must have one mRNA source: ${sid}"
+            def prefix = params.split_bam_source + "#"
+            if (!mrna[0].startsWith(prefix))
+                error "mRNA source for ${sid} must select a group from ${params.split_bam_source}"
+            def group_text = mrna[0].substring(prefix.length())
+            if (!(group_text ==~ /[1-9][0-9]*/))
+                error "Invalid GEM group selector for ${sid}: ${mrna[0]}"
+            def group = group_text as Integer
+            if (group > params.split_bam_groups.toInteger())
+                error "GEM group ${group} exceeds --split_bam_groups for ${sid}"
+            return [group, sid]
+        }.groupTuple().map { group, sample_ids ->
+            if (sample_ids.size() != 1)
+                error "More than one sample maps to split BAM group ${group}: ${sample_ids}"
+            return [group, sample_ids[0]]
+        }
+        split_bams = SPLIT_BAM_GEM_GROUPS(
+            Channel.of([params.split_bam_source, params.split_bam_groups.toInteger()])
+        ).bams.flatten().map { bam ->
+            def match = (bam.name =~ /^group_([1-9][0-9]*)\.bam$/)
+            if (!match.matches()) error "Unexpected split BAM name: ${bam.name}"
+            return [match[0][1] as Integer, bam]
+        }
+        std_counts = KB_COUNT_STANDARD_BAM(
+            group_selections.join(split_bams).map { group, sid, bam -> [sid, bam] },
+            std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry
         )
     } else {
-        if (!params.sample_sheet || !params.transcriptome_fa || !params.features_tsv)
-            error "Please provide --sample_sheet, --transcriptome_fa, and --features_tsv"
-        fa = file(params.transcriptome_fa, checkIfExists: true)
-        features = file(params.features_tsv, checkIfExists: true)
-        samples_ch = Channel
-            .fromPath(params.sample_sheet)
-            .splitCsv(header:true, sep:'\t')
-            .map { row ->
-                def sid = row.sample_id
-                def mrna_srrs = row.mRNA_srrs.tokenize(';')
-                def sgrna_srrs = row.sgRNA_srrs.tokenize(';')
-                def valid_source = { source ->
-                    source ==~ /(SRR|ERR|DRR)[0-9]+/ ||
-                        (source.startsWith('BAM:') && source.size() > 4) ||
-                        (source.startsWith('BAMFILE:') && source.size() > 8)
-                }
-
-                if (!(sid ==~ /[A-Za-z0-9_-]+/)) error "Invalid sample_id: ${sid}"
-                def feature_offset = (row.guide_feature_offset ?: "0") as Integer
-                def feature_length = (row.guide_feature_length ?: "0") as Integer
-                if (feature_offset < 0 || feature_length < 0 || feature_length == 1)
-                    error "Invalid guide feature trim for sample ${sid}"
-                for (runs in [mrna_srrs, sgrna_srrs]) {
-                    if (!runs || runs.toSet().size() != runs.size() || runs.any { !valid_source(it) })
-                        error "Invalid or duplicate sequencing sources for sample ${sid}"
-                }
-                return [sid, mrna_srrs, sgrna_srrs, feature_offset, feature_length]
-            }
-        if (params.limit > 0)
-            samples_ch = samples_ch.take(params.limit)
-        std_idx = BUILD_INDEX_STANDARD(fa, gtf)
-        kite_idx = BUILD_INDEX_KITE(features)
-        std_counts = KB_COUNT_STANDARD(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] }, std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry)
-        kite_counts = KB_COUNT_KITE(samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] }, kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry)
-        merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
-        merged_samples = MERGE_MODALITIES(merge_ch)
-        uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
+        std_counts = KB_COUNT_STANDARD(
+            samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, mrna] },
+            std_idx.index.collect(), std_idx.t2g.collect(), params.chemistry
+        )
     }
+    kite_counts = KB_COUNT_KITE(
+        samples_ch.map { sid, mrna, sgrna, offset, length -> [sid, sgrna, offset, length] },
+        kite_idx.index.collect(), kite_idx.t2g.collect(), params.chemistry
+    )
+    merge_ch = std_counts.h5ad.join(kite_counts.h5ad)
+    merged_samples = MERGE_MODALITIES(merge_ch)
+    uncompressed_final = CONCATENATE_SAMPLES(merged_samples.h5ad.collect())
 
     // Step 5: Final HDF5 Compression
     raw_counts = COMPRESS_FINAL_H5AD(uncompressed_final.h5ad)

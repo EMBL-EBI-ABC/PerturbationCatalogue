@@ -35,11 +35,8 @@ Downloads, image installation and pipeline execution must follow your cluster's
 allocation and storage policies. Keep HOME, caches and temporary directories in
 allocated project storage.
 
-For Zhu 2025, where complete guide FASTQs are not public, the same workflow can
-start from the official per-lane Cell Ranger matrices. Supply either
-`--cellranger_h5_dir` or `--cellranger_h5_tar`, plus `--cellranger_sample` and
-`--guide_targets`; counting parameters are then omitted. See
-[the Zhu dataset notes](datasets/zhu_2025/README.md).
+Reprocessing starts from sequencing reads. Author H5ADs provide the independent
+comparison reference. The earlier Cell Ranger matrix-import route has been removed.
 
 ## Sample sheet
 
@@ -63,6 +60,12 @@ Adamson 2016 inputs are under `datasets/adamson_2016/`. Gasperini 2019 inputs
 are under `datasets/gasperini_2019/`; run
 `python3 datasets/gasperini_2019/generate_inputs.py` to regenerate its guide
 reference and ENA-derived sample sheet.
+
+For a BAM shared by several physical GEM groups, set `--split_bam_source
+BAM:RUN_ACCESSION --split_bam_groups N`. Each selected mRNA sample row must
+reference `BAM:RUN_ACCESSION#GROUP`. The workflow decodes the source once and
+counts each staged group BAM separately. Split BAMs remain in Nextflow work;
+the splitter requests enough CPUs for its group writers and decoder.
 
 ## Run Jurkat
 
