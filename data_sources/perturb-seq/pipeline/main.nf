@@ -45,8 +45,13 @@ params.flex_guide_targets = ""
 params.flex_probe_barcodes = ""
 params.flex_source_cache = ""
 params.flex_max_forks = 2
-params.cyto_bin = "/usr/local/bin/cyto"
-params.cyto_resources = "/opt/cyto/resources"
+params.flex_gex_probe_targets = ""
+params.flex_gex_t2g = ""
+params.flex_gex_probe_to_gene = ""
+params.flex_guide_feature_targets = ""
+params.flex_guide_t2g = ""
+params.flex_cbc_whitelist = ""
+params.flex_bc_barcode_variants = ""
 
 // cDNA Reference parameters
 params.transcriptome_fa = null
@@ -203,8 +208,32 @@ process KB_COUNT_KITE {
     """
 }
 
+/** Index the pinned probe-pair and anchored guide targets once for all pool lanes. */
+process BUILD_INDEX_FLEX {
+    tag "Flex_probe_and_guide_indexes"
+    cpus 8
+    memory '32 GB'
+    time '4h'
+
+    input:
+    path gex_probe_targets
+    path guide_feature_targets
+
+    output:
+    path "gex_probe.idx", emit: gex_index
+    path "guide_features.idx", emit: guide_index
+
+    script:
+    """
+    kb ref --workflow custom -i gex_probe.idx -k 31 ${gex_probe_targets}
+    kb ref --workflow custom -i guide_features.idx -k 31 ${guide_feature_targets}
+    """
+}
+
 /** Count every source run for one physical Flex lane, then deduplicate within its barcode aliases. */
-process CYTO_FLEX_LANE {
+process KB_FLEX_LANE {
+    cache 'deep'
+    stageInMode 'copy'
     tag "${lane_id}"
     cpus 16
     memory { 128.GB * task.attempt }
@@ -224,9 +253,15 @@ process CYTO_FLEX_LANE {
     path guide_count_features
     path guide_targets
     val source_cache_dir
-    val cyto_bin
-    val cyto_resources
+    path gex_index
+    path gex_t2g
+    path gex_probe_to_gene
+    path guide_index
+    path guide_t2g
+    path cbc_whitelist
+    path bc_barcode_variants
     val sra_bin
+    path helper_code, stageAs: "scripts/*"
 
     output:
     tuple val(pool_id), val(lane_id), path("flex_lane/lane_counts/*.h5ad"), path("flex_lane/lane_metrics.json"), emit: counts
@@ -235,21 +270,26 @@ process CYTO_FLEX_LANE {
     def sraRoot = sra_bin ? sra_bin : "/opt/sratoolkit.3.4.1-ubuntu64/bin"
     def cacheArg = source_cache_dir ? "--source-cache-dir '${source_cache_dir}'" : ""
     """
-    python ${projectDir}/bin/cyto_flex_lane.py \
+    rm -rf -- flex_lane
+    python scripts/kb_flex_lane.py \
       --pool-id '${pool_id}' --lane-id '${lane_id}' \
       --gex-sources ${gex_sources} --guide-sources ${guide_sources} \
       --guide-coverage ${guide_coverage} --samples ${samples} \
       --barcode-aliases ${barcode_aliases} \
       --gene-probes ${gene_probes} --gene-count-features ${gene_count_features} \
       --guide-features ${guide_features} --guide-count-features ${guide_count_features} \
-      --guide-targets ${guide_targets} --cyto '${cyto_bin}' \
-      --cyto-resources '${cyto_resources}' --sra-bin '${sraRoot}' \
+      --guide-targets ${guide_targets} \
+      --gex-index ${gex_index} --gex-t2g ${gex_t2g} \
+      --gex-probe-to-gene ${gex_probe_to_gene} \
+      --guide-index ${guide_index} --guide-t2g ${guide_t2g} \
+      --cbc-whitelist ${cbc_whitelist} --bc-barcode-variants ${bc_barcode_variants} --sra-bin '${sraRoot}' \
       ${cacheArg} --output-dir flex_lane --threads ${task.cpus}
     """
 }
 
 /** Reassemble one donor/state from reusable lane H5ADs using bounded on-disk concatenation. */
 process AGGREGATE_FLEX_SAMPLE {
+    cache 'deep'
     tag "${sample_id}"
     cpus 8
     memory { 128.GB * task.attempt }
@@ -268,6 +308,7 @@ process AGGREGATE_FLEX_SAMPLE {
     path guide_count_features
     path guide_targets
     val max_loaded_elems
+    path helper_code, stageAs: "scripts/*"
 
     output:
     tuple val(sample_id), path("flex_sample_uncompressed.h5ad"), emit: h5ad
@@ -275,7 +316,9 @@ process AGGREGATE_FLEX_SAMPLE {
 
     script:
     """
-    python ${projectDir}/bin/flex_aggregate.py \
+    mkdir task_code
+    cp -L scripts/* task_code/
+    python task_code/flex_aggregate.py \
       --pool-id '${pool_id}' --sample-id '${sample_id}' \
       --samples ${samples} --guide-coverage ${guide_coverage} \
       --gex-sources ${gex_sources} --guide-sources ${guide_sources} \
@@ -643,7 +686,14 @@ workflow {
             "flex_guide_features": params.flex_guide_features,
             "flex_guide_count_features": params.flex_guide_count_features,
             "flex_guide_targets": params.flex_guide_targets,
-            "flex_probe_barcodes": params.flex_probe_barcodes
+            "flex_probe_barcodes": params.flex_probe_barcodes,
+            "flex_gex_probe_targets": params.flex_gex_probe_targets,
+            "flex_gex_t2g": params.flex_gex_t2g,
+            "flex_gex_probe_to_gene": params.flex_gex_probe_to_gene,
+            "flex_guide_feature_targets": params.flex_guide_feature_targets,
+            "flex_guide_t2g": params.flex_guide_t2g,
+            "flex_cbc_whitelist": params.flex_cbc_whitelist,
+            "flex_bc_barcode_variants": params.flex_bc_barcode_variants
         ]
         def missingFlexInputs = requiredFlexInputs.findAll { key, value -> !value }
         if (missingFlexInputs)
@@ -666,9 +716,17 @@ workflow {
         def guideCountFeatures = file(params.flex_guide_count_features, checkIfExists: true)
         def guideTargets = file(params.flex_guide_targets, checkIfExists: true)
         def probeBarcodes = file(params.flex_probe_barcodes, checkIfExists: true)
-        def cytoResources = params.cyto_resources ?: "/opt/cyto/resources"
-        def cytoBin = params.cyto_bin ?: "/usr/local/bin/cyto"
+        def gexTargets = file(params.flex_gex_probe_targets, checkIfExists: true)
+        def gexT2g = file(params.flex_gex_t2g, checkIfExists: true)
+        def probeToGene = file(params.flex_gex_probe_to_gene, checkIfExists: true)
+        def guideTargetsFasta = file(params.flex_guide_feature_targets, checkIfExists: true)
+        def guideT2g = file(params.flex_guide_t2g, checkIfExists: true)
+        def cbcWhitelist = file(params.flex_cbc_whitelist, checkIfExists: true)
+        def bcVariants = file(params.flex_bc_barcode_variants, checkIfExists: true)
+        def flexIndexes = BUILD_INDEX_FLEX(gexTargets, guideTargetsFasta)
         def flexSraBin = params.sra_bin ?: ""
+        def flexCode = ["kb_flex_lane.py", "flex_aggregate.py", "bam_to_fastq.py", "stream_count.py", "stream_sra_pairs.py", "read_router.cpp"]
+            .collect { name -> file("${projectDir}/bin/${name}", checkIfExists: true) }
 
         def flexLanes = Channel
             .fromPath(guideCoverage)
@@ -680,14 +738,17 @@ workflow {
                 return [row.pool_id, row.lane_id]
             }
 
-        def flexLaneCounts = CYTO_FLEX_LANE(
+        def flexLaneCounts = KB_FLEX_LANE(
             flexLanes,
             Channel.value(gexManifest), Channel.value(guideManifest),
             Channel.value(guideCoverage), Channel.value(samples),
             Channel.value(probeBarcodes), Channel.value(geneProbes),
             Channel.value(geneCountFeatures), Channel.value(guideFeatures),
             Channel.value(guideCountFeatures), Channel.value(guideTargets),
-            params.flex_source_cache ?: "", cytoBin, cytoResources, flexSraBin
+            params.flex_source_cache ?: "", flexIndexes.gex_index.collect(),
+            Channel.value(gexT2g), Channel.value(probeToGene),
+            flexIndexes.guide_index.collect(), Channel.value(guideT2g),
+            Channel.value(cbcWhitelist), Channel.value(bcVariants), flexSraBin, Channel.value(flexCode)
         )
         def laneFiles = flexLaneCounts.counts
             .map { pool, lane, h5ads, metrics -> h5ads }
@@ -734,7 +795,7 @@ workflow {
             Channel.value(geneProbes), Channel.value(probeBarcodes),
             Channel.value(geneCountFeatures), Channel.value(guideFeatures),
             Channel.value(guideCountFeatures),
-            Channel.value(guideTargets), params.concat_max_loaded_elems
+            Channel.value(guideTargets), params.concat_max_loaded_elems, Channel.value(flexCode)
         )
         uncompressed_final = flexRaw.h5ad
     } else {

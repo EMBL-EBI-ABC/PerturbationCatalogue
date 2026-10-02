@@ -76,7 +76,7 @@ Known limitations before reanalysis:
 
 - No matching R2 guide runs were found in either ENA or SRA RunInfo for L07–L14 or L25, L26, L29, L30, L32, L36, L39, L41, L47, L48. All eight output rows drawing from R2 therefore have incomplete archived guide-library coverage. Their listed sizes cover the available files, not a hypothetical complete deposition.
 - GEO titles for R2 L25–L48 say **24 hr**, whereas their probe mapping names and the authors' sample table say **Stim48hr**. The input table and current workflow follow the explicit author donor/probe mapping; the conflicting GEO label remains recorded for later resolution.
-- The author sample metadata identifies these as `GEMX_flex_v1` libraries sequenced on Ultima. Raw inputs pool conditions even though each intended output is a single condition. The read-level Flex route uses Cyto's probe-aware counter, separate BC/CR barcode maps, and the pinned 10x Flex v1 probe panel; it does not route these reads through the 10x 3-prime v3 Kallisto path.
+- The author sample metadata identifies these as `GEMX_flex_v1` libraries sequenced on Ultima. Raw inputs pool conditions even though each intended output is a single condition. The read-level Flex route uses custom Kallisto/Bustools geometry, separate BC/CR barcode maps, and the pinned 10x Flex v1 probe panel.
 - Other experiments in this BioProject (Tact, Th1Th2, IL10IL21 and arrayed validation) are excluded.
 
 ### Zhu read-level format and implementation, 2026-10-02
@@ -99,26 +99,24 @@ supports recovering the guide library from the available SRA archives; absent
 lane accessions remain genuinely unavailable and are not filled from author
 assignments.
 
-The public workflow counts and deduplicates each physical lane once for all
-paired BC/CR aliases, then assembles the selected donor/state with the full
-16-base cell barcode, 8-base GEX probe barcode and lane identity. The pinned
-native counter is Cyto 0.4.5. Its handling of same-cell/same-UMI collisions
-between different probe identities can differ from Cell Ranger Flex: tied
-competing identities may be discarded, a unique dominant identity may be
-retained, and different UMI sequences remain distinct. The current synthetic
-native fixture is the first group in Cyto's UMI stream and returns one for its
-same-UMI/two-probe case; a broader native characterization found later tied
-groups are dropped. This first-group result should not be generalized to every
-cross-probe collision. Cell Ranger's documented Flex
-method counts ligation events per probe pair and sums probe-pair UMIs by gene
-([official algorithm](https://www.10xgenomics.com/support/cn/software/cell-ranger/latest/algorithms-overview/cr-flex-frp-algorithm)).
-This is a known counter-specific difference, not a source-integrity issue.
+The workflow counts each physical lane once for all paired BC/CR aliases and
+produces every donor/state declared for one physical pool in a single invocation.
+It retains CBC16, canonical GEX BC8 and lane identity; guide CR8 is translated
+to its paired GEX BC8 before joining modalities. Kallisto 0.52.0 pseudoaligns
+included probe50 targets and anchored guide targets; Bustools 0.45.1 corrects
+barcode components independently and deduplicates UMIs per probe target across
+source chunks. Probe counts are summed to stable ENSG genes afterward.
+Native barcode prefiltering follows the standard branch's Bustools policy at
+lane × canonical BC alias scope, followed by common QC and DEA/GSEA.
 
-The synthetic lane test validates native mapping, guide UMI deduplication across
-source chunks, sparse H5AD construction and donor/state aggregation. It does not
-replace the first full lane run; the first production output is
-`zhu_2025_D1_rest_cl`. The R2 L25–L48 author-versus-GEO stimulation-time label
-conflict remains unresolved.
+The native synthetic check validates barcode correction, ambiguous-barcode
+rejection, alias separation and probe-level UMI counting. Bounded read checks
+support the GEX/guide layouts, but do not replace full production validation.
+The first full pool is `CD4i_R2_L25-48`, producing
+`zhu_2025_D1_stim48hr_cl`, `zhu_2025_D2_stim48hr_cl`,
+`zhu_2025_D3_stim48hr_cl` and `zhu_2025_D4_stim48hr_cl` together. Missing guide
+lanes and the author-versus-GEO stimulation-time label conflict remain
+unresolved source limitations; available reads are processed as deposited.
 
 ### Orion: no public raw-read accession found
 
