@@ -561,7 +561,7 @@ process QC_COMPARISON {
     script:
     def cellIdArgs = params.cell_id_columns ? "--cell-id-columns '${params.cell_id_columns}'" : ""
     """
-    python ${comparison_script} \
+    python -u ${comparison_script} \
       --dataset-id ${dataset_id} \
       --curated-h5ad ${curated_h5ad} \
       --reprocessed-h5ad ${reprocessed_h5ad} \
