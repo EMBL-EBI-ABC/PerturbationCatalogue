@@ -45,6 +45,7 @@ params.flex_guide_targets = ""
 params.flex_probe_barcodes = ""
 params.flex_source_cache = ""
 params.flex_max_forks = 2
+params.flex_alias_workers = 2
 params.flex_gex_probe_targets = ""
 params.flex_gex_t2g = ""
 params.flex_gex_probe_to_gene = ""
@@ -283,7 +284,8 @@ process KB_FLEX_LANE {
       --gex-probe-to-gene ${gex_probe_to_gene} \
       --guide-index ${guide_index} --guide-t2g ${guide_t2g} \
       --cbc-whitelist ${cbc_whitelist} --bc-barcode-variants ${bc_barcode_variants} --sra-bin '${sraRoot}' \
-      ${cacheArg} --output-dir flex_lane --threads ${task.cpus}
+      ${cacheArg} --output-dir flex_lane --threads ${task.cpus} \
+      --alias-workers ${params.flex_alias_workers}
     """
 }
 
@@ -703,6 +705,9 @@ workflow {
         if (!(params.flex_max_forks.toString() ==~ /[1-9][0-9]*/) ||
             params.flex_max_forks.toInteger() > 24)
             error "--flex_max_forks must be between 1 and 24"
+        if (!(params.flex_alias_workers.toString() ==~ /[1-9][0-9]*/) ||
+            params.flex_alias_workers.toInteger() > 16)
+            error "--flex_alias_workers must be between 1 and 16"
         if (params.cell_id_columns != "lane_id")
             error "Flex comparison requires --cell_id_columns lane_id"
 

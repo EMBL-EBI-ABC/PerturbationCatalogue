@@ -245,9 +245,118 @@ def test_lane_native():
                 "Guide counts did not join by the full CBC+GEX BC identity"
             )
 
+        worker_reference = {
+            "probe_ids": targets,
+            "probe_to_gene": {"probe_Z": "ENSG1", "probe_A": "ENSG1"},
+            "gene_ids": ["ENSG1"],
+            "gene_names": ["GENE1"],
+            "guide_ids": [guide_target],
+            "guide_labels": ["NTC_guide1"],
+        }
+        lane_metadata = {
+            "pool_id": "P1",
+            "counter_version": {
+                "kb_python": "0.30.2",
+                "kallisto": "kallisto, version 0.52.0",
+                "bustools": "bustools, version 0.45.1",
+            },
+            "counter_version_label": (
+                "kb-python 0.30.2; kallisto, version 0.52.0; "
+                "bustools, version 0.45.1"
+            ),
+            "reference_sha256": {},
+            "gex_mapping": {"bus_records": 4},
+            "guide_mapping": {"bus_records": 1},
+            "equivalence_class_metrics_scope": "post-correction, before allowlist",
+        }
+
+        def run_alias_outputs(name, requested_workers):
+            case = root / name
+            gex_bus_dir, guide_bus_dir = case / "gex_bus", case / "guide_bus"
+            for source_writer, destination in (
+                (gex_writer, gex_bus_dir),
+                (guide_writer, guide_bus_dir),
+            ):
+                destination.mkdir(parents=True)
+                for alias in alias_sequences:
+                    source_path = source_writer.paths[alias]
+                    if source_path.is_file():
+                        (destination / f"{alias}.bus").write_bytes(
+                            source_path.read_bytes()
+                        )
+            context = {
+                "lane_id": "laneA",
+                "samples_by_bc": {
+                    "BC001": {"sample_id": "S1", "cr_alias": "CR001"},
+                    "BC002": {"sample_id": "S1", "cr_alias": "CR002"},
+                },
+                "bc_sequences": alias_sequences,
+                "reference": worker_reference,
+                "guide_status": "available",
+                "gex_bus_dir": gex_bus_dir,
+                "guide_bus_dir": guide_bus_dir,
+                "gex_records_by_alias": gex_writer.records_by_alias,
+                "guide_records_by_alias": guide_writer.records_by_alias,
+                "gex_ec": gex_ec,
+                "gex_transcripts": gex_tx,
+                "gex_t2g": gex_t2g,
+                "guide_ec": guide_ec,
+                "guide_transcripts": guide_tx,
+                "guide_t2g": guide_t2g,
+                "work": case / "work",
+                "logs": case / "logs",
+                "output_counts": case / "lane_counts",
+                "bustools": bustools,
+                "lane_metrics": lane_metadata,
+            }
+            for path in (context["work"], context["logs"], context["output_counts"]):
+                path.mkdir(parents=True)
+            metrics, effective_workers, sort_threads = lane.process_aliases(
+                ["BC001", "BC002"], context, requested_workers, threads=8
+            )
+            return case, metrics, effective_workers, sort_threads
+
+        serial, serial_metrics, serial_workers, serial_sort_threads = run_alias_outputs(
+            "serial", 1
+        )
+        parallel, parallel_metrics, parallel_workers, parallel_sort_threads = (
+            run_alias_outputs("parallel", 2)
+        )
+        if (serial_workers, serial_sort_threads) != (1, 8):
+            raise AssertionError("Serial alias processing changed its thread budget")
+        if (parallel_workers, parallel_sort_threads) != (2, 3):
+            raise AssertionError("Two alias workers exceeded the allocated CPU budget")
+        if serial_metrics != parallel_metrics:
+            raise AssertionError("Serial and parallel barcode metrics differ")
+        for alias, expected_guides in (("BC001", [[1]]), ("BC002", [[0]])):
+            serial_h5ad = ad.read_h5ad(serial / "lane_counts" / f"laneA__{alias}.h5ad")
+            parallel_h5ad = ad.read_h5ad(
+                parallel / "lane_counts" / f"laneA__{alias}.h5ad"
+            )
+            try:
+                if not serial_h5ad.obs.equals(parallel_h5ad.obs):
+                    raise AssertionError(f"{alias} observation metadata differs")
+                if not serial_h5ad.var.equals(parallel_h5ad.var):
+                    raise AssertionError(f"{alias} feature metadata differs")
+                if (serial_h5ad.X != parallel_h5ad.X).nnz:
+                    raise AssertionError(f"{alias} expression counts differ")
+                if (serial_h5ad.obsm["guides"] != parallel_h5ad.obsm["guides"]).nnz:
+                    raise AssertionError(f"{alias} guide counts differ")
+                guide_rows = serial_h5ad.obsm["guides"].toarray().tolist()
+                if guide_rows != expected_guides:
+                    raise AssertionError(f"{alias} guide values are {guide_rows}")
+                if (
+                    serial_h5ad.uns["flex_lane_metrics_json"]
+                    != parallel_h5ad.uns["flex_lane_metrics_json"]
+                ):
+                    raise AssertionError(f"{alias} barcode metadata differs")
+            finally:
+                serial_h5ad.file.close()
+                parallel_h5ad.file.close()
+
     print(
         "PASS: source EC reorder, cross-source UMI dedup, BC alias partition, "
-        "CR-to-paired-BC replacement, and 24-base guide join"
+        "CR-to-paired-BC replacement, serial/parallel alias parity, and guide join"
     )
 
 

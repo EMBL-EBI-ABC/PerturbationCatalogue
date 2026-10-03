@@ -2,6 +2,7 @@
 """Count one physical Flex/Ultima lane with pinned Kallisto and Bustools inputs."""
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import csv
 import gzip
 import hashlib
@@ -674,6 +675,7 @@ def write_alias_h5ad(
     gex_matrix,
     guide_matrix,
     lane_metrics,
+    barcode_metrics,
 ):
     cell_ids = [f"{barcode}-1_{lane_id}" for barcode in gex_barcodes]
     if len(cell_ids) != len(set(cell_ids)):
@@ -732,7 +734,7 @@ def write_alias_h5ad(
             "bc_alias": bc_alias,
             "cr_alias": cr_alias,
             "guide_coverage_status": guide_status,
-            "barcode_metrics": lane_metrics["barcode_counts"].get(bc_alias, {}),
+            "barcode_metrics": barcode_metrics,
             "gex_mapping": lane_metrics["gex_mapping"],
             "guide_mapping": lane_metrics["guide_mapping"],
             "equivalence_class_metrics_scope": lane_metrics[
@@ -980,11 +982,199 @@ def filter_and_count_alias(
     }
 
 
+_ALIAS_WORKER_CONTEXT = None
+
+
+def initialize_alias_worker(context):
+    global _ALIAS_WORKER_CONTEXT
+    _ALIAS_WORKER_CONTEXT = context
+
+
+def process_alias(alias, context=None):
+    """Filter/count and write the independent output for one GEX BC alias."""
+    context = context if context is not None else _ALIAS_WORKER_CONTEXT
+    if context is None:
+        raise RuntimeError("Alias worker context was not initialized")
+
+    sample = context["samples_by_bc"][alias]
+    cr_alias = sample["cr_alias"]
+    gex_bus = Path(context["gex_bus_dir"]) / f"{alias}.bus"
+    guide_bus = Path(context["guide_bus_dir"]) / f"{alias}.bus"
+    work, logs = Path(context["work"]), Path(context["logs"])
+    bustools = context["bustools"]
+    threads = context["sort_threads"]
+    reference = context["reference"]
+    lane_metrics = context["lane_metrics"]
+    guide_status = context["guide_status"]
+
+    gex_result = None
+    filter_metrics = {"input_bus_records": 0, "retained_cells": 0}
+    if gex_bus.is_file():
+        gex_prefix, filter_metrics = filter_and_count_alias(
+            gex_bus,
+            context["gex_ec"],
+            context["gex_transcripts"],
+            context["gex_t2g"],
+            "gex",
+            alias,
+            work,
+            logs,
+            bustools,
+            threads,
+        )
+        if gex_prefix:
+            gex_barcodes, probe_matrix = read_count_matrix(
+                gex_prefix, reference["probe_ids"]
+            )
+            bc_sequence = context["bc_sequences"][alias]
+            if any(
+                not re.fullmatch(r"[ACGT]{24}", barcode) or barcode[16:] != bc_sequence
+                for barcode in gex_barcodes
+            ):
+                raise ValueError(f"Filtered GEX barcodes do not match alias {alias}")
+            if len(gex_barcodes) != len(set(gex_barcodes)):
+                raise ValueError(f"Duplicate GEX composite barcode in {alias}")
+            gex_matrix = aggregate_probe_matrix(
+                probe_matrix,
+                reference["probe_ids"],
+                reference["probe_to_gene"],
+                reference["gene_ids"],
+            )
+            filter_metrics["retained_cells"] = len(gex_barcodes)
+            gex_result = (gex_barcodes, gex_matrix)
+
+    guide_result = None
+    guide_filter_metrics = {"input_bus_records": 0}
+    if guide_bus.is_file() and context["guide_ec"] is not None:
+        guide_prefix, guide_filter_metrics = filter_and_count_alias(
+            guide_bus,
+            context["guide_ec"],
+            context["guide_transcripts"],
+            context["guide_t2g"],
+            "guide",
+            alias,
+            work,
+            logs,
+            bustools,
+            threads,
+        )
+        if guide_prefix:
+            guide_barcodes, guide_matrix = read_count_matrix(
+                guide_prefix, reference["guide_ids"]
+            )
+            bc_sequence = context["bc_sequences"][alias]
+            if any(
+                not re.fullmatch(r"[ACGT]{24}", barcode) or barcode[16:] != bc_sequence
+                for barcode in guide_barcodes
+            ):
+                raise ValueError(
+                    f"Guide barcode replacement did not map CR to GEX alias {alias}"
+                )
+            if len(guide_barcodes) != len(set(guide_barcodes)):
+                raise ValueError(f"Duplicate guide composite barcode in {alias}")
+            guide_result = (guide_barcodes, guide_matrix)
+
+    if gex_result is None:
+        gex_barcodes = []
+        gex_matrix = sparse.csr_matrix((0, len(reference["gene_ids"])), dtype=np.int32)
+    else:
+        gex_barcodes, gex_matrix = gex_result
+    guide_matrix_joined, guide_joined = join_guide_counts(
+        gex_barcodes,
+        guide_result,
+        len(reference["guide_ids"]),
+    )
+    guide_matrix_before_join = (
+        guide_result[1]
+        if guide_result is not None
+        else sparse.csr_matrix((0, len(reference["guide_ids"])), dtype=np.int32)
+    )
+    barcode_metrics = {
+        "sample_id": sample["sample_id"],
+        "cr_alias": cr_alias,
+        "gex_bus_records": context["gex_records_by_alias"][alias],
+        "guide_bus_records": context["guide_records_by_alias"][alias],
+        "filter": filter_metrics,
+        "guide_filter": guide_filter_metrics,
+        "cells": len(gex_barcodes),
+        "observed_composite_barcodes": filter_metrics.get(
+            "observed_composite_barcodes", 0
+        ),
+        "retained_cells": len(gex_barcodes),
+        "expression_umis": int(gex_matrix.sum()),
+        "expression_nnz": int(gex_matrix.nnz),
+        "genes_detected": int(gex_matrix.getnnz(axis=0).astype(bool).sum()),
+        "guide_umis_before_gex_join": int(guide_matrix_before_join.sum()),
+        "guide_nnz_before_gex_join": int(guide_matrix_before_join.nnz),
+        "guide_barcodes_joined": guide_joined,
+        "guide_umis_joined": int(guide_matrix_joined.sum()),
+        "guide_nnz_joined": int(guide_matrix_joined.nnz),
+        "guide_positive_cells": int(
+            np.count_nonzero(guide_matrix_joined.getnnz(axis=1))
+        ),
+    }
+    output = Path(context["output_counts"]) / f"{context['lane_id']}__{alias}.h5ad"
+    write_alias_h5ad(
+        output,
+        context["lane_id"],
+        alias,
+        cr_alias,
+        sample["sample_id"],
+        guide_status,
+        reference["gene_ids"],
+        reference["gene_names"],
+        reference["guide_labels"],
+        gex_barcodes,
+        gex_matrix,
+        guide_matrix_joined,
+        lane_metrics,
+        barcode_metrics,
+    )
+    gex_bus.unlink(missing_ok=True)
+    guide_bus.unlink(missing_ok=True)
+    return alias, barcode_metrics
+
+
+def process_aliases(aliases, context, requested_workers, threads):
+    if not 1 <= requested_workers <= 16:
+        raise ValueError("--alias-workers must be between 1 and 16")
+    if threads < 1 or not aliases:
+        raise ValueError("Alias processing requires positive threads and aliases")
+    workers = min(requested_workers, max(1, threads // 4), len(aliases))
+    sort_threads = threads if workers == 1 else max(1, threads // workers - 1)
+    context["sort_threads"] = sort_threads
+    if workers == 1:
+        return (
+            {alias: process_alias(alias, context)[1] for alias in aliases},
+            workers,
+            sort_threads,
+        )
+
+    results = {}
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=initialize_alias_worker,
+        initargs=(context,),
+    ) as executor:
+        futures = {executor.submit(process_alias, alias): alias for alias in aliases}
+        try:
+            for future in as_completed(futures):
+                alias, barcode_metrics = future.result()
+                results[alias] = barcode_metrics
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
+    return results, workers, sort_threads
+
+
 def execute(args):
     if not ID_RE.fullmatch(args.pool_id) or not ID_RE.fullmatch(args.lane_id):
         raise ValueError("Pool and lane IDs must be safe non-empty identifiers")
     if args.threads < 1:
         raise ValueError("--threads must be positive")
+    if not 1 <= args.alias_workers <= 16:
+        raise ValueError("--alias-workers must be between 1 and 16")
     outdir = Path(args.output_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     output_counts = outdir / "lane_counts"
@@ -1338,137 +1528,38 @@ def execute(args):
         guide_counter.targets_by_ec_id
     )
 
-    for alias in bc_aliases:
-        sample = samples_by_bc[alias]
-        cr_alias = sample["cr_alias"]
-        bc_bus = bc_writer.paths[alias]
-        guide_bus = cr_writer.paths[alias]
-        gex_result = None
-        filter_metrics = {"input_bus_records": 0, "retained_cells": 0}
-        if bc_bus.is_file():
-            gex_prefix, filter_metrics = filter_and_count_alias(
-                bc_bus,
-                ec_path_gex,
-                tx_path_gex,
-                args.gex_t2g,
-                "gex",
-                alias,
-                work,
-                logs,
-                bustools,
-                args.threads,
-            )
-            if gex_prefix:
-                gex_barcodes, probe_matrix = read_count_matrix(
-                    gex_prefix, reference["probe_ids"]
-                )
-                if any(
-                    not re.fullmatch(r"[ACGT]{24}", barcode)
-                    or barcode[16:] != bc_sequences[alias]
-                    for barcode in gex_barcodes
-                ):
-                    raise ValueError(
-                        f"Filtered GEX barcodes do not match alias {alias}"
-                    )
-                if len(gex_barcodes) != len(set(gex_barcodes)):
-                    raise ValueError(f"Duplicate GEX composite barcode in {alias}")
-                gex_matrix = aggregate_probe_matrix(
-                    probe_matrix,
-                    reference["probe_ids"],
-                    reference["probe_to_gene"],
-                    reference["gene_ids"],
-                )
-                filter_metrics["retained_cells"] = len(gex_barcodes)
-                gex_result = (gex_barcodes, gex_matrix)
-        guide_result = None
-        guide_filter_metrics = {"input_bus_records": 0}
-        if guide_bus.is_file() and ec_path_guide is not None:
-            guide_prefix, guide_filter_metrics = filter_and_count_alias(
-                guide_bus,
-                ec_path_guide,
-                tx_path_guide,
-                args.guide_t2g,
-                "guide",
-                alias,
-                work,
-                logs,
-                bustools,
-                args.threads,
-            )
-            if guide_prefix:
-                guide_barcodes, guide_matrix = read_count_matrix(
-                    guide_prefix, reference["guide_ids"]
-                )
-                if any(
-                    not re.fullmatch(r"[ACGT]{24}", barcode)
-                    or barcode[16:] != bc_sequences[alias]
-                    for barcode in guide_barcodes
-                ):
-                    raise ValueError(
-                        f"Guide barcode replacement did not map CR to GEX alias {alias}"
-                    )
-                if len(guide_barcodes) != len(set(guide_barcodes)):
-                    raise ValueError(f"Duplicate guide composite barcode in {alias}")
-                guide_result = (guide_barcodes, guide_matrix)
-        if gex_result is None:
-            gex_barcodes = []
-            gex_matrix = sparse.csr_matrix(
-                (0, len(reference["gene_ids"])), dtype=np.int32
-            )
-        else:
-            gex_barcodes, gex_matrix = gex_result
-        output = output_counts / f"{args.lane_id}__{alias}.h5ad"
-        guide_matrix_joined, guide_joined = join_guide_counts(
-            gex_barcodes,
-            guide_result,
-            len(reference["guide_ids"]),
-        )
-        guide_matrix_before_join = (
-            guide_result[1]
-            if guide_result is not None
-            else sparse.csr_matrix((0, len(reference["guide_ids"])), dtype=np.int32)
-        )
-        metrics["barcode_counts"][alias] = {
-            "sample_id": sample["sample_id"],
-            "cr_alias": cr_alias,
-            "gex_bus_records": gex_counter.alias_writer.records_by_alias[alias],
-            "guide_bus_records": cr_writer.records_by_alias[alias],
-            "filter": filter_metrics,
-            "guide_filter": guide_filter_metrics,
-            "cells": len(gex_barcodes),
-            "observed_composite_barcodes": filter_metrics.get(
-                "observed_composite_barcodes", 0
-            ),
-            "retained_cells": len(gex_barcodes),
-            "expression_umis": int(gex_matrix.sum()),
-            "expression_nnz": int(gex_matrix.nnz),
-            "genes_detected": int(gex_matrix.getnnz(axis=0).astype(bool).sum()),
-            "guide_umis_before_gex_join": int(guide_matrix_before_join.sum()),
-            "guide_nnz_before_gex_join": int(guide_matrix_before_join.nnz),
-            "guide_barcodes_joined": guide_joined,
-            "guide_umis_joined": int(guide_matrix_joined.sum()),
-            "guide_nnz_joined": int(guide_matrix_joined.nnz),
-            "guide_positive_cells": int(
-                np.count_nonzero(guide_matrix_joined.getnnz(axis=1))
-            ),
-        }
-        write_alias_h5ad(
-            output,
-            args.lane_id,
-            alias,
-            cr_alias,
-            sample["sample_id"],
-            guide_status,
-            reference["gene_ids"],
-            reference["gene_names"],
-            reference["guide_labels"],
-            gex_barcodes,
-            gex_matrix,
-            guide_matrix_joined,
-            metrics,
-        )
-        bc_bus.unlink(missing_ok=True)
-        guide_bus.unlink(missing_ok=True)
+    alias_context = {
+        "pool_id": args.pool_id,
+        "lane_id": args.lane_id,
+        "samples_by_bc": samples_by_bc,
+        "bc_sequences": bc_sequences,
+        "reference": reference,
+        "guide_status": guide_status,
+        "gex_bus_dir": bus_chunks / "gex_aliases",
+        "guide_bus_dir": bus_chunks / "guide_aliases",
+        "gex_records_by_alias": gex_counter.alias_writer.records_by_alias,
+        "guide_records_by_alias": cr_writer.records_by_alias,
+        "gex_ec": ec_path_gex,
+        "gex_transcripts": tx_path_gex,
+        "gex_t2g": args.gex_t2g,
+        "guide_ec": ec_path_guide,
+        "guide_transcripts": tx_path_guide,
+        "guide_t2g": args.guide_t2g,
+        "work": work,
+        "logs": logs,
+        "output_counts": output_counts,
+        "bustools": bustools,
+        "lane_metrics": metrics,
+    }
+    barcode_metrics, effective_workers, sort_threads = process_aliases(
+        bc_aliases, alias_context, args.alias_workers, args.threads
+    )
+    metrics["barcode_counts"] = {alias: barcode_metrics[alias] for alias in bc_aliases}
+    metrics["alias_processing"] = {
+        "requested_workers": args.alias_workers,
+        "effective_workers": effective_workers,
+        "bustools_sort_threads_per_worker": sort_threads,
+    }
 
     metrics_path = outdir / "lane_metrics.json"
     metrics_path.write_text(json.dumps(metrics, sort_keys=True, indent=2) + "\n")
@@ -1501,9 +1592,14 @@ def main():
     parser.add_argument("--source-cache-dir", default="")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--threads", type=int, default=8)
+    parser.add_argument("--alias-workers", type=int, default=2)
     args = parser.parse_args()
     if args.threads < 1:
         parser.error("--threads must be at least 1")
+    if args.alias_workers < 1:
+        parser.error("--alias-workers must be at least 1")
+    if args.alias_workers > 16:
+        parser.error("--alias-workers must be at most 16")
     execute(args)
 
 
