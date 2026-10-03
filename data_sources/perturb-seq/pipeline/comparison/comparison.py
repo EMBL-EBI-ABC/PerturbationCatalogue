@@ -333,6 +333,48 @@ class H5CSRMatrix:
             n_cols = len(col_idx)
             remap = {int(old): new for new, old in enumerate(col_idx)}
 
+        if (
+            len(row_idx)
+            and np.all((row_idx >= 0) & (row_idx < self.shape[0]))
+            and (col_idx is None or np.all((col_idx >= 0) & (col_idx < self.shape[1])))
+            and (col_idx is None or len(np.unique(col_idx)) == len(col_idx))
+        ):
+            unique_rows = np.unique(row_idx)
+            row_start, row_stop = int(unique_rows[0]), int(unique_rows[-1]) + 1
+            span_rows = row_stop - row_start
+            if span_rows <= 2 * len(unique_rows):
+                span_indptr = np.asarray(
+                    self.indptr[row_start : row_stop + 1], dtype=np.int64
+                )
+                row_nnz = np.diff(span_indptr)
+                selected_nnz = int(row_nnz[unique_rows - row_start].sum(dtype=np.int64))
+                span_nnz = int(span_indptr[-1] - span_indptr[0])
+                if span_nnz <= 2 * selected_nnz:
+                    first_nnz = int(span_indptr[0])
+                    data = (
+                        np.asarray(self.data[first_nnz : first_nnz + span_nnz])
+                        if span_nnz
+                        else np.array([], dtype=self.dtype)
+                    )
+                    indices = (
+                        np.asarray(
+                            self.indices[first_nnz : first_nnz + span_nnz],
+                            dtype=np.int64,
+                        )
+                        if span_nnz
+                        else np.array([], dtype=np.int64)
+                    )
+                    span = sp.csr_matrix(
+                        (data, indices, span_indptr - first_nnz),
+                        shape=(span_rows, self.shape[1]),
+                    )
+                    block = span[row_idx - row_start, :]
+                    if col_idx is not None:
+                        block = block[:, col_idx]
+                    block.indices = block.indices.astype(np.int64, copy=False)
+                    block.indptr = block.indptr.astype(np.int64, copy=False)
+                    return block
+
         data_parts = []
         index_parts = []
         indptr = np.zeros(len(row_idx) + 1, dtype=np.int64)
@@ -365,7 +407,10 @@ class H5CSRMatrix:
             if nnz
             else np.array([], dtype=np.int64)
         )
-        return sp.csr_matrix((data, indices, indptr), shape=(len(row_idx), n_cols))
+        block = sp.csr_matrix((data, indices, indptr), shape=(len(row_idx), n_cols))
+        block.indices = block.indices.astype(np.int64, copy=False)
+        block.indptr = block.indptr.astype(np.int64, copy=False)
+        return block
 
 
 def matrix_row_sum_nnz(matrix, row_pos, col_pos):
