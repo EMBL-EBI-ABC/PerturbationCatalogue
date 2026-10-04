@@ -1,0 +1,2 @@
+pool_id	lane	lane_id	run_accession	sample_accession	secondary_sample_accession	experiment_accession	library_name	sra_bytes	sra_md5	unavailable_reason	checked_utc_date
+CD4i_R1_L01-23	13	CD4i_R1L13	SRR36713849	SAMN54497571	SRS27689995	SRX31721204	CD4i_R1L13_CRI.1_lib	16821878342	eda810819a1585362d186b92966dc178	Fresh NCBI SDL-resolved archive returned HTTP 404; original paired FASTQs require rehydration and SDL returned no direct links.	2026-10-04

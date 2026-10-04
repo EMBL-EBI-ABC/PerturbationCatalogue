@@ -45,12 +45,16 @@ validation remains a separate check.
 
 `samples.tsv` is generated from the author's pinned sample metadata and maps each
 donor/state to its exact physical pool, lane set and BC/CR pairs. R1 L01–L23 has
-complete guide archive coverage. R2 L01–L24 and L25–L48 have missing guide
-lanes; `guide_coverage.tsv` records every lane, and outputs preserve the status
-in `obs` and H5AD provenance. For a lane with no archived guide source, its
-guide matrix is zero-filled and explicitly marked `no_archived_guide_sra`; that
-matrix must not be read as observed absence of guide counts. Missing reads are
-never replaced with author assignments. For the R2 L25–L48 conflict, inputs
+one currently unavailable guide source for lane 13 (see
+[unavailable_guide_sources.tsv](unavailable_guide_sources.tsv)); other R1 guide
+source rows remain available. R2 L01–L24 and L25–L48 have missing guide lanes;
+`guide_coverage.tsv` records every lane, and outputs preserve the status in
+`obs` and H5AD provenance. For a lane with no archived guide source, its guide
+matrix is zero-filled and explicitly marked `no_archived_guide_sra`; that matrix
+must not be read as observed absence of guide counts. For lanes marked `partial`,
+the available guide sources do not cover the full expected lane, so missing
+guide counts are unknown rather than measured zero. Missing reads are never
+replaced with author assignments. For the R2 L25–L48 conflict, inputs
 follow the explicit author donor/probe mapping while the GEO title discrepancy
 remains recorded for later resolution.
 
