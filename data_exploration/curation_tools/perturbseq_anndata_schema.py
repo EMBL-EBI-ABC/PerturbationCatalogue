@@ -240,8 +240,8 @@ _READOUT_MEASUREMENT_ID_BY_LABEL: dict[str, str | None] = {
     "ligand binding": "NCIT:C178030",
     "ion channel activity": "BAO:0002997",
     "fluorescence": "BAO:0000363",
+    "virus replication": "mesh:D014779",
     "surface protein expression": None,
-    "viral growth": None,
 }
 _READOUT_MEASUREMENT_LABELS = _labels_from_id_map(
     _READOUT_MEASUREMENT_ID_BY_LABEL
