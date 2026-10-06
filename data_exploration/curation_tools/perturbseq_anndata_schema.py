@@ -73,7 +73,29 @@ _MODEL_SYSTEM_ID_BY_LABEL: dict[str, str | None] = {
 _MODEL_SYSTEM_LABELS = _labels_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
 _MODEL_SYSTEM_IDS = _ids_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
 
-_SPECIES_ID_BY_LABEL: dict[str, str | None] = {"Homo sapiens": None}
+_SPECIES_ID_BY_LABEL: dict[str, str | None] = {
+    "Homo sapiens": None,
+    "Mus musculus": None,
+    "Saccharomyces cerevisiae": None,
+    "Saccharomyces cerevisiae S288C": None,
+    "Aequorea victoria": None,
+    "Escherichia coli": None,
+    "Escherichia coli BL21(DE3)": None,
+    "Streptococcus pyogenes": None,
+    "Pseudomonas aeruginosa": None,
+    "Zika virus": None,
+    "Ruminiclostridium cellulolyticum": None,
+    "Acetivibrio thermocellus": None,
+    "Atropa belladonna": None,
+    "Bos taurus": None,
+    "Influenza A virus (A/Aichi/2/1968(H3N2))": None,
+    "Influenza A virus (A/Puerto Rico/8/1934(H1N1))": None,
+    "Rattus norvegicus": None,
+    "H1N1 subtype": None,
+    "Streptococcus sp. group G": None,
+    "Severe acute respiratory syndrome coronavirus 2": None,
+    "Escherichia coli K-12": None,
+}
 _SPECIES = _labels_from_id_map(_SPECIES_ID_BY_LABEL)
 
 _SEX_ID_BY_LABEL: dict[str, str | None] = {
