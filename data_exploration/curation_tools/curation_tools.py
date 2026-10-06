@@ -487,12 +487,9 @@ class CuratedDataset:
             if not os.path.exists(os.path.dirname(self.curated_parquet_metadata_path)):
                 os.makedirs(os.path.dirname(self.curated_parquet_metadata_path))
 
-            if (
-                not overwrite
-                and (
-                    os.path.exists(self.curated_parquet_data_path)
-                    or os.path.exists(self.curated_parquet_metadata_path)
-                )
+            if not overwrite and (
+                os.path.exists(self.curated_parquet_data_path)
+                or os.path.exists(self.curated_parquet_metadata_path)
             ):
                 print(
                     f"Files {self.curated_parquet_data_path} or {self.curated_parquet_metadata_path} already exist. Skipping write."
@@ -501,13 +498,17 @@ class CuratedDataset:
             # if save_metadata_only is True, save only the metadata and skip saving the data
             if save_metadata_only:
                 # Write metadata to parquet
-                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
+                full_metadata_df.to_parquet(
+                    self.curated_parquet_metadata_path, index=False
+                )
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
                 return
 
             else:
                 # Write metadata to parquet
-                full_metadata_df.to_parquet(self.curated_parquet_metadata_path, index=False)
+                full_metadata_df.to_parquet(
+                    self.curated_parquet_metadata_path, index=False
+                )
                 print(f"✅ Metadata saved to {self.curated_parquet_metadata_path}")
 
                 print("Processing data...")
@@ -615,7 +616,7 @@ class CuratedDataset:
             **{str(i): i for i in range(1, 23)},
             "X": 23,
             "Y": 24,
-            "MT": 25
+            "MT": 25,
         }
 
         # Apply the mapping to the chromosome column
@@ -845,7 +846,7 @@ class CuratedDataset:
             raise ValueError(f"Column {column} is empty in the df")
 
         df[column] = df[column].str.split(sep).str[0]
-        
+
         print(f"Removed version numbers from {column}")
 
         return df
@@ -909,11 +910,13 @@ class CuratedDataset:
         Returns:
             dict: A dictionary containing the response from ChEBI.
         """
-        
-        r = requests.get(f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1")
-        
+
+        r = requests.get(
+            f"https://www.ebi.ac.uk/chebi/backend/api/public/es_search/?term={compound_name}&page=1&size=1"
+        )
+
         if r.ok:
-            return r.json().get('results')[0].get('_source')
+            return r.json().get("results")[0].get("_source")
         else:
             print(f"Error: {r.status_code} - {r.text}")
             return None
@@ -958,8 +961,10 @@ class CuratedDataset:
                 continue
             else:
                 # Merge the search results with the original DataFrame
-                chebi_results_df = pd.DataFrame(chebi_results)[['name', 'chebi_accession']]
-                chebi_results_df['original_name'] = compound_name
+                chebi_results_df = pd.DataFrame(chebi_results)[
+                    ["name", "chebi_accession"]
+                ]
+                chebi_results_df["original_name"] = compound_name
                 chebi_results_df = chebi_results_df.rename(
                     columns={
                         "name": "treatment_label",
@@ -985,7 +990,9 @@ class CuratedDataset:
             ).drop(columns=["original_name"])
 
             setattr(self.adata, "obs", df)
-            print(f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}")
+            print(
+                f"Successfully mapped {len(mapped_compounds)}/{len(compound_names)} compounds: {mapped_compounds}"
+            )
             display(search_results_df)
             if unmapped_compounds:
                 print(f"Failed to map compounds: {unmapped_compounds}")
@@ -1026,22 +1033,28 @@ class CuratedDataset:
             raise ValueError(f"Column {input_column} is empty")
 
         # reset index to avoid duplicate gene symbols
-        df.index.name = 'original_index'
+        df.index.name = "original_index"
         df = df.reset_index()
 
         # initialize the converted DataFrame
-        conv_df = df[[input_column, 'original_index']].copy()
-        conv_df['positional_index'] = range(len(conv_df))
+        conv_df = df[[input_column, "original_index"]].copy()
+        conv_df["positional_index"] = range(len(conv_df))
 
         if multiple_entries:
             if multiple_entries_sep is None:
-                raise ValueError("multiple_entries_sep must be provided if multiple_entries is True")
-            conv_df[input_column] = conv_df[input_column].str.split(multiple_entries_sep)
+                raise ValueError(
+                    "multiple_entries_sep must be provided if multiple_entries is True"
+                )
+            conv_df[input_column] = conv_df[input_column].str.split(
+                multiple_entries_sep
+            )
             conv_df = conv_df.explode(input_column)
 
         # Remove version numbers from gene symbols/ENSG IDs
         if remove_version:
-            conv_df = self.remove_version_from_genes(df=conv_df, column=input_column, sep=version_sep)
+            conv_df = self.remove_version_from_genes(
+                df=conv_df, column=input_column, sep=version_sep
+            )
 
         reference = self.load_opentargets_gene_reference()
         conv_df["normalized_input_identifier"] = conv_df[input_column].map(
@@ -1095,8 +1108,8 @@ class CuratedDataset:
 
         if multiple_entries:
             # collapse the DataFrame
-            conv_df = self.collapse_df(conv_df, unique_val_column='positional_index')
-            conv_df = conv_df.set_index('positional_index')
+            conv_df = self.collapse_df(conv_df, unique_val_column="positional_index")
+            conv_df = conv_df.set_index("positional_index")
 
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
@@ -1119,17 +1132,19 @@ class CuratedDataset:
                 "ensembl_gene_id": "ensembl_gene_id",
                 "gene_symbol": "gene_symbol",
             }
-        
+
         # if somehow the new column names already exist in the DataFrame, rename them to avoid conflicts
         for new_col in new_colnames_map.values():
             if new_col in conv_df.columns:
                 conv_df = conv_df.rename(columns={new_col: f"original_{new_col}"})
-                print(f"Renamed existing column {new_col} to original_{new_col} to avoid conflicts.")
+                print(
+                    f"Renamed existing column {new_col} to original_{new_col} to avoid conflicts."
+                )
 
         conv_df = conv_df.rename(columns=new_colnames_map)
         conv_df = conv_df.replace("None", None)
         # keep only relevant columns
-        conv_df = conv_df[list(new_colnames_map.values()) + ['original_index']]
+        conv_df = conv_df[list(new_colnames_map.values()) + ["original_index"]]
 
         # drop overlapping columns in the original df to avoid conflicts when merging, but keep the "original_index" column
         out_df = df[list(set(df.columns) - set(conv_df.columns))]
@@ -1137,7 +1152,7 @@ class CuratedDataset:
         # merge the converted DataFrame to the original DataFrame
         out_df = out_df.merge(conv_df, "left", left_index=True, right_index=True)
 
-        out_df.index.name = 'index'
+        out_df.index.name = "index"
 
         # if keep_unmapped is False, remove unmapped genes from the DataFrame
         # this subset is done on adata.obs or adata.var, so that the adata object is updated as a whole
@@ -1596,10 +1611,12 @@ class CuratedDataset:
 
         exploded_cols = [c for c in df.columns if c != unique_val_column]
 
-        pdf_collapsed = pdf.group_by(unique_val_column).agg([
-            pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
-            for c in exploded_cols
-        ])
+        pdf_collapsed = pdf.group_by(unique_val_column).agg(
+            [
+                pl.col(c).drop_nulls().cast(pl.String).str.join(sep)
+                for c in exploded_cols
+            ]
+        )
 
         pdf_collapsed = pdf_collapsed.to_pandas()
 
@@ -1865,14 +1882,14 @@ def _upload_parquet_to_bq(
     client = bigquery.Client(project=project_id)
     target_table_base = f"{project_id}.{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
-    
+
     # Verify that the target table exists before creating the staging table.
     client.get_table(target_table_base)
     if verbose:
         print(
             f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
         )
-    
+
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
@@ -1929,7 +1946,9 @@ def merge_staging_to_target(
     """
 
     # Fetch target table schema from BigQuery
-    target_schema = {field.name.lower(): field for field in client.get_table(target_table_id).schema}
+    target_schema = {
+        field.name.lower(): field for field in client.get_table(target_table_id).schema
+    }
     cast_type_aliases = {
         "INTEGER": "INT64",
         "FLOAT": "FLOAT64",
@@ -1974,8 +1993,6 @@ def merge_staging_to_target(
     print(f"Merge completed: staging → {target_table_id} with type-safe casting.")
 
 
-
-
 def download_file(
     url: str = None, dest_path: str = None, overwrite=False, unarchive: bool = False
 ) -> None:
@@ -2017,11 +2034,12 @@ def download_file(
 
     print(f"Downloaded {url} to {dest_path}")
 
+
 def concatenate_parquet_files(
     parquet_dir: str,
     output_path: str,
     pattern: str = "*_curated_metadata.parquet",
-    verbose: bool = True
+    verbose: bool = True,
 ) -> None:
     """
     Stream-concatenate multiple Parquet files in `parquet_dir` matching `pattern` into a single file at `output_path`
@@ -2040,7 +2058,9 @@ def concatenate_parquet_files(
     """
     parquet_files = sorted(glob.glob(f"{parquet_dir}/{pattern}"))
     if not parquet_files:
-        raise ValueError(f"No parquet files found with pattern {pattern} in {parquet_dir}")
+        raise ValueError(
+            f"No parquet files found with pattern {pattern} in {parquet_dir}"
+        )
 
     if verbose:
         print(f"Found {len(parquet_files)} files. Initializing writer...")
@@ -2055,16 +2075,21 @@ def concatenate_parquet_files(
         for idx, fpath in enumerate(parquet_files, start=1):
             pf = pq.ParquetFile(fpath)
             if pf.schema_arrow != base_schema:
-                raise ValueError(f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output.")
+                raise ValueError(
+                    f"Schema mismatch in file {fpath}. Aborting to avoid misaligned output."
+                )
             for batch in pf.iter_batches():
                 writer.write_batch(batch)
                 total_rows += batch.num_rows
             if verbose:
-                print(f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})")
+                print(
+                    f"[{idx}/{len(parquet_files)}] Wrote {pf.metadata.num_rows} rows from {os.path.basename(fpath)} (cumulative {total_rows})"
+                )
     finally:
         writer.close()
         if verbose:
             print(f"Completed write. Total rows: {total_rows}. Output: {output_path}")
+
 
 def fetch_latest_ensg_id(ensg_list: list = None):
     """
@@ -2089,18 +2114,20 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     server = "https://rest.ensembl.org"
     ext = "/archive/id"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    
+
     # if more than 500 ids, split into chunks of 500
     chunk_size = 500
     if len(ensg_list) > chunk_size:
         df_list = []
-        print(f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}.")
+        print(
+            f"{len(ensg_list)} unmapped ENSG IDs identified; splitting into chunks of {chunk_size}."
+        )
         for i in range(0, len(ensg_list), chunk_size):
             chunk = ensg_list[i : i + chunk_size]
             print(f"Processing IDs {i+1} to {min(i + chunk_size, len(ensg_list))}...")
-            
+
             data = {"id": chunk}
-            
+
             r = requests.post(server + ext, headers=headers, json=data)
             if not r.ok:
                 r.raise_for_status()
@@ -2115,7 +2142,7 @@ def fetch_latest_ensg_id(ensg_list: list = None):
             r.raise_for_status()
             sys.exit()
         df = pd.DataFrame.from_dict(r.json())
-        
+
     df = df.explode("possible_replacement")
     df = pd.concat([df, df["possible_replacement"].apply(pd.Series)], axis=1).drop(
         columns=["possible_replacement"]
