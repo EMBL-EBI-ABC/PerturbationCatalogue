@@ -206,11 +206,8 @@ python -m curation_tools.study_curation.llm.run_cli --runs-root /data/curation-r
 
 ## Run data and outputs
 
-Each native run is stored at
+Each run is stored at
 `curation_runs/<run-name>/curation_run.sqlite3`. The database keeps source
 snapshots, configuration, step executions, artifacts, review decisions,
 append-only final edits, and event history. JSON and CSV deliverables are
 written only when you explicitly export a sealed run.
-
-Legacy run folders are not migrated or reused. Create a fresh native run for
-each new batch.

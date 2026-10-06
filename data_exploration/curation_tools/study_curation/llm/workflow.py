@@ -1,4 +1,4 @@
-"""Run-oriented orchestration for the native SQLite curation workflow.
+"""Run-oriented orchestration for the SQLite curation workflow.
 
 This module is the external seam for curation work.  Callers provide inputs at
 creation time and subsequently address a run by name; intermediate workflow
@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence, Type
 
+from pydantic import BaseModel
+
 from curation_tools.study_curation.llm.curation_run_store import (
     Artifact,
     CurationRunError,
@@ -32,11 +34,10 @@ from curation_tools.study_curation.llm.llm_curation_schema import (
     FieldCandidates,
     SpecificTermExtractionSchema,
 )
-from curation_tools.study_curation.paths import CURATION_RUNS_DIR, resolve_schema_path
+from curation_tools.study_curation.paths import CURATION_RUNS_DIR
 from curation_tools.study_curation.sources.mavedb import (
     extract_curated_mavedb_prompt_metadata,
 )
-from pydantic import BaseModel
 
 STEP_NAMES = {"step1", "step2", "step3", "step4", "step5"}
 
@@ -488,7 +489,7 @@ class CurationWorkflow:
         """
         store = self._store(run_ref)
         configuration = store.configuration()
-        schema_path = resolve_schema_path(configuration["schema_path"])
+        schema_path = Path(configuration["schema_path"]).resolve()
         actual_hash = hashlib.sha256(schema_path.read_bytes()).hexdigest()
         if actual_hash != expected_schema_hash:
             raise CurationRunError(
@@ -510,7 +511,7 @@ class CurationWorkflow:
         """Render the schema diff using persisted approvals without applying it."""
         store = self._store(run_ref)
         configuration = store.configuration()
-        schema_path = resolve_schema_path(configuration["schema_path"])
+        schema_path = Path(configuration["schema_path"]).resolve()
         source = schema_path.read_text(encoding="utf-8")
         from curation_tools.study_curation.llm.schema_updater import get_schema_diff
 

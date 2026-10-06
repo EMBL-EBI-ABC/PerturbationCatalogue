@@ -94,7 +94,7 @@ export PYTHONPATH=data_exploration
 
 ## Run history and source caches
 
-A native run uses this layout:
+Each run uses this layout:
 
 ```text
 curation_runs/<run-name>/
@@ -118,12 +118,6 @@ The database snapshots source text, records, prompts, model settings, extraction
 schema, intermediate results, and review history. Moving or refreshing live
 caches does not change those snapshots. Export and postprocessing directories
 are created explicitly; postprocessing requires a new or empty destination.
-
-Existing file-based runs retain their historical layouts. Native runs created
-before this reorganization continue to use their schema snapshots; shared-schema
-preview and update resolve the former default schema path to its new location.
-Historical extraction material remains in
-`data_exploration/MaveDB/llm_metadata_extraction/`, with a legacy notice.
 
 Downloaded cache contents and run artifacts are ignored by Git. The two source
 lookup JSON files and postprocessing mapping rules remain versioned. The

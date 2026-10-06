@@ -1,4 +1,4 @@
-"""Operational dashboard for native SQLite curation runs.
+"""Operational dashboard for SQLite curation runs.
 
 The dashboard retains the practical inspection and selection tools of the
 original control centre, but all status tables and payload viewers query the
@@ -13,6 +13,7 @@ from typing import Callable
 
 import pandas as pd
 import streamlit as st
+
 from curation_tools.study_curation.llm.curation_run_store import (
     DATABASE_FILENAME,
     CurationRunConflictError,
@@ -62,7 +63,7 @@ def _create_run_panel(workflow: CurationWorkflow) -> None:
             "Source caches are read once here. Prompts, model settings, schema source, "
             "Markdown, and selected MaveDB records are then snapshotted into SQLite."
         )
-        with st.form("create-native-run"):
+        with st.form("create-run"):
             run_name = st.text_input("Run name")
             publication_dir = st.text_input(
                 "Publication Markdown directory", value=str(FULL_TEXT_MD_DIR)
@@ -124,7 +125,7 @@ def _select_items(
     key: str,
     eligible: Callable[[dict[str, object]], bool],
 ) -> list[str]:
-    """Render the old queue-table interaction with native stable item IDs."""
+    """Render the curation queue using stable item IDs."""
     all_urns = sorted({urn for row in rows for urn in row["source_urns"]})
     uri_filter = st.multiselect("Filter MaveDB URIs", all_urns, key=f"{key}-uri-filter")
     displayed = [
@@ -279,7 +280,7 @@ def _review_panel(
     )
     st.dataframe(summary, hide_index=True, use_container_width=True)
     changes = []
-    with st.form("native-review"):
+    with st.form("candidate-review"):
         for row in review.candidates:
             st.markdown(f"#### `{row['field_name']}` — `{row['term']}`")
             left, middle, right = st.columns((2, 3, 2))
@@ -485,7 +486,7 @@ def _step5_tab(
         st.dataframe(
             pd.DataFrame(final_rows), hide_index=True, use_container_width=True
         )
-        with st.form("native-final-edit"):
+        with st.form("final-edit"):
             artifact_id = st.selectbox(
                 "Final artifact", [row["artifact_id"] for row in final_rows]
             )

@@ -1,4 +1,4 @@
-"""Integration checks for relocated resources and existing run schema paths."""
+"""Integration checks for packaged prompts and custom schema snapshots."""
 
 import hashlib
 import json
@@ -11,9 +11,8 @@ from curation_tools.study_curation.llm.source_ingestion import build_create_run_
 from curation_tools.study_curation.llm.workflow import CurationWorkflow
 
 
-@pytest.mark.parametrize("relocate_default", [False, True])
-def test_run_keeps_schema_snapshot_and_can_update_relocated_schema(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relocate_default: bool
+def test_run_uses_packaged_prompts_and_preserves_schema_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     schema_source = paths.DEFAULT_SCHEMA_PATH.read_text(encoding="utf-8")
     monkeypatch.chdir(tmp_path)
@@ -27,15 +26,9 @@ def test_run_keeps_schema_snapshot_and_can_update_relocated_schema(
     mapping.write_text(json.dumps({"urn:mavedb:1": ["10.1234/example"]}))
 
     schema_path = tmp_path / "custom_schema.py"
-    if relocate_default:
-        schema_path = (
-            tmp_path
-            / "data_exploration/curation_tools/llm_curation/llm_curation_schema.py"
-        )
-        schema_path.parent.mkdir(parents=True)
     schema_path.write_text(schema_source, encoding="utf-8")
     request = build_create_run_request(
-        run_name="existing",
+        run_name="resources",
         publication_dir=publications,
         mavedb_metadata_dir=metadata,
         urn_to_dois_file=mapping,
@@ -44,18 +37,10 @@ def test_run_keeps_schema_snapshot_and_can_update_relocated_schema(
     assert all(request.prompt_templates.values())
     workflow = CurationWorkflow(tmp_path / "runs")
     workflow.create_run(request)
-    original_configuration = workflow.run_configuration("existing")
-
-    if relocate_default:
-        relocated = tmp_path / "study_curation/llm/llm_curation_schema.py"
-        relocated.parent.mkdir(parents=True)
-        schema_path.rename(relocated)
-        monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
-        monkeypatch.setattr(paths, "DEFAULT_SCHEMA_PATH", relocated)
-        schema_path = relocated
+    original_configuration = workflow.run_configuration("resources")
 
     expected_hash = hashlib.sha256(schema_path.read_bytes()).hexdigest()
-    assert workflow.preview_schema_update("existing")["schema_hash"] == expected_hash
-    assert workflow.apply_schema_terms("existing", expected_hash).status == "applied"
-    assert workflow.run_configuration("existing") == original_configuration
+    assert workflow.preview_schema_update("resources")["schema_hash"] == expected_hash
+    assert workflow.apply_schema_terms("resources", expected_hash).status == "applied"
+    assert workflow.run_configuration("resources") == original_configuration
     assert schema_path.read_text(encoding="utf-8") == schema_source

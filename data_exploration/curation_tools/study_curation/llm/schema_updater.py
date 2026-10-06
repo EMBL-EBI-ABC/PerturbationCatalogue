@@ -205,7 +205,7 @@ def apply_schema_update(
     schema_path: Path = DEFAULT_SCHEMA_PATH,
     run_store: CurationRunStore | None = None,
 ) -> SchemaOperation:
-    """Journal and atomically apply approved schema terms for one native run."""
+    """Journal and atomically apply approved schema terms for one curation run."""
     schema_path = Path(schema_path).resolve()
     if run_store is None:
         raise ValueError(

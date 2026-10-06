@@ -27,21 +27,3 @@ MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE = (
     CURATION_CACHE_DIR / "mavedb" / "doi_to_fulltext.json"
 )
 CURATION_RUNS_DIR = REPO_ROOT / "curation_runs"
-
-
-def resolve_schema_path(schema_path: str | Path) -> Path:
-    """Resolve the old default schema location recorded by existing native runs.
-
-    Custom schema paths retain their meaning. Runs continue to extract against
-    their stored schema source; this location is only used for shared-schema
-    previews and updates.
-    """
-    path = Path(schema_path).resolve()
-    old_default = (
-        REPO_ROOT
-        / "data_exploration"
-        / "curation_tools"
-        / "llm_curation"
-        / "llm_curation_schema.py"
-    )
-    return DEFAULT_SCHEMA_PATH if path == old_default else path

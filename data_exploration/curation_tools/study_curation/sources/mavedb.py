@@ -9,6 +9,7 @@ from pathlib import Path
 from time import sleep
 
 import requests
+
 from curation_tools.study_curation.logging_utils import (
     append_log_line,
     print_status_block,
@@ -38,8 +39,6 @@ DEFAULT_EXCLUDED_DOIS: tuple[str, ...] = (
     "10.1038/s41588-018-0122-z",  # VAMP-seq method paper
     "10.1101/2024.04.26.591310",  # domainome paper
 )
-
-_MAVEDB_URN_TO_DOIS_CACHE: dict[str, list[str]] | None = None
 
 
 def parse_excluded_dois(
@@ -439,39 +438,6 @@ def format_urn_for_filename(urn: str) -> str:
     return str(urn).replace(":", "_")
 
 
-def load_mavedb_urn_to_dois(
-    mapping_file: str | Path = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
-) -> dict[str, list[str]]:
-    """Load and cache the mapping from MaveDB URNs to publication identifiers."""
-    global _MAVEDB_URN_TO_DOIS_CACHE
-    mapping_file = Path(mapping_file).resolve()
-    if _MAVEDB_URN_TO_DOIS_CACHE is None:
-        _MAVEDB_URN_TO_DOIS_CACHE = json.loads(mapping_file.read_text(encoding="utf-8"))
-    return _MAVEDB_URN_TO_DOIS_CACHE
-
-
-def find_matching_mavedb_entry_paths(
-    publication_full_text_path: str | Path,
-    metadata_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
-    mapping_file: str | Path = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
-) -> list[tuple[str, Path]]:
-    """Return MaveDB metadata files whose identifiers match a publication file."""
-    publication_full_text_path = Path(publication_full_text_path).resolve()
-    publication_identifier = publication_full_text_path.stem
-    metadata_dir = Path(metadata_dir).resolve()
-    urn_to_dois = load_mavedb_urn_to_dois(mapping_file)
-    matching_entries: list[tuple[str, Path]] = []
-    for urn, identifiers in sorted(urn_to_dois.items()):
-        if any(
-            format_identifier_for_lookup(identifier) == publication_identifier
-            for identifier in identifiers
-        ):
-            entry_path = metadata_dir / f"{format_urn_for_filename(urn)}.json"
-            if entry_path.is_file():
-                matching_entries.append((urn, entry_path))
-    return matching_entries
-
-
 def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, object]:
     """Extract the subset of MaveDB entry fields used to condition the prompt."""
     experiment_payload = entry_payload.get("experiment") or {}
@@ -541,26 +507,6 @@ def extract_curated_mavedb_prompt_metadata(entry_payload: dict) -> dict[str, obj
     }
 
 
-def build_mavedb_context_signature(curated_metadata: dict[str, object]) -> str:
-    """Build a stable signature for grouping equivalent prompt contexts."""
-    signature_payload = {
-        "score_set_short_description": curated_metadata.get(
-            "score_set_short_description"
-        ),
-        "score_set_method": curated_metadata.get("score_set_method"),
-        "experiment_short_description": curated_metadata.get(
-            "experiment_short_description"
-        ),
-        "experiment_method": curated_metadata.get("experiment_method"),
-    }
-    if not any(signature_payload.values()):
-        signature_payload = {
-            "score_set_title": curated_metadata.get("score_set_title"),
-            "experiment_title": curated_metadata.get("experiment_title"),
-        }
-    return json.dumps(signature_payload, sort_keys=True, ensure_ascii=True)
-
-
 def merge_prompt_metadata_value(existing_value: object, new_value: object) -> object:
     """Merge prompt metadata values while preserving scalar and list semantics."""
     if existing_value == new_value or new_value in (None, [], {}):
@@ -580,149 +526,6 @@ def merge_prompt_metadata_value(existing_value: object, new_value: object) -> ob
     elif new_value not in merged_values:
         merged_values.append(new_value)
     return merged_values
-
-
-def build_mavedb_prompt_contexts(
-    publication_full_text_path: str | Path,
-    metadata_dir: str | Path = MAVEDB_METADATA_OUTPUT_DIR,
-    mapping_file: str | Path = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
-) -> list[dict[str, object]]:
-    """Build deduplicated prompt contexts for a publication."""
-    matching_entries = find_matching_mavedb_entry_paths(
-        publication_full_text_path=publication_full_text_path,
-        metadata_dir=metadata_dir,
-        mapping_file=mapping_file,
-    )
-    if not matching_entries:
-        return []
-
-    grouped_contexts: dict[str, dict[str, object]] = {}
-    for urn, entry_path in matching_entries:
-        entry_payload = json.loads(entry_path.read_text(encoding="utf-8"))
-        curated_metadata = extract_curated_mavedb_prompt_metadata(entry_payload)
-        context_signature = build_mavedb_context_signature(curated_metadata)
-        if context_signature not in grouped_contexts:
-            grouped_contexts[context_signature] = {
-                "source_urns": [urn],
-                "source_files": [entry_path.name],
-                "metadata": curated_metadata,
-            }
-            continue
-
-        grouped_contexts[context_signature]["source_urns"].append(urn)
-        grouped_contexts[context_signature]["source_files"].append(entry_path.name)
-        merged_metadata = grouped_contexts[context_signature]["metadata"]
-        for field_name, field_value in curated_metadata.items():
-            merged_metadata[field_name] = merge_prompt_metadata_value(
-                merged_metadata.get(field_name), field_value
-            )
-
-    return sorted(
-        grouped_contexts.values(),
-        key=lambda context: tuple(context["source_urns"]),
-    )
-
-
-def prompt_context_builder(publication_full_text_path: Path) -> list[dict[str, object]]:
-    """Build supplementary MaveDB prompt contexts for a publication text file."""
-    return build_mavedb_prompt_contexts(
-        publication_full_text_path,
-        metadata_dir=MAVEDB_METADATA_OUTPUT_DIR,
-        mapping_file=MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
-    )
-
-
-def context_output_suffix_builder(
-    prompt_context: dict[str, object] | None,
-    context_index: int,
-    total_contexts: int,
-) -> str:
-    """Build a stable output filename suffix for a MaveDB prompt context."""
-    base_suffix = "" if total_contexts == 1 else f"__ctx_{context_index:02d}"
-    if not prompt_context or not prompt_context.get("source_urns"):
-        return base_suffix
-
-    source_urns = prompt_context.get("source_urns", [])
-    urn_suffix = "__" + "__".join(format_urn_for_filename(urn) for urn in source_urns)
-    return f"{base_suffix}{urn_suffix}" if base_suffix else urn_suffix
-
-
-def output_metadata_builder(
-    prompt_context: dict[str, object] | None,
-) -> dict[str, object]:
-    """Preserve MaveDB source provenance in each extraction output payload."""
-    if not prompt_context:
-        return {}
-    source_urns = list(prompt_context.get("source_urns", []))
-    output_metadata = {
-        "__source_urns": source_urns,
-        "__source_files": list(prompt_context.get("source_files", [])),
-    }
-    dataset_id = dataset_id_from_source_urns(source_urns)
-    if dataset_id:
-        output_metadata["dataset_id"] = dataset_id
-    return output_metadata
-
-
-def format_supplementary_mavedb_metadata(
-    prompt_context: dict[str, object] | None,
-) -> str:
-    """Render supplementary MaveDB prompt context as JSON or a fallback message."""
-    if not prompt_context:
-        return "No supplementary MaveDB metadata was available for this publication."
-
-    return json.dumps(
-        {
-            "source_urns": prompt_context["source_urns"],
-            "source_files": prompt_context["source_files"],
-            "curated_mavedb_metadata": prompt_context["metadata"],
-        },
-        indent=JSON_INDENT,
-        ensure_ascii=True,
-    )
-
-
-def build_mavedb_publication_full_text(
-    publication_full_text_path: Path,
-    prompt_context: dict[str, object] | None = None,
-    publication_full_text_dir: Path | str = FULL_TEXT_MD_DIR,
-    mapping_file: Path | str = MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
-) -> str:
-    """Build publication full text for a prompt, concatenating multiple primary papers if linked to the same URN."""
-    publication_full_text_path = Path(publication_full_text_path).resolve()
-    publication_full_text_dir = Path(publication_full_text_dir).resolve()
-
-    if not prompt_context or not prompt_context.get("source_urns"):
-        return publication_full_text_path.read_text(encoding="utf-8")
-
-    urn_to_dois = load_mavedb_urn_to_dois(mapping_file)
-    source_urns = prompt_context.get("source_urns", [])
-
-    all_dois_for_urns: list[str] = []
-    for urn in source_urns:
-        for doi in urn_to_dois.get(urn, []):
-            if doi not in all_dois_for_urns:
-                all_dois_for_urns.append(doi)
-
-    matching_md_files: list[tuple[str, Path]] = []
-    for doi in all_dois_for_urns:
-        stem = format_identifier_for_lookup(doi)
-        md_path = publication_full_text_dir / f"{stem}.md"
-        if md_path.is_file():
-            matching_md_files.append((doi, md_path))
-
-    if not matching_md_files:
-        return publication_full_text_path.read_text(encoding="utf-8")
-
-    if len(matching_md_files) == 1:
-        return matching_md_files[0][1].read_text(encoding="utf-8")
-
-    sections = []
-    for idx, (doi, md_path) in enumerate(matching_md_files, start=1):
-        content = md_path.read_text(encoding="utf-8").strip()
-        sections.append(f"# Primary Publication {idx} (DOI: {doi})\n\n{content}")
-
-    return "\n\n---\n\n".join(sections)
 
 
 def run_full_text_collection_pipeline(

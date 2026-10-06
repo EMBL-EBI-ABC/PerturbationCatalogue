@@ -191,18 +191,9 @@ class CurationRunStore:
 
     @classmethod
     def open(cls, runs_root: str | Path, run_name: str) -> "CurationRunStore":
-        """Open a native run and refuse legacy run directories."""
+        """Open a curation run from its SQLite database."""
         name = validate_run_name(run_name)
         run_dir = Path(runs_root).resolve() / name
-        legacy_markers = (
-            run_dir / "review_state.sqlite3",
-            run_dir / "pipeline_manifest.json",
-            run_dir / "step3_ontology_candidates",
-        )
-        if any(marker.exists() for marker in legacy_markers):
-            raise CurationRunError(
-                f"Legacy curation run is unsupported: {run_dir}. Create a new run instead."
-            )
         store = cls(run_dir)
         if not store.database_path.is_file():
             raise FileNotFoundError(

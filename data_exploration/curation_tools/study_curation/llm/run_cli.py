@@ -1,4 +1,4 @@
-"""Supported command-line interface for native SQLite curation runs."""
+"""Supported command-line interface for SQLite curation runs."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from curation_tools.study_curation.paths import (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Native SQLite curation runs")
+    parser = argparse.ArgumentParser(description="SQLite curation runs")
     parser.add_argument("--runs-root", type=Path, default=CURATION_RUNS_DIR)
     commands = parser.add_subparsers(dest="command", required=True)
 
