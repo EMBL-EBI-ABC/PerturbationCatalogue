@@ -8,6 +8,11 @@ curated/raw H5AD and GTF paths and publishes the filtered H5AD plus every report
 The Python entry point accepts `--dataset-id`, `--curated-h5ad`,
 `--reprocessed-h5ad`, `--gtf` and optional `--filtered-h5ad`. Reports are
 written under `comparison_results/<dataset_id>/` in the task directory.
+`--cell-id-columns` optionally accepts comma-separated `obs` columns to
+namespace barcode prefixes before duplicate filtering and cell matching. Use
+the same metadata columns on both H5ADs when barcode prefixes can recur across
+lanes; every requested column must exist and be populated. Omitting the option
+preserves the legacy barcode-only matching behavior.
 
 ## Metrics and Visualizations
 
