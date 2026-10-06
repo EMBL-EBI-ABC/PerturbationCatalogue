@@ -1,0 +1,1515 @@
+source_field,source_value,target_field,target_value,target_is_missing,dataset_id_prefix,mapping_order,rule_id,reason,source_case_sensitive
+treatment_label,TAHA-ABP,treatment_dose,,TRUE,,-216,clear_taha_abp_dose,TAHA-ABP has no dose in this metadata record,FALSE
+treatment_label,TAHA-ABP,treatment_unit,,TRUE,,-215,clear_taha_abp_unit,TAHA-ABP has no unit in this metadata record,FALSE
+treatment_label,ECR11 enhancer plasmid library,treatment_type_id,,TRUE,,-214,clear_unresolved_treatment_ecr11_type_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,ECR11 enhancer plasmid library,treatment_type_label,,TRUE,,-213,clear_unresolved_treatment_ecr11_type_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,ECR11 enhancer plasmid library,treatment_id,,TRUE,,-212,clear_unresolved_treatment_ecr11_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,ECR11 enhancer plasmid library,treatment_dose,,TRUE,,-210,clear_unresolved_treatment_ecr11_dose,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,ECR11 enhancer plasmid library,treatment_unit,,TRUE,,-209,clear_unresolved_treatment_ecr11_unit,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_type_id,,TRUE,,-208,clear_unresolved_treatment_gtppppytvg_type_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_type_label,,TRUE,,-207,clear_unresolved_treatment_gtppppytvg_type_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_id,,TRUE,,-206,clear_unresolved_treatment_gtppppytvg_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_dose,,TRUE,,-204,clear_unresolved_treatment_gtppppytvg_dose,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_unit,,TRUE,,-203,clear_unresolved_treatment_gtppppytvg_unit,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_type_id,,TRUE,,-202,clear_unresolved_treatment_spike_type_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_type_label,,TRUE,,-201,clear_unresolved_treatment_spike_type_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_id,,TRUE,,-200,clear_unresolved_treatment_spike_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_dose,,TRUE,,-198,clear_unresolved_treatment_spike_dose,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_unit,,TRUE,,-197,clear_unresolved_treatment_spike_unit,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_type_id,,TRUE,,-196,clear_unresolved_treatment_fbs_type_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_type_label,,TRUE,,-195,clear_unresolved_treatment_fbs_type_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_id,,TRUE,,-194,clear_unresolved_treatment_fbs_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_dose,,TRUE,,-192,clear_unresolved_treatment_fbs_dose,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_unit,,TRUE,,-191,clear_unresolved_treatment_fbs_unit,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_type_id,,TRUE,,-190,clear_unresolved_treatment_spectinomycin_type_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_type_label,,TRUE,,-189,clear_unresolved_treatment_spectinomycin_type_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_id,,TRUE,,-188,clear_unresolved_treatment_spectinomycin_id,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_dose,,TRUE,,-186,clear_unresolved_treatment_spectinomycin_dose,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_unit,,TRUE,,-185,clear_unresolved_treatment_spectinomycin_unit,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,"veratridine, brevetoxin, ouabain",treatment_unit,uM|ng/mL|uM,FALSE,,-183,set_veratridine_btx_ouabain_unit,One record contains three treatment units in this order,FALSE
+dataset_id,urn:mavedb:00000004-a-1,species,Mus musculus,FALSE,,-164,,,TRUE
+dataset_id,urn:mavedb:00000008-a-2,species,Mus musculus,FALSE,,-163,,,TRUE
+dataset_id,urn:mavedb:00000009-a-1,species,Saccharomyces cerevisiae,FALSE,,-162,,,TRUE
+dataset_id,urn:mavedb:00000010-a-1,species,Saccharomyces cerevisiae,FALSE,,-161,,,TRUE
+dataset_id,urn:mavedb:00000012-a-1,species,Saccharomyces cerevisiae,FALSE,,-160,,,TRUE
+dataset_id,urn:mavedb:00000012-a-2,species,Saccharomyces cerevisiae,FALSE,,-159,,,TRUE
+dataset_id,urn:mavedb:00000012-a-4,species,Saccharomyces cerevisiae,FALSE,,-158,,,TRUE
+dataset_id,urn:mavedb:00000012-a-6,species,Saccharomyces cerevisiae,FALSE,,-157,,,TRUE
+dataset_id,urn:mavedb:00000037-a-1,species,Saccharomyces cerevisiae,FALSE,,-156,,,TRUE
+dataset_id,urn:mavedb:00000039-a-1,species,Saccharomyces cerevisiae,FALSE,,-155,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,species,Saccharomyces cerevisiae,FALSE,,-154,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,species,Saccharomyces cerevisiae,FALSE,,-153,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,species,Saccharomyces cerevisiae,FALSE,,-152,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,species,Saccharomyces cerevisiae,FALSE,,-151,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,species,Saccharomyces cerevisiae,FALSE,,-150,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,species,Saccharomyces cerevisiae,FALSE,,-149,,,TRUE
+dataset_id,urn:mavedb:00000040-a-2,species,Saccharomyces cerevisiae,FALSE,,-148,,,TRUE
+dataset_id,urn:mavedb:00000040-a-3,species,Saccharomyces cerevisiae,FALSE,,-147,,,TRUE
+dataset_id,urn:mavedb:00000040-a-4,species,Saccharomyces cerevisiae,FALSE,,-146,,,TRUE
+dataset_id,urn:mavedb:00000063-a-1,species,Escherichia coli,FALSE,,-145,,,TRUE
+dataset_id,urn:mavedb:00000064-a-1,species,Escherichia coli,FALSE,,-144,,,TRUE
+dataset_id,urn:mavedb:00000064-b-1,species,Escherichia coli,FALSE,,-143,,,TRUE
+dataset_id,urn:mavedb:00000070-a-1,species,Escherichia coli,FALSE,,-142,,,TRUE
+dataset_id,urn:mavedb:00000070-a-2,species,Escherichia coli,FALSE,,-141,,,TRUE
+dataset_id,urn:mavedb:00000070-a-3,species,Escherichia coli,FALSE,,-140,,,TRUE
+dataset_id,urn:mavedb:00000070-a-4,species,Escherichia coli,FALSE,,-139,,,TRUE
+dataset_id,urn:mavedb:00000073-c-1,species,Pseudomonas aeruginosa,FALSE,,-138,,,TRUE
+dataset_id,urn:mavedb:00000073-d-1,species,Pseudomonas aeruginosa,FALSE,,-137,,,TRUE
+dataset_id,urn:mavedb:00000073-f-1,species,Pseudomonas aeruginosa,FALSE,,-136,,,TRUE
+dataset_id,urn:mavedb:00000073-g-1,species,Pseudomonas aeruginosa,FALSE,,-135,,,TRUE
+dataset_id,urn:mavedb:00000073-h-1,species,Pseudomonas aeruginosa,FALSE,,-134,,,TRUE
+dataset_id,urn:mavedb:00000073-i-1,species,Pseudomonas aeruginosa,FALSE,,-133,,,TRUE
+dataset_id,urn:mavedb:00000074-a-1,species,Saccharomyces cerevisiae,FALSE,,-132,,,TRUE
+dataset_id,urn:mavedb:00000076-a-1,species,Saccharomyces cerevisiae,FALSE,,-131,,,TRUE
+dataset_id,urn:mavedb:00000076-d-1,species,Saccharomyces cerevisiae,FALSE,,-130,,,TRUE
+dataset_id,urn:mavedb:00000077-a-1,species,Ruminiclostridium cellulolyticum,FALSE,,-129,,,TRUE
+dataset_id,urn:mavedb:00000077-a-2,species,Ruminiclostridium cellulolyticum,FALSE,,-128,,,TRUE
+dataset_id,urn:mavedb:00000077-b-2,species,Acetivibrio thermocellus,FALSE,,-127,,,TRUE
+dataset_id,urn:mavedb:00000079-a-1,species,Atropa belladonna,FALSE,,-126,,,TRUE
+dataset_id,urn:mavedb:00000080-a-1,species,Aequorea victoria,FALSE,,-125,,,TRUE
+dataset_id,urn:mavedb:00000080-a-2,species,Aequorea victoria,FALSE,,-124,,,TRUE
+dataset_id,urn:mavedb:00000082-a-1,species,Bos taurus,FALSE,,-123,,,TRUE
+dataset_id,urn:mavedb:00000084-a-1,species,Escherichia coli,FALSE,,-122,,,TRUE
+dataset_id,urn:mavedb:00000085-a-1,species,Escherichia coli,FALSE,,-121,,,TRUE
+dataset_id,urn:mavedb:00000085-b-1,species,Escherichia coli,FALSE,,-120,,,TRUE
+dataset_id,urn:mavedb:00000085-c-1,species,Escherichia coli,FALSE,,-119,,,TRUE
+dataset_id,urn:mavedb:00000086-b-1,species,Escherichia coli,FALSE,,-118,,,TRUE
+dataset_id,urn:mavedb:00000086-c-1,species,Escherichia coli,FALSE,,-117,,,TRUE
+dataset_id,urn:mavedb:00000086-e-1,species,Escherichia coli,FALSE,,-116,,,TRUE
+dataset_id,urn:mavedb:00000086-f-1,species,Escherichia coli,FALSE,,-115,,,TRUE
+dataset_id,urn:mavedb:00000086-g-1,species,Escherichia coli,FALSE,,-114,,,TRUE
+dataset_id,urn:mavedb:00000090-a-1,species,Rattus norvegicus,FALSE,,-113,,,TRUE
+dataset_id,urn:mavedb:00000090-b-1,species,Rattus norvegicus,FALSE,,-112,,,TRUE
+dataset_id,urn:mavedb:00000100-a-1,species,Escherichia coli,FALSE,,-111,,,TRUE
+dataset_id,urn:mavedb:00000100-b-1,species,Escherichia coli,FALSE,,-110,,,TRUE
+dataset_id,urn:mavedb:00001240-a-1,species,Escherichia coli K-12,FALSE,,-109,,,TRUE
+dataset_id,urn:mavedb:00001240-a-2,species,Escherichia coli K-12,FALSE,,-108,,,TRUE
+dataset_id,urn:mavedb:00001240-a-3,species,Escherichia coli K-12,FALSE,,-107,,,TRUE
+treatment_label,cefotaxime,treatment_id,CHEBI:204928,FALSE,,-106,,,FALSE
+treatment_label,transfectant viruses,treatment_label,,TRUE,,-105,,,FALSE
+treatment_label,estradiol,treatment_id,CHEBI:16469,FALSE,,-104,,,FALSE
+treatment_label,estradiol,treatment_label,17beta-estradiol,FALSE,,-103,,,FALSE
+treatment_label,beta-estradiol,treatment_id,CHEBI:16469,FALSE,,-102,,,FALSE
+treatment_label,beta-estradiol,treatment_label,17beta-estradiol,FALSE,,-101,,,FALSE
+treatment_label,meropenem,treatment_id,CHEBI:43968,FALSE,,-100,,,FALSE
+treatment_label,maltodextrin,treatment_id,CHEBI:25140,FALSE,,-99,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_unit,,TRUE,,-98,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_dose,,TRUE,,-98,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_type_label,,TRUE,,-98,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_type_id,,TRUE,,-98,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_id,,TRUE,,-98,,,FALSE
+treatment_label,angiotensin-converting enzyme 2,treatment_label,,TRUE,,-97,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_unit,,TRUE,,-96,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_dose,,TRUE,,-96,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_type_label,,TRUE,,-96,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_type_id,,TRUE,,-96,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_id,,TRUE,,-96,,,FALSE
+treatment_label,biotinylated monomeric human ACE2 protein,treatment_label,,TRUE,,-95,,,FALSE
+treatment_label,aspartate,treatment_id,CHEBI:132943,FALSE,,-94,,,FALSE
+treatment_label,dockerin,treatment_label,,TRUE,,-93,,,FALSE
+treatment_label,LY-CoV1404,treatment_id,P0DTC2,FALSE,,-92,,,FALSE
+treatment_label,LY-CoV1404,treatment_type_label,antibody,FALSE,,-92,,,FALSE
+treatment_label,LY-CoV1404,treatment_type_id,BAO:0000502,FALSE,,-92,,,FALSE
+treatment_label,LY-CoV1404,treatment_label,SARS-CoV-2 spike glycoprotein,FALSE,,-91,,,FALSE
+treatment_label,bebtelovimab,treatment_id,P0DTC2,FALSE,,-90,,,FALSE
+treatment_label,bebtelovimab,treatment_type_label,antibody,FALSE,,-90,,,FALSE
+treatment_label,bebtelovimab,treatment_type_id,BAO:0000502,FALSE,,-90,,,FALSE
+treatment_label,bebtelovimab,treatment_label,SARS-CoV-2 spike glycoprotein,FALSE,,-89,,,FALSE
+treatment_label,3-aminotriazole,treatment_id,CHEBI:40036,FALSE,,-89,,,FALSE
+treatment_label,3-aminotriazole,treatment_label,amitrole,FALSE,,-88,,,FALSE
+treatment_label,Uba1,treatment_label,,TRUE,,-87,,,FALSE
+dataset_id,urn:mavedb:00000039-a-1,experimental_timepoint,PT48H,FALSE,,-86,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,experimental_timepoint,PT48H,FALSE,,-85,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,experimental_timepoint,PT48H,FALSE,,-84,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,experimental_timepoint,PT48H,FALSE,,-83,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,experimental_timepoint,PT48H,FALSE,,-82,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,experimental_timepoint,PT48H,FALSE,,-81,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,experimental_timepoint,PT48H,FALSE,,-80,,,TRUE
+dataset_id,urn:mavedb:00000039-a-1,treatment_type_label,chemical entity,FALSE,,-79,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,treatment_type_label,chemical entity,FALSE,,-78,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,treatment_type_label,chemical entity,FALSE,,-77,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,treatment_type_label,chemical entity,FALSE,,-76,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,treatment_type_label,chemical entity,FALSE,,-75,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,treatment_type_label,chemical entity,FALSE,,-74,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,treatment_type_label,chemical entity,FALSE,,-73,,,TRUE
+dataset_id,urn:mavedb:00000039-a-1,treatment_type_id,CHEBI:24431,FALSE,,-72,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,treatment_type_id,CHEBI:24431,FALSE,,-71,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,treatment_type_id,CHEBI:24431,FALSE,,-70,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,treatment_type_id,CHEBI:24431,FALSE,,-69,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,treatment_type_id,CHEBI:24431,FALSE,,-68,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,treatment_type_id,CHEBI:24431,FALSE,,-67,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,treatment_type_id,CHEBI:24431,FALSE,,-66,,,TRUE
+dataset_id,urn:mavedb:00000039-a-1,treatment_id,CHEBI:17634,FALSE,,-65,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,treatment_id,CHEBI:17634,FALSE,,-64,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,treatment_id,CHEBI:17634,FALSE,,-63,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,treatment_id,CHEBI:17634,FALSE,,-62,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,treatment_id,CHEBI:17634,FALSE,,-61,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,treatment_id,CHEBI:17634,FALSE,,-60,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,treatment_id,CHEBI:17634,FALSE,,-59,,,TRUE
+dataset_id,urn:mavedb:00000039-a-1,treatment_label,D-glucose,FALSE,,-58,,,TRUE
+dataset_id,urn:mavedb:00000039-a-2,treatment_label,D-glucose,FALSE,,-57,,,TRUE
+dataset_id,urn:mavedb:00000039-a-3,treatment_label,D-glucose,FALSE,,-56,,,TRUE
+dataset_id,urn:mavedb:00000039-a-4,treatment_label,D-glucose,FALSE,,-55,,,TRUE
+dataset_id,urn:mavedb:00000039-a-5,treatment_label,D-glucose,FALSE,,-54,,,TRUE
+dataset_id,urn:mavedb:00000039-a-6,treatment_label,D-glucose,FALSE,,-53,,,TRUE
+dataset_id,urn:mavedb:00000039-a-7,treatment_label,D-glucose,FALSE,,-52,,,TRUE
+treatment_label,phage λ sam7,treatment_dose,,TRUE,,-51,,,FALSE
+treatment_label,phage λ sam7,treatment_label,,TRUE,,-50,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,-49,,,TRUE
+dataset_id,urn:mavedb:00000076-b-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,-48,,,TRUE
+dataset_id,urn:mavedb:00000076-d-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,-47,,,TRUE
+dataset_id,urn:mavedb:00000076-e-1,treatment_type_label,chemical entity,FALSE,,-46,,,TRUE
+dataset_id,urn:mavedb:00000076-a-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,-45,,,TRUE
+dataset_id,urn:mavedb:00000076-b-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,-44,,,TRUE
+dataset_id,urn:mavedb:00000076-d-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,-43,,,TRUE
+dataset_id,urn:mavedb:00000076-e-1,treatment_label,uracil,FALSE,,-42,,,TRUE
+dataset_id,urn:mavedb:00000076-a-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,-41,,,TRUE
+dataset_id,urn:mavedb:00000076-b-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,-40,,,TRUE
+dataset_id,urn:mavedb:00000076-d-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,-39,,,TRUE
+dataset_id,urn:mavedb:00000076-e-1,treatment_type_id,CHEBI:24431,FALSE,,-38,,,TRUE
+dataset_id,urn:mavedb:00000076-a-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,-37,,,TRUE
+dataset_id,urn:mavedb:00000076-b-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,-36,,,TRUE
+dataset_id,urn:mavedb:00000076-d-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,-35,,,TRUE
+dataset_id,urn:mavedb:00000076-e-1,treatment_id,CHEBI:17568,FALSE,,-34,,,TRUE
+dataset_id,urn:mavedb:00000038-a-1,treatment_label,Uba1,FALSE,,-33,,,TRUE
+dataset_id,urn:mavedb:00000038-b-1,treatment_label,Uba1,FALSE,,-32,,,TRUE
+dataset_id,urn:mavedb:00000038-b-2,treatment_label,Uba1,FALSE,,-31,,,TRUE
+dataset_id,urn:mavedb:00000038-a-1,treatment_id,P22515,FALSE,,-30,,,TRUE
+dataset_id,urn:mavedb:00000038-b-1,treatment_id,P22515,FALSE,,-29,,,TRUE
+dataset_id,urn:mavedb:00000038-b-2,treatment_id,P22515,FALSE,,-28,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_type_label,,TRUE,,-27,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_type_id,,TRUE,,-26,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_label,,TRUE,,-25,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_id,,TRUE,,-24,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_dose,,TRUE,,-23,,,TRUE
+dataset_id,urn:mavedb:00001232-b-1,treatment_unit,,TRUE,,-22,,,TRUE
+dataset_id,urn:mavedb:00000087-a-1,disease_label,influenza,FALSE,,-21,,,TRUE
+dataset_id,urn:mavedb:00000088-a-1,disease_label,influenza,FALSE,,-20,,,TRUE
+dataset_id,urn:mavedb:00000088-b-1,disease_label,influenza,FALSE,,-19,,,TRUE
+dataset_id,urn:mavedb:00000089-a-1,disease_label,influenza,FALSE,,-18,,,TRUE
+dataset_id,urn:mavedb:00000092-a-1,disease_label,influenza,FALSE,,-17,,,TRUE
+species,Streptococcus sp. 'group G',species,Streptococcus sp. group G,FALSE,,-16,,,FALSE
+species,Mus Musculus,species,Mus musculus,FALSE,,-15,,,FALSE
+dataset_id,urn:mavedb:00000668-a-1,treatment_id,Q9BYF1,FALSE,,-10,,,TRUE
+dataset_id,urn:mavedb:00000668-a-1,treatment_label,ACE2,FALSE,,-9,,,TRUE
+dataset_id,urn:mavedb:00000670-a-1,treatment_id,Q9BYF1,FALSE,,-8,,,TRUE
+dataset_id,urn:mavedb:00000670-a-1,treatment_label,ACE2,FALSE,,-7,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_label,galactose,FALSE,,-6,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_id,CHEBI:28260,FALSE,,-5,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_type_label,chemical entity,FALSE,,-4,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_type_id,CHEBI:24431,FALSE,,-3,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_dose,2,FALSE,,-2,,,TRUE
+dataset_id,urn:mavedb:00000669-a-1,treatment_unit,%,FALSE,,-1,,,TRUE
+treatment_label,ECR11 enhancer plasmid library,treatment_label,,TRUE,,0,clear_unresolved_treatment_ecr11_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,GTPPPPYTVG,treatment_label,,TRUE,,1,clear_unresolved_treatment_gtppppytvg_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,SARS-CoV-2 spike receptor-binding domain fused to superfolder GFP,treatment_label,,TRUE,,2,clear_unresolved_treatment_spike_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,fetal bovine serum,treatment_label,,TRUE,,3,clear_unresolved_treatment_fbs_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,spectinomycin,treatment_label,,TRUE,,4,clear_unresolved_treatment_spectinomycin_label,These entries were intentionally left without a treatment mapping,FALSE
+treatment_label,12G5,treatment_dose,0.15,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_dose,5,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,GABPA siRNA,treatment_dose,50,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,brefeldin A,treatment_dose,40,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,dopamine,treatment_dose,20,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,geldanamycin,treatment_dose,20,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,melatonin,treatment_dose,250,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,menadione,treatment_dose,40,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,MG-132,treatment_dose,130,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,miconazole,treatment_dose,1,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,rapamycin,treatment_dose,10,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,spermidine,treatment_dose,1,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,tunicamycin,treatment_dose,100,FALSE,urn:mavedb:00000045-,317,,,FALSE
+treatment_label,12G5,treatment_unit,ug/mL,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,GABPA siRNA,treatment_unit,nM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,brefeldin A,treatment_unit,ug/mL,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,dopamine,treatment_unit,mM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,geldanamycin,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,melatonin,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,menadione,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,MG-132,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,miconazole,treatment_unit,uM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,rapamycin,treatment_unit,ng/mL,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,spermidine,treatment_unit,mM,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,tunicamycin,treatment_unit,ng/mL,FALSE,urn:mavedb:00000045-,322,,,FALSE
+treatment_label,"3-amino-1,2,4-triazole",treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,vitamin B6,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,doxycycline,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,dihydrotestosterone,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,5alpha-dihydrotestosterone,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,GABPA siRNA,treatment_type_id,BAO:0000324,FALSE,,333,,,FALSE
+treatment_label,scrambled control,treatment_type_id,BAO:0000324,FALSE,,333,,,FALSE
+treatment_label,galactose,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,puromycin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,MG-132,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,geldanamycin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,miconazole,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,melatonin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,menadione,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,spermidine,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,dopamine,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,rapamycin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,tunicamycin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,brefeldin A,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,anti-CCR5 clone 2D7,treatment_type_id,BAO:0000175,FALSE,,333,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_type_id,BAO:0000175,FALSE,,333,,,FALSE
+treatment_label,12G5,treatment_type_id,BAO:0000502,FALSE,,333,,,FALSE
+treatment_label,6-thioguanine,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,tioguanine,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,ampicillin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,ampicillin and chloramphenicol,treatment_type_id,CHEBI:24431|CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,chloramphenicol,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,methotrexate,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,nutlin-3,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,etoposide,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,RBD-sfGFP,treatment_type_id,BAO:0000175,FALSE,,333,,,FALSE
+treatment_label,PLX4720,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,TAHA-ABP,treatment_type_id,,TRUE,,333,,,FALSE
+treatment_label,D-glucose,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,"veratridine, brevetoxin, ouabain",treatment_type_id,BAO:0000171|CHEBI:24431|CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,veratridine,treatment_type_id,BAO:0000171,FALSE,,333,,,FALSE
+treatment_label,brevetoxin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,ouabain,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,untreated control,treatment_type_id,NCIT:C184729,FALSE,,333,,,FALSE
+treatment_label,SCH772984,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,VRT11E,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,talazoparib,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,rifampicin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,IPTG,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,interferon gamma,treatment_type_id,BAO:0000175,FALSE,,333,,,FALSE
+treatment_label,Doxycycline,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,HMR 1556,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,vitamin K1,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,serum starvation,treatment_type_id,BAO:0000114,FALSE,,333,,,FALSE
+treatment_label,methyl methanesulfonate,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,ibrutinib,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,cisplatin,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,Nutlin-3a,treatment_type_id,CHEBI:24431,FALSE,,333,,,FALSE
+treatment_label,insulin,treatment_type_id,BAO:0000325,FALSE,,333,,,FALSE
+treatment_label,AF647_83-7,treatment_type_id,BAO:0000502,FALSE,,333,,,FALSE
+treatment_label,mAb 83-14,treatment_type_id,BAO:0000502,FALSE,,333,,,FALSE
+treatment_label,monoclonal antibody 83-7,treatment_type_id,BAO:0000502,FALSE,,333,,,FALSE
+treatment_label,mAb 83-07,treatment_type_id,BAO:0000502,FALSE,,333,,,FALSE
+treatment_label,siRNA targeting 3' UTR of BRCA1,treatment_type_id,BAO:0000324,FALSE,,333,,,FALSE
+treatment_label,siRNA targeting the 3' UTR of the endogenous BRCA1 mRNA,treatment_type_id,BAO:0000324,FALSE,,333,,,FALSE
+treatment_label,"3-amino-1,2,4-triazole",treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,vitamin B6,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,doxycycline,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,dihydrotestosterone,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,5alpha-dihydrotestosterone,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,GABPA siRNA,treatment_type_label,siRNA,FALSE,,338,,,FALSE
+treatment_label,scrambled control,treatment_type_label,siRNA,FALSE,,338,,,FALSE
+treatment_label,galactose,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,puromycin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,MG-132,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,geldanamycin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,miconazole,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,melatonin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,menadione,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,spermidine,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,dopamine,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,rapamycin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,tunicamycin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,brefeldin A,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,anti-CCR5 clone 2D7,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_type_label,protein,FALSE,,338,,,FALSE
+treatment_label,12G5,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,6-thioguanine,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,tioguanine,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,ampicillin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,ampicillin and chloramphenicol,treatment_type_label,chemical entity|chemical entity,FALSE,,338,,,FALSE
+treatment_label,chloramphenicol,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,methotrexate,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,nutlin-3,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,etoposide,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,RBD-sfGFP,treatment_type_label,protein,FALSE,,338,,,FALSE
+treatment_label,PLX4720,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,TAHA-ABP,treatment_type_label,,TRUE,,338,,,FALSE
+treatment_label,D-glucose,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,"veratridine, brevetoxin, ouabain",treatment_type_label,lipid|chemical entity|chemical entity,FALSE,,338,,,FALSE
+treatment_label,veratridine,treatment_type_label,lipid,FALSE,,338,,,FALSE
+treatment_label,brevetoxin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,ouabain,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,untreated control,treatment_type_label,untreated control,FALSE,,338,,,FALSE
+treatment_label,SCH772984,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,VRT11E,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,talazoparib,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,rifampicin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,IPTG,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,interferon gamma,treatment_type_label,protein,FALSE,,338,,,FALSE
+treatment_label,Doxycycline,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,HMR 1556,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,vitamin K1,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,serum starvation,treatment_type_label,culture medium,FALSE,,338,,,FALSE
+treatment_label,methyl methanesulfonate,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,ibrutinib,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,cisplatin,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,Nutlin-3a,treatment_type_label,chemical entity,FALSE,,338,,,FALSE
+treatment_label,insulin,treatment_type_label,peptide,FALSE,,338,,,FALSE
+treatment_label,AF647_83-7,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,mAb 83-14,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,monoclonal antibody 83-7,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,mAb 83-07,treatment_type_label,antibody,FALSE,,338,,,FALSE
+treatment_label,siRNA targeting 3' UTR of BRCA1,treatment_type_label,siRNA,FALSE,,338,,,FALSE
+treatment_label,siRNA targeting the 3' UTR of the endogenous BRCA1 mRNA,treatment_type_label,siRNA,FALSE,,338,,,FALSE
+treatment_type_label,untreated control,treatment_type_id,NCIT:C184729,FALSE,,339,,,FALSE
+treatment_type_label,scrambled control oligonucleotide,treatment_type_id,XCO:0001141,FALSE,,339,,,FALSE
+treatment_type_label,culture medium,treatment_type_id,BAO:0000114,FALSE,,339,,,FALSE
+treatment_type_label,chemical entity,treatment_type_id,CHEBI:24431,FALSE,,339,,,FALSE
+treatment_type_label,protein,treatment_type_id,BAO:0000175,FALSE,,339,,,FALSE
+treatment_type_label,protein complex,treatment_type_id,BAO:0002554,FALSE,,339,,,FALSE
+treatment_type_label,peptide,treatment_type_id,BAO:0000325,FALSE,,339,,,FALSE
+treatment_type_label,antibody,treatment_type_id,BAO:0000502,FALSE,,339,,,FALSE
+treatment_type_label,lipid,treatment_type_id,BAO:0000171,FALSE,,339,,,FALSE
+treatment_type_label,PNA,treatment_type_id,BAO:0000226,FALSE,,339,,,FALSE
+treatment_type_label,DNA,treatment_type_id,BAO:0000269,FALSE,,339,,,FALSE
+treatment_type_label,RNA,treatment_type_id,BAO:0000270,FALSE,,339,,,FALSE
+treatment_type_label,mRNA,treatment_type_id,BAO:0000274,FALSE,,339,,,FALSE
+treatment_type_label,rRNA,treatment_type_id,BAO:0000275,FALSE,,339,,,FALSE
+treatment_type_label,tRNA,treatment_type_id,BAO:0000276,FALSE,,339,,,FALSE
+treatment_type_label,cDNA,treatment_type_id,BAO:0000315,FALSE,,339,,,FALSE
+treatment_type_label,genomic DNA,treatment_type_id,BAO:0000316,FALSE,,339,,,FALSE
+treatment_type_label,plasmid DNA,treatment_type_id,BAO:0000317,FALSE,,339,,,FALSE
+treatment_type_label,miRNA,treatment_type_id,BAO:0000322,FALSE,,339,,,FALSE
+treatment_type_label,shRNA,treatment_type_id,BAO:0000323,FALSE,,339,,,FALSE
+treatment_type_label,siRNA,treatment_type_id,BAO:0000324,FALSE,,339,,,FALSE
+treatment_type_label,LNA,treatment_type_id,BAO:0000412,FALSE,,339,,,FALSE
+treatment_type_label,RNA aptamer,treatment_type_id,BAO:0000496,FALSE,,339,,,FALSE
+treatment_type_label,riboswitch,treatment_type_id,BAO:0000498,FALSE,,339,,,FALSE
+treatment_type_label,esiRNA,treatment_type_id,BAO:0000544,FALSE,,339,,,FALSE
+treatment_label,"3-amino-1,2,4-triazole",treatment_id,CHEBI:40036,FALSE,,344,,,FALSE
+treatment_label,vitamin B6,treatment_id,CHEBI:27306,FALSE,,344,,,FALSE
+treatment_label,doxycycline,treatment_id,CHEBI:50845,FALSE,,344,,,FALSE
+treatment_label,dihydrotestosterone,treatment_id,CHEBI:16330,FALSE,,344,,,FALSE
+treatment_label,5alpha-dihydrotestosterone,treatment_id,CHEBI:16330,FALSE,,344,,,FALSE
+treatment_label,GABPA siRNA,treatment_id,ENSG00000154727,FALSE,,344,,,FALSE
+treatment_label,scrambled control,treatment_id,XCO:0001141,FALSE,,344,,,FALSE
+treatment_label,galactose,treatment_id,CHEBI:28260,FALSE,,344,,,FALSE
+treatment_label,puromycin,treatment_id,CHEBI:17939,FALSE,,344,,,FALSE
+treatment_label,MG-132,treatment_id,CHEBI:75142,FALSE,,344,,,FALSE
+treatment_label,geldanamycin,treatment_id,CHEBI:5292,FALSE,,344,,,FALSE
+treatment_label,miconazole,treatment_id,CHEBI:6923,FALSE,,344,,,FALSE
+treatment_label,melatonin,treatment_id,CHEBI:16796,FALSE,,344,,,FALSE
+treatment_label,menadione,treatment_id,CHEBI:28869,FALSE,,344,,,FALSE
+treatment_label,spermidine,treatment_id,CHEBI:16610,FALSE,,344,,,FALSE
+treatment_label,dopamine,treatment_id,CHEBI:18243,FALSE,,344,,,FALSE
+treatment_label,rapamycin,treatment_id,CHEBI:9168,FALSE,,344,,,FALSE
+treatment_label,tunicamycin,treatment_id,CHEBI:29699,FALSE,,344,,,FALSE
+treatment_label,brefeldin A,treatment_id,CHEBI:48080,FALSE,,344,,,FALSE
+treatment_label,anti-CCR5 clone 2D7,treatment_id,P51681,FALSE,,344,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_id,P48061,FALSE,,344,,,FALSE
+treatment_label,12G5,treatment_id,P61073,FALSE,,344,,,FALSE
+treatment_label,6-thioguanine,treatment_id,CHEBI:9555,FALSE,,344,,,FALSE
+treatment_label,tioguanine,treatment_id,CHEBI:9555,FALSE,,344,,,FALSE
+treatment_label,ampicillin,treatment_id,CHEBI:28971,FALSE,,344,,,FALSE
+treatment_label,ampicillin and chloramphenicol,treatment_id,CHEBI:28971|CHEBI:17698,FALSE,,344,,,FALSE
+treatment_label,chloramphenicol,treatment_id,CHEBI:17698,FALSE,,344,,,FALSE
+treatment_label,methotrexate,treatment_id,CHEBI:44185,FALSE,,344,,,FALSE
+treatment_label,nutlin-3,treatment_id,CHEBI:46742,FALSE,,344,,,FALSE
+treatment_label,etoposide,treatment_id,CHEBI:4911,FALSE,,344,,,FALSE
+treatment_label,RBD-sfGFP,treatment_id,P0DTC2,FALSE,,344,,,FALSE
+treatment_label,PLX4720,treatment_id,CHEBI:90295,FALSE,,344,,,FALSE
+treatment_label,TAHA-ABP,treatment_id,,TRUE,,344,,,FALSE
+treatment_label,D-glucose,treatment_id,CHEBI:17634,FALSE,,344,,,FALSE
+treatment_label,"veratridine, brevetoxin, ouabain",treatment_id,CHEBI:28051|CHEBI:61250|CHEBI:472805,FALSE,,344,,,FALSE
+treatment_label,veratridine,treatment_id,CHEBI:28051,FALSE,,344,,,FALSE
+treatment_label,brevetoxin,treatment_id,CHEBI:61250,FALSE,,344,,,FALSE
+treatment_label,ouabain,treatment_id,CHEBI:472805,FALSE,,344,,,FALSE
+treatment_label,untreated control,treatment_id,NCIT:C184729,FALSE,,344,,,FALSE
+treatment_label,SCH772984,treatment_id,CHEBI:167670,FALSE,,344,,,FALSE
+treatment_label,VRT11E,treatment_id,,TRUE,,344,,,FALSE
+treatment_label,talazoparib,treatment_id,CHEBI:231344,FALSE,,344,,,FALSE
+treatment_label,rifampicin,treatment_id,CHEBI:28077,FALSE,,344,,,FALSE
+treatment_label,IPTG,treatment_id,CHEBI:61448,FALSE,,344,,,FALSE
+treatment_label,interferon gamma,treatment_id,CHEBI:5939,FALSE,,344,,,FALSE
+treatment_label,Doxycycline,treatment_id,CHEBI:50845,FALSE,,344,,,FALSE
+treatment_label,HMR 1556,treatment_id,CHEMBL298475,FALSE,,344,,,FALSE
+treatment_label,vitamin K1,treatment_id,CHEBI:18067,FALSE,,344,,,FALSE
+treatment_label,serum starvation,treatment_id,XCO:0000966,FALSE,,344,,,FALSE
+treatment_label,methyl methanesulfonate,treatment_id,CHEBI:25255,FALSE,,344,,,FALSE
+treatment_label,ibrutinib,treatment_id,CHEBI:76612,FALSE,,344,,,FALSE
+treatment_label,cisplatin,treatment_id,CHEBI:27899,FALSE,,344,,,FALSE
+treatment_label,Nutlin-3a,treatment_id,CHEBI:46742,FALSE,,344,,,FALSE
+treatment_label,insulin,treatment_id,CHEBI:5931,FALSE,,344,,,FALSE
+treatment_label,AF647_83-7,treatment_id,P06213,FALSE,,344,,,FALSE
+treatment_label,mAb 83-14,treatment_id,P06213,FALSE,,344,,,FALSE
+treatment_label,monoclonal antibody 83-7,treatment_id,P06213,FALSE,,344,,,FALSE
+treatment_label,mAb 83-07,treatment_id,P06213,FALSE,,344,,,FALSE
+treatment_label,siRNA targeting 3' UTR of BRCA1,treatment_id,ENSG00000012048,FALSE,,344,,,FALSE
+treatment_label,siRNA targeting the 3' UTR of the endogenous BRCA1 mRNA,treatment_id,ENSG00000012048,FALSE,,344,,,FALSE
+treatment_label,"3-amino-1,2,4-triazole",treatment_label,Amitrole,FALSE,,349,,,FALSE
+treatment_label,vitamin B6,treatment_label,Vitamin B6,FALSE,,349,,,FALSE
+treatment_label,doxycycline,treatment_label,Doxycycline,FALSE,,349,,,FALSE
+treatment_label,dihydrotestosterone,treatment_label,5alpha-dihydrotestosterone,FALSE,,349,,,FALSE
+treatment_label,5alpha-dihydrotestosterone,treatment_label,5alpha-dihydrotestosterone,FALSE,,349,,,FALSE
+treatment_label,GABPA siRNA,treatment_label,GABPA,FALSE,,349,,,FALSE
+treatment_label,scrambled control,treatment_label,scrambled control oligonucleotide,FALSE,,349,,,FALSE
+treatment_label,galactose,treatment_label,Galactose,FALSE,,349,,,FALSE
+treatment_label,puromycin,treatment_label,Puromycin,FALSE,,349,,,FALSE
+treatment_label,MG-132,treatment_label,MG-132,FALSE,,349,,,FALSE
+treatment_label,geldanamycin,treatment_label,Geldanamycin,FALSE,,349,,,FALSE
+treatment_label,miconazole,treatment_label,Miconazole,FALSE,,349,,,FALSE
+treatment_label,melatonin,treatment_label,Melatonin,FALSE,,349,,,FALSE
+treatment_label,menadione,treatment_label,Menadione,FALSE,,349,,,FALSE
+treatment_label,spermidine,treatment_label,Spermidine,FALSE,,349,,,FALSE
+treatment_label,dopamine,treatment_label,Dopamine,FALSE,,349,,,FALSE
+treatment_label,rapamycin,treatment_label,Rapamycin,FALSE,,349,,,FALSE
+treatment_label,tunicamycin,treatment_label,Tunicamycin,FALSE,,349,,,FALSE
+treatment_label,brefeldin A,treatment_label,Brefeldin A,FALSE,,349,,,FALSE
+treatment_label,anti-CCR5 clone 2D7,treatment_label,CCR5,FALSE,,349,,,FALSE
+treatment_label,CXCL12-sfGFP,treatment_label,CXCL12,FALSE,,349,,,FALSE
+treatment_label,12G5,treatment_label,CXCR4,FALSE,,349,,,FALSE
+treatment_label,6-thioguanine,treatment_label,Tioguanine,FALSE,,349,,,FALSE
+treatment_label,tioguanine,treatment_label,Tioguanine,FALSE,,349,,,FALSE
+treatment_label,ampicillin,treatment_label,Ampicillin,FALSE,,349,,,FALSE
+treatment_label,ampicillin and chloramphenicol,treatment_label,Ampicillin|Chloramphenicol,FALSE,,349,,,FALSE
+treatment_label,chloramphenicol,treatment_label,Chloramphenicol,FALSE,,349,,,FALSE
+treatment_label,methotrexate,treatment_label,Methotrexate,FALSE,,349,,,FALSE
+treatment_label,nutlin-3,treatment_label,Nutlin-3,FALSE,,349,,,FALSE
+treatment_label,etoposide,treatment_label,Etoposide,FALSE,,349,,,FALSE
+treatment_label,RBD-sfGFP,treatment_label,Spike glycoprotein,FALSE,,349,,,FALSE
+treatment_label,PLX4720,treatment_label,PLX-4720,FALSE,,349,,,FALSE
+treatment_label,TAHA-ABP,treatment_label,,TRUE,,349,,,FALSE
+treatment_label,D-glucose,treatment_label,D-glucose,FALSE,,349,,,FALSE
+treatment_label,"veratridine, brevetoxin, ouabain",treatment_label,Veratridine|Brevetoxin A|Ouabain,FALSE,,349,,,FALSE
+treatment_label,veratridine,treatment_label,Veratridine,FALSE,,349,,,FALSE
+treatment_label,brevetoxin,treatment_label,Brevetoxin A,FALSE,,349,,,FALSE
+treatment_label,ouabain,treatment_label,Ouabain,FALSE,,349,,,FALSE
+treatment_label,untreated control,treatment_label,untreated control,FALSE,,349,,,FALSE
+treatment_label,SCH772984,treatment_label,SCH772984,FALSE,,349,,,FALSE
+treatment_label,VRT11E,treatment_label,VRT-11E,FALSE,,349,,,FALSE
+treatment_label,talazoparib,treatment_label,Talazoparib,FALSE,,349,,,FALSE
+treatment_label,rifampicin,treatment_label,Rifampicin,FALSE,,349,,,FALSE
+treatment_label,IPTG,treatment_label,IPTG,FALSE,,349,,,FALSE
+treatment_label,interferon gamma,treatment_label,Interferon gamma,FALSE,,349,,,FALSE
+treatment_label,Doxycycline,treatment_label,Doxycycline,FALSE,,349,,,FALSE
+treatment_label,HMR 1556,treatment_label,HMR 1556,FALSE,,349,,,FALSE
+treatment_label,vitamin K1,treatment_label,Phylloquinone,FALSE,,349,,,FALSE
+treatment_label,serum starvation,treatment_label,Controlled serum-free condition,FALSE,,349,,,FALSE
+treatment_label,methyl methanesulfonate,treatment_label,Methyl methanesulfonate,FALSE,,349,,,FALSE
+treatment_label,ibrutinib,treatment_label,Ibrutinib,FALSE,,349,,,FALSE
+treatment_label,cisplatin,treatment_label,Cisplatin,FALSE,,349,,,FALSE
+treatment_label,Nutlin-3a,treatment_label,Nutlin-3a,FALSE,,349,,,FALSE
+treatment_label,insulin,treatment_label,Insulin,FALSE,,349,,,FALSE
+treatment_label,AF647_83-7,treatment_label,Insulin receptor,FALSE,,349,,,FALSE
+treatment_label,mAb 83-14,treatment_label,Insulin receptor,FALSE,,349,,,FALSE
+treatment_label,monoclonal antibody 83-7,treatment_label,Insulin receptor,FALSE,,349,,,FALSE
+treatment_label,mAb 83-07,treatment_label,Insulin receptor,FALSE,,349,,,FALSE
+treatment_label,siRNA targeting 3' UTR of BRCA1,treatment_label,BRCA1,FALSE,,349,,,FALSE
+treatment_label,siRNA targeting the 3' UTR of the endogenous BRCA1 mRNA,treatment_label,BRCA1,FALSE,,349,,,FALSE
+cell_line_label,293-F,cell_line_id,CVCL_6642,FALSE,,470,,,FALSE
+cell_line_label,HEK293-F,cell_line_id,CVCL_6642,FALSE,,470,,,FALSE
+cell_line_label,A-375,cell_line_id,CLO:0001544,FALSE,,470,,,FALSE
+cell_line_label,A-375 cell,cell_line_id,CLO:0001544,FALSE,,470,,,FALSE
+cell_line_label,A375,cell_line_id,CLO:0001544,FALSE,,470,,,FALSE
+cell_line_label,A375 cell,cell_line_id,CLO:0001544,FALSE,,470,,,FALSE
+cell_line_label,A549,cell_line_id,CLO:0001601,FALSE,,470,,,FALSE
+cell_line_label,A549 cell,cell_line_id,CLO:0001601,FALSE,,470,,,FALSE
+cell_line_label,Ba/F3,cell_line_id,CVCL_0161,FALSE,,470,,,FALSE
+cell_line_label,Ba/F3 cell,cell_line_id,CVCL_0161,FALSE,,470,,,FALSE
+cell_line_label,CHO-K1,cell_line_id,CLO:0002462,FALSE,,470,,,FALSE
+cell_line_label,CHO-K1 cell,cell_line_id,CLO:0002462,FALSE,,470,,,FALSE
+cell_line_label,Expi293F,cell_line_id,CVCL_D615,FALSE,,470,,,FALSE
+cell_line_label,Flp-In HEK293,cell_line_id,CVCL_U421,FALSE,,470,,,FALSE
+cell_line_label,Flp-In-293 cell,cell_line_id,CVCL_U421,FALSE,,470,,,FALSE
+cell_line_label,FreeStyle 293-F,cell_line_id,CVCL_D603,FALSE,,470,,,FALSE
+cell_line_label,FreeStyle 293-F cell,cell_line_id,CVCL_D603,FALSE,,470,,,FALSE
+cell_line_label,Freestyle 293-F,cell_line_id,CVCL_D603,FALSE,,470,,,FALSE
+cell_line_label,H1299,cell_line_id,CLO:0007986,FALSE,,470,,,FALSE
+cell_line_label,HAP1,cell_line_id,CVCL_Y019,FALSE,,470,,,FALSE
+cell_line_label,HAP1 cell,cell_line_id,CVCL_Y019,FALSE,,470,,,FALSE
+cell_line_label,HEK 293,cell_line_id,CLO:0001230,FALSE,,470,,,FALSE
+cell_line_label,HEK293,cell_line_id,CLO:0001230,FALSE,,470,,,FALSE
+cell_line_label,HEK293 cell,cell_line_id,CLO:0001230,FALSE,,470,,,FALSE
+cell_line_label,HEK293T,cell_line_id,CLO:0037372,FALSE,,470,,,FALSE
+cell_line_label,HEK293T cell,cell_line_id,CLO:0037372,FALSE,,470,,,FALSE
+cell_line_label,HEL 92.1.7,cell_line_id,CVCL_2481,FALSE,,470,,,FALSE
+cell_line_label,HT-29,cell_line_id,CVCL_0320,FALSE,,470,,,FALSE
+cell_line_label,HT-29 cell,cell_line_id,CVCL_0320,FALSE,,470,,,FALSE
+cell_line_label,HaCaT,cell_line_id,CVCL_0038,FALSE,,470,,,FALSE
+cell_line_label,HeLa,cell_line_id,CLO:0003684,FALSE,,470,,,FALSE
+cell_line_label,HeLa-DR-FRT,cell_line_id,,TRUE,,470,,,FALSE
+cell_line_label,HepG2,cell_line_id,CLO:0003704,FALSE,,470,,,FALSE
+cell_line_label,HepG2 cell,cell_line_id,CLO:0003704,FALSE,,470,,,FALSE
+cell_line_label,K-562 cell,cell_line_id,CLO:0007050,FALSE,,470,,,FALSE
+cell_line_label,K562,cell_line_id,CLO:0007050,FALSE,,470,,,FALSE
+cell_line_label,LNCaP,cell_line_id,CLO:0007365,FALSE,,470,,,FALSE
+cell_line_label,MEF,cell_line_id,CVCL_C1M8,FALSE,,470,,,FALSE
+cell_line_label,MIN6,cell_line_id,CVCL_0431,FALSE,,470,,,FALSE
+cell_line_label,MIN6 cell,cell_line_id,CVCL_0431,FALSE,,470,,,FALSE
+cell_line_label,NCI-H1299 cell,cell_line_id,CLO:0007986,FALSE,,470,,,FALSE
+cell_line_label,NIH/3T3,cell_line_id,CLO:0008172,FALSE,,470,,,FALSE
+cell_line_label,Neuro-2a,cell_line_id,CLO:0008154,FALSE,,470,,,FALSE
+cell_line_label,Neuro-2a cell,cell_line_id,CLO:0008154,FALSE,,470,,,FALSE
+cell_line_label,R-MmINSR KD,cell_line_id,,TRUE,,470,,,FALSE
+cell_line_label,SF7996,cell_line_id,,TRUE,,470,,,FALSE
+cell_line_label,SK-MEL-28,cell_line_id,CLO:0009043,FALSE,,470,,,FALSE
+cell_line_label,SUM149,cell_line_id,CLO:0009917,FALSE,,470,,,FALSE
+cell_line_label,SUM149PT,cell_line_id,CLO:0009917,FALSE,,470,,,FALSE
+cell_line_label,TMD8,cell_line_id,CLO:0037272,FALSE,,470,,,FALSE
+cell_line_label,V-C8,cell_line_id,CVCL_X405,FALSE,,470,,,FALSE
+cell_line_label,293-F,cell_line_label,HEK293-F,FALSE,,473,,,FALSE
+cell_line_label,A-375,cell_line_label,A 375 cell,FALSE,,473,,,FALSE
+cell_line_label,A-375 cell,cell_line_label,A 375 cell,FALSE,,473,,,FALSE
+cell_line_label,A375,cell_line_label,A 375 cell,FALSE,,473,,,FALSE
+cell_line_label,A375 cell,cell_line_label,A 375 cell,FALSE,,473,,,FALSE
+cell_line_label,A549,cell_line_label,A549 cell,FALSE,,473,,,FALSE
+cell_line_label,A549 cell,cell_line_label,A549 cell,FALSE,,473,,,FALSE
+cell_line_label,Ba/F3,cell_line_label,Ba/F3,FALSE,,473,,,FALSE
+cell_line_label,Ba/F3 cell,cell_line_label,Ba/F3,FALSE,,473,,,FALSE
+cell_line_label,CHO-K1,cell_line_label,CHO-K1 cell,FALSE,,473,,,FALSE
+cell_line_label,CHO-K1 cell,cell_line_label,CHO-K1 cell,FALSE,,473,,,FALSE
+cell_line_label,Expi293F,cell_line_label,Expi293F,FALSE,,473,,,FALSE
+cell_line_label,Flp-In HEK293,cell_line_label,Flp-In-293,FALSE,,473,,,FALSE
+cell_line_label,Flp-In-293 cell,cell_line_label,Flp-In-293,FALSE,,473,,,FALSE
+cell_line_label,FreeStyle 293-F,cell_line_label,FreeStyle 293-F,FALSE,,473,,,FALSE
+cell_line_label,FreeStyle 293-F cell,cell_line_label,FreeStyle 293-F,FALSE,,473,,,FALSE
+cell_line_label,Freestyle 293-F,cell_line_label,FreeStyle 293-F,FALSE,,473,,,FALSE
+cell_line_label,H1299,cell_line_label,NCI-H1299 cell,FALSE,,473,,,FALSE
+cell_line_label,HAP1,cell_line_label,HAP1,FALSE,,473,,,FALSE
+cell_line_label,HAP1 cell,cell_line_label,HAP1,FALSE,,473,,,FALSE
+cell_line_label,HEK 293,cell_line_label,HEK293,FALSE,,473,,,FALSE
+cell_line_label,HEK293,cell_line_label,HEK293,FALSE,,473,,,FALSE
+cell_line_label,HEK293 cell,cell_line_label,HEK293,FALSE,,473,,,FALSE
+cell_line_label,HEK293T,cell_line_label,HEK293T cell,FALSE,,473,,,FALSE
+cell_line_label,HEK293T cell,cell_line_label,HEK293T cell,FALSE,,473,,,FALSE
+cell_line_label,HEL 92.1.7,cell_line_label,HEL 92.1.7,FALSE,,473,,,FALSE
+cell_line_label,HT-29,cell_line_label,HT-29,FALSE,,473,,,FALSE
+cell_line_label,HT-29 cell,cell_line_label,HT-29,FALSE,,473,,,FALSE
+cell_line_label,HaCaT,cell_line_label,HaCaT,FALSE,,473,,,FALSE
+cell_line_label,HeLa,cell_line_label,HeLa cell,FALSE,,473,,,FALSE
+cell_line_label,HeLa-DR-FRT,cell_line_label,HeLa-DR-FRT,FALSE,,473,,,FALSE
+cell_line_label,HepG2,cell_line_label,Hep G2 cell,FALSE,,473,,,FALSE
+cell_line_label,HepG2 cell,cell_line_label,Hep G2 cell,FALSE,,473,,,FALSE
+cell_line_label,K-562 cell,cell_line_label,K 562 cell,FALSE,,473,,,FALSE
+cell_line_label,K562,cell_line_label,K 562 cell,FALSE,,473,,,FALSE
+cell_line_label,LNCaP,cell_line_label,LNCAP cell,FALSE,,473,,,FALSE
+cell_line_label,MEF,cell_line_label,MEF,FALSE,,473,,,FALSE
+cell_line_label,MIN6,cell_line_label,MIN6,FALSE,,473,,,FALSE
+cell_line_label,MIN6 cell,cell_line_label,MIN6,FALSE,,473,,,FALSE
+cell_line_label,NCI-H1299 cell,cell_line_label,NCI-H1299 cell,FALSE,,473,,,FALSE
+cell_line_label,NIH/3T3,cell_line_label,NIH-3T3 cell,FALSE,,473,,,FALSE
+cell_line_label,Neuro-2a,cell_line_label,Neuro-2a cell,FALSE,,473,,,FALSE
+cell_line_label,Neuro-2a cell,cell_line_label,Neuro-2a cell,FALSE,,473,,,FALSE
+cell_line_label,R-MmINSR KD,cell_line_label,R-MmINSR KD,FALSE,,473,,,FALSE
+cell_line_label,SF7996,cell_line_label,SF7996,FALSE,,473,,,FALSE
+cell_line_label,SK-MEL-28,cell_line_label,SK-MEL-28 cell,FALSE,,473,,,FALSE
+cell_line_label,SUM149,cell_line_label,SUM149PT cell,FALSE,,473,,,FALSE
+cell_line_label,SUM149PT,cell_line_label,SUM149PT cell,FALSE,,473,,,FALSE
+cell_line_label,TMD8,cell_line_label,TMD8 cell,FALSE,,473,,,FALSE
+cell_line_label,V-C8,cell_line_label,V-C8,FALSE,,473,,,FALSE
+disease_label,healthy,disease_id,NCIT:C115935,FALSE,,641,,,FALSE
+disease_label,cleft palate,disease_id,MONDO:0016064,FALSE,,641,,,FALSE
+disease_label,cardiac rhythm disease,disease_id,MONDO:0007263,FALSE,,641,,,FALSE
+disease_label,thiamine metabolism dysfunction syndrome,disease_id,MONDO:0000152,FALSE,,641,,,FALSE
+disease_label,hereditary breast and ovarian cancer,disease_id,MONDO:0003582,FALSE,,641,,,FALSE
+disease_label,breast cancer,disease_id,MONDO:0007254,FALSE,,641,,,FALSE
+disease_label,Classical homocystinuria,disease_id,MONDO:0009352,FALSE,,641,,,FALSE
+disease_label,classical homocystinuria,disease_id,MONDO:0009352,FALSE,,641,,,FALSE
+disease_label,PTEN hamartoma tumor syndrome,disease_id,MONDO:0017623,FALSE,,641,,,FALSE
+disease_label,familial hypercholesterolemia,disease_id,MONDO:0005439,FALSE,,641,,,FALSE
+disease_label,myocardial infarction,disease_id,MONDO:0005068,FALSE,,641,,,FALSE
+disease_label,cancer,disease_id,MONDO:0004992,FALSE,,641,,,FALSE
+disease_label,glioblastoma,disease_id,MONDO:0018177,FALSE,,641,,,FALSE
+disease_label,myeloproliferative neoplasms,disease_id,MONDO:0020076,FALSE,,641,,,FALSE
+disease_label,Parkinson's disease,disease_id,MONDO:0005180,FALSE,,641,,,FALSE
+disease_label,Lynch syndrome,disease_id,MONDO:0005835,FALSE,,641,,,FALSE
+disease_label,Alzheimer's disease,disease_id,MONDO:0004975,FALSE,,641,,,FALSE
+disease_label,lung carcinoma,disease_id,MONDO:0005138,FALSE,,641,,,FALSE
+disease_label,amyotrophic lateral sclerosis,disease_id,MONDO:0004976,FALSE,,641,,,FALSE
+disease_label,COVID-19,disease_id,MONDO:0100096,FALSE,,641,,,FALSE
+disease_label,vitamin K-dependent clotting factor deficiency 2,disease_id,MONDO:0011837,FALSE,,641,,,FALSE
+disease_label,breast and ovarian cancer,disease_id,MONDO:0007254|MONDO:0008170,FALSE,,641,,,FALSE
+disease_label,melanoma,disease_id,MONDO:0005105,FALSE,,641,,,FALSE
+disease_label,autosomal dominant nonsyndromic hearing loss,disease_id,MONDO:0019587,FALSE,,641,,,FALSE
+disease_label,nonsyndromic hearing loss,disease_id,MONDO:0019497,FALSE,,641,,,FALSE
+disease_label,DFNA2,disease_id,MONDO:0010817,FALSE,,641,,,FALSE
+disease_label,"Deafness, autosomal dominant 2",disease_id,MONDO:0010817,FALSE,,641,,,FALSE
+disease_label,Deafness nonsyndromic autosomal dominant 2,disease_id,MONDO:0010817,FALSE,,641,,,FALSE
+disease_label,maturity-onset diabetes of the young,disease_id,MONDO:0018911,FALSE,,641,,,FALSE
+disease_label,chronic myelogenous leukemia,disease_id,MONDO:0011996,FALSE,,641,,,FALSE
+disease_label,Brugada syndrome 1|congenital long QT syndrome 3,disease_id,MONDO:0011001|MONDO:0011377,FALSE,,641,,,FALSE
+disease_label,retinitis pigmentosa,disease_id,MONDO:0019200,FALSE,,641,,,FALSE
+disease_label,autism spectrum disorder,disease_id,MONDO:0005258,FALSE,,641,,,FALSE
+disease_label,triple-negative breast cancer,disease_id,MONDO:0005494,FALSE,,641,,,FALSE
+disease_label,acute intermittent porphyria,disease_id,MONDO:0008294,FALSE,,641,,,FALSE
+disease_label,colorectal adenocarcinoma,disease_id,MONDO:0005008,FALSE,,641,,,FALSE
+disease_label,Canavan disease,disease_id,MONDO:0010079,FALSE,,641,,,FALSE
+disease_label,chronic myelogenous leukaemia,disease_id,MONDO:0011996,FALSE,,641,,,FALSE
+disease_label,neurodevelopmental disorder,disease_id,MONDO:0700092,FALSE,,641,,,FALSE
+disease_label,limb-girdle muscular dystrophy type 2E,disease_id,MONDO:0011423,FALSE,,641,,,FALSE
+disease_label,long QT syndrome type 5,disease_id,MONDO:0013372,FALSE,,641,,,FALSE
+disease_label,type 5 long QT syndrome,disease_id,MONDO:0013372,FALSE,,641,,,FALSE
+disease_label,hemophilia B,disease_id,MONDO:0010604,FALSE,,641,,,FALSE
+disease_label,tuberous sclerosis,disease_id,MONDO:0001734,FALSE,,641,,,FALSE
+disease_label,B-cell lymphoma,disease_id,MONDO:0015759,FALSE,,641,,,FALSE
+disease_label,severe combined immunodeficiency,disease_id,MONDO:0015974,FALSE,,641,,,FALSE
+disease_label,long QT syndrome,disease_id,MONDO:0013367,FALSE,,641,,,FALSE
+disease_label,megaloblastic anemia,disease_id,MONDO:0013456,FALSE,,641,,,FALSE
+disease_label,recessive megaloblastic anemia,disease_id,MONDO:0013456,FALSE,,641,,,FALSE
+disease_label,tubular aggregate myopathy,disease_id,MONDO:0008051,FALSE,,641,,,FALSE
+disease_label,long QT syndrome type 2,disease_id,MONDO:0013367,FALSE,,641,,,FALSE
+disease_label,Long QT syndrome,disease_id,MONDO:0013367,FALSE,,641,,,FALSE
+disease_label,Brugada syndrome,disease_id,MONDO:0015263,FALSE,,641,,,FALSE
+disease_label,Li-Fraumeni syndrome,disease_id,MONDO:0018875,FALSE,,641,,,FALSE
+disease_label,acute myeloid leukemia,disease_id,MONDO:0018874,FALSE,,641,,,FALSE
+disease_label,insulin resistance,disease_id,MONDO:0005148,FALSE,,641,,,FALSE
+disease_label,Donohue syndrome,disease_id,MONDO:0009517,FALSE,,641,,,FALSE
+disease_label,Leigh syndrome,disease_id,MONDO:0009723,FALSE,,641,,,FALSE
+disease_label,Parkinson disease,disease_id,MONDO:0005180,FALSE,,641,,,FALSE
+disease_label,autosomal dominant nonsyndromic deafness 2,disease_id,MONDO:0010817,FALSE,,641,,,FALSE
+disease_label,autosomal recessive limb-girdle muscular dystrophy type 2E,disease_id,MONDO:0011423,FALSE,,641,,,FALSE
+disease_label,chronic myeloid leukemia,disease_id,MONDO:0011996,FALSE,,641,,,FALSE
+disease_label,diffuse large B-cell lymphoma,disease_id,MONDO:0018905,FALSE,,641,,,FALSE
+disease_label,hereditary breast and ovarian cancer syndrome,disease_id,MONDO:0003582,FALSE,,641,,,FALSE
+disease_label,hereditary breast ovarian cancer syndrome,disease_id,MONDO:0003582,FALSE,,641,,,FALSE
+disease_label,intellectual disability,disease_id,MONDO:0001071,FALSE,,641,,,FALSE
+disease_label,long QT syndrome 2,disease_id,MONDO:0013367,FALSE,,641,,,FALSE
+disease_label,long QT syndrome 5,disease_id,MONDO:0013372,FALSE,,641,,,FALSE
+disease_label,maturity-onset diabetes of the young type 2,disease_id,MONDO:0007453,FALSE,,641,,,FALSE
+disease_label,myeloproliferative neoplasm,disease_id,MONDO:0020076,FALSE,,641,,,FALSE
+disease_label,non-small cell lung carcinoma,disease_id,MONDO:0005233,FALSE,,641,,,FALSE
+disease_label,triple-negative breast carcinoma,disease_id,MONDO:0005494,FALSE,,641,,,FALSE
+disease_label,vitamin K-dependent clotting factor deficiency,disease_id,MONDO:0011837,FALSE,,641,,,FALSE
+disease_label,healthy,disease_label,healthy,FALSE,,642,,,FALSE
+disease_label,cleft palate,disease_label,cleft palate,FALSE,,642,,,FALSE
+disease_label,cardiac rhythm disease,disease_label,cardiac rhythm disease,FALSE,,642,,,FALSE
+disease_label,thiamine metabolism dysfunction syndrome,disease_label,thiamine-responsive dysfunction syndrome,FALSE,,642,,,FALSE
+disease_label,hereditary breast and ovarian cancer,disease_label,hereditary breast ovarian cancer syndrome,FALSE,,642,,,FALSE
+disease_label,breast cancer,disease_label,breast cancer,FALSE,,642,,,FALSE
+disease_label,Classical homocystinuria,disease_label,classic homocystinuria,FALSE,,642,,,FALSE
+disease_label,classical homocystinuria,disease_label,classic homocystinuria,FALSE,,642,,,FALSE
+disease_label,PTEN hamartoma tumor syndrome,disease_label,PTEN hamartoma tumor syndrome,FALSE,,642,,,FALSE
+disease_label,familial hypercholesterolemia,disease_label,familial hypercholesterolemia,FALSE,,642,,,FALSE
+disease_label,myocardial infarction,disease_label,myocardial infarction,FALSE,,642,,,FALSE
+disease_label,cancer,disease_label,cancer,FALSE,,642,,,FALSE
+disease_label,glioblastoma,disease_label,glioblastoma,FALSE,,642,,,FALSE
+disease_label,myeloproliferative neoplasms,disease_label,myeloproliferative neoplasm,FALSE,,642,,,FALSE
+disease_label,Parkinson's disease,disease_label,Parkinson disease,FALSE,,642,,,FALSE
+disease_label,Lynch syndrome,disease_label,Lynch syndrome,FALSE,,642,,,FALSE
+disease_label,Alzheimer's disease,disease_label,Alzheimer disease,FALSE,,642,,,FALSE
+disease_label,lung carcinoma,disease_label,lung carcinoma,FALSE,,642,,,FALSE
+disease_label,amyotrophic lateral sclerosis,disease_label,amyotrophic lateral sclerosis,FALSE,,642,,,FALSE
+disease_label,COVID-19,disease_label,COVID-19,FALSE,,642,,,FALSE
+disease_label,vitamin K-dependent clotting factor deficiency 2,disease_label,"vitamin K-dependent clotting factors, combined deficiency of, type 2",FALSE,,642,,,FALSE
+disease_label,breast and ovarian cancer,disease_label,breast cancer|ovarian cancer,FALSE,,642,,,FALSE
+disease_label,melanoma,disease_label,melanoma,FALSE,,642,,,FALSE
+disease_label,autosomal dominant nonsyndromic hearing loss,disease_label,autosomal dominant nonsyndromic hearing loss,FALSE,,642,,,FALSE
+disease_label,nonsyndromic hearing loss,disease_label,nonsyndromic genetic hearing loss,FALSE,,642,,,FALSE
+disease_label,DFNA2,disease_label,autosomal dominant nonsyndromic hearing loss 2A,FALSE,,642,,,FALSE
+disease_label,"Deafness, autosomal dominant 2",disease_label,autosomal dominant nonsyndromic hearing loss 2A,FALSE,,642,,,FALSE
+disease_label,Deafness nonsyndromic autosomal dominant 2,disease_label,autosomal dominant nonsyndromic hearing loss 2A,FALSE,,642,,,FALSE
+disease_label,maturity-onset diabetes of the young,disease_label,maturity-onset diabetes of the young,FALSE,,642,,,FALSE
+disease_label,chronic myelogenous leukemia,disease_label,chronic myeloid leukemia,FALSE,,642,,,FALSE
+disease_label,Brugada syndrome 1|congenital long QT syndrome 3,disease_label,Brugada syndrome 1|long QT syndrome 3,FALSE,,642,,,FALSE
+disease_label,retinitis pigmentosa,disease_label,retinitis pigmentosa,FALSE,,642,,,FALSE
+disease_label,autism spectrum disorder,disease_label,autism spectrum disorder,FALSE,,642,,,FALSE
+disease_label,triple-negative breast cancer,disease_label,triple-negative breast carcinoma,FALSE,,642,,,FALSE
+disease_label,acute intermittent porphyria,disease_label,acute intermittent porphyria,FALSE,,642,,,FALSE
+disease_label,colorectal adenocarcinoma,disease_label,colorectal adenocarcinoma,FALSE,,642,,,FALSE
+disease_label,Canavan disease,disease_label,Canavan disease,FALSE,,642,,,FALSE
+disease_label,chronic myelogenous leukaemia,disease_label,chronic myeloid leukemia,FALSE,,642,,,FALSE
+disease_label,neurodevelopmental disorder,disease_label,neurodevelopmental disorder,FALSE,,642,,,FALSE
+disease_label,limb-girdle muscular dystrophy type 2E,disease_label,autosomal recessive limb-girdle muscular dystrophy type 2E,FALSE,,642,,,FALSE
+disease_label,long QT syndrome type 5,disease_label,long QT syndrome 5,FALSE,,642,,,FALSE
+disease_label,type 5 long QT syndrome,disease_label,long QT syndrome 5,FALSE,,642,,,FALSE
+disease_label,hemophilia B,disease_label,hemophilia B,FALSE,,642,,,FALSE
+disease_label,tuberous sclerosis,disease_label,tuberous sclerosis,FALSE,,642,,,FALSE
+disease_label,B-cell lymphoma,disease_label,B-cell non-Hodgkin lymphoma,FALSE,,642,,,FALSE
+disease_label,severe combined immunodeficiency,disease_label,severe combined immunodeficiency,FALSE,,642,,,FALSE
+disease_label,long QT syndrome,disease_label,long QT syndrome 2,FALSE,,642,,,FALSE
+disease_label,megaloblastic anemia,disease_label,constitutional megaloblastic anemia with severe neurologic disease,FALSE,,642,,,FALSE
+disease_label,recessive megaloblastic anemia,disease_label,constitutional megaloblastic anemia with severe neurologic disease,FALSE,,642,,,FALSE
+disease_label,tubular aggregate myopathy,disease_label,tubular aggregate myopathy,FALSE,,642,,,FALSE
+disease_label,long QT syndrome type 2,disease_label,long QT syndrome 2,FALSE,,642,,,FALSE
+disease_label,Long QT syndrome,disease_label,long QT syndrome 2,FALSE,,642,,,FALSE
+disease_label,Brugada syndrome,disease_label,Brugada syndrome,FALSE,,642,,,FALSE
+disease_label,Li-Fraumeni syndrome,disease_label,Li-Fraumeni syndrome,FALSE,,642,,,FALSE
+disease_label,acute myeloid leukemia,disease_label,acute myeloid leukemia,FALSE,,642,,,FALSE
+disease_label,insulin resistance,disease_label,type 2 diabetes mellitus,FALSE,,642,,,FALSE
+disease_label,Donohue syndrome,disease_label,Donohue syndrome,FALSE,,642,,,FALSE
+disease_label,Leigh syndrome,disease_label,Leigh syndrome,FALSE,,642,,,FALSE
+disease_label,Parkinson disease,disease_label,Parkinson disease,FALSE,,642,,,FALSE
+disease_label,autosomal dominant nonsyndromic deafness 2,disease_label,autosomal dominant nonsyndromic hearing loss 2A,FALSE,,642,,,FALSE
+disease_label,autosomal recessive limb-girdle muscular dystrophy type 2E,disease_label,autosomal recessive limb-girdle muscular dystrophy type 2E,FALSE,,642,,,FALSE
+disease_label,chronic myeloid leukemia,disease_label,chronic myeloid leukemia,FALSE,,642,,,FALSE
+disease_label,diffuse large B-cell lymphoma,disease_label,diffuse large B-cell lymphoma,FALSE,,642,,,FALSE
+disease_label,hereditary breast and ovarian cancer syndrome,disease_label,hereditary breast ovarian cancer syndrome,FALSE,,642,,,FALSE
+disease_label,hereditary breast ovarian cancer syndrome,disease_label,hereditary breast ovarian cancer syndrome,FALSE,,642,,,FALSE
+disease_label,intellectual disability,disease_label,intellectual disability,FALSE,,642,,,FALSE
+disease_label,long QT syndrome 2,disease_label,long QT syndrome 2,FALSE,,642,,,FALSE
+disease_label,long QT syndrome 5,disease_label,long QT syndrome 5,FALSE,,642,,,FALSE
+disease_label,maturity-onset diabetes of the young type 2,disease_label,maturity-onset diabetes of the young type 2,FALSE,,642,,,FALSE
+disease_label,myeloproliferative neoplasm,disease_label,myeloproliferative neoplasm,FALSE,,642,,,FALSE
+disease_label,non-small cell lung carcinoma,disease_label,non-small cell lung carcinoma,FALSE,,642,,,FALSE
+disease_label,triple-negative breast carcinoma,disease_label,triple-negative breast carcinoma,FALSE,,642,,,FALSE
+disease_label,vitamin K-dependent clotting factor deficiency,disease_label,"vitamin K-dependent clotting factors, combined deficiency of, type 2",FALSE,,642,,,FALSE
+cell_type_label,epithelial cell,cell_type_id,CL:0000066,FALSE,,673,,,FALSE
+cell_type_label,melanocyte,cell_type_id,CL:0000148,FALSE,,673,,,FALSE
+cell_type_label,kidney cell,cell_type_id,CL:1000497,FALSE,,673,,,FALSE
+cell_type_label,B cell,cell_type_id,CL:0000236,FALSE,,673,,,FALSE
+cell_type_label,embryonic fibroblast,cell_type_id,CL:2000042,FALSE,,673,,,FALSE
+cell_type_label,glioblastoma cell,cell_type_id,CL:0001064,FALSE,,673,,,FALSE
+cell_type_label,melanoma cell,cell_type_id,CL:0001064,FALSE,,673,,,FALSE
+cell_type_label,breast carcinoma cell,cell_type_id,CL:0001064,FALSE,,673,,,FALSE
+cell_type_label,chronic myelogenous leukemia cell,cell_type_id,CL:0001064,FALSE,,673,,,FALSE
+cell_type_label,epithelial cell,cell_type_label,epithelial cell,FALSE,,674,,,FALSE
+cell_type_label,melanocyte,cell_type_label,melanocyte,FALSE,,674,,,FALSE
+cell_type_label,kidney cell,cell_type_label,kidney cell,FALSE,,674,,,FALSE
+cell_type_label,B cell,cell_type_label,B cell,FALSE,,674,,,FALSE
+cell_type_label,embryonic fibroblast,cell_type_label,embryonic fibroblast,FALSE,,674,,,FALSE
+cell_type_label,glioblastoma cell,cell_type_label,malignant cell,FALSE,,674,,,FALSE
+cell_type_label,melanoma cell,cell_type_label,malignant cell,FALSE,,674,,,FALSE
+cell_type_label,breast carcinoma cell,cell_type_label,malignant cell,FALSE,,674,,,FALSE
+cell_type_label,chronic myelogenous leukemia cell,cell_type_label,malignant cell,FALSE,,674,,,FALSE
+model_system_label,cell_line,model_system_id,CLO:0000031,FALSE,,699,,,FALSE
+model_system_label,yeast,model_system_id,NCIT:C19617,FALSE,,699,,,FALSE
+model_system_label,bacteria,model_system_id,NCIT:C19167,FALSE,,699,,,FALSE
+model_system_label,bacteriophage,model_system_id,NCIT:C14188,FALSE,,699,,,FALSE
+model_system_label,cell_free_system,model_system_id,mesh:D002474,FALSE,,699,,,FALSE
+model_system_label,animal_model,model_system_id,NCIT:C71164,FALSE,,699,,,FALSE
+model_system_label,primary_cell,model_system_id,BAO:0000239,FALSE,,699,,,FALSE
+model_system_label,organoid,model_system_id,NCIT:C172259,FALSE,,699,,,FALSE
+sex_label,female,sex_id,PATO:0000383,FALSE,,699,,,FALSE
+sex_label,male,sex_id,PATO:0000384,FALSE,,699,,,FALSE
+sex_label,hermaphrodite,sex_id,PATO:0001340,FALSE,,699,,,FALSE
+model_system_label,cell_line,model_system_label,cell_line,FALSE,,700,,,FALSE
+model_system_label,yeast,model_system_label,yeast,FALSE,,700,,,FALSE
+model_system_label,bacteria,model_system_label,bacteria,FALSE,,700,,,FALSE
+model_system_label,bacteriophage,model_system_label,bacteriophage,FALSE,,700,,,FALSE
+model_system_label,cell_free_system,model_system_label,cell_free_system,FALSE,,700,,,FALSE
+model_system_label,animal_model,model_system_label,animal_model,FALSE,,700,,,FALSE
+tissue_label,liver,tissue_id,UBERON:0002107,FALSE,,741,,,FALSE
+tissue_label,kidney,tissue_id,UBERON:0002113,FALSE,,741,,,FALSE
+tissue_label,brain,tissue_id,UBERON:0000955,FALSE,,741,,,FALSE
+tissue_label,lung,tissue_id,UBERON:0002048,FALSE,,741,,,FALSE
+tissue_label,skin,tissue_id,UBERON:0002097,FALSE,,741,,,FALSE
+tissue_label,ovary,tissue_id,UBERON:0000992,FALSE,,741,,,FALSE
+tissue_label,bone marrow,tissue_id,UBERON:0002371,FALSE,,741,,,FALSE
+tissue_label,heart,tissue_id,UBERON:0000948,FALSE,,741,,,FALSE
+tissue_label,breast,tissue_id,UBERON:0000310,FALSE,,741,,,FALSE
+tissue_label,colon,tissue_id,UBERON:0001155,FALSE,,741,,,FALSE
+tissue_label,blood,tissue_id,UBERON:0000178,FALSE,,741,,,FALSE
+tissue_label,lymphoid tissue,tissue_id,UBERON:0001744,FALSE,,741,,,FALSE
+tissue_label,embryo,tissue_id,UBERON:0000922,FALSE,,741,,,FALSE
+tissue_label,skin of body,tissue_id,UBERON:0002097,FALSE,,741,,,FALSE
+tissue_label,uterine cervix,tissue_id,UBERON:0000002,FALSE,,741,,,FALSE
+tissue_label,liver,tissue_label,liver,FALSE,,742,,,FALSE
+tissue_label,kidney,tissue_label,kidney,FALSE,,742,,,FALSE
+tissue_label,brain,tissue_label,brain,FALSE,,742,,,FALSE
+tissue_label,lung,tissue_label,lung,FALSE,,742,,,FALSE
+tissue_label,skin,tissue_label,skin,FALSE,,742,,,FALSE
+tissue_label,ovary,tissue_label,ovary,FALSE,,742,,,FALSE
+tissue_label,bone marrow,tissue_label,bone marrow,FALSE,,742,,,FALSE
+tissue_label,heart,tissue_label,heart,FALSE,,742,,,FALSE
+tissue_label,breast,tissue_label,breast,FALSE,,742,,,FALSE
+tissue_label,colon,tissue_label,colon,FALSE,,742,,,FALSE
+tissue_label,blood,tissue_label,blood,FALSE,,742,,,FALSE
+tissue_label,lymphoid tissue,tissue_label,lymphoid tissue,FALSE,,742,,,FALSE
+tissue_label,embryo,tissue_label,embryo,FALSE,,742,,,FALSE
+tissue_label,skin of body,tissue_label,skin of body,FALSE,,742,,,FALSE
+tissue_label,uterine cervix,tissue_label,uterine cervix,FALSE,,742,,,FALSE
+developmental_stage_label,embryonic,developmental_stage_id,HsapDv:0000002,FALSE,,758,,,FALSE
+developmental_stage_label,fetal,developmental_stage_id,HsapDv:0000037,FALSE,,758,,,FALSE
+developmental_stage_label,neonatal,developmental_stage_id,HsapDv:0000262,FALSE,,758,,,FALSE
+developmental_stage_label,child,developmental_stage_id,HsapDv:0000265,FALSE,,758,,,FALSE
+developmental_stage_label,juvenile,developmental_stage_id,HsapDv:0000271,FALSE,,758,,,FALSE
+developmental_stage_label,adult,developmental_stage_id,HsapDv:0000258,FALSE,,758,,,FALSE
+developmental_stage_label,elderly,developmental_stage_id,HsapDv:0000227,FALSE,,758,,,FALSE
+developmental_stage_label,embryonic,developmental_stage_label,embryonic,FALSE,,759,,,FALSE
+developmental_stage_label,fetal,developmental_stage_label,fetal,FALSE,,759,,,FALSE
+library_generation_type_label,exogenous genetic perturbation method,library_generation_type_id,EFO:0022869,FALSE,,776,,,FALSE
+library_generation_type_label,endogenous genetic perturbation method,library_generation_type_id,EFO:0022868,FALSE,,776,,,FALSE
+library_generation_type_label,exogenous genetic perturbation method,library_generation_type_label,exogenous genetic perturbation method,FALSE,,777,,,FALSE
+library_generation_type_label,endogenous genetic perturbation method,library_generation_type_label,endogenous genetic perturbation method,FALSE,,777,,,FALSE
+library_generation_method_label,oligo-directed mutagenic PCR,library_generation_method_id,EFO:0022904,FALSE,,815,,,FALSE
+library_generation_method_label,doped oligo synthesis,library_generation_method_id,EFO:0022900,FALSE,,815,,,FALSE
+library_generation_method_label,microarray synthesis,library_generation_method_id,EFO:0022902,FALSE,,815,,,FALSE
+library_generation_method_label,site-directed mutagenesis,library_generation_method_id,EFO:0022905,FALSE,,815,,,FALSE
+library_generation_method_label,error-prone PCR,library_generation_method_id,EFO:0022901,FALSE,,815,,,FALSE
+library_generation_method_label,nicking mutagenesis,library_generation_method_id,EFO:0022903,FALSE,,815,,,FALSE
+library_generation_method_label,insertional mutagenesis,library_generation_method_id,NCIT:C17377,FALSE,,815,,,FALSE
+library_generation_method_label,POPCode mutagenesis,library_generation_method_id,EFO:0022905,FALSE,,815,,,FALSE
+library_generation_method_label,silicon microarray synthesis,library_generation_method_id,EFO:0022902,FALSE,,815,,,FALSE
+library_generation_method_label,microchip-based massive parallel oligo synthesis,library_generation_method_id,,TRUE,,815,,,FALSE
+library_generation_method_label,multiplexed site-directed mutagenesis,library_generation_method_id,EFO:0022905,FALSE,,815,,,FALSE
+library_generation_method_label,mutagenesis by integrated tiles,library_generation_method_id,,TRUE,,815,,,FALSE
+library_generation_method_label,solid-phase oligonucleotide synthesis,library_generation_method_id,,TRUE,,815,,,FALSE
+library_generation_method_label,oligo-directed mutagenic PCR,library_generation_method_label,oligo-directed mutagenic PCR,FALSE,,816,,,FALSE
+library_generation_method_label,doped oligo synthesis,library_generation_method_label,doped oligo synthesis,FALSE,,816,,,FALSE
+library_generation_method_label,microarray synthesis,library_generation_method_label,microarray synthesis,FALSE,,816,,,FALSE
+library_generation_method_label,site-directed mutagenesis,library_generation_method_label,site-directed mutagenesis,FALSE,,816,,,FALSE
+library_generation_method_label,error-prone PCR,library_generation_method_label,error-prone PCR,FALSE,,816,,,FALSE
+library_generation_method_label,nicking mutagenesis,library_generation_method_label,nicking mutagenesis,FALSE,,816,,,FALSE
+library_generation_method_label,insertional mutagenesis,library_generation_method_label,insertional mutagenesis,FALSE,,816,,,FALSE
+library_generation_method_label,POPCode mutagenesis,library_generation_method_label,POPCode mutagenesis,FALSE,,816,,,FALSE
+library_generation_method_label,silicon microarray synthesis,library_generation_method_label,silicon microarray synthesis,FALSE,,816,,,FALSE
+library_generation_method_label,microchip-based massive parallel oligo synthesis,library_generation_method_label,microchip-based massive parallel oligo synthesis,FALSE,,816,,,FALSE
+library_generation_method_label,multiplexed site-directed mutagenesis,library_generation_method_label,multiplexed site-directed mutagenesis,FALSE,,816,,,FALSE
+library_generation_method_label,mutagenesis by integrated tiles,library_generation_method_label,mutagenesis by integrated tiles,FALSE,,816,,,FALSE
+library_generation_method_label,solid-phase oligonucleotide synthesis,library_generation_method_label,solid-phase oligonucleotide synthesis,FALSE,,816,,,FALSE
+enzyme_delivery_method_label,lipofection,enzyme_delivery_method_id,EFO:0920076,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,nucleofection,enzyme_delivery_method_id,EFO:0920075,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,electroporation,enzyme_delivery_method_id,EFO:0920074,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,adeno-associated virus transduction,enzyme_delivery_method_id,EFO:0920071,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,adenovirus transduction,enzyme_delivery_method_id,EFO:0920070,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,retrovirus transduction,enzyme_delivery_method_id,EFO:0920068,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,lentivirus transduction,enzyme_delivery_method_id,EFO:0920067,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,nanoparticle-mediated transfection,enzyme_delivery_method_id,EFO:0920077,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,molecular cloning,enzyme_delivery_method_id,mesh:D003001,FALSE,,855,,,FALSE
+enzyme_delivery_method_label,transformation,enzyme_delivery_method_id,,TRUE,,855,,,FALSE
+enzyme_delivery_method_label,chemical-mediated transfection,enzyme_delivery_method_id,,TRUE,,855,,,FALSE
+enzyme_delivery_method_label,hydrodynamic injection,enzyme_delivery_method_id,,TRUE,,855,,,FALSE
+enzyme_delivery_method_label,influenza A virus infection,enzyme_delivery_method_id,,TRUE,,855,,,FALSE
+enzyme_delivery_method_label,lipofection,enzyme_delivery_method_label,lipofection,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,nucleofection,enzyme_delivery_method_label,nucleofection,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,electroporation,enzyme_delivery_method_label,electroporation,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,adeno-associated virus transduction,enzyme_delivery_method_label,adeno-associated virus transduction,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,adenovirus transduction,enzyme_delivery_method_label,adenovirus transduction,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,retrovirus transduction,enzyme_delivery_method_label,retrovirus transduction,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,lentivirus transduction,enzyme_delivery_method_label,lentivirus transduction,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,nanoparticle-mediated transfection,enzyme_delivery_method_label,nanoparticle-mediated transfection,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,molecular cloning,enzyme_delivery_method_label,molecular cloning,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,transformation,enzyme_delivery_method_label,transformation,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,chemical-mediated transfection,enzyme_delivery_method_label,chemical-mediated transfection,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,hydrodynamic injection,enzyme_delivery_method_label,hydrodynamic injection,FALSE,,856,,,FALSE
+enzyme_delivery_method_label,influenza A virus infection,enzyme_delivery_method_label,influenza A virus infection,FALSE,,856,,,FALSE
+library_delivery_method_label,lipofection,library_delivery_method_id,EFO:0920076,FALSE,,894,,,FALSE
+library_delivery_method_label,nucleofection,library_delivery_method_id,EFO:0920075,FALSE,,894,,,FALSE
+library_delivery_method_label,electroporation,library_delivery_method_id,EFO:0920074,FALSE,,894,,,FALSE
+library_delivery_method_label,adeno-associated virus transduction,library_delivery_method_id,EFO:0920071,FALSE,,894,,,FALSE
+library_delivery_method_label,adenovirus transduction,library_delivery_method_id,EFO:0920070,FALSE,,894,,,FALSE
+library_delivery_method_label,retrovirus transduction,library_delivery_method_id,EFO:0920068,FALSE,,894,,,FALSE
+library_delivery_method_label,lentivirus transduction,library_delivery_method_id,EFO:0920067,FALSE,,894,,,FALSE
+library_delivery_method_label,nanoparticle-mediated transfection,library_delivery_method_id,EFO:0920077,FALSE,,894,,,FALSE
+library_delivery_method_label,molecular cloning,library_delivery_method_id,mesh:D003001,FALSE,,894,,,FALSE
+library_delivery_method_label,transformation,library_delivery_method_id,,TRUE,,894,,,FALSE
+library_delivery_method_label,chemical-mediated transfection,library_delivery_method_id,,TRUE,,894,,,FALSE
+library_delivery_method_label,hydrodynamic injection,library_delivery_method_id,,TRUE,,894,,,FALSE
+library_delivery_method_label,influenza A virus infection,library_delivery_method_id,,TRUE,,894,,,FALSE
+library_delivery_method_label,lipofection,library_delivery_method_label,lipofection,FALSE,,895,,,FALSE
+library_delivery_method_label,nucleofection,library_delivery_method_label,nucleofection,FALSE,,895,,,FALSE
+library_delivery_method_label,electroporation,library_delivery_method_label,electroporation,FALSE,,895,,,FALSE
+library_delivery_method_label,adeno-associated virus transduction,library_delivery_method_label,adeno-associated virus transduction,FALSE,,895,,,FALSE
+library_delivery_method_label,adenovirus transduction,library_delivery_method_label,adenovirus transduction,FALSE,,895,,,FALSE
+library_delivery_method_label,retrovirus transduction,library_delivery_method_label,retrovirus transduction,FALSE,,895,,,FALSE
+library_delivery_method_label,lentivirus transduction,library_delivery_method_label,lentivirus transduction,FALSE,,895,,,FALSE
+library_delivery_method_label,nanoparticle-mediated transfection,library_delivery_method_label,nanoparticle-mediated transfection,FALSE,,895,,,FALSE
+library_delivery_method_label,molecular cloning,library_delivery_method_label,molecular cloning,FALSE,,895,,,FALSE
+library_delivery_method_label,transformation,library_delivery_method_label,transformation,FALSE,,895,,,FALSE
+library_delivery_method_label,chemical-mediated transfection,library_delivery_method_label,chemical-mediated transfection,FALSE,,895,,,FALSE
+library_delivery_method_label,hydrodynamic injection,library_delivery_method_label,hydrodynamic injection,FALSE,,895,,,FALSE
+library_delivery_method_label,influenza A virus infection,library_delivery_method_label,influenza A virus infection,FALSE,,895,,,FALSE
+enzyme_integration_state_label,not-integrative transgene expression,enzyme_integration_state_label,non-integrative transgene expression,FALSE,,911,fix_enzyme_integration_label,Match the accepted label spelling,FALSE
+enzyme_integration_state_label,non-integrative transgene expression,enzyme_integration_state_id,EFO:0920085,FALSE,,912,,,FALSE
+enzyme_integration_state_label,targeted locus integration,enzyme_integration_state_id,EFO:0920083,FALSE,,912,,,FALSE
+enzyme_integration_state_label,random locus integration,enzyme_integration_state_id,EFO:0920082,FALSE,,912,,,FALSE
+enzyme_integration_state_label,native locus replacement,enzyme_integration_state_id,EFO:0920084,FALSE,,912,,,FALSE
+library_integration_state_label,random locus integration,library_integration_state_id,EFO:0920082,FALSE,,912,,,FALSE
+library_integration_state_label,targeted locus integration,library_integration_state_id,EFO:0920083,FALSE,,912,,,FALSE
+library_integration_state_label,native locus replacement,library_integration_state_id,EFO:0920084,FALSE,,912,,,FALSE
+library_integration_state_label,non-integrative transgene expression,library_integration_state_id,EFO:0920085,FALSE,,912,,,FALSE
+enzyme_integration_state_label,non-integrative transgene expression,enzyme_integration_state_label,non-integrative transgene expression,FALSE,,913,,,FALSE
+enzyme_integration_state_label,targeted locus integration,enzyme_integration_state_label,targeted locus integration,FALSE,,913,,,FALSE
+enzyme_integration_state_label,random locus integration,enzyme_integration_state_label,random locus integration,FALSE,,913,,,FALSE
+enzyme_expression_control_label,constitutive transgene expression,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,inducible transgene expression,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,native promoter-driven transgene expression,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,degradation domain-based transgene control,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,transient transgene expression,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,minimal promoter-driven transgene expression,enzyme_expression_control_id,,TRUE,,936,,,FALSE
+enzyme_expression_control_label,constitutive transgene expression,enzyme_expression_control_label,constitutive transgene expression,FALSE,,937,,,FALSE
+enzyme_expression_control_label,inducible transgene expression,enzyme_expression_control_label,inducible transgene expression,FALSE,,937,,,FALSE
+enzyme_expression_control_label,native promoter-driven transgene expression,enzyme_expression_control_label,native promoter-driven transgene expression,FALSE,,937,,,FALSE
+enzyme_expression_control_label,degradation domain-based transgene control,enzyme_expression_control_label,degradation domain-based transgene control,FALSE,,937,,,FALSE
+enzyme_expression_control_label,transient transgene expression,enzyme_expression_control_label,transient transgene expression,FALSE,,937,,,FALSE
+enzyme_expression_control_label,minimal promoter-driven transgene expression,enzyme_expression_control_label,minimal promoter-driven transgene expression,FALSE,,937,,,FALSE
+library_expression_control_label,constitutive transgene expression,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,inducible transgene expression,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,native promoter-driven transgene expression,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,degradation domain-based transgene control,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,transient transgene expression,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,minimal promoter-driven transgene expression,library_expression_control_id,,TRUE,,961,,,FALSE
+library_expression_control_label,constitutive transgene expression,library_expression_control_label,constitutive transgene expression,FALSE,,962,,,FALSE
+library_expression_control_label,inducible transgene expression,library_expression_control_label,inducible transgene expression,FALSE,,962,,,FALSE
+library_expression_control_label,native promoter-driven transgene expression,library_expression_control_label,native promoter-driven transgene expression,FALSE,,962,,,FALSE
+library_expression_control_label,degradation domain-based transgene control,library_expression_control_label,degradation domain-based transgene control,FALSE,,962,,,FALSE
+library_expression_control_label,transient transgene expression,library_expression_control_label,transient transgene expression,FALSE,,962,,,FALSE
+library_expression_control_label,minimal promoter-driven transgene expression,library_expression_control_label,minimal promoter-driven transgene expression,FALSE,,962,,,FALSE
+library_format_label,pooled,library_format_id,,TRUE,,984,,,FALSE
+library_format_label,arrayed,library_format_id,,TRUE,,984,,,FALSE
+library_format_label,arrayed|pooled,library_format_id,,TRUE,,984,,,FALSE
+library_format_label,in vivo,library_format_id,,TRUE,,984,,,FALSE
+library_format_label,pooled,library_format_label,pooled,FALSE,,987,,,FALSE
+library_format_label,arrayed,library_format_label,arrayed,FALSE,,987,,,FALSE
+library_format_label,arrayed|pooled,library_format_label,arrayed|pooled,FALSE,,987,,,FALSE
+library_format_label,in vivo,library_format_label,in vivo,FALSE,,987,,,FALSE
+library_scope_label,focused,library_scope_id,,TRUE,,1009,,,FALSE
+library_scope_label,genome-wide,library_scope_id,,TRUE,,1009,,,FALSE
+library_scope_label,focused,library_scope_label,focused,FALSE,,1012,,,FALSE
+library_scope_label,genome-wide,library_scope_label,genome-wide,FALSE,,1012,,,FALSE
+library_perturbation_type_label,knockout,library_perturbation_type_id,EFO:0000506,FALSE,,1044,,,FALSE
+library_perturbation_type_label,inhibition,library_perturbation_type_id,INO:0000085,FALSE,,1044,,,FALSE
+library_perturbation_type_label,activation,library_perturbation_type_id,INO:0000075,FALSE,,1044,,,FALSE
+library_perturbation_type_label,base editing,library_perturbation_type_id,EFO:0022873,FALSE,,1044,,,FALSE
+library_perturbation_type_label,prime editing,library_perturbation_type_id,EFO:0022872,FALSE,,1044,,,FALSE
+library_perturbation_type_label,mutagenesis,library_perturbation_type_id,NCIT:C17376,FALSE,,1044,,,FALSE
+library_perturbation_type_label,knockout,library_perturbation_type_label,knockout,FALSE,,1049,,,FALSE
+library_perturbation_type_label,inhibition,library_perturbation_type_label,inhibition,FALSE,,1049,,,FALSE
+library_perturbation_type_label,activation,library_perturbation_type_label,activation,FALSE,,1049,,,FALSE
+library_perturbation_type_label,base editing,library_perturbation_type_label,base editing,FALSE,,1049,,,FALSE
+library_perturbation_type_label,prime editing,library_perturbation_type_label,prime editing,FALSE,,1049,,,FALSE
+library_perturbation_type_label,mutagenesis,library_perturbation_type_label,mutagenesis,FALSE,,1049,,,FALSE
+readout_dimensionality_label,single-dimensional assay,readout_dimensionality_id,,TRUE,,1071,,,FALSE
+readout_dimensionality_label,high-dimensional assay,readout_dimensionality_id,,TRUE,,1071,,,FALSE
+readout_dimensionality_label,single-dimensional assay,readout_dimensionality_label,single-dimensional assay,FALSE,,1076,,,FALSE
+readout_dimensionality_label,high-dimensional assay,readout_dimensionality_label,high-dimensional assay,FALSE,,1076,,,FALSE
+readout_type_label,transcriptomic,readout_type_id,EFO:0001032,FALSE,,1102,,,FALSE
+readout_type_label,proteomic,readout_type_id,EFO:0000746,FALSE,,1102,,,FALSE
+readout_type_label,phenotypic,readout_type_id,EFO:0920062,FALSE,,1102,,,FALSE
+readout_type_label,transcriptomic,readout_type_label,transcriptomic,FALSE,,1107,,,FALSE
+readout_type_label,proteomic,readout_type_label,proteomic,FALSE,,1107,,,FALSE
+readout_type_label,phenotypic,readout_type_label,phenotypic,FALSE,,1107,,,FALSE
+readout_technology_label,single-cell rna-seq,readout_technology_id,EFO:0008913,FALSE,,1139,,,FALSE
+readout_technology_label,population growth assay,readout_technology_id,EFO:0002907,FALSE,,1139,,,FALSE
+readout_technology_label,flow cytometry,readout_technology_id,BAO:0000005,FALSE,,1139,,,FALSE
+readout_technology_label,high-throughput dna sequencing,readout_technology_id,EFO:0002693,FALSE,,1139,,,FALSE
+readout_technology_label,patch-clamp electrophysiology,readout_technology_id,EFO:0022948,FALSE,,1139,,,FALSE
+readout_technology_label,fluorometry,readout_technology_id,mesh:D005470,FALSE,,1139,,,FALSE
+readout_technology_label,single-cell rna-seq,readout_technology_label,single-cell rna-seq,FALSE,,1144,,,FALSE
+readout_technology_label,population growth assay,readout_technology_label,population growth assay,FALSE,,1144,,,FALSE
+readout_technology_label,flow cytometry,readout_technology_label,flow cytometry,FALSE,,1144,,,FALSE
+readout_technology_label,high-throughput dna sequencing,readout_technology_label,high-throughput dna sequencing,FALSE,,1144,,,FALSE
+readout_technology_label,patch-clamp electrophysiology,readout_technology_label,patch-clamp electrophysiology,FALSE,,1144,,,FALSE
+readout_technology_label,fluorometry,readout_technology_label,fluorometry,FALSE,,1144,,,FALSE
+readout_measurement_label,protein abundance,readout_measurement_id,BAO:0010252,FALSE,,1190,,,FALSE
+readout_measurement_label,protein stability,readout_measurement_id,BAO:0002804,FALSE,,1190,,,FALSE
+readout_measurement_label,protein activity,readout_measurement_id,APO:0000022,FALSE,,1190,,,FALSE
+readout_measurement_label,protein ubiquitination,readout_measurement_id,GO:0016567,FALSE,,1190,,,FALSE
+readout_measurement_label,surface protein expression,readout_measurement_id,,TRUE,,1190,,,FALSE
+readout_measurement_label,cell viability,readout_measurement_id,PATO:0000169,FALSE,,1190,,,FALSE
+readout_measurement_label,cell proliferation,readout_measurement_id,BAO:0002805,FALSE,,1190,,,FALSE
+readout_measurement_label,gene expression,readout_measurement_id,BAO:0002785,FALSE,,1190,,,FALSE
+readout_measurement_label,RNA splicing,readout_measurement_id,BAO:0003000,FALSE,,1190,,,FALSE
+readout_measurement_label,DNA repair,readout_measurement_id,GO:0006281,FALSE,,1190,,,FALSE
+readout_measurement_label,ligand binding,readout_measurement_id,NCIT:C178030,FALSE,,1190,,,FALSE
+readout_measurement_label,ion channel activity,readout_measurement_id,BAO:0002997,FALSE,,1190,,,FALSE
+readout_measurement_label,fluorescence,readout_measurement_id,BAO:0000363,FALSE,,1190,,,FALSE
+readout_measurement_label,protein abundance,readout_measurement_label,protein abundance,FALSE,,1195,,,FALSE
+readout_measurement_label,protein stability,readout_measurement_label,protein stability,FALSE,,1195,,,FALSE
+readout_measurement_label,protein activity,readout_measurement_label,protein activity,FALSE,,1195,,,FALSE
+readout_measurement_label,protein ubiquitination,readout_measurement_label,protein ubiquitination,FALSE,,1195,,,FALSE
+readout_measurement_label,surface protein expression,readout_measurement_label,surface protein expression,FALSE,,1195,,,FALSE
+readout_measurement_label,cell viability,readout_measurement_label,cell viability,FALSE,,1195,,,FALSE
+readout_measurement_label,cell proliferation,readout_measurement_label,cell proliferation,FALSE,,1195,,,FALSE
+readout_measurement_label,gene expression,readout_measurement_label,gene expression,FALSE,,1195,,,FALSE
+readout_measurement_label,RNA splicing,readout_measurement_label,RNA splicing,FALSE,,1195,,,FALSE
+readout_measurement_label,DNA repair,readout_measurement_label,DNA repair,FALSE,,1195,,,FALSE
+readout_measurement_label,ligand binding,readout_measurement_label,ligand binding,FALSE,,1195,,,FALSE
+readout_measurement_label,ion channel activity,readout_measurement_label,ion channel activity,FALSE,,1195,,,FALSE
+readout_measurement_label,fluorescence,readout_measurement_label,fluorescence,FALSE,,1195,,,FALSE
+method_name_label,Perturb-seq,method_name_id,EFO:0008860,FALSE,,1283,,,FALSE
+method_name_label,scRNA-seq,method_name_id,EFO:0008913,FALSE,,1283,,,FALSE
+method_name_label,Perturb-CITE-seq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,proliferation CRISPR screen,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,yeast surface display,method_name_id,MI:0115,FALSE,,1283,,,FALSE
+method_name_label,yeast one-hybrid assay,method_name_id,OBI:0001681,FALSE,,1283,,,FALSE
+method_name_label,yeast two-hybrid assay,method_name_id,BAO:0002494,FALSE,,1283,,,FALSE
+method_name_label,bacterial two-hybrid assay,method_name_id,OBI:0001682,FALSE,,1283,,,FALSE
+method_name_label,mammalian two-hybrid assay,method_name_id,BAO:0002493,FALSE,,1283,,,FALSE
+method_name_label,phage display,method_name_id,MI:0084,FALSE,,1283,,,FALSE
+method_name_label,abundance protein fragment complementation assay,method_name_id,MI:0090,FALSE,,1283,,,FALSE
+method_name_label,pooled growth competition assay,method_name_id,EFO:0002907,FALSE,,1283,,,FALSE
+method_name_label,massively parallel reporter assay,method_name_id,EFO:0008822,FALSE,,1283,,,FALSE
+method_name_label,patch-clamp electrophysiology,method_name_id,EFO:0022948,FALSE,,1283,,,FALSE
+method_name_label,mRNA display,method_name_id,MI:0073,FALSE,,1283,,,FALSE
+method_name_label,computational meta-analysis,method_name_id,NCIT:C17886,FALSE,,1283,,,FALSE
+method_name_label,DMS-TileSeq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,DMS-BarSeq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,Joined and refined DMS-BarSeq and DMS-TileSeq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,Combined DMS-BarSeq and DMS-TileSeq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,flow cytometry-based sequencing assay,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,MITE,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,VAMP-seq,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,saturation genome editing,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,saturation prime editing,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,polysome profiling,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,CRISPR mutagenesis screen,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,Saturation-Selection-Sequencing assay,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,gap repair assay,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,homology-directed repair assay,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,phage-assisted continuous selection,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,pooled deep mutational scanning,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,protein folding sensor assay,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,saturation base editing,method_name_id,,TRUE,,1283,,,FALSE
+method_name_label,Perturb-seq,method_name_label,Perturb-seq,FALSE,,1288,,,FALSE
+method_name_label,scRNA-seq,method_name_label,scRNA-seq,FALSE,,1288,,,FALSE
+method_name_label,Perturb-CITE-seq,method_name_label,Perturb-CITE-seq,FALSE,,1288,,,FALSE
+method_name_label,proliferation CRISPR screen,method_name_label,proliferation CRISPR screen,FALSE,,1288,,,FALSE
+method_name_label,yeast surface display,method_name_label,yeast surface display,FALSE,,1288,,,FALSE
+method_name_label,yeast one-hybrid assay,method_name_label,yeast one-hybrid assay,FALSE,,1288,,,FALSE
+method_name_label,yeast two-hybrid assay,method_name_label,yeast two-hybrid assay,FALSE,,1288,,,FALSE
+method_name_label,bacterial two-hybrid assay,method_name_label,bacterial two-hybrid assay,FALSE,,1288,,,FALSE
+method_name_label,mammalian two-hybrid assay,method_name_label,mammalian two-hybrid assay,FALSE,,1288,,,FALSE
+method_name_label,phage display,method_name_label,phage display,FALSE,,1288,,,FALSE
+method_name_label,abundance protein fragment complementation assay,method_name_label,abundance protein fragment complementation assay,FALSE,,1288,,,FALSE
+method_name_label,pooled growth competition assay,method_name_label,pooled growth competition assay,FALSE,,1288,,,FALSE
+method_name_label,massively parallel reporter assay,method_name_label,massively parallel reporter assay,FALSE,,1288,,,FALSE
+method_name_label,patch-clamp electrophysiology,method_name_label,patch-clamp electrophysiology,FALSE,,1288,,,FALSE
+method_name_label,mRNA display,method_name_label,mRNA display,FALSE,,1288,,,FALSE
+method_name_label,DMS-TileSeq,method_name_label,DMS-TileSeq,FALSE,,1288,,,FALSE
+method_name_label,DMS-BarSeq,method_name_label,DMS-BarSeq,FALSE,,1288,,,FALSE
+method_name_label,Joined and refined DMS-BarSeq and DMS-TileSeq,method_name_label,Joined and refined DMS-BarSeq and DMS-TileSeq,FALSE,,1288,,,FALSE
+method_name_label,Combined DMS-BarSeq and DMS-TileSeq,method_name_label,Combined DMS-BarSeq and DMS-TileSeq,FALSE,,1288,,,FALSE
+method_name_label,flow cytometry-based sequencing assay,method_name_label,flow cytometry-based sequencing assay,FALSE,,1288,,,FALSE
+method_name_label,MITE,method_name_label,MITE,FALSE,,1288,,,FALSE
+method_name_label,VAMP-seq,method_name_label,VAMP-seq,FALSE,,1288,,,FALSE
+method_name_label,saturation genome editing,method_name_label,saturation genome editing,FALSE,,1288,,,FALSE
+method_name_label,saturation prime editing,method_name_label,saturation prime editing,FALSE,,1288,,,FALSE
+method_name_label,polysome profiling,method_name_label,polysome profiling,FALSE,,1288,,,FALSE
+method_name_label,CRISPR mutagenesis screen,method_name_label,CRISPR mutagenesis screen,FALSE,,1288,,,FALSE
+method_name_label,Saturation-Selection-Sequencing assay,method_name_label,Saturation-Selection-Sequencing assay,FALSE,,1288,,,FALSE
+method_name_label,computational meta-analysis,method_name_label,computational meta-analysis,FALSE,,1288,,,FALSE
+method_name_label,gap repair assay,method_name_label,gap repair assay,FALSE,,1288,,,FALSE
+method_name_label,homology-directed repair assay,method_name_label,homology-directed repair assay,FALSE,,1288,,,FALSE
+method_name_label,phage-assisted continuous selection,method_name_label,phage-assisted continuous selection,FALSE,,1288,,,FALSE
+method_name_label,pooled deep mutational scanning,method_name_label,pooled deep mutational scanning,FALSE,,1288,,,FALSE
+method_name_label,protein folding sensor assay,method_name_label,protein folding sensor assay,FALSE,,1288,,,FALSE
+method_name_label,saturation base editing,method_name_label,saturation base editing,FALSE,,1288,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v1,sequencing_library_kit_id,EFO:0009901,FALSE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v2,sequencing_library_kit_id,EFO:0009899,FALSE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3,sequencing_library_kit_id,EFO:0009922,FALSE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3.1,sequencing_library_kit_id,EFO:0022980,FALSE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium GEM-X Flex v1,sequencing_library_kit_id,EFO:0920088,FALSE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium GEM-X Single Cell 5-prime kit v3,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,Nextera XT DNA Library Preparation Kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,Parse Biosciences Evercode Whole Transcriptome Mega v1 kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,TruSeq Nano DNA Library Prep Kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,Ovation Ultralow Library System,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,custom PCR library preparation,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,Nextera DNA Library Preparation Kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v1,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v2,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v3,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,Beckman Coulter DTCS DNA sequencing kit,sequencing_library_kit_id,,TRUE,,1344,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v1,sequencing_library_kit_label,10x Genomics Single Cell 3-prime v1,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v2,sequencing_library_kit_label,10x Genomics Single Cell 3-prime v2,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3,sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3.1,sequencing_library_kit_label,10x Genomics Single Cell 3-prime v3.1,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium GEM-X Flex v1,sequencing_library_kit_label,10x Genomics Chromium GEM-X Flex v1,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium GEM-X Single Cell 5-prime kit v3,sequencing_library_kit_label,10x Genomics Chromium GEM-X Single Cell 5-prime kit v3,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2,sequencing_library_kit_label,10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,Nextera XT DNA Library Preparation Kit,sequencing_library_kit_label,Nextera XT DNA Library Preparation Kit,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,Parse Biosciences Evercode Whole Transcriptome Mega v1 kit,sequencing_library_kit_label,Parse Biosciences Evercode Whole Transcriptome Mega v1 kit,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,TruSeq Nano DNA Library Prep Kit,sequencing_library_kit_label,TruSeq Nano DNA Library Prep Kit,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,Ovation Ultralow Library System,sequencing_library_kit_label,Ovation Ultralow Library System,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,custom PCR library preparation,sequencing_library_kit_label,custom PCR library preparation,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,Nextera DNA Library Preparation Kit,sequencing_library_kit_label,Nextera DNA Library Preparation Kit,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit,sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v1,sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v1,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v2,sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v2,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v3,sequencing_library_kit_label,PacBio SMRTbell Template Prep Kit v3,FALSE,,1349,,,FALSE
+sequencing_library_kit_label,Beckman Coulter DTCS DNA sequencing kit,sequencing_library_kit_label,Beckman Coulter DTCS DNA sequencing kit,FALSE,,1349,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer,sequencing_platform_id,EFO:0004200,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer II,sequencing_platform_id,EFO:0004201,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer IIx,sequencing_platform_id,EFO:0004202,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 2000,sequencing_platform_id,EFO:0004203,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 1000,sequencing_platform_id,EFO:0004204,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina MiSeq,sequencing_platform_id,EFO:0004205,FALSE,,1428,,,FALSE
+sequencing_platform_label,454 GS 20 sequencer,sequencing_platform_id,EFO:0004206,FALSE,,1428,,,FALSE
+sequencing_platform_label,454 GS sequencer,sequencing_platform_id,EFO:0004431,FALSE,,1428,,,FALSE
+sequencing_platform_label,454 GS FLX sequencer,sequencing_platform_id,EFO:0004432,FALSE,,1428,,,FALSE
+sequencing_platform_label,Roche 454 GS FLX,sequencing_platform_id,EFO:0004432,FALSE,,1428,,,FALSE
+sequencing_platform_label,454 GS FLX Titanium sequencer,sequencing_platform_id,EFO:0004433,FALSE,,1428,,,FALSE
+sequencing_platform_label,454 GS Junior sequencer,sequencing_platform_id,EFO:0004434,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD System,sequencing_platform_id,EFO:0004435,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD 5500xl,sequencing_platform_id,EFO:0004436,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD PI System,sequencing_platform_id,EFO:0004437,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD 4 System,sequencing_platform_id,EFO:0004438,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD System 3.0,sequencing_platform_id,EFO:0004439,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD 5500,sequencing_platform_id,EFO:0004440,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD 4hq System,sequencing_platform_id,EFO:0004441,FALSE,,1428,,,FALSE
+sequencing_platform_label,AB SOLiD System 2.0,sequencing_platform_id,EFO:0004442,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 4000,sequencing_platform_id,EFO:0008563,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 3000,sequencing_platform_id,EFO:0008564,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 2500,sequencing_platform_id,EFO:0008565,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NextSeq 550,sequencing_platform_id,EFO:0008566,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq X,sequencing_platform_id,EFO:0008567,FALSE,,1428,,,FALSE
+sequencing_platform_label,PacBio Sequel system,sequencing_platform_id,EFO:0008630,FALSE,,1428,,,FALSE
+sequencing_platform_label,PacBio RS II,sequencing_platform_id,EFO:0008631,FALSE,,1428,,,FALSE
+sequencing_platform_label,ONT MinION,sequencing_platform_id,EFO:0008632,FALSE,,1428,,,FALSE
+sequencing_platform_label,ONT GridION X5,sequencing_platform_id,EFO:0008633,FALSE,,1428,,,FALSE
+sequencing_platform_label,ONT PromethION,sequencing_platform_id,EFO:0008634,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina iSeq 100,sequencing_platform_id,EFO:0008635,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina MiniSeq,sequencing_platform_id,EFO:0008636,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NovaSeq 6000,sequencing_platform_id,EFO:0008637,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NextSeq 500,sequencing_platform_id,EFO:0009173,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NextSeq 1000,sequencing_platform_id,EFO:0010962,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NextSeq 2000,sequencing_platform_id,EFO:0010963,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq 1500,sequencing_platform_id,EFO:0011027,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NovaSeq X,sequencing_platform_id,EFO:0022840,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina NovaSeq X Plus,sequencing_platform_id,EFO:0022841,FALSE,,1428,,,FALSE
+sequencing_platform_label,Singular G4,sequencing_platform_id,EFO:0022843,FALSE,,1428,,,FALSE
+sequencing_platform_label,PacBio Sequel II system,sequencing_platform_id,EFO:0700015,FALSE,,1428,,,FALSE
+sequencing_platform_label,BGI MGISEQ-2000,sequencing_platform_id,EFO:0700018,FALSE,,1428,,,FALSE
+sequencing_platform_label,ONT PromethION 2 Solo,sequencing_platform_id,EFO:0700019,FALSE,,1428,,,FALSE
+sequencing_platform_label,Ultima UG100,sequencing_platform_id,EFO:0920005,FALSE,,1428,,,FALSE
+sequencing_platform_label,PacBio Revio,sequencing_platform_id,EFO:0920006,FALSE,,1428,,,FALSE
+sequencing_platform_label,PacBio Onso,sequencing_platform_id,EFO:0920007,FALSE,,1428,,,FALSE
+sequencing_platform_label,Element Aviti,sequencing_platform_id,EFO:0920008,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina MiSeq i100,sequencing_platform_id,EFO:0920010,FALSE,,1428,,,FALSE
+sequencing_platform_label,MGI DNBSEQ-T7,sequencing_platform_id,EFO:0920057,FALSE,,1428,,,FALSE
+sequencing_platform_label,Ion Torrent PGM,sequencing_platform_id,GENEPIO:0100136,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina HiSeq (model unspecified),sequencing_platform_id,,TRUE,,1428,,,FALSE
+sequencing_platform_label,Illumina sequencer (model unspecified),sequencing_platform_id,,TRUE,,1428,,,FALSE
+sequencing_platform_label,Ultima Genomics UG100,sequencing_platform_id,EFO:0920005,FALSE,,1428,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer,sequencing_platform_label,Illumina Genome Analyzer,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer II,sequencing_platform_label,Illumina Genome Analyzer II,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina Genome Analyzer IIx,sequencing_platform_label,Illumina Genome Analyzer IIx,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 2000,sequencing_platform_label,Illumina HiSeq 2000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 1000,sequencing_platform_label,Illumina HiSeq 1000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina MiSeq,sequencing_platform_label,Illumina MiSeq,FALSE,,1433,,,FALSE
+sequencing_platform_label,454 GS 20 sequencer,sequencing_platform_label,454 GS 20 sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,454 GS sequencer,sequencing_platform_label,454 GS sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,454 GS FLX sequencer,sequencing_platform_label,454 GS FLX sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,Roche 454 GS FLX,sequencing_platform_label,454 GS FLX sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,454 GS FLX Titanium sequencer,sequencing_platform_label,454 GS FLX Titanium sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,454 GS Junior sequencer,sequencing_platform_label,454 GS Junior sequencer,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD System,sequencing_platform_label,AB SOLiD System,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD 5500xl,sequencing_platform_label,AB SOLiD 5500xl,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD PI System,sequencing_platform_label,AB SOLiD PI System,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD 4 System,sequencing_platform_label,AB SOLiD 4 System,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD System 3.0,sequencing_platform_label,AB SOLiD System 3.0,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD 5500,sequencing_platform_label,AB SOLiD 5500,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD 4hq System,sequencing_platform_label,AB SOLiD 4hq System,FALSE,,1433,,,FALSE
+sequencing_platform_label,AB SOLiD System 2.0,sequencing_platform_label,AB SOLiD System 2.0,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 4000,sequencing_platform_label,Illumina HiSeq 4000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 3000,sequencing_platform_label,Illumina HiSeq 3000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 2500,sequencing_platform_label,Illumina HiSeq 2500,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NextSeq 550,sequencing_platform_label,Illumina NextSeq 550,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq X,sequencing_platform_label,Illumina HiSeq X,FALSE,,1433,,,FALSE
+sequencing_platform_label,PacBio Sequel system,sequencing_platform_label,PacBio Sequel system,FALSE,,1433,,,FALSE
+sequencing_platform_label,PacBio RS II,sequencing_platform_label,PacBio RS II,FALSE,,1433,,,FALSE
+sequencing_platform_label,ONT MinION,sequencing_platform_label,ONT MinION,FALSE,,1433,,,FALSE
+sequencing_platform_label,ONT GridION X5,sequencing_platform_label,ONT GridION X5,FALSE,,1433,,,FALSE
+sequencing_platform_label,ONT PromethION,sequencing_platform_label,ONT PromethION,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina iSeq 100,sequencing_platform_label,Illumina iSeq 100,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina MiniSeq,sequencing_platform_label,Illumina MiniSeq,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NovaSeq 6000,sequencing_platform_label,Illumina NovaSeq 6000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NextSeq 500,sequencing_platform_label,Illumina NextSeq 500,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NextSeq 1000,sequencing_platform_label,Illumina NextSeq 1000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NextSeq 2000,sequencing_platform_label,Illumina NextSeq 2000,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq 1500,sequencing_platform_label,Illumina HiSeq 1500,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NovaSeq X,sequencing_platform_label,Illumina NovaSeq X,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina NovaSeq X Plus,sequencing_platform_label,Illumina NovaSeq X Plus,FALSE,,1433,,,FALSE
+sequencing_platform_label,Singular G4,sequencing_platform_label,Singular G4,FALSE,,1433,,,FALSE
+sequencing_platform_label,PacBio Sequel II system,sequencing_platform_label,PacBio Sequel II system,FALSE,,1433,,,FALSE
+sequencing_platform_label,BGI MGISEQ-2000,sequencing_platform_label,BGI MGISEQ-2000,FALSE,,1433,,,FALSE
+sequencing_platform_label,ONT PromethION 2 Solo,sequencing_platform_label,ONT PromethION 2 Solo,FALSE,,1433,,,FALSE
+sequencing_platform_label,Ultima UG100,sequencing_platform_label,Ultima UG100,FALSE,,1433,,,FALSE
+sequencing_platform_label,PacBio Revio,sequencing_platform_label,PacBio Revio,FALSE,,1433,,,FALSE
+sequencing_platform_label,PacBio Onso,sequencing_platform_label,PacBio Onso,FALSE,,1433,,,FALSE
+sequencing_platform_label,Element Aviti,sequencing_platform_label,Element Aviti,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina MiSeq i100,sequencing_platform_label,Illumina MiSeq i100,FALSE,,1433,,,FALSE
+sequencing_platform_label,MGI DNBSEQ-T7,sequencing_platform_label,MGI DNBSEQ-T7,FALSE,,1433,,,FALSE
+sequencing_platform_label,Ion Torrent PGM,sequencing_platform_label,Ion Torrent PGM,FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina HiSeq (model unspecified),sequencing_platform_label,Illumina HiSeq (model unspecified),FALSE,,1433,,,FALSE
+sequencing_platform_label,Illumina sequencer (model unspecified),sequencing_platform_label,Illumina sequencer (model unspecified),FALSE,,1433,,,FALSE
+sequencing_strategy_label,barcode sequencing,sequencing_strategy_id,,TRUE,,1459,,,FALSE
+sequencing_strategy_label,direct sequencing,sequencing_strategy_id,NCIT:C116154,FALSE,,1459,,,FALSE
+sequencing_strategy_label,barcode sequencing|direct sequencing,sequencing_strategy_id,,TRUE,,1459,,,FALSE
+sequencing_strategy_label,barcode sequencing,sequencing_strategy_label,barcode sequencing,FALSE,,1464,,,FALSE
+sequencing_strategy_label,direct sequencing,sequencing_strategy_label,direct sequencing,FALSE,,1464,,,FALSE
+sequencing_strategy_label,barcode sequencing|direct sequencing,sequencing_strategy_label,barcode sequencing|direct sequencing,FALSE,,1464,,,FALSE
+software_counts_label,custom,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,MaGeCK,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,CellRanger,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Drop-seq Tools,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Enrich2,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Enrich,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Novoalign,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,TileSEQ Analysis Package,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,DiMSum,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,dms_tools,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,dms_tools2,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,dms_variants,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,CRISPResso2,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,mapmuts,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,ORFcall,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Jellyfish,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Subassembly,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,Tagdust2,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,bcftools,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,satmut_utils,software_counts_id,,TRUE,,1507,,,FALSE
+software_counts_label,custom,software_counts_label,custom,FALSE,,1512,,,FALSE
+software_counts_label,MaGeCK,software_counts_label,MaGeCK,FALSE,,1512,,,FALSE
+software_counts_label,CellRanger,software_counts_label,CellRanger,FALSE,,1512,,,FALSE
+software_counts_label,Drop-seq Tools,software_counts_label,Drop-seq Tools,FALSE,,1512,,,FALSE
+software_counts_label,Enrich2,software_counts_label,Enrich2,FALSE,,1512,,,FALSE
+software_counts_label,Enrich,software_counts_label,Enrich,FALSE,,1512,,,FALSE
+software_counts_label,Novoalign,software_counts_label,Novoalign,FALSE,,1512,,,FALSE
+software_counts_label,TileSEQ Analysis Package,software_counts_label,TileSEQ Analysis Package,FALSE,,1512,,,FALSE
+software_counts_label,DiMSum,software_counts_label,DiMSum,FALSE,,1512,,,FALSE
+software_counts_label,dms_tools,software_counts_label,dms_tools,FALSE,,1512,,,FALSE
+software_counts_label,dms_tools2,software_counts_label,dms_tools2,FALSE,,1512,,,FALSE
+software_counts_label,dms_variants,software_counts_label,dms_variants,FALSE,,1512,,,FALSE
+software_counts_label,CRISPResso2,software_counts_label,CRISPResso2,FALSE,,1512,,,FALSE
+software_counts_label,mapmuts,software_counts_label,mapmuts,FALSE,,1512,,,FALSE
+software_counts_label,ORFcall,software_counts_label,ORFcall,FALSE,,1512,,,FALSE
+software_counts_label,Jellyfish,software_counts_label,Jellyfish,FALSE,,1512,,,FALSE
+software_counts_label,Subassembly,software_counts_label,Subassembly,FALSE,,1512,,,FALSE
+software_counts_label,Tagdust2,software_counts_label,Tagdust2,FALSE,,1512,,,FALSE
+software_counts_label,bcftools,software_counts_label,bcftools,FALSE,,1512,,,FALSE
+software_counts_label,satmut_utils,software_counts_label,satmut_utils,FALSE,,1512,,,FALSE
+software_analysis_label,custom,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,MAGeCK,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Achilles,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,TRADE,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Seurat,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,MAST,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,scanpy,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Enrich2,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,DiMSum,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,DESeq2,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,dms_tools,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,dms_tools2,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,ALDEx2,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,multidms,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,dmsPipeline,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,phydms,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Enrich,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Rosetta,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,ABSSeq,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,Cluster,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,ORFcall,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,TileseqMave,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,maveLLR,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,samtools,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,tileseq_package,software_analysis_id,,TRUE,,1560,,,FALSE
+software_analysis_label,custom,software_analysis_label,custom,FALSE,,1565,,,FALSE
+software_analysis_label,MAGeCK,software_analysis_label,MAGeCK,FALSE,,1565,,,FALSE
+software_analysis_label,Achilles,software_analysis_label,Achilles,FALSE,,1565,,,FALSE
+software_analysis_label,TRADE,software_analysis_label,TRADE,FALSE,,1565,,,FALSE
+software_analysis_label,Seurat,software_analysis_label,Seurat,FALSE,,1565,,,FALSE
+software_analysis_label,MAST,software_analysis_label,MAST,FALSE,,1565,,,FALSE
+software_analysis_label,scanpy,software_analysis_label,scanpy,FALSE,,1565,,,FALSE
+software_analysis_label,Enrich2,software_analysis_label,Enrich2,FALSE,,1565,,,FALSE
+software_analysis_label,DiMSum,software_analysis_label,DiMSum,FALSE,,1565,,,FALSE
+software_analysis_label,DESeq2,software_analysis_label,DESeq2,FALSE,,1565,,,FALSE
+software_analysis_label,dms_tools,software_analysis_label,dms_tools,FALSE,,1565,,,FALSE
+software_analysis_label,dms_tools2,software_analysis_label,dms_tools2,FALSE,,1565,,,FALSE
+software_analysis_label,ALDEx2,software_analysis_label,ALDEx2,FALSE,,1565,,,FALSE
+software_analysis_label,multidms,software_analysis_label,multidms,FALSE,,1565,,,FALSE
+software_analysis_label,dmsPipeline,software_analysis_label,dmsPipeline,FALSE,,1565,,,FALSE
+software_analysis_label,phydms,software_analysis_label,phydms,FALSE,,1565,,,FALSE
+software_analysis_label,Enrich,software_analysis_label,Enrich,FALSE,,1565,,,FALSE
+software_analysis_label,Rosetta,software_analysis_label,Rosetta,FALSE,,1565,,,FALSE
+software_analysis_label,ABSSeq,software_analysis_label,ABSSeq,FALSE,,1565,,,FALSE
+software_analysis_label,Cluster,software_analysis_label,Cluster,FALSE,,1565,,,FALSE
+software_analysis_label,ORFcall,software_analysis_label,ORFcall,FALSE,,1565,,,FALSE
+software_analysis_label,TileseqMave,software_analysis_label,TileseqMave,FALSE,,1565,,,FALSE
+software_analysis_label,maveLLR,software_analysis_label,maveLLR,FALSE,,1565,,,FALSE
+software_analysis_label,samtools,software_analysis_label,samtools,FALSE,,1565,,,FALSE
+software_analysis_label,tileseq_package,software_analysis_label,tileseq_package,FALSE,,1565,,,FALSE
+reference_genome_label,GRCh38,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,GRCh37,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,cDNA reference sequence,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,mm9,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,S288c,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,hg19,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,Wuhan-Hu-1,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,non-standard reference sequence,reference_genome_id,,TRUE,,1596,,,FALSE
+reference_genome_label,GRCh38,reference_genome_label,GRCh38,FALSE,,1601,,,FALSE
+reference_genome_label,GRCh37,reference_genome_label,GRCh37,FALSE,,1601,,,FALSE
+reference_genome_label,cDNA reference sequence,reference_genome_label,cDNA reference sequence,FALSE,,1601,,,FALSE
+reference_genome_label,mm9,reference_genome_label,mm9,FALSE,,1601,,,FALSE
+reference_genome_label,S288c,reference_genome_label,S288c,FALSE,,1601,,,FALSE
+reference_genome_label,hg19,reference_genome_label,hg19,FALSE,,1601,,,FALSE
+reference_genome_label,Wuhan-Hu-1,reference_genome_label,Wuhan-Hu-1,FALSE,,1601,,,FALSE
+reference_genome_label,non-standard reference sequence,reference_genome_label,non-standard reference sequence,FALSE,,1601,,,FALSE
+license_label,CC0,license_id,SWO:1000049,FALSE,,1649,,,FALSE
+license_label,CC BY,license_id,SWO:1000050,FALSE,,1649,,,FALSE
+license_label,CC BY-SA,license_id,SWO:1000052,FALSE,,1649,,,FALSE
+license_label,CC BY-NC,license_id,SWO:1000079,FALSE,,1649,,,FALSE
+license_label,CC BY-ND,license_id,SWO:1000077,FALSE,,1649,,,FALSE
+license_label,CC0 1.0,license_id,SWO:1000049,FALSE,,1649,,,FALSE
+license_label,CC BY 2.0,license_id,SWO:1000050,FALSE,,1649,,,FALSE
+license_label,CC BY-SA 2.0,license_id,SWO:1000052,FALSE,,1649,,,FALSE
+license_label,CC BY 4.0,license_id,SWO:1000065,FALSE,,1649,,,FALSE
+license_label,CC BY 2.0 UK,license_id,SWO:1000067,FALSE,,1649,,,FALSE
+license_label,CC BY 2.1 JP,license_id,SWO:1000072,FALSE,,1649,,,FALSE
+license_label,CC BY 2.5,license_id,SWO:1000073,FALSE,,1649,,,FALSE
+license_label,CC BY 3.0 AU,license_id,SWO:1000074,FALSE,,1649,,,FALSE
+license_label,CC BY 3.0,license_id,SWO:1000075,FALSE,,1649,,,FALSE
+license_label,CC BY 3.0 US,license_id,SWO:1000076,FALSE,,1649,,,FALSE
+license_label,CC BY-ND 3.0,license_id,SWO:1000077,FALSE,,1649,,,FALSE
+license_label,CC BY-ND 4.0,license_id,SWO:1000078,FALSE,,1649,,,FALSE
+license_label,CC BY-NC 3.0,license_id,SWO:1000079,FALSE,,1649,,,FALSE
+license_label,CC BY-NC 4.0,license_id,SWO:1000080,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-ND 3.0,license_id,SWO:1000081,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-ND 2.5,license_id,SWO:1000083,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-ND 2.5 CH,license_id,SWO:1000084,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-ND 4.0,license_id,SWO:1000085,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-SA 2.5,license_id,SWO:1000086,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-SA 3.0,license_id,SWO:1000087,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-SA 3.0 US,license_id,SWO:1000088,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-SA 2.5 IN,license_id,SWO:1000089,FALSE,,1649,,,FALSE
+license_label,CC BY-NC-SA 4.0,license_id,SWO:1000090,FALSE,,1649,,,FALSE
+license_label,CC BY-SA 2.1 JP,license_id,SWO:1000091,FALSE,,1649,,,FALSE
+license_label,CC BY-SA 3.0,license_id,SWO:1000092,FALSE,,1649,,,FALSE
+license_label,CC BY-SA 3.0 US,license_id,SWO:1000093,FALSE,,1649,,,FALSE
+license_label,CC BY-SA 4.0,license_id,SWO:1000094,FALSE,,1649,,,FALSE
+license_label,CC0,license_label,CC0,FALSE,,1652,,,FALSE
+license_label,CC BY,license_label,CC BY,FALSE,,1652,,,FALSE
+license_label,CC BY-SA,license_label,CC BY-SA,FALSE,,1652,,,FALSE
+license_label,CC BY-NC,license_label,CC BY-NC,FALSE,,1652,,,FALSE
+license_label,CC BY-ND,license_label,CC BY-ND,FALSE,,1652,,,FALSE
+license_label,CC0 1.0,license_label,CC0 1.0,FALSE,,1652,,,FALSE
+license_label,CC BY 2.0,license_label,CC BY 2.0,FALSE,,1652,,,FALSE
+license_label,CC BY-SA 2.0,license_label,CC BY-SA 2.0,FALSE,,1652,,,FALSE
+license_label,CC BY 4.0,license_label,CC BY 4.0,FALSE,,1652,,,FALSE
+license_label,CC BY 2.0 UK,license_label,CC BY 2.0 UK,FALSE,,1652,,,FALSE
+license_label,CC BY 2.1 JP,license_label,CC BY 2.1 JP,FALSE,,1652,,,FALSE
+license_label,CC BY 2.5,license_label,CC BY 2.5,FALSE,,1652,,,FALSE
+license_label,CC BY 3.0 AU,license_label,CC BY 3.0 AU,FALSE,,1652,,,FALSE
+license_label,CC BY 3.0,license_label,CC BY 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY 3.0 US,license_label,CC BY 3.0 US,FALSE,,1652,,,FALSE
+license_label,CC BY-ND 3.0,license_label,CC BY-ND 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY-ND 4.0,license_label,CC BY-ND 4.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC 3.0,license_label,CC BY-NC 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC 4.0,license_label,CC BY-NC 4.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-ND 3.0,license_label,CC BY-NC-ND 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-ND 2.5,license_label,CC BY-NC-ND 2.5,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-ND 2.5 CH,license_label,CC BY-NC-ND 2.5 CH,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-ND 4.0,license_label,CC BY-NC-ND 4.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-SA 2.5,license_label,CC BY-NC-SA 2.5,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-SA 3.0,license_label,CC BY-NC-SA 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-SA 3.0 US,license_label,CC BY-NC-SA 3.0 US,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-SA 2.5 IN,license_label,CC BY-NC-SA 2.5 IN,FALSE,,1652,,,FALSE
+license_label,CC BY-NC-SA 4.0,license_label,CC BY-NC-SA 4.0,FALSE,,1652,,,FALSE
+license_label,CC BY-SA 2.1 JP,license_label,CC BY-SA 2.1 JP,FALSE,,1652,,,FALSE
+license_label,CC BY-SA 3.0,license_label,CC BY-SA 3.0,FALSE,,1652,,,FALSE
+license_label,CC BY-SA 3.0 US,license_label,CC BY-SA 3.0 US,FALSE,,1652,,,FALSE
+license_label,CC BY-SA 4.0,license_label,CC BY-SA 4.0,FALSE,,1652,,,FALSE
+treatment_label,sodium chloride,treatment_id,CHEBI:26710,FALSE,,1653,,,FALSE
+cell_line_label,mdck-siat1,cell_line_id,CVCL_Z936,FALSE,,1654,,,FALSE
+cell_line_label,mdck-siat1,cell_type_label,kidney epithelial cell,FALSE,,1655,,,FALSE
+cell_line_label,mdck-siat1,cell_type_id,CL:0002518,FALSE,,1656,,,FALSE
+cell_line_label,mdck-siat1,tissue_label,kidney,FALSE,,1657,,,FALSE
+cell_line_label,mdck-siat1,tissue_id,UBERON:0002113,FALSE,,1658,,,FALSE
+cell_line_label,mdck,cell_line_id,CVCL_0422,FALSE,,1659,,,FALSE
+cell_line_label,mdck,cell_type_label,kidney epithelial cell,FALSE,,1660,,,FALSE
+cell_line_label,mdck,cell_type_id,CL:0002518,FALSE,,1661,,,FALSE
+cell_line_label,mdck,tissue_label,kidney,FALSE,,1662,,,FALSE
+cell_line_label,mdck,tissue_id,UBERON:0002113,FALSE,,1663,,,FALSE
+cell_line_label,vero,cell_line_id,EFO:0022734,FALSE,,1664,,,FALSE
+cell_line_label,vero,cell_type_label,kidney epithelial cell,FALSE,,1665,,,FALSE
+cell_line_label,vero,cell_type_id,CL:0002518,FALSE,,1666,,,FALSE
+cell_line_label,vero,tissue_label,kidney epithelium,FALSE,,1667,,,FALSE
+cell_line_label,vero,tissue_id,UBERON:0004819,FALSE,,1668,,,FALSE
+cell_line_label,293t,cell_line_id,CLO:0037372,FALSE,,1669,,,FALSE
+cell_line_label,293t,tissue_label,kidney,FALSE,,1670,,,FALSE
+cell_line_label,293t,tissue_id,UBERON:0002113,FALSE,,1671,,,FALSE
+cell_line_label,J558L cellu,cell_line_id,CLO:0007002,FALSE,,1672,,,FALSE
+cell_line_label,J558L,cell_type_label,plasma cell,FALSE,,1673,,,FALSE
+cell_line_label,J558L,cell_type_id,CL:0000786,FALSE,,1674,,,FALSE
+cell_line_label,J558L,tissue_label,blood plasma,FALSE,,1675,,,FALSE
+cell_line_label,J558L,tissue_id,UBERON:0001969,FALSE,,1676,,,FALSE
+cell_line_label,J558L,cell_line_label,J558L cell,FALSE,,1677,,,FALSE
+cell_line_label,rpe-1,cell_line_id,CVCL_4388,FALSE,,1678,,,FALSE
+cell_line_label,rpe-1,cell_type_label,retinal pigment epithelial cell,FALSE,,1679,,,FALSE
+cell_line_label,rpe-1,cell_type_id,CL:0002586,FALSE,,1680,,,FALSE
+cell_line_label,rpe-1,tissue_label,pigmented layer of retina,FALSE,,1681,,,FALSE
+cell_line_label,rpe-1,tissue_id,UBERON:0001782,FALSE,,1682,,,FALSE
+cell_line_label,rpe-1,cell_line_label,hTERT-RPE1,FALSE,,1683,,,FALSE
+disease_label,Zika virus disease,disease_id,MONDO:0018661,FALSE,,1684,,,FALSE
+disease_label,Zika virus disease,disease_label,Zika virus infectious disease,FALSE,,1685,,,FALSE
+disease_label,influenza,disease_id,MONDO:0005812,FALSE,,1686,,,FALSE
+disease_label,niemann-pick disease type c,disease_id,MONDO:0018982,FALSE,,1687,,,FALSE
+dataset_id,urn:mavedb:00000082-a-1,tissue_id,GO:0120200,FALSE,,1688,set_tissue_id_00000082_a1,Rod outer segments prepared from bovine retinas (10.1073/pnas.1319402111),TRUE
+dataset_id,urn:mavedb:00000082-a-1,tissue_label,rod photoreceptor outer segment,FALSE,,1689,set_tissue_label_00000082_a1,Rod outer segments prepared from bovine retinas (10.1073/pnas.1319402111),TRUE
+readout_measurement_label,viral growth,readout_measurement_id,mesh:D014779,FALSE,,1690,,,FALSE
+readout_measurement_label,viral growth,readout_measurement_label,virus replication,FALSE,,1691,,,FALSE
+dataset_id,urn:mavedb:00000010-a-1,study_uri,https://doi.org/10.1261/rna.040709.113,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000079-a-1,study_uri,https://doi.org/10.1371/journal.pone.0118193,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000068-0-1,treatment_type_id,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000077-a-1,treatment_type_id,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000077-a-1,treatment_type_label,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000084-a-1,treatment_type_id,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000084-a-1,treatment_type_label,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000084-a-1,treatment_dose,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000084-a-1,treatment_unit,,TRUE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000668-a-1,treatment_id,Q9BYF1,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000668-a-1,treatment_label,ACE2,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000668-a-1,treatment_type_label,protein,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000668-a-1,treatment_type_id,BAO:0000175,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000670-a-1,treatment_id,Q9BYF1,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000670-a-1,treatment_label,ACE2,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000670-a-1,treatment_type_label,protein,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000670-a-1,treatment_type_id,BAO:0000175,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_label,galactose,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_id,CHEBI:28260,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_type_label,chemical entity,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_type_id,CHEBI:24431,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_dose,2,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000669-a-1,treatment_unit,%,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_dose,20|20|20,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-a-1,treatment_unit,ug/mL|ug/mL|mM,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_dose,20|20|20,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-b-1,treatment_unit,ug/mL|ug/mL|mM,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_type_label,chemical entity|chemical entity|chemical entity,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_type_id,CHEBI:24431|CHEBI:24431|CHEBI:24431,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_label,tryptophan|histidine|amitrole,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_id,CHEBI:27897|CHEBI:27570|CHEBI:40036,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_dose,20|20|20,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-c-1,treatment_unit,ug/mL|ug/mL|mM,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_type_label,chemical entity,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_type_id,CHEBI:24431,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_label,uracil,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_id,CHEBI:17568,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_dose,25,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000076-d-1,treatment_unit,ug/mL,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000098-a-1,treatment_dose,25|250|10,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_type_label,antibody|antibody|antibody,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_type_id,BAO:0000502|BAO:0000502|BAO:0000502,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_label,SARS-CoV-2 spike glycoprotein|SARS-CoV-2 spike glycoprotein|SARS-CoV-2 spike glycoprotein,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_id,P0DTC2|P0DTC2|P0DTC2,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_dose,83|83|83,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000666-a-1,treatment_unit,ng/mL|ng/mL|ng/mL,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_type_label,antibody|antibody|antibody,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_type_id,BAO:0000502|BAO:0000502|BAO:0000502,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_label,SARS-CoV-2 spike glycoprotein|SARS-CoV-2 spike glycoprotein|SARS-CoV-2 spike glycoprotein,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_id,P0DTC2|P0DTC2|P0DTC2,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_dose,119|119|119,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000667-a-1,treatment_unit,ng/mL|ng/mL|ng/mL,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000070-a-1,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000070-a-2,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000070-a-3,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000070-a-4,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000085-a-1,treatment_dose,0.01-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000085-b-1,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000085-c-1,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000085-d-1,treatment_dose,0.01-0.64,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000100-a-1,treatment_dose,0.01-1024,FALSE,,1692,,,FALSE
+dataset_id,urn:mavedb:00000100-b-1,treatment_dose,0.25-1024,FALSE,,1692,,,FALSE
+species,Mus Musculus,species,Mus musculus,FALSE,,1693,,,FALSE
+species,Streptococcus sp. 'group G',species,Streptococcus sp. group G,FALSE,,1693,,,FALSE
+dataset_id,urn:mavedb:00000068-0-1,treatment_type_id,,TRUE,,10000,clear_treatment_type_00000068,Treatment type is not applicable for this dataset,TRUE
+dataset_id,urn:mavedb:00000068-0-1,treatment_type_label,,TRUE,,10001,clear_treatment_type_00000068,Treatment type is not applicable for this dataset,TRUE
+dataset_id,urn:mavedb:00000005-a-4,treatment_dose,0.5,FALSE,,10002,set_dose_00000005_a4,Dose correction,TRUE
+dataset_id,urn:mavedb:00000005-a-4,treatment_unit,ng/mL,FALSE,,10003,set_unit_00000005_a4,Unit correction,TRUE
+dataset_id,urn:mavedb:00000005-a-5,treatment_dose,0.5,FALSE,,10004,set_dose_00000005_a5,Dose correction,TRUE
+dataset_id,urn:mavedb:00000005-a-5,treatment_unit,ng/mL,FALSE,,10005,set_unit_00000005_a5,Unit correction,TRUE
+dataset_id,urn:mavedb:00000005-a-3,treatment_dose,400,FALSE,,10006,set_dose_00000005_a3,Dose correction,TRUE
+dataset_id,urn:mavedb:00000005-a-3,treatment_unit,ng/mL,FALSE,,10007,set_unit_00000005_a3,Unit correction,TRUE
+dataset_id,urn:mavedb:00000005-a-6,treatment_dose,400,FALSE,,10008,set_dose_00000005_a6,Dose correction,TRUE
+dataset_id,urn:mavedb:00000005-a-6,treatment_unit,ng/mL,FALSE,,10009,set_unit_00000005_a6,Unit correction,TRUE
