@@ -1124,7 +1124,7 @@ class ObsSchema(DataFrameModel):
 
     @dataframe_check(
         ignore_na=False,
-        error="treatment_dose must be a float or a pipe-delimited list of floats.",
+        error="treatment_dose must contain floats or hyphen-delimited ranges of floats.",
     )
     def treatment_dose_values_are_floats(cls, df: pd.DataFrame) -> pd.Series:
         def is_valid_float_list(value: object) -> bool:
@@ -1132,10 +1132,11 @@ class ObsSchema(DataFrameModel):
             if tokens is None:
                 return True
             for token in tokens:
-                try:
-                    float(token)
-                except (TypeError, ValueError):
-                    return False
+                for endpoint in token.split("-"):
+                    try:
+                        float(endpoint)
+                    except (TypeError, ValueError):
+                        return False
             return True
 
         return df["treatment_dose"].map(is_valid_float_list)
