@@ -330,6 +330,78 @@ def process_mavedb_metadata(
     return final_df, processed_df
 
 
+def _metadata_for_score_rows(
+    metadata: pd.DataFrame,
+    score_data: pd.DataFrame,
+    sample_ids: pd.Index,
+    mavedb_id: str,
+) -> pd.DataFrame:
+    """Assign dataset metadata to each score row, including target-specific rows."""
+    dataset_metadata = metadata.loc[metadata["dataset_id"].eq(mavedb_id)].reset_index(
+        drop=True
+    )
+    if dataset_metadata.empty:
+        raise ValueError(f"No curated metadata found for MaveDB dataset {mavedb_id}")
+
+    if len(dataset_metadata) == 1:
+        record = dataset_metadata.iloc[0].to_dict()
+        return pd.DataFrame([record] * len(score_data), index=sample_ids)
+
+    target_column = "perturbed_target_symbol"
+    if target_column not in dataset_metadata.columns:
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows but no {target_column} column"
+        )
+
+    targets = (
+        dataset_metadata[target_column]
+        .astype("string")
+        .str.strip()
+        .str.casefold()
+    )
+    missing_targets = targets.isna() | targets.eq("").fillna(False)
+    if missing_targets.any():
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows with missing {target_column} values"
+        )
+    duplicate_targets = targets[targets.duplicated(keep=False)].unique().tolist()
+    if duplicate_targets:
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows for the same target: "
+            f"{duplicate_targets[:10]}"
+        )
+    target_to_position = {target: position for position, target in enumerate(targets)}
+
+    metadata_records = []
+    unmatched_samples = []
+    for row_position, (_, score_row) in enumerate(score_data.iterrows()):
+        score_targets = set()
+        for field in ("hgvs_nt", "hgvs_splice", "hgvs_pro"):
+            value = score_row.get(field)
+            if isinstance(value, str) and ":" in value:
+                score_targets.add(value.split(":", 1)[0].strip().casefold())
+
+        matching_positions = {
+            target_to_position[target]
+            for target in score_targets
+            if target in target_to_position
+        }
+        if len(matching_positions) != 1:
+            unmatched_samples.append(str(sample_ids[row_position]))
+            continue
+        metadata_records.append(
+            dataset_metadata.iloc[matching_positions.pop()].to_dict()
+        )
+
+    if unmatched_samples:
+        raise ValueError(
+            f"Could not match {len(unmatched_samples)} score rows in {mavedb_id} "
+            f"to one {target_column} metadata row; examples: {unmatched_samples[:10]}"
+        )
+
+    return pd.DataFrame(metadata_records, index=sample_ids)
+
+
 def make_adata_mavedb(
     mavedb_id: str = None,
     mavedb_csv_dir: str = None,
@@ -366,11 +438,12 @@ def make_adata_mavedb(
     X_df = X_df.iloc[:, 3:]  # first three columns are always hgvs ids
     X_df = _select_numeric_score_columns(X_df)
 
-    metadata_subset_dict = curated_metadata_df[
-        curated_metadata_df["dataset_id"] == mavedb_id
-    ].to_dict(orient="records")[0]
-
-    OBS_df = pd.DataFrame(index=X_df.index, data=metadata_subset_dict)
+    OBS_df = _metadata_for_score_rows(
+        metadata=curated_metadata_df,
+        score_data=mavedb_data,
+        sample_ids=X_df.index,
+        mavedb_id=mavedb_id,
+    )
 
     OBS_df["sample_id"] = OBS_df.index
 
