@@ -24,6 +24,10 @@ import re
 from google.cloud import bigquery
 from IPython.display import display  # type: ignore
 
+# Public schema exports used by curation adapters and notebooks.
+from curation_tools.perturbseq_anndata_schema import ObsSchema as ObsSchema
+from curation_tools.perturbseq_anndata_schema import VarSchema as VarSchema
+
 # Module-level logger
 logger = logging.getLogger(__name__)
 
