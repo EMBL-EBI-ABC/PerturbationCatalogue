@@ -719,7 +719,7 @@ class ObsSchema(DataFrameModel):
     
     species: Series[String] = Field(
         nullable=False,
-        description="Species name of the investigated sample.",
+        description="Organism name as reported by the source, including strain or subtype qualifiers when present.",
         isin=_SPECIES,
     )
     tissue_label: Series[String] = Field(
