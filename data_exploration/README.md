@@ -8,12 +8,13 @@ This directory contains resources for exploring, standardizing, and curating gen
 
 ## Environment Setup
 
-Data exploration and curation notebooks use a common environment. To set it up on your machine, run the following commands from this directory:
+Data exploration and curation notebooks use a common environment at the repository root. Run these commands from the repository root, then install dependencies from `data_exploration`:
 
 ```bash
-python3 -m venv env
-source env/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+cd data_exploration
+python -m pip install -r requirements.txt
 ```
 
 Install the Jupyter kernel:
@@ -101,11 +102,11 @@ The genes/features metadata (`adata.var`) are curated to ensure downstream expre
 * **Cloud Upload**:
   * Parquet metadata is uploaded to Google BigQuery for global relational queries:
     ```python
-    upload_parquet_to_bq(
-        parquet_path='../curated/parquet/[dataset]_metadata.parquet',
-        bq_dataset_id='[project].perturb_seq',
-        bq_table_name='metadata',
-        key_columns=['dataset_id', 'sample_id']
+    cur_data.upload_parquet_to_bq(
+        project_id="your-project-id",
+        bq_dataset_id="perturb_seq",
+        bq_table_name="metadata",
+        key_columns=["dataset_id", "sample_id"],
     )
     ```
   * Curated `.h5ad` files are uploaded to Google Cloud Storage (GCS) lakes for scalable file-system access.
@@ -113,7 +114,7 @@ The genes/features metadata (`adata.var`) are curated to ensure downstream expre
 ---
 
 ### Notebook examples
-For real examples of curation notebooks, feel free to explore the notebooks located in e.g. [`data_exploration/Perturbseq/curation_notebooks`](data_exploration/Perturbseq/curation_notebooks).
+For real examples of curation notebooks, feel free to explore the notebooks located in e.g. [`data_exploration/Perturbseq/curation_notebooks`](Perturbseq/curation_notebooks).
 
 ## Metadata Data Dictionary
 

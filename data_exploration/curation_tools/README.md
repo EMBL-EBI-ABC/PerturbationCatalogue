@@ -33,7 +33,8 @@ uv pip install -e .
 After installation, you can import modules and classes from `curation_tools` in your scripts or notebooks:
 
 ```python
-from curation_tools.curation_tools import CuratedDataset, ObsSchema, VarSchema, Experiment
+from curation_tools.curation_tools import CuratedDataset
+from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
 ```
 
 Any changes to the source code will be reflected immediately thanks to the editable install.
