@@ -38,6 +38,7 @@ _TREATMENT_TYPE_ID_BY_LABEL: dict[str, str | None] = {
     "RNA aptamer": "BAO:0000496",
     "riboswitch": "BAO:0000498",
     "esiRNA": "BAO:0000544",
+    "temperature": "EFO:0001702",
 }
 
 _TREATMENT_TYPE_LABELS = _labels_from_id_map(_TREATMENT_TYPE_ID_BY_LABEL)
@@ -518,6 +519,7 @@ _TREATMENT_UNITS = frozenset(
         "mL",
         "%",
         "IU/mL",
+        "degrees C",
     }
 )
 
