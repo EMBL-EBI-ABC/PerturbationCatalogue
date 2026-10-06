@@ -785,6 +785,7 @@ class ObsSchema(DataFrameModel):
     )
     study_year: Series[Int64] = Field(
         nullable=False,
+        coerce=True,
         ge=1900,
         le=2100,
         description="Publication year of the study/publication.",
