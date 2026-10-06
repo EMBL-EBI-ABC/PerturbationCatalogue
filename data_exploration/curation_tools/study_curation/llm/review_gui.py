@@ -13,13 +13,18 @@ from typing import Callable
 
 import pandas as pd
 import streamlit as st
-
-from curation_tools.llm_curation.curation_run_store import (
+from curation_tools.study_curation.llm.curation_run_store import (
     DATABASE_FILENAME,
     CurationRunConflictError,
 )
-from curation_tools.llm_curation.source_ingestion import build_create_run_request
-from curation_tools.llm_curation.workflow import CurationWorkflow
+from curation_tools.study_curation.llm.source_ingestion import build_create_run_request
+from curation_tools.study_curation.llm.workflow import CurationWorkflow
+from curation_tools.study_curation.paths import (
+    CURATION_RUNS_DIR,
+    FULL_TEXT_MD_DIR,
+    MAVEDB_METADATA_OUTPUT_DIR,
+    MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+)
 
 STEP_LABELS = {
     "step1": "Extract publication evidence",
@@ -59,9 +64,15 @@ def _create_run_panel(workflow: CurationWorkflow) -> None:
         )
         with st.form("create-native-run"):
             run_name = st.text_input("Run name")
-            publication_dir = st.text_input("Publication Markdown directory")
-            mavedb_dir = st.text_input("MaveDB metadata directory")
-            mapping_file = st.text_input("URN-to-DOI mapping JSON")
+            publication_dir = st.text_input(
+                "Publication Markdown directory", value=str(FULL_TEXT_MD_DIR)
+            )
+            mavedb_dir = st.text_input(
+                "MaveDB metadata directory", value=str(MAVEDB_METADATA_OUTPUT_DIR)
+            )
+            mapping_file = st.text_input(
+                "URN-to-DOI mapping JSON", value=str(MAVEDB_URN_TO_DOIS_OUTPUT_FILE)
+            )
             left, right = st.columns(2)
             model = left.text_input("Model", value="google/gemini-3.7-flash")
             max_workers = right.number_input(
@@ -542,7 +553,10 @@ def _completion_controls(workflow: CurationWorkflow, run_name: str, status) -> N
                 )
                 st.rerun()
     else:
-        export_dir = st.text_input("Final deliverable directory")
+        export_dir = st.text_input(
+            "Final deliverable directory",
+            value=str(workflow.runs_root / run_name / "exports"),
+        )
         overwrite = st.checkbox("Overwrite non-empty export directory")
         if st.button("Export final JSON and CSV"):
             try:
@@ -560,7 +574,7 @@ def main() -> None:
     st.image(str(LOGO_PATH), width=360)
     st.subheader("Experimental metadata curation for the Perturbation Catalogue.")
     runs_root = Path(
-        st.sidebar.text_input("Runs directory", value="curation_runs")
+        st.sidebar.text_input("Runs directory", value=str(CURATION_RUNS_DIR))
     ).resolve()
     workflow = CurationWorkflow(runs_root)
     _create_run_panel(workflow)

@@ -1,5 +1,7 @@
 # LLM-Assisted Study Metadata Curation
 
+See the [study curation overview](../README.md) for the complete workflow and directory layout.
+
 This workflow turns publication text and MaveDB records into reviewed, schema-aligned
 study metadata. Each batch is a named, resumable run: source files, prompts,
 model settings, and the schema are snapshotted into a SQLite database, alongside
@@ -69,15 +71,15 @@ The default source-cache locations are:
 
 | Input                | Path                                                                      |
 | -------------------- | ------------------------------------------------------------------------- |
-| Publication Markdown | `data_exploration/curation_tools/llm_curation/mavedb/pub_full_text_md`    |
-| MaveDB metadata JSON | `data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata`         |
-| URN-to-DOI mapping   | `data_exploration/MaveDB/llm_metadata_extraction/mavedb_urn_to_dois.json` |
+| Publication Markdown | `data_exploration/curation_cache/publications/markdown`    |
+| MaveDB metadata JSON | `data_exploration/curation_cache/mavedb/metadata`         |
+| URN-to-DOI mapping   | `data_exploration/curation_cache/mavedb/urn_to_dois.json` |
 
 If you need to build or refresh these caches, run the collection pipeline from
 the repository's MaveDB dump. Skip this when the cache files are already ready:
 
 ```bash
-python -m curation_tools.llm_curation.mavedb.processing
+python -m curation_tools.study_curation.sources.mavedb
 ```
 
 ## Run from the dashboard (recommended)
@@ -87,7 +89,7 @@ Start the GUI dashboard from the repository root in an activated environment:
 ```bash
 source .venv/bin/activate
 export PYTHONPATH=data_exploration
-streamlit run data_exploration/curation_tools/llm_curation/review_gui.py
+streamlit run data_exploration/curation_tools/study_curation/llm/review_gui.py
 ```
 
 ![CurateLab dashboard overview showing run selection, workflow tabs, and item progress](assets/dashboard_screenshot.png)
@@ -123,26 +125,26 @@ run directory is `curation_runs/<run-name>/`.
 ```bash
 export CURATION_RUN=my-new-run  # replace with a unique run name
 
-python -m curation_tools.llm_curation.run_cli create \
+python -m curation_tools.study_curation.llm.run_cli create \
   --run-name "$CURATION_RUN" \
-  --publication-dir data_exploration/curation_tools/llm_curation/mavedb/pub_full_text_md \
-  --mavedb-metadata-dir data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata \
-  --urn-to-dois-file data_exploration/MaveDB/llm_metadata_extraction/mavedb_urn_to_dois.json
+  --publication-dir data_exploration/curation_cache/publications/markdown \
+  --mavedb-metadata-dir data_exploration/curation_cache/mavedb/metadata \
+  --urn-to-dois-file data_exploration/curation_cache/mavedb/urn_to_dois.json
 ```
 
 Run Steps 1 and 2 first. These produce the evidence and normalized
 artifacts. Completed item work is skipped if you rerun a step.
 
 ```bash
-python -m curation_tools.llm_curation.run_cli step --run "$CURATION_RUN" --step step1
-python -m curation_tools.llm_curation.run_cli step --run "$CURATION_RUN" --step step2
+python -m curation_tools.study_curation.llm.run_cli step --run "$CURATION_RUN" --step step1
+python -m curation_tools.study_curation.llm.run_cli step --run "$CURATION_RUN" --step step2
 ```
 
 Step 3 is optional. Run it when normalized output contains evidence-supported
 `Other` values for which you want candidate-term suggestions:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli step --run "$CURATION_RUN" --step step3
+python -m curation_tools.study_curation.llm.run_cli step --run "$CURATION_RUN" --step step3
 ```
 
 If Step 3 creates candidates, review them in the dashboard. In **Review &
@@ -153,7 +155,7 @@ use its schema snapshot.
 Run Step 4 when you want approved mappings backfilled into this run:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli step --run "$CURATION_RUN" --step step4
+python -m curation_tools.study_curation.llm.run_cli step --run "$CURATION_RUN" --step step4
 ```
 
 Run Step 5 to assemble final metadata. It uses Step 4 backfilled results when
@@ -161,23 +163,23 @@ available and Step 2 normalized results otherwise. If no candidate review or
 backfill is needed, skip Steps 3 and 4 and run Step 5 directly after Step 2:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli step --run "$CURATION_RUN" --step step5
+python -m curation_tools.study_curation.llm.run_cli step --run "$CURATION_RUN" --step step5
 ```
 
 Inspect run state and execution history at any time:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli status --run "$CURATION_RUN"
+python -m curation_tools.study_curation.llm.run_cli status --run "$CURATION_RUN"
 ```
 
 Once final artifacts are ready and no step is running, seal the run and export
 the deliverables:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli seal --run "$CURATION_RUN"
-python -m curation_tools.llm_curation.run_cli export \
+python -m curation_tools.study_curation.llm.run_cli seal --run "$CURATION_RUN"
+python -m curation_tools.study_curation.llm.run_cli export \
   --run "$CURATION_RUN" \
-  --output-dir "deliverables/$CURATION_RUN"
+  --output-dir "curation_runs/$CURATION_RUN/exports"
 ```
 
 The export directory must be empty or absent. Pass `--overwrite` to replace a
@@ -188,7 +190,7 @@ To retry incomplete items from the latest failed execution, rerun that step with
 `--retry-failed`. For example, to retry a failed Step 1 execution:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli step \
+python -m curation_tools.study_curation.llm.run_cli step \
   --run "$CURATION_RUN" \
   --step step1 \
   --retry-failed
@@ -198,7 +200,7 @@ To use a different run root, pass `--runs-root PATH` **before** the CLI
 subcommand, for example:
 
 ```bash
-python -m curation_tools.llm_curation.run_cli --runs-root /data/curation-runs status \
+python -m curation_tools.study_curation.llm.run_cli --runs-root /data/curation-runs status \
   --run "$CURATION_RUN"
 ```
 

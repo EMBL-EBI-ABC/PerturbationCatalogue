@@ -1,6 +1,6 @@
 """Native SQLite curation-run interface."""
 
-from curation_tools.llm_curation.curation_run_store import (
+from curation_tools.study_curation.llm.curation_run_store import (
     CurationRunConflictError,
     CurationRunError,
     CurationRunStore,
@@ -8,7 +8,7 @@ from curation_tools.llm_curation.curation_run_store import (
     RunSummary,
     SchemaOperation,
 )
-from curation_tools.llm_curation.workflow import (
+from curation_tools.study_curation.llm.workflow import (
     ArtifactInspection,
     BackfillChange,
     CreateRunRequest,

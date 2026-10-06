@@ -2,7 +2,6 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 
-
 LOG_SEPARATOR_WIDTH = 80
 PRINT_LOCK = Lock()
 

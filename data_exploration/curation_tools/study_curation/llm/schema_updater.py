@@ -14,12 +14,11 @@ import tempfile
 from pathlib import Path
 from typing import Literal, get_args, get_origin
 
-from curation_tools.llm_curation.curation_run_store import (
+from curation_tools.study_curation.llm.curation_run_store import (
     CurationRunStore,
     SchemaOperation,
 )
-
-DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "llm_curation_schema.py"
+from curation_tools.study_curation.paths import DEFAULT_SCHEMA_PATH
 
 
 class SchemaUpdateConflictError(RuntimeError):
@@ -49,7 +48,7 @@ def get_existing_literals(
     schema_file_path: Path = DEFAULT_SCHEMA_PATH,
 ) -> dict[str, list[str]]:
     """Return a mapping of field_name -> list of string values for Literal fields in SpecificTermExtractionSchema."""
-    from curation_tools.llm_curation.llm_curation_schema import (
+    from curation_tools.study_curation.llm.llm_curation_schema import (
         SpecificTermExtractionSchema,
     )
 

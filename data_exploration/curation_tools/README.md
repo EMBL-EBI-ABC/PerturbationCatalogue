@@ -2,6 +2,9 @@
 
 This package provides utilities for data curation in the PerturbationCatalogue project.
 
+For publication-based metadata extraction, LLM review, and MaveDB postprocessing,
+start with the [study curation workflow](study_curation/README.md).
+
 ## Installation
 
 You can install the package locally in editable mode using either `pip` or `uv`. This allows you to import `curation_tools` anywhere in your project without using relative imports.

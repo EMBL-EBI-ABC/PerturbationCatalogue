@@ -6,16 +6,19 @@ import json
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from curation_tools.llm_curation.mavedb.processing import format_identifier_for_lookup
-from curation_tools.llm_curation.workflow import (
-    CurationItemInput,
+from curation_tools.study_curation.llm.workflow import (
     CreateRunRequest,
+    CurationItemInput,
     MaveDBSnapshotInput,
     SourceDocumentInput,
 )
-
-PACKAGE_DIR = Path(__file__).resolve().parent
-DEFAULT_SCHEMA_PATH = PACKAGE_DIR / "llm_curation_schema.py"
+from curation_tools.study_curation.paths import (
+    DEFAULT_SCHEMA_PATH,
+    DEFAULT_STEP1_PROMPT_PATH,
+    DEFAULT_STEP2_PROMPT_PATH,
+    DEFAULT_STEP3_PROMPT_PATH,
+)
+from curation_tools.study_curation.sources.mavedb import format_identifier_for_lookup
 
 
 def _snapshot_dois(payload: Mapping[str, object]) -> list[str]:
@@ -52,9 +55,9 @@ def build_create_run_request(
     publication_dir: str | Path,
     mavedb_metadata_dir: str | Path,
     urn_to_dois_file: str | Path | None,
-    step1_prompt: str | Path = PACKAGE_DIR / "step1_evidence_extraction_prompt.md",
-    step2_prompt: str | Path = PACKAGE_DIR / "step2_specific_term_extraction.md",
-    step3_prompt: str | Path = PACKAGE_DIR / "step3_candidate_discovery_prompt.md",
+    step1_prompt: str | Path = DEFAULT_STEP1_PROMPT_PATH,
+    step2_prompt: str | Path = DEFAULT_STEP2_PROMPT_PATH,
+    step3_prompt: str | Path = DEFAULT_STEP3_PROMPT_PATH,
     schema_path: str | Path = DEFAULT_SCHEMA_PATH,
     model: str = "google/gemini-3.7-flash",
     max_workers: int = 8,

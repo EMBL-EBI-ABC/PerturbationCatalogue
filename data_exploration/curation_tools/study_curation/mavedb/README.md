@@ -1,5 +1,7 @@
 # MaveDB metadata post-processing
 
+See the [study curation overview](../README.md) for the complete workflow and directory layout.
+
 This package takes the sealed LLM metadata export and optional human curation
 spreadsheet through the local MaveDB processing, term standardization,
 validation, and parquet output stages. It keeps each run in a new output
@@ -21,10 +23,10 @@ Run commands from the repository root with the project environment active and
 source .venv/bin/activate
 export PYTHONPATH=data_exploration
 
-python -m curation_tools.mavedb_postprocessing.cli run \
-  --llm-metadata deliverables/my-run/curation_final_metadata.csv \
+python -m curation_tools.study_curation.mavedb.cli run \
+  --llm-metadata curation_runs/my-run/exports/curation_final_metadata.csv \
   --manual-metadata data_exploration/MaveDB/mavedb_studies.xlsx \
-  --output-dir data_exploration/MaveDB/curated/runs/my-run
+  --output-dir curation_runs/my-run/postprocessing/default
 ```
 
 Omit `--manual-metadata` for an LLM-only input. The selected output directory
@@ -53,9 +55,9 @@ command; it checks both destination schemas before updating the existing
 `mavedb.metadata` and `mavedb.data` tables:
 
 ```bash
-python -m curation_tools.mavedb_postprocessing.cli publish \
-  --metadata-parquet data_exploration/MaveDB/curated/runs/my-run/final/mavedb_all_curated_metadata_postvalidation.parquet \
-  --data-parquet data_exploration/MaveDB/curated/runs/my-run/final/mavedb_all_curated_data_postfilter.parquet \
+python -m curation_tools.study_curation.mavedb.cli publish \
+  --metadata-parquet curation_runs/my-run/postprocessing/default/final/mavedb_all_curated_metadata_postvalidation.parquet \
+  --data-parquet curation_runs/my-run/postprocessing/default/final/mavedb_all_curated_data_postfilter.parquet \
   --project-id prj-ext-dev-pertcat-437314
 ```
 

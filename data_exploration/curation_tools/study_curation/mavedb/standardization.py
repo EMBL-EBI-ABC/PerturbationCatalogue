@@ -9,16 +9,14 @@ from typing import Any
 
 import pandas as pd
 import pandera as pa
+from curation_tools.perturbseq_anndata_schema import _TREATMENT_TYPE_LABELS, ObsSchema
+from curation_tools.study_curation.paths import (
+    DEFAULT_MAPPING_PATH,
+    DEFAULT_OVERRIDE_PATH,
+)
 from IPython.display import display
 from pandera.errors import SchemaError, SchemaErrors
 
-from curation_tools.perturbseq_anndata_schema import ObsSchema
-from curation_tools.perturbseq_anndata_schema import _TREATMENT_TYPE_LABELS
-
-PACKAGE_DIR = Path(__file__).resolve().parent
-RESOURCE_DIR = PACKAGE_DIR / "resources"
-DEFAULT_MAPPING_PATH = RESOURCE_DIR / "metadata_mappings.csv"
-DEFAULT_OVERRIDE_PATH = RESOURCE_DIR / "metadata_overrides.csv"
 MAPPING_COLUMNS = {
     "source_field",
     "target_field",

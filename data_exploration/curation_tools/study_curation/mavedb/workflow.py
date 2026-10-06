@@ -11,22 +11,19 @@ from typing import Any
 
 import pandas as pd
 import pyarrow.parquet as parquet
-
 from curation_tools.curation_tools import concatenate_parquet_files
 from curation_tools.mavedb_curation_tools import process_mavedb
-from curation_tools.mavedb_postprocessing.standardization import (
+from curation_tools.perturbseq_anndata_schema import ObsSchema
+from curation_tools.study_curation.mavedb.standardization import (
     DEFAULT_MAPPING_PATH,
     DEFAULT_OVERRIDE_PATH,
     filter_curated_metadata,
     standardize_metadata,
     validate_with_unique_values,
 )
-from curation_tools.perturbseq_anndata_schema import ObsSchema
+from curation_tools.study_curation.paths import MAVEDB_DUMP_DIR
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MAVEDB_CSV_DIR = (
-    REPO_ROOT / "data_exploration/MaveDB/Dump/mavedb-dump.20250612164404/csv"
-)
+DEFAULT_MAVEDB_CSV_DIR = MAVEDB_DUMP_DIR
 EXCLUDED_INPUT_COLUMNS = ("perturbed_target_number", "__source_files", "__source_urns")
 
 

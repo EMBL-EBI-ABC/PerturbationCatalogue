@@ -20,6 +20,7 @@ REFERENCE_TEXT_TAGS = {"source-text", "ref-fulltext", "mixed-citation", "citatio
 KEYWORD_TAGS = {"keyword", "subject", "term"}
 SKIP_BODY_SECTION_TITLES = {"graphical abstract", "keywords"}
 
+
 def print_status_block(title: str, *lines: str) -> None:
     separator = "=" * 80
     print(f"\n{separator}")
@@ -27,6 +28,7 @@ def print_status_block(title: str, *lines: str) -> None:
     for line in lines:
         print(line)
     print(separator)
+
 
 def get_tag_name(elem):
     """Return the local XML tag name without its namespace."""
@@ -46,7 +48,11 @@ def split_keyword_blob(keyword_blob):
         return []
 
     if re.search(r"[;,|/]", keyword_blob):
-        return [normalize_text(part) for part in re.split(r"\s*[;,|/]\s*", keyword_blob) if normalize_text(part)]
+        return [
+            normalize_text(part)
+            for part in re.split(r"\s*[;,|/]\s*", keyword_blob)
+            if normalize_text(part)
+        ]
 
     roman_numerals = {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"}
     connector_words = {
@@ -249,7 +255,11 @@ def render_container(node, heading_level, skip_section_titles, allow_captions):
         tag_name = get_tag_name(child)
 
         if tag_name in SECTION_TAGS:
-            parts.extend(render_section(child, heading_level, skip_section_titles, allow_captions))
+            parts.extend(
+                render_section(
+                    child, heading_level, skip_section_titles, allow_captions
+                )
+            )
             continue
 
         if tag_name in PARAGRAPH_TAGS:
@@ -269,7 +279,9 @@ def render_container(node, heading_level, skip_section_titles, allow_captions):
                 append_unique(parts, text)
             continue
 
-        parts.extend(render_container(child, heading_level, skip_section_titles, allow_captions))
+        parts.extend(
+            render_container(child, heading_level, skip_section_titles, allow_captions)
+        )
 
     return parts
 
@@ -289,7 +301,11 @@ def render_section(node, heading_level, skip_section_titles, allow_captions):
 
         tag_name = get_tag_name(child)
         if tag_name in SECTION_TAGS:
-            parts.extend(render_section(child, heading_level + 1, skip_section_titles, allow_captions))
+            parts.extend(
+                render_section(
+                    child, heading_level + 1, skip_section_titles, allow_captions
+                )
+            )
         elif tag_name in PARAGRAPH_TAGS:
             text = get_node_text(child)
             if text:
@@ -302,7 +318,11 @@ def render_section(node, heading_level, skip_section_titles, allow_captions):
             if text:
                 append_unique(parts, text)
         else:
-            parts.extend(render_container(child, heading_level + 1, skip_section_titles, allow_captions))
+            parts.extend(
+                render_container(
+                    child, heading_level + 1, skip_section_titles, allow_captions
+                )
+            )
 
     return parts
 
@@ -415,7 +435,9 @@ def extract_bioc_data(root):
             author_items = []
             for key, value in infons.items():
                 if key.startswith("name_") and value:
-                    parts = dict(part.split(":", 1) for part in value.split(";") if ":" in part)
+                    parts = dict(
+                        part.split(":", 1) for part in value.split(";") if ":" in part
+                    )
                     given_names = parts.get("given-names", "")
                     surname = parts.get("surname", "")
                     name = normalize_text(f"{given_names} {surname}")
@@ -426,7 +448,9 @@ def extract_bioc_data(root):
                             order = len(author_items)
                         author_items.append((order, name))
 
-            authors.extend(name for _, name in sorted(author_items, key=lambda item: item[0]))
+            authors.extend(
+                name for _, name in sorted(author_items, key=lambda item: item[0])
+            )
             continue
 
         if not text:
@@ -482,22 +506,31 @@ def extract_regex_fallback(input_file):
                     return text
         return ""
 
-    title = first_match(
-        [
-            r"<(?:dc:)?title[^>]*>(.*?)</(?:dc:)?title>",
-            r"<article-title[^>]*>(.*?)</article-title>",
-            r"<title-text[^>]*>(.*?)</title-text>",
-        ]
-    ) or "Unknown Title"
+    title = (
+        first_match(
+            [
+                r"<(?:dc:)?title[^>]*>(.*?)</(?:dc:)?title>",
+                r"<article-title[^>]*>(.*?)</article-title>",
+                r"<title-text[^>]*>(.*?)</title-text>",
+            ]
+        )
+        or "Unknown Title"
+    )
 
     authors = [
         normalize_text(re.sub(r"<.*?>", " ", match.group(1)))
-        for match in re.finditer(r"<dc:creator[^>]*>(.*?)</dc:creator>", content, re.DOTALL | re.IGNORECASE)
+        for match in re.finditer(
+            r"<dc:creator[^>]*>(.*?)</dc:creator>", content, re.DOTALL | re.IGNORECASE
+        )
     ]
 
     keywords = [
         normalize_text(re.sub(r"<.*?>", " ", match.group(1)))
-        for match in re.finditer(r"<dcterms:subject[^>]*>(.*?)</dcterms:subject>", content, re.DOTALL | re.IGNORECASE)
+        for match in re.finditer(
+            r"<dcterms:subject[^>]*>(.*?)</dcterms:subject>",
+            content,
+            re.DOTALL | re.IGNORECASE,
+        )
     ]
 
     abstract = first_match(
@@ -569,6 +602,8 @@ def extract_document_data(input_file):
         "body": extract_body(root, article_root),
         "references": extract_references(root, article_root),
     }, parser_name
+
+
 def build_markdown(data, remove_references=False):
     """Render extracted publication content into a Markdown document."""
     parts = [f"# {data['title']}"]
@@ -588,7 +623,10 @@ def build_markdown(data, remove_references=False):
 
     if not remove_references and data.get("references"):
         reference_lines = ["## References"]
-        reference_lines.extend(f"{index}. {reference}" for index, reference in enumerate(data["references"], 1))
+        reference_lines.extend(
+            f"{index}. {reference}"
+            for index, reference in enumerate(data["references"], 1)
+        )
         parts.append("\n".join(reference_lines))
 
     return "\n\n".join(part for part in parts if part).strip() + "\n"
@@ -605,6 +643,8 @@ def resolve_output_path(input_path, output_path=None, output_dir=None):
         return Path(output_dir) / f"{input_path.stem}.md"
 
     return input_path.with_suffix(".md")
+
+
 def xml_to_md(filepath_xml, output_dir=None, remove_references=False, output_path=None):
     """Extract a single XML file into a Markdown file."""
     print_status_block("Parsing XML file.", f"Input: {filepath_xml}")
@@ -625,11 +665,17 @@ def xml_to_md(filepath_xml, output_dir=None, remove_references=False, output_pat
         )
         data = extract_regex_fallback(filepath_xml)
 
-    output_path = resolve_output_path(filepath_xml, output_path=output_path, output_dir=output_dir)
+    output_path = resolve_output_path(
+        filepath_xml, output_path=output_path, output_dir=output_dir
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(build_markdown(data, remove_references=remove_references), encoding="utf-8")
-    print_status_block("Successfully converted paper XML to Markdown.", f"Output: {output_path}")
-    
+    output_path.write_text(
+        build_markdown(data, remove_references=remove_references), encoding="utf-8"
+    )
+    print_status_block(
+        "Successfully converted paper XML to Markdown.", f"Output: {output_path}"
+    )
+
     return output_path
 
 
@@ -645,7 +691,9 @@ def iter_input_files(input_path, recursive=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert XML article files into Markdown.")
+    parser = argparse.ArgumentParser(
+        description="Convert XML article files into Markdown."
+    )
     parser.add_argument(
         "input_path",
         nargs="?",
@@ -681,7 +729,9 @@ def main():
     if args.input_dir and args.input_path:
         parser.error("Use either the positional input_path or --input-dir, not both.")
 
-    input_source = args.input_dir or args.input_path or "10_1016_j_neuron_2025_05_018.xml"
+    input_source = (
+        args.input_dir or args.input_path or "10_1016_j_neuron_2025_05_018.xml"
+    )
     input_path = Path(input_source)
     if input_path.is_dir() and args.output:
         parser.error("--output can only be used with a single XML input file.")
@@ -696,7 +746,11 @@ def main():
             xml_file,
             output_dir=args.output_dir,
             remove_references=args.no_references,
-            output_path=args.output if xml_file == input_files[0] and len(input_files) == 1 else None,
+            output_path=(
+                args.output
+                if xml_file == input_files[0] and len(input_files) == 1
+                else None
+            ),
         )
 
 

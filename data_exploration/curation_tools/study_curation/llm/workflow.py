@@ -16,9 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence, Type
 
-from pydantic import BaseModel
-
-from curation_tools.llm_curation.curation_run_store import (
+from curation_tools.study_curation.llm.curation_run_store import (
     Artifact,
     CurationRunError,
     CurationRunStore,
@@ -26,17 +24,19 @@ from curation_tools.llm_curation.curation_run_store import (
     RunSummary,
     SchemaOperation,
 )
-from curation_tools.llm_curation.final_metadata import (
+from curation_tools.study_curation.llm.final_metadata import (
     merge_final_metadata_from_entries,
 )
-from curation_tools.llm_curation.llm_curation_schema import (
+from curation_tools.study_curation.llm.llm_curation_schema import (
     EvidenceExtractionSchema,
     FieldCandidates,
     SpecificTermExtractionSchema,
 )
-from curation_tools.llm_curation.mavedb.processing import (
+from curation_tools.study_curation.paths import CURATION_RUNS_DIR, resolve_schema_path
+from curation_tools.study_curation.sources.mavedb import (
     extract_curated_mavedb_prompt_metadata,
 )
+from pydantic import BaseModel
 
 STEP_NAMES = {"step1", "step2", "step3", "step4", "step5"}
 
@@ -187,7 +187,7 @@ class CurationWorkflow:
 
     def __init__(
         self,
-        runs_root: str | Path = "curation_runs",
+        runs_root: str | Path = CURATION_RUNS_DIR,
         llm_call: LLMCallable | None = None,
     ) -> None:
         """Configure the run store location and optional LLM implementation.
@@ -488,13 +488,13 @@ class CurationWorkflow:
         """
         store = self._store(run_ref)
         configuration = store.configuration()
-        schema_path = Path(configuration["schema_path"]).resolve()
+        schema_path = resolve_schema_path(configuration["schema_path"])
         actual_hash = hashlib.sha256(schema_path.read_bytes()).hexdigest()
         if actual_hash != expected_schema_hash:
             raise CurationRunError(
                 "Schema source changed; reload the schema before applying terms"
             )
-        from curation_tools.llm_curation.schema_updater import apply_schema_update
+        from curation_tools.study_curation.llm.schema_updater import apply_schema_update
 
         operation = apply_schema_update(
             store.approved_schema_terms(), schema_path=schema_path, run_store=store
@@ -510,9 +510,9 @@ class CurationWorkflow:
         """Render the schema diff using persisted approvals without applying it."""
         store = self._store(run_ref)
         configuration = store.configuration()
-        schema_path = Path(configuration["schema_path"]).resolve()
+        schema_path = resolve_schema_path(configuration["schema_path"])
         source = schema_path.read_text(encoding="utf-8")
-        from curation_tools.llm_curation.schema_updater import get_schema_diff
+        from curation_tools.study_curation.llm.schema_updater import get_schema_diff
 
         return {
             "schema_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),

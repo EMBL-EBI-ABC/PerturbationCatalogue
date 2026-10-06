@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from curation_tools.mavedb_postprocessing.workflow import (
+from curation_tools.study_curation.mavedb.workflow import (
     DEFAULT_MAVEDB_CSV_DIR,
     publish_to_bigquery,
     run_pipeline,

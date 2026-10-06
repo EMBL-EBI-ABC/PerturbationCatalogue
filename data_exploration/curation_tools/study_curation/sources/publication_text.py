@@ -5,19 +5,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pymupdf4llm
-from paperscraper.pdf import save_pdf
-from tqdm import tqdm
-
-from curation_tools.llm_curation.logging_utils import (
+from curation_tools.study_curation.logging_utils import (
     append_log_line,
     print_status_block,
 )
-from curation_tools.llm_curation.xml_parser import xml_to_md
+from curation_tools.study_curation.paths import (
+    DOWNLOAD_PROGRESS_LOG_FILE,
+    FULL_TEXT_MD_DIR,
+    PAPERSCRAPER_FULL_TEXT_RAW_DIR,
+)
+from curation_tools.study_curation.sources.xml_parser import xml_to_md
+from paperscraper.pdf import save_pdf
+from tqdm import tqdm
 
-LLM_CURATION_DIR = Path(__file__).resolve().parent
-PAPERSCRAPER_FULL_TEXT_RAW_DIR = LLM_CURATION_DIR / "mavedb" / "pub_full_text_raw"
-FULL_TEXT_MD_DIR = LLM_CURATION_DIR / "mavedb" / "pub_full_text_md"
-DOWNLOAD_PROGRESS_LOG_FILE = LLM_CURATION_DIR / "pub_full_text_download.log"
 DEFAULT_DOWNLOAD_MAX_WORKERS = min(32, (os.cpu_count() or 1) * 4)
 
 

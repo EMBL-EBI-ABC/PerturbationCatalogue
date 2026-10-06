@@ -7,17 +7,20 @@ import json
 import sys
 from pathlib import Path
 
-from curation_tools.llm_curation.source_ingestion import (
+from curation_tools.study_curation.llm.source_ingestion import build_create_run_request
+from curation_tools.study_curation.llm.workflow import CurationWorkflow
+from curation_tools.study_curation.paths import (
+    CURATION_RUNS_DIR,
     DEFAULT_SCHEMA_PATH,
-    PACKAGE_DIR,
-    build_create_run_request,
+    DEFAULT_STEP1_PROMPT_PATH,
+    DEFAULT_STEP2_PROMPT_PATH,
+    DEFAULT_STEP3_PROMPT_PATH,
 )
-from curation_tools.llm_curation.workflow import CurationWorkflow
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Native SQLite curation runs")
-    parser.add_argument("--runs-root", type=Path, default=Path("curation_runs"))
+    parser.add_argument("--runs-root", type=Path, default=CURATION_RUNS_DIR)
     commands = parser.add_subparsers(dest="command", required=True)
 
     create = commands.add_parser("create", help="Create and snapshot a fresh run")
@@ -28,17 +31,17 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument(
         "--step1-prompt",
         type=Path,
-        default=PACKAGE_DIR / "step1_evidence_extraction_prompt.md",
+        default=DEFAULT_STEP1_PROMPT_PATH,
     )
     create.add_argument(
         "--step2-prompt",
         type=Path,
-        default=PACKAGE_DIR / "step2_specific_term_extraction.md",
+        default=DEFAULT_STEP2_PROMPT_PATH,
     )
     create.add_argument(
         "--step3-prompt",
         type=Path,
-        default=PACKAGE_DIR / "step3_candidate_discovery_prompt.md",
+        default=DEFAULT_STEP3_PROMPT_PATH,
     )
     create.add_argument("--schema-path", type=Path, default=DEFAULT_SCHEMA_PATH)
     create.add_argument("--model", default="google/gemini-3.7-flash")

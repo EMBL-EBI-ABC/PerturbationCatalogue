@@ -35,6 +35,13 @@ Open any notebook and change the kernel to use `data_exploration_env`: **Kernel*
 
 ---
 
+## Study Metadata Curation
+
+The [study curation workflow](curation_tools/study_curation/README.md) covers
+publication retrieval, LLM metadata extraction, human review, and MaveDB
+postprocessing. Its source caches live in `curation_cache/` and its run history
+lives in the repository-root `curation_runs/` directory.
+
 ## Data Curation Pipeline
 
 To build a unified and searchable Perturbation Catalogue, datasets from various publications are standardised using the repository's custom `curation_tools` library. For ultimate data provenance tractability, the curation process is documented and executed inside the notebooks located in `Perturbseq|CRISPR|MaveDB/curation_notebooks/`.

@@ -9,12 +9,17 @@ from pathlib import Path
 from time import sleep
 
 import requests
-
-from curation_tools.llm_curation.logging_utils import (
+from curation_tools.study_curation.logging_utils import (
     append_log_line,
     print_status_block,
 )
-from curation_tools.llm_curation.publication_text import (
+from curation_tools.study_curation.paths import (
+    MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE,
+    MAVEDB_DUMP_DIR,
+    MAVEDB_METADATA_OUTPUT_DIR,
+    MAVEDB_URN_TO_DOIS_OUTPUT_FILE,
+)
+from curation_tools.study_curation.sources.publication_text import (
     DEFAULT_DOWNLOAD_MAX_WORKERS,
     DOWNLOAD_PROGRESS_LOG_FILE,
     FULL_TEXT_MD_DIR,
@@ -23,17 +28,6 @@ from curation_tools.llm_curation.publication_text import (
     bulk_download_pub_full_texts,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-MAVEDB_DIR = REPO_ROOT / "data_exploration" / "MaveDB"
-
-MAVEDB_DUMP_DIR = MAVEDB_DIR / "Dump" / "mavedb-dump.20250612164404" / "csv"
-MAVEDB_METADATA_OUTPUT_DIR = MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_metadata"
-MAVEDB_URN_TO_DOIS_OUTPUT_FILE = (
-    MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_urn_to_dois.json"
-)
-MAVEDB_DOI_TO_FULLTEXT_OUTPUT_FILE = (
-    MAVEDB_DIR / "llm_metadata_extraction" / "mavedb_doi_to_fulltext.json"
-)
 MAVEDB_API_BASE_URL = "https://api.mavedb.org/api/v1"
 DEFAULT_FETCH_SLEEP_TIME = 0.1
 JSON_INDENT = 2

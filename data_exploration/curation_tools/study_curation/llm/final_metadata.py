@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from curation_tools.llm_curation.mavedb.processing import (
+from curation_tools.perturbseq_anndata_schema import ObsSchema
+from curation_tools.study_curation.sources.mavedb import (
     extract_curated_mavedb_prompt_metadata,
     merge_prompt_metadata_value,
 )
-from curation_tools.perturbseq_anndata_schema import ObsSchema
 
 OBS_SCHEMA_FIELDS = tuple(ObsSchema.to_schema().columns.keys())
 PROVENANCE_FIELDS = ("__source_urns", "__source_files")

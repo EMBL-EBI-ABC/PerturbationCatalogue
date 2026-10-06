@@ -8,9 +8,15 @@ __pycache__
 data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump
 data_exploration/MaveDB/csv
-data_exploration/MaveDB/llm_metadata_extraction/mavedb_metadata
 data_exploration/MaveDB/llm_metadata_extraction/extracted_metadata
-data_exploration/curation_tools/llm_curation/mavedb/pub_full_text_*
+# Downloaded source caches; mapping JSON files remain versioned.
+data_exploration/curation_cache/publications/raw/
+data_exploration/curation_cache/publications/markdown/
+data_exploration/curation_cache/mavedb/metadata/
+# Run databases, exports, and processing outputs are local artifacts.
+curation_runs/
+# Keep the reorganization regression test visible despite local test exclusions.
+!data_exploration/curation_tools/study_curation/layout_regression_test.py
 data_exploration/CRISPR/supplementary
 data_exploration/Perturbseq/supplementary
 # Test data
