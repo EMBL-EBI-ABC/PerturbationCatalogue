@@ -5,6 +5,8 @@ from elasticsearch import AsyncElasticsearch
 import asyncpg
 from dotenv import load_dotenv
 import json
+import logging
+import os
 import re
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -29,14 +31,16 @@ except ImportError:  # pragma: no cover - fallback for running as a script
 
 # Import data query APIs.
 from data_query import router as data_query_router, db_pools
+from target_search import build_target_fuzzy_query, escape_wildcard
 
 load_dotenv()
 
 
 # Elastic indexes to use.
-ES_LANDING_PAGE_SUMMARY = "landing-page-summary"
-ES_TARGET_SUMMARY = "target-summary"
-ES_DATASET_SUMMARY = "dataset-summary"
+ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
+ES_TARGET_SUMMARY = f"target-summary{ES_INDEX_SET}"
+ES_DATASET_SUMMARY = f"dataset-summary{ES_INDEX_SET}"
+ES_LANDING_PAGE_SUMMARY = f"landing-page-summary{ES_INDEX_SET}"
 
 
 # Configuration
@@ -49,9 +53,11 @@ class Settings(BaseSettings):
     es_url: str
     es_username: str
     es_password: str
+    release_bucket: Optional[str] = None
 
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -109,7 +115,12 @@ DATASET_FACET_FIELDS = [
     "sex_labels",
     "developmental_stage_labels",
     "disease_labels",
+    "perturb_seq_reprocessed",
 ]
+
+# Facet fields backed by an Elasticsearch boolean. Their aggregation buckets carry the
+# value in `key_as_string` ("true"/"false") rather than a string `key`.
+BOOLEAN_FACET_FIELDS = {"perturb_seq_reprocessed"}
 
 # Mapping from canonical (target) field names to dataset index field names
 TARGET_TO_DATASET_FIELD = {
@@ -144,137 +155,6 @@ DATASET_SEARCHABLE_FIELDS = [
 
 
 # Elasticsearch helper functions
-def _escape_wildcard(value: str) -> str:
-    """Escape characters that have special meaning in wildcard queries."""
-    return re.sub(r"([\\*?])", r"\\\1", value)
-
-
-def build_elasticsearch_query(
-    query: Optional[str], filters: Optional[Dict[str, List[str]]]
-) -> Dict[str, Any]:
-    """Build Elasticsearch query with search and filters"""
-    filter_clauses = []
-    should_clauses = []
-
-    # Text search across all searchable fields
-    if query:
-        cleaned_query = query.strip()
-        if cleaned_query:
-            # Exact/fuzzy matches with equal boost across all fields
-            should_clauses.append(
-                {
-                    "multi_match": {
-                        "query": cleaned_query,
-                        "fields": [
-                            "perturbed_target_symbol^1.5",
-                            "perturbed_target_symbol.text^1.0",
-                            "license^1.5",
-                            "license.text^1.0",
-                            "data_modalities^1.5",
-                            "data_modalities.text^1.0",
-                            "tissues_tested^1.5",
-                            "tissues_tested.text^1.0",
-                            "cell_types_tested^1.5",
-                            "cell_types_tested.text^1.0",
-                            "cell_lines_tested^1.5",
-                            "cell_lines_tested.text^1.0",
-                            "sex_tested^1.5",
-                            "sex_tested.text^1.0",
-                            "developmental_stages_tested^1.5",
-                            "developmental_stages_tested.text^1.0",
-                            "diseases_tested^1.5",
-                            "diseases_tested.text^1.0",
-                        ],
-                        "type": "best_fields",
-                        "fuzziness": "AUTO:5,8",
-                    }
-                }
-            )
-
-            # Prefix support for token beginnings (e.g. "SU" -> "SUMO1")
-            searchable_fields = [
-                "perturbed_target_symbol",
-                "license",
-                "data_modalities",
-                "tissues_tested",
-                "cell_types_tested",
-                "cell_lines_tested",
-                "sex_tested",
-                "developmental_stages_tested",
-                "diseases_tested",
-            ]
-            for field in searchable_fields:
-                should_clauses.append(
-                    {
-                        "match_phrase_prefix": {
-                            f"{field}.text": {
-                                "query": cleaned_query,
-                                "slop": 1,
-                                "boost": 1.2,
-                            }
-                        }
-                    }
-                )
-
-            # Wildcard for partial/infix search (case-insensitive)
-            wildcard_terms = []
-            for term in cleaned_query.split():
-                safe_term = _escape_wildcard(term.lower())
-                if safe_term:
-                    wildcard_terms.append(f"*{safe_term}*")
-
-            # Include whole query if no spaces
-            if not wildcard_terms:
-                safe_term = _escape_wildcard(cleaned_query.lower())
-                if safe_term:
-                    wildcard_terms.append(f"*{safe_term}*")
-
-            for wildcard_value in wildcard_terms:
-                for field in searchable_fields:
-                    should_clauses.append(
-                        {
-                            "wildcard": {
-                                f"{field}.keyword": {
-                                    "value": wildcard_value,
-                                    "case_insensitive": True,
-                                    "boost": 0.4,
-                                }
-                            }
-                        }
-                    )
-                    should_clauses.append(
-                        {
-                            "wildcard": {
-                                field: {
-                                    "value": wildcard_value,
-                                    "case_insensitive": True,
-                                    "boost": 0.3,
-                                }
-                            }
-                        }
-                    )
-
-    # Filters for facet fields
-    if filters:
-        for field, values in filters.items():
-            if field in FACET_FIELDS and values:
-                filter_clauses.append({"terms": {field: values}})
-
-    bool_query: Dict[str, Any] = {}
-
-    if filter_clauses:
-        bool_query["filter"] = filter_clauses
-
-    if should_clauses:
-        bool_query["should"] = should_clauses
-        bool_query["minimum_should_match"] = 1
-
-    if bool_query:
-        return {"bool": bool_query}
-
-    return {"match_all": {}}
-
-
 def build_aggregations(facet_fields: Optional[List[str]] = None) -> Dict[str, Any]:
     """Build aggregations for all facet fields."""
     fields = facet_fields or FACET_FIELDS
@@ -332,12 +212,12 @@ def build_dataset_elasticsearch_query(
             # Wildcard for partial/infix search
             wildcard_terms = []
             for term in cleaned_query.split():
-                safe_term = _escape_wildcard(term.lower())
+                safe_term = escape_wildcard(term.lower())
                 if safe_term:
                     wildcard_terms.append(f"*{safe_term}*")
 
             if not wildcard_terms:
-                safe_term = _escape_wildcard(cleaned_query.lower())
+                safe_term = escape_wildcard(cleaned_query.lower())
                 if safe_term:
                     wildcard_terms.append(f"*{safe_term}*")
 
@@ -406,6 +286,7 @@ def parse_filters_from_params(
     sex_labels: Optional[str] = None,
     developmental_stage_labels: Optional[str] = None,
     disease_labels: Optional[str] = None,
+    perturb_seq_reprocessed: Optional[str] = None,
 ) -> Optional[Dict[str, List[str]]]:
     """Parse filters from query parameters"""
     filters = {}
@@ -449,6 +330,10 @@ def parse_filters_from_params(
         ]
     if disease_labels:
         filters["disease_labels"] = [v.strip() for v in disease_labels.split(",")]
+    if perturb_seq_reprocessed:
+        filters["perturb_seq_reprocessed"] = [
+            v.strip() for v in perturb_seq_reprocessed.split(",")
+        ]
 
     return filters if filters else None
 
@@ -471,10 +356,10 @@ async def perform_search(
         es_index = ES_DATASET_SUMMARY
         sort_field = "dataset_id"
     else:
-        es_query = build_elasticsearch_query(query, filters)
+        es_query = build_target_fuzzy_query(query, filters, FACET_FIELDS)
         facet_fields = FACET_FIELDS
         es_index = ES_TARGET_SUMMARY
-        sort_field = "perturbed_target_symbol"
+        sort_field = "approved_symbol"
 
     aggs = build_aggregations(facet_fields)
 
@@ -537,13 +422,23 @@ async def perform_search(
     for field in facet_fields:
         buckets = aggregations.get(field, {}).get("buckets", [])
         case_map = original_case.get(field, {})
-        facets_dict[field] = [
-            FacetValue(
-                value=case_map.get(bucket["key"], bucket["key"]),
-                count=bucket["doc_count"],
-            )
-            for bucket in buckets
-        ]
+        if field in BOOLEAN_FACET_FIELDS:
+            # Boolean aggregation buckets expose "true"/"false" via key_as_string.
+            facets_dict[field] = [
+                FacetValue(
+                    value=bucket.get("key_as_string", str(bucket["key"])),
+                    count=bucket["doc_count"],
+                )
+                for bucket in buckets
+            ]
+        else:
+            facets_dict[field] = [
+                FacetValue(
+                    value=case_map.get(bucket["key"], bucket["key"]),
+                    count=bucket["doc_count"],
+                )
+                for bucket in buckets
+            ]
 
     # Remap dataset field names to canonical target field names
     if is_dataset_mode:
@@ -583,15 +478,29 @@ async def health_check():
             es_status = "not_connected"
     except Exception as e:
         es_status = "not_connected"
-        es_error = str(e)
+        es_error = "Elasticsearch health check failed"
+        logger.exception(
+            "Elasticsearch health check failed: %s",
+            {
+                "status": "unhealthy",
+                "elasticsearch": {
+                    "status": es_status,
+                    "host": urlparse(settings.es_url).hostname,
+                    "error": str(e),
+                },
+            },
+        )
 
     overall_status = "healthy" if es_status == "connected" else "unhealthy"
 
     return {
-        "status": overall_status,
+        "status": (
+            overall_status + ". Check the logs"
+            if overall_status == "unhealthy"
+            else overall_status
+        ),
         "elasticsearch": {
             "status": es_status,
-            "host": urlparse(settings.es_url).hostname,
             "error": es_error,
         },
     }
@@ -619,7 +528,7 @@ async def get_landing_page_summary():
 @app.get("/search", response_model=SearchResponse)
 async def search_get(
     query: Optional[str] = Query(
-        None, description="Search query for perturbed_target_symbol"
+        None, description="Search query for target symbol, synonym, name, or Ensembl ID"
     ),
     search_mode: str = Query(
         "targets", description="Search mode: 'targets' or 'datasets'"
@@ -675,6 +584,10 @@ async def search_get(
     disease_labels: Optional[str] = Query(
         None, description="Comma-separated list of disease labels (dataset mode)"
     ),
+    perturb_seq_reprocessed: Optional[str] = Query(
+        None,
+        description="Comma-separated 'true'/'false' to filter by perturb-seq re-processing (dataset mode)",
+    ),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     size: int = Query(6, ge=1, le=100, description="Number of results per page"),
     search_after: Optional[str] = Query(
@@ -702,6 +615,7 @@ async def search_get(
         sex_labels,
         developmental_stage_labels,
         disease_labels,
+        perturb_seq_reprocessed,
     )
     parsed_search_after = None
     if search_after:

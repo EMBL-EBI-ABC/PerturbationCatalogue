@@ -6,7 +6,7 @@ Reads rows from:
   <BQ_PROJECT>.<BQ_DATASET>.<dataset_summary|target_summary|landing_page_summary>
 
 Writes to ES index:
-  <dataset-summary|target-summary|landing-page-summary>
+  <dataset-summary|target-summary|landing-page-summary><ES_INDEX_SET>
 """
 
 import os
@@ -25,6 +25,7 @@ from tqdm import tqdm
 # ---------------- Config ----------------
 BQ_PROJECT = os.getenv("GCLOUD_PROJECT")
 BQ_DATASET = os.getenv("BQ_DATASET")
+ES_INDEX_SET = os.getenv("ES_INDEX_SET", "")
 
 TABLE_CONFIG = {
     "dataset_summary": {
@@ -34,7 +35,7 @@ TABLE_CONFIG = {
     },
     "target_summary": {
         "index_base": "target-summary",
-        "key_field": "perturbed_target_symbol",
+        "key_field": "ensembl_gene_id",
         "prefix": "target",
     },
     "landing_page_summary": {
@@ -257,21 +258,33 @@ def actions_generator(
             pass
 
 
-def prune_old_indexes(es: Elasticsearch) -> None:
+def destination_index(base: str, date: str, index_set: str) -> str:
+    """Return dated index name including optional index_set suffix.
+
+    >>> destination_index("target-summary", "2026-07-13", "")
+    '2026-07-13-target-summary'
+    >>> destination_index("target-summary", "2026-07-13", "-ensg-dev")
+    '2026-07-13-target-summary-ensg-dev'
+    """
+    return f"{date}-{base}{index_set}"
+
+
+def prune_old_indexes(es: Elasticsearch, index_set: str = "") -> None:
     """
     Prune indexes for the summary families.
-    Keep live version (pointed by alias) + up to 2 older versions.
+    Keep live version (pointed by alias) + up to 2 older versions for the given index_set.
     """
     logging.info("Starting index pruning...")
     index_bases = [cfg["index_base"] for cfg in TABLE_CONFIG.values()]
 
     for base in index_bases:
-        pattern = f"*-{base}"
+        alias_name = f"{base}{index_set}"
+        pattern = f"*-{alias_name}"
         try:
             indices = es.indices.get(index=pattern).body
             all_names = sorted(indices.keys(), reverse=True)
             # Specifically match YYYY-MM-DD-index-name
-            regex = re.compile(r"^\d{4}-\d{2}-\d{2}-" + re.escape(base) + r"$")
+            regex = re.compile(r"^\d{4}-\d{2}-\d{2}-" + re.escape(alias_name) + r"$")
             index_names = [n for n in all_names if regex.match(n)]
         except ApiError:
             index_names = []
@@ -279,37 +292,38 @@ def prune_old_indexes(es: Elasticsearch) -> None:
         if not index_names:
             logging.error(
                 "No indices found for %s! This is unexpected as there should be at least the live version.",
-                base,
+                alias_name,
             )
             continue
 
         # Find the live index (pointed to by the alias)
         try:
-            alias_info = es.indices.get_alias(name=base).body
+            alias_info = es.indices.get_alias(name=alias_name).body
             live_index = list(alias_info.keys())[0] if alias_info else None
         except ApiError:
             live_index = None
 
         if not live_index:
-            logging.warning("No live index found for alias %s", base)
+            logging.warning("No live index found for alias %s", alias_name)
 
-        # Since live is the latest, we keep it + 2 previous versions (first 3 in sorted list)
-        to_keep = set(index_names[:3])
-        if live_index:
-            to_keep.add(live_index)
+        to_keep = {live_index} if live_index in index_names else set()
+        for name in index_names:
+            if len(to_keep) == 3:
+                break
+            to_keep.add(name)
 
         to_delete = [idx for idx in index_names if idx not in to_keep]
 
         if not to_delete:
             logging.info(
                 "3 or less total versions found for %s and all kept: %s",
-                base,
+                alias_name,
                 ", ".join(sorted(list(to_keep))),
             )
         else:
             logging.info(
                 "More than 3 versions found for %s. Keeping: %s. Pruning: %s",
-                base,
+                alias_name,
                 ", ".join(sorted(list(to_keep))),
                 ", ".join(to_delete),
             )
@@ -338,7 +352,6 @@ def main() -> int:
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     es = make_es_client()
     bq_client = bigquery.Client(project=BQ_PROJECT)
-
     sync_results = {}  # index_base -> new_index
 
     for table, cfg in TABLE_CONFIG.items():
@@ -346,7 +359,7 @@ def main() -> int:
         prefix = cfg["prefix"]
         key_field = cfg["key_field"]
 
-        es_index = f"{date_str}-{base}"
+        es_index = destination_index(base, date_str, ES_INDEX_SET)
 
         logging.info("Starting sync for %s -> %s", table, es_index)
 
@@ -359,9 +372,7 @@ def main() -> int:
 
             # If current date index already exists, delete it first
             if es.indices.exists(index=es_index):
-                logging.info(
-                    "Index %s already exists for today. Deleting it first...", es_index
-                )
+                logging.info("Index %s already exists. Deleting it first...", es_index)
                 es.indices.delete(index=es_index)
 
             ensure_index(es, es_index, mapping)
@@ -413,28 +424,28 @@ def main() -> int:
             logging.error("Failed to sync table %s: %s", table, e)
             return 1
 
-    # If all successful, move aliases
     if len(sync_results) == len(TABLE_CONFIG):
         logging.info("All tables synced successfully. Moving aliases...")
         actions = []
         for base, new_index in sync_results.items():
+            alias_name = f"{base}{ES_INDEX_SET}"
             # Remove existing alias from any old indexes
             try:
-                old_indices = es.indices.get_alias(name=base).body
+                old_indices = es.indices.get_alias(name=alias_name).body
                 for old_idx in old_indices:
-                    actions.append({"remove": {"index": old_idx, "alias": base}})
+                    actions.append({"remove": {"index": old_idx, "alias": alias_name}})
             except ApiError:
                 pass
 
             # Add new alias
-            actions.append({"add": {"index": new_index, "alias": base}})
+            actions.append({"add": {"index": new_index, "alias": alias_name}})
 
         if actions:
             es.indices.update_aliases(body={"actions": actions})
             logging.info("Aliases updated successfully.")
 
         # Prune old indexes
-        prune_old_indexes(es)
+        prune_old_indexes(es, ES_INDEX_SET)
 
     return 0
 

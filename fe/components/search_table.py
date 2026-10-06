@@ -10,6 +10,7 @@ from utils import (
     FACET_FIELDS,
     results_store,
     format_value,
+    reprocessed_badge,
 )
 
 SEARCH_RESULTS_PAGE_SIZE = 15
@@ -103,8 +104,10 @@ def render_targets_table(results):
 
     rows = []
     for record in results:
-        symbol = record.get("perturbed_target_symbol", "N/A")
-        results_store[symbol] = record
+        target_id = record.get("ensembl_gene_id") or "N/A"
+        approved_symbol = record.get("approved_symbol") or target_id
+        approved_name = record.get("approved_name")
+        results_store[target_id] = record
 
         n_sc_perturb_seq = format_count(record.get("n_perturb_seq"))
         n_sc_perturb_seq_up = format_count(record.get("n_sig_perturb_pairs_up"))
@@ -172,10 +175,23 @@ def render_targets_table(results):
                 [
                     html.Td(
                         dcc.Link(
-                            symbol,
-                            href=f"/perturbation-catalogue/target/{quote(symbol, safe='')}",
-                            className="text-decoration-none fw-semibold",
-                            style={"color": COLORS["primary"]},
+                            html.Div(
+                                [
+                                    html.Div(
+                                        approved_symbol,
+                                        className="fw-bold",
+                                        style={"color": COLORS["primary"]},
+                                    ),
+                                    html.Div(
+                                        target_id,
+                                        className="text-muted",
+                                        style={"fontSize": "0.75rem"},
+                                    ),
+                                ],
+                                title=approved_name or approved_symbol,
+                            ),
+                            href=f"/perturbation-catalogue/target/{quote(target_id, safe='')}",
+                            className="text-decoration-none",
                         )
                     ),
                     html.Td(
@@ -306,6 +322,7 @@ def render_datasets_table(results):
                 html.Th("Study Title", className="fw-semibold"),
                 html.Th("Study Year", className="fw-semibold text-center"),
                 html.Th("Data Modality", className="fw-semibold"),
+                html.Th("Provenance", className="fw-semibold"),
             ],
             style={"backgroundColor": "#f1f3f5"},
         )
@@ -342,6 +359,10 @@ def render_datasets_table(results):
         if not modality_badges:
             modality_badges = [html.Span("N/A", className="text-muted")]
 
+        provenance = reprocessed_badge(
+            record.get("perturb_seq_reprocessed"), class_name=""
+        )
+
         rows.append(
             html.Tr(
                 [
@@ -359,6 +380,7 @@ def render_datasets_table(results):
                     ),
                     html.Td(str(year), className="text-center"),
                     html.Td(html.Div(modality_badges, className="d-flex flex-wrap")),
+                    html.Td(provenance if provenance is not None else ""),
                 ]
             )
         )
@@ -413,7 +435,14 @@ def build_filter_controls(
 
     filter_type = f"{id_prefix}-facet-filter" if id_prefix else "facet-filter"
 
+    # Facet values that should be relabelled for display (value sent to the API is
+    # unchanged; only the visible label differs).
+    boolean_value_labels = {
+        "perturb_seq_reprocessed": {"true": "Yes", "false": "No"},
+    }
+
     field_icons = {
+        "perturb_seq_reprocessed": "bi-arrow-repeat",
         "license": "bi-award-fill",
         "data_modalities": "bi-database",
         "tissues_tested": "bi-universal-access-circle",
@@ -507,6 +536,7 @@ def build_filter_controls(
             continue
 
         display_name_map = {
+            "perturb_seq_reprocessed": "Reprocessed",
             "license": "License",
             "data_modalities": "Data Modalities",
             "tissues_tested": "Tissues",
@@ -545,7 +575,11 @@ def build_filter_controls(
                 continue
             if count <= 0 and value.lower() not in field_selected:
                 continue
-            options.append({"label": f"{value} ({count})", "value": value})
+            value_label_map = boolean_value_labels.get(field)
+            label_text = (
+                value_label_map.get(value.lower(), value) if value_label_map else value
+            )
+            options.append({"label": f"{label_text} ({count})", "value": value})
             option_value_map[value.lower()] = value
 
         if not options:

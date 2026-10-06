@@ -1,14 +1,10 @@
 import argparse
-import concurrent.futures
-import contextlib
-import enum
 import io
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor
-from typing import List, Dict, Tuple, Optional, Any
+from datetime import timezone
+from typing import List, Dict, Tuple, Optional, Any, Set
 
 import psycopg2
 from psycopg2 import sql
@@ -36,13 +32,19 @@ TABLES_TO_SYNC = [
     "perturb_seq_gsea",
 ]
 
+# Only perturb-seq is partitioned to avoid table clutter from thousands of small datasets.
+PARTITIONED_TABLES = {
+    "perturb_seq_dea",
+    "perturb_seq_gsea",
+}
+
 SYNC_QUERIES = {
     "crispr_data": {
         "export_query": r"""
             SELECT
                 dataset_id,
                 sample_id,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 significant,
@@ -62,7 +64,7 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 sample_id,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 score_name,
                 score_value,
                 perturbation_name,
@@ -87,19 +89,19 @@ SYNC_QUERIES = {
         "export_query": r"""
             SELECT
                 dataset_id,
-                perturbed_target_symbol,
-                gene,
+                perturbed_target_ensg,
+                effect_gene_ensg,
                 padj,
-                log2FoldChange as log2foldchange,
+                log2foldchange,
                 score_name,
                 score_value,
                 cell_type,
-                ingested_at as max_ingested_at
+                max_ingested_at
             FROM `{project}.perturb_seq.pertpy_dea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
             FROM `{project}.perturb_seq.pertpy_dea`
             GROUP BY dataset_id
         """,
@@ -109,7 +111,7 @@ SYNC_QUERIES = {
             SELECT
                 dataset_id,
                 term,
-                perturbed_target_symbol,
+                perturbed_target_ensg,
                 es,
                 nes,
                 pval,
@@ -118,12 +120,12 @@ SYNC_QUERIES = {
                 geneset_size,
                 leading_edge,
                 cell_type,
-                ingested_at as max_ingested_at
+                max_ingested_at
             FROM `{project}.perturb_seq.pertpy_gsea`
             WHERE dataset_id = '{dataset_id}'
         """,
         "ts_query": r"""
-            SELECT dataset_id, MAX(ingested_at) as latest_ts, COUNT(*) as row_count
+            SELECT dataset_id, MAX(max_ingested_at) as latest_ts, COUNT(*) as row_count
             FROM `{project}.perturb_seq.pertpy_gsea`
             GROUP BY dataset_id
         """,
@@ -136,25 +138,25 @@ INDEX_DEFINITIONS = {
     "perturb_seq_dea": [
         (
             "idx_perturbation_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturbation_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, gene, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturb_seq_dea_dataset_id_padj",
-            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE gene IS NOT NULL",
+            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE effect_gene_ensg IS NOT NULL",
         ),
     ],
     "perturb_seq_gsea": [
         (
             "idx_perturbation_gsea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id, fdr, nes)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, fdr, nes)",
         ),
     ],
     "crispr_data": [
@@ -164,7 +166,7 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_crispr_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
     "mave_data": [
@@ -174,13 +176,12 @@ INDEX_DEFINITIONS = {
         ),
         (
             "idx_mave_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_symbol, dataset_id)",
+            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id)",
         ),
     ],
 }
 
 # Names of materialized views to refresh for each table.
-# Definitions are no longer managed here (assumed to exist).
 TABLE_MATERIALIZED_VIEWS = {
     "perturb_seq_dea": [
         "perturb_seq_summary_perturbation",
@@ -189,8 +190,51 @@ TABLE_MATERIALIZED_VIEWS = {
     ],
 }
 
-# Number of threads for concurrent GCS blob download + Parquet-to-CSV conversion.
-GCS_DOWNLOAD_WORKERS = os.cpu_count() or 4
+MATERIALIZED_VIEW_DEFINITIONS = {
+    "perturb_seq_summary_perturbation": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_perturbation AS
+            SELECT
+                dataset_id,
+                perturbed_target_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up
+            FROM perturb_seq_dea
+            WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
+            GROUP BY dataset_id, perturbed_target_ensg;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);",
+    },
+    "perturb_seq_summary_effect": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_effect AS
+            SELECT
+                dataset_id,
+                effect_gene_ensg,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE log2foldchange < 0) AS n_down,
+                COUNT(*) FILTER (WHERE log2foldchange > 0) AS n_up,
+                AVG(score_value) AS avg_score
+            FROM perturb_seq_dea
+            WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id, effect_gene_ensg;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);",
+    },
+    "perturb_seq_summary_dataset": {
+        "create_sql": """
+            CREATE MATERIALIZED VIEW perturb_seq_summary_dataset AS
+            SELECT
+                dataset_id,
+                COUNT(*) AS n_total
+            FROM perturb_seq_dea
+            WHERE effect_gene_ensg IS NOT NULL
+            GROUP BY dataset_id;
+        """,
+        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
+    },
+}
 
 
 # ------------------------------------------------------------------------------
@@ -216,18 +260,107 @@ def get_pg_type(field):
     return pg_type
 
 
-def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
-    """Gets the current sync state for all tables and datasets from Postgres."""
+def get_partition_table_name(table_name: str, dataset_id: str) -> str:
+    """Returns a safe, unique, and deterministic Postgres partition table name under 63 bytes."""
+    safe_ds = "".join(c if c.isalnum() else "_" for c in dataset_id)
+    name = f"{table_name}_{safe_ds}"
+    if len(name) > 63:
+        import hashlib
+
+        h = hashlib.md5(dataset_id.encode()).hexdigest()[:8]
+        name = f"{table_name[:45]}_{safe_ds[:8]}_{h}"
+    return name
+
+
+def check_sync_state_schema_is_valid(cursor) -> bool:
+    """Checks if the sync_state table exists and has the expected schema and primary key."""
+    cursor.execute(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sync_state')"
+    )
+    if not cursor.fetchone()[0]:
+        return False
+
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS sync_state (
-            table_name TEXT NOT NULL,
-            dataset_id TEXT NOT NULL,
-            last_synced_at TIMESTAMP WITHOUT TIME ZONE,
-            PRIMARY KEY (table_name, dataset_id)
-        );
-    """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = 'sync_state'
+        ORDER BY column_name;
+        """
     )
+    cols = {row[0].lower(): row[1].upper() for row in cursor.fetchall()}
+    expected = {
+        "table_name": "TEXT",
+        "dataset_id": "TEXT",
+        "last_synced_at": "TIMESTAMP WITHOUT TIME ZONE",
+    }
+    for col, expected_type in expected.items():
+        if col not in cols:
+            logging.info(f"sync_state schema mismatch: column {col} missing.")
+            return False
+        pg_type = cols[col]
+        if col in ("table_name", "dataset_id"):
+            if "CHAR" not in pg_type and "TEXT" not in pg_type:
+                logging.info(
+                    f"sync_state schema mismatch: column {col} type {pg_type} is not TEXT."
+                )
+                return False
+        elif col == "last_synced_at":
+            if "TIMESTAMP" not in pg_type:
+                logging.info(
+                    f"sync_state schema mismatch: column {col} type {pg_type} is not TIMESTAMP."
+                )
+                return False
+
+    cursor.execute(
+        """
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_name = 'sync_state'
+          AND tc.constraint_type = 'PRIMARY KEY';
+        """
+    )
+    pk_cols = {row[0].lower() for row in cursor.fetchall()}
+    if pk_cols != {"table_name", "dataset_id"}:
+        logging.info(
+            f"sync_state schema mismatch: primary key columns are {pk_cols} != (table_name, dataset_id)."
+        )
+        return False
+
+    return True
+
+
+def ensure_sync_state_exists(cursor):
+    """Ensures sync_state table exists with correct schema. If it exists but schema is invalid, drops and recreates it and wipes everything."""
+    if not check_sync_state_schema_is_valid(cursor):
+        logging.warning(
+            "sync_state table does not exist or has an invalid schema. Wiping all synced tables and recreating sync_state."
+        )
+        for table_name in TABLES_TO_SYNC:
+            cursor.execute(
+                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                    sql.Identifier(table_name)
+                )
+            )
+        cursor.execute("DROP TABLE IF EXISTS sync_state CASCADE;")
+        cursor.execute(
+            """
+            CREATE TABLE sync_state (
+                table_name TEXT NOT NULL,
+                dataset_id TEXT NOT NULL,
+                last_synced_at TIMESTAMP WITHOUT TIME ZONE,
+                PRIMARY KEY (table_name, dataset_id)
+            );
+            """
+        )
+
+
+def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
+    """Gets the current sync state for all tables and datasets from Postgres."""
+    ensure_sync_state_exists(cursor)
     states = {}
     cursor.execute("SELECT table_name, dataset_id, last_synced_at FROM sync_state")
     for table_name, dataset_id, last_synced_at in cursor.fetchall():
@@ -238,10 +371,12 @@ def get_all_sync_states(cursor) -> Dict[str, Dict[str, Any]]:
 
 
 def get_bq_latest_timestamps_and_counts(
-    bq_client, table_name, bq_location
+    bq_client, bq_dataset, table_name, bq_location
 ) -> Dict[str, Tuple[Any, int]]:
     """Gets the latest max_ingested_at and row count for every dataset_id in a BQ table."""
-    query = SYNC_QUERIES[table_name]["ts_query"].format(project=bq_client.project)
+    query = SYNC_QUERIES[table_name]["ts_query"].format(
+        project=bq_client.project, bq_dataset=bq_dataset
+    )
     query_job = bq_client.query(query, location=bq_location)
     results = query_job.result()
     return {row.dataset_id: (row.latest_ts, row.row_count) for row in results}
@@ -261,7 +396,7 @@ def export_dataset_to_gcs(
     temp_table_ref = dataset_ref.table(temp_table_id)
 
     query = SYNC_QUERIES[table_name]["export_query"].format(
-        project=bq_client.project, dataset_id=dataset_id
+        project=bq_client.project, bq_dataset=bq_dataset, dataset_id=dataset_id
     )
     job_config = bigquery.QueryJobConfig(destination=temp_table_ref)
 
@@ -337,78 +472,30 @@ def _prepare_table_for_copy(table, bq_schema):
     return buf
 
 
-def _download_and_convert_blob(blob, bq_schema):
-    """Download a single Parquet shard and convert to a TSV buffer."""
-    data = blob.download_as_bytes()
-    table = pq.read_table(io.BytesIO(data))
-    return _prepare_table_for_copy(table, bq_schema)
-
-
-def load_parquet_from_gcs_to_pg(
-    cursor, pg_table, gcs_bucket, gcs_prefix, bq_schema, gcs_client
-):
-    """Loads Parquet files from GCS into Postgres using COPY."""
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    logging.info(f"        Listing blobs in {gcs_prefix}...")
-    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-
-    if not blobs:
-        return
-
-    copy_sql = sql.SQL(
-        "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
-    ).format(sql.Identifier(pg_table))
-
-    max_workers = GCS_DOWNLOAD_WORKERS
-    blob_iter = iter(blobs)
-    pbar = tqdm(total=len(blobs), desc="        Loading shards", leave=False)
-
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        pending = {}
-        for blob in iter(lambda: next(blob_iter, None), None):
-            fut = pool.submit(_download_and_convert_blob, blob, bq_schema)
-            pending[fut] = blob
-            if len(pending) >= max_workers:
-                break
-
-        while pending:
-            done, _ = concurrent.futures.wait(
-                pending, return_when=concurrent.futures.FIRST_COMPLETED
-            )
-            for fut in done:
-                tsv_buf = fut.result()
-                cursor.copy_expert(copy_sql, tsv_buf)
-                tsv_buf.close()
-                del pending[fut]
-                pbar.update(1)
-
-                next_blob = next(blob_iter, None)
-                if next_blob is not None:
-                    new_fut = pool.submit(
-                        _download_and_convert_blob, next_blob, bq_schema
-                    )
-                    pending[new_fut] = next_blob
-
-    pbar.close()
-
-
 def cleanup_gcs(gcs_bucket, gcs_prefix, gcs_client):
     """Removes temporary files from GCS."""
     logging.info(f"      - Cleaning up GCS files...")
-    bucket = gcs_client.get_bucket(gcs_bucket)
-    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-    for blob in blobs:
-        blob.delete()
+    try:
+        bucket = gcs_client.get_bucket(gcs_bucket)
+        blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+        for blob in blobs:
+            try:
+                blob.delete()
+            except Exception as e:
+                # Ignore if file is already deleted or cannot be found
+                logging.warning(f"        Could not delete blob {blob.name}: {e}")
+    except Exception as e:
+        logging.warning(f"        GCS cleanup failed for prefix {gcs_prefix}: {e}")
 
 
 def delete_dataset_from_pg(cursor, pg_table, dataset_id):
-    """Deletes all rows for a given dataset_id from a Postgres table."""
-    logging.info(f"        Deleting {dataset_id} from {pg_table}...")
+    """Drops the partition table for a given dataset_id from Postgres (extremely fast delete)."""
+    partition_name = get_partition_table_name(pg_table, dataset_id)
+    logging.info(
+        f"        Dropping partition {partition_name} of {pg_table} if exists..."
+    )
     cursor.execute(
-        sql.SQL("DELETE FROM {} WHERE dataset_id = %s").format(
-            sql.Identifier(pg_table)
-        ),
-        (dataset_id,),
+        sql.SQL("DROP TABLE IF EXISTS {}").format(sql.Identifier(partition_name))
     )
 
 
@@ -426,75 +513,190 @@ def update_sync_state(cursor, pg_table, dataset_id, timestamp):
 
 
 def ensure_pg_table_exists(cursor, pg_table, bq_schema):
-    """Ensures the target table exists in Postgres, creating it if necessary."""
+    """Ensures the target table exists in Postgres as a partitioned or normal table, creating it if necessary."""
     cursor.execute(
         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
         (pg_table,),
     )
     if not cursor.fetchone()[0]:
-        logging.info(f"Table {pg_table} does not exist. Creating.")
         columns = [f"{field.name} {get_pg_type(field)}" for field in bq_schema]
-        cursor.execute(
-            sql.SQL("CREATE TABLE {} ({})").format(
-                sql.Identifier(pg_table),
-                sql.SQL(", ").join(map(sql.SQL, columns)),
+        if pg_table in PARTITIONED_TABLES:
+            logging.info(
+                f"Table {pg_table} does not exist. Creating as partitioned by dataset_id."
             )
+            cursor.execute(
+                sql.SQL("CREATE TABLE {} ({}) PARTITION BY LIST (dataset_id)").format(
+                    sql.Identifier(pg_table),
+                    sql.SQL(", ").join(map(sql.SQL, columns)),
+                )
+            )
+        else:
+            logging.info(
+                f"Table {pg_table} does not exist. Creating as standard table."
+            )
+            cursor.execute(
+                sql.SQL("CREATE TABLE {} ({})").format(
+                    sql.Identifier(pg_table),
+                    sql.SQL(", ").join(map(sql.SQL, columns)),
+                )
+            )
+
+
+def ensure_partition_exists(cursor, table_name, dataset_id):
+    """Ensures a LIST partition exists on the parent partitioned table for dataset_id."""
+    partition_name = get_partition_table_name(table_name, dataset_id)
+    cursor.execute(
+        "SELECT EXISTS (SELECT FROM pg_class WHERE relname = %s);",
+        (partition_name,),
+    )
+    if not cursor.fetchone()[0]:
+        logging.info(
+            f"Creating partition {partition_name} of {table_name} for dataset_id='{dataset_id}'"
+        )
+        cursor.execute(
+            sql.SQL(
+                "CREATE TABLE IF NOT EXISTS {} PARTITION OF {} FOR VALUES IN (%s)"
+            ).format(
+                sql.Identifier(partition_name),
+                sql.Identifier(table_name),
+            ),
+            (dataset_id,),
         )
 
 
-def drop_indexes(cursor, table_name, suffix=""):
-    """Drops all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
-        return
-    logging.info(f"    Dropping indexes for {table_name}{suffix}...")
-    for index_name, _ in INDEX_DEFINITIONS[table_name]:
-        idx = f"{index_name}{suffix}"
-        logging.info(f"        Dropping {idx}...")
+def check_pg_schema_matches_bq(cursor, pg_table, bq_schema) -> bool:
+    """Checks if the existing Postgres table schema matches BQ schema."""
+    cursor.execute(
+        """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = %s
+        ORDER BY column_name;
+        """,
+        (pg_table,),
+    )
+    pg_cols = {row[0].lower(): row[1].upper() for row in cursor.fetchall()}
+    if not pg_cols:
+        return False
+
+    expected_cols = {}
+    for field in bq_schema:
+        col_name = field.name.lower()
+        expected_type = get_pg_type(field).upper()
+        if "TIMESTAMP" in expected_type:
+            expected_type = "TIMESTAMP WITHOUT TIME ZONE"
+        elif "DOUBLE" in expected_type:
+            expected_type = "DOUBLE PRECISION"
+        elif "TEXT[]" in expected_type:
+            expected_type = "ARRAY"
+        expected_cols[col_name] = expected_type
+
+    if set(pg_cols.keys()) != set(expected_cols.keys()):
+        logging.info(f"Schema mismatch for {pg_table}: column sets differ.")
+        return False
+
+    for col, expected_type in expected_cols.items():
+        pg_type = pg_cols[col]
+        if pg_type != expected_type:
+            if pg_type == "ARRAY" and "[]" in get_pg_type(
+                next(f for f in bq_schema if f.name.lower() == col)
+            ):
+                continue
+            logging.info(
+                f"Schema mismatch for {pg_table}.{col}: PG type {pg_type} != BQ type {expected_type}"
+            )
+            return False
+
+    return True
+
+
+def check_pg_table_is_partitioned(cursor, pg_table) -> bool:
+    """Checks if the existing Postgres table is partitioned by LIST on dataset_id."""
+    cursor.execute(
+        """
+        SELECT pt.partstrat, pg_get_partkeydef(c.oid)
+        FROM pg_partitioned_table pt
+        JOIN pg_class c ON pt.partrelid = c.oid
+        WHERE c.relname = %s;
+        """,
+        (pg_table,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        logging.info(f"Table {pg_table} is not partitioned in Postgres.")
+        return False
+    strat, key_def = row
+    is_valid = strat == "l" and "dataset_id" in key_def.lower()
+    if not is_valid:
+        logging.info(
+            f"Table {pg_table} is partitioned, but not by LIST on dataset_id (strat: {strat}, key: {key_def})."
+        )
+    return is_valid
+
+
+def drop_dependent_views_and_indexes(cursor, table_name):
+    """Finds and drops all materialized views and indexes depending on the table."""
+    # 1. Find all dependent materialized views
+    cursor.execute(
+        """
+        SELECT DISTINCT dependee.relname AS mv_name
+        FROM pg_depend d
+        JOIN pg_rewrite r ON d.objid = r.oid
+        JOIN pg_class dependee ON r.ev_class = dependee.oid
+        JOIN pg_class dependent ON d.refobjid = dependent.oid
+        WHERE dependent.relname = %s AND dependee.relkind = 'm';
+        """,
+        (table_name,),
+    )
+    mvs = [row[0] for row in cursor.fetchall()]
+    for mv in mvs:
+        logging.info(f"    Dropping dependent materialized view {mv}...")
+        cursor.execute(
+            sql.SQL("DROP MATERIALIZED VIEW IF EXISTS {} CASCADE").format(
+                sql.Identifier(mv)
+            )
+        )
+
+    # 2. Find and drop all indexes
+    cursor.execute(
+        """
+        SELECT c.relname AS index_name
+        FROM pg_index i
+        JOIN pg_class c ON c.oid = i.indexrelid
+        JOIN pg_class t ON t.oid = i.indrelid
+        WHERE t.relname = %s AND i.indisprimary = FALSE;
+        """,
+        (table_name,),
+    )
+    indexes = [row[0] for row in cursor.fetchall()]
+    for idx in indexes:
+        logging.info(f"    Dropping index {idx}...")
         cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
 
-def create_indexes(cursor, table_name, suffix=""):
-    """Creates all indexes for a given table based on INDEX_DEFINITIONS."""
-    if table_name not in INDEX_DEFINITIONS:
-        return
-    logging.info(
-        f"      - Creating indexes for {table_name}{suffix} (this may take a while)..."
-    )
-    for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
-        idx = f"{index_name}{suffix}"
-        logging.info(f"        Creating {idx}...")
-        index_sql = index_sql_template.format(
-            idx=sql.Identifier(idx).as_string(cursor.connection),
-            table=sql.Identifier(f"{table_name}{suffix}").as_string(cursor.connection),
-        )
-        cursor.execute(index_sql)
-
-
-def refresh_materialized_views(cursor, table_name, concurrently=False):
-    """Refreshes materialized views associated with the table."""
-    if table_name not in TABLE_MATERIALIZED_VIEWS:
-        return
-    for view_name in TABLE_MATERIALIZED_VIEWS[table_name]:
-        logging.info(f"      - Refreshing materialized view {view_name}...")
-        conc_clause = "CONCURRENTLY " if concurrently else ""
-        try:
-            cursor.execute(
-                sql.SQL("REFRESH MATERIALIZED VIEW {}{}").format(
-                    sql.SQL(conc_clause), sql.Identifier(view_name)
-                )
+def create_defined_indexes_and_views(cursor, table_name):
+    """Recreates only the indexes and materialized views defined in DWH pipeline configs."""
+    # 1. Recreate indexes
+    if table_name in INDEX_DEFINITIONS:
+        logging.info(f"    Creating defined indexes for {table_name}...")
+        for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
+            logging.info(f"        Creating index {index_name}...")
+            index_sql = index_sql_template.format(
+                idx=sql.Identifier(index_name).as_string(cursor.connection),
+                table=sql.Identifier(table_name).as_string(cursor.connection),
             )
-        except psycopg2.Error as e:
-            logging.warning(
-                f"        Failed to refresh {view_name} {conc_clause.strip()}: {e}. Trying without CONCURRENTLY."
-            )
-            if concurrently:
-                # If we were in a transaction block, we can't retry easily without rollback.
-                # Assuming this runs in a state where we can retry (autocommit=True for MV refresh).
-                cursor.execute(
-                    sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
-                        sql.Identifier(view_name)
-                    )
-                )
+            cursor.execute(index_sql)
+
+    # 2. Recreate materialized views
+    if table_name in TABLE_MATERIALIZED_VIEWS:
+        logging.info(f"    Creating defined materialized views for {table_name}...")
+        for mv_name in TABLE_MATERIALIZED_VIEWS[table_name]:
+            if mv_name in MATERIALIZED_VIEW_DEFINITIONS:
+                logging.info(f"        Creating materialized view {mv_name}...")
+                mv_def = MATERIALIZED_VIEW_DEFINITIONS[mv_name]
+                cursor.execute(mv_def["create_sql"])
+                if mv_def.get("index_sql"):
+                    cursor.execute(mv_def["index_sql"])
 
 
 # ------------------------------------------------------------------------------
@@ -532,7 +734,9 @@ class TableSynchronizer:
     def _get_bq_schema(self, table_name):
         query = (
             SYNC_QUERIES[table_name]["export_query"].format(
-                project=self.bq_client.project, dataset_id="_dummy_limit_0_"
+                project=self.bq_client.project,
+                bq_dataset=self.bq_dataset,
+                dataset_id="_dummy_limit_0_",
             )
             + " LIMIT 0"
         )
@@ -540,10 +744,12 @@ class TableSynchronizer:
         result = job.result()
         return result.schema
 
-    def _ingest_dataset_logic(self, cursor, pg_table, table_name, ds_id, bq_schema):
-        """Standard ingestion: export, delete, copy."""
+    def _export_and_prepare_dataset(self, table_name, ds_id, bq_schema):
+        """Exports a dataset to GCS, downloads and converts shards to a single TSV file on disk, and cleans up GCS."""
         gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
-        logging.info(f"    Processing {ds_id}...")
+        import tempfile
+
+        tmp_file = tempfile.NamedTemporaryFile(delete=False)
         try:
             export_dataset_to_gcs(
                 self.bq_client,
@@ -554,32 +760,77 @@ class TableSynchronizer:
                 gcs_prefix,
                 ds_id,
             )
-            delete_dataset_from_pg(cursor, pg_table, ds_id)
-            load_parquet_from_gcs_to_pg(
-                cursor,
-                pg_table,
-                self.gcs_bucket,
-                gcs_prefix,
-                bq_schema,
-                self.gcs_client,
-            )
+
+            bucket = self.gcs_client.get_bucket(self.gcs_bucket)
+            blobs = list(bucket.list_blobs(prefix=gcs_prefix))
+
+            if not blobs:
+                tmp_file.close()
+                try:
+                    os.unlink(tmp_file.name)
+                except Exception:
+                    pass
+                return ds_id, None
+
+            for blob in blobs:
+                with tempfile.NamedTemporaryFile() as shard_file:
+                    blob.download_to_file(shard_file)
+                    shard_file.seek(0)
+                    table = pq.read_table(shard_file.name)
+
+                    chunk_buf = _prepare_table_for_copy(table, bq_schema)
+                    tmp_file.write(chunk_buf.getvalue())
+                    chunk_buf.close()
+
+            tmp_file.seek(0)
+            return ds_id, tmp_file
+        except BaseException as e:
+            tmp_file.close()
+            if os.path.exists(tmp_file.name):
+                try:
+                    os.unlink(tmp_file.name)
+                except Exception:
+                    pass
+            raise e
         finally:
             cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
 
+    def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_file):
+        """Loads a prepared TSV file into the Postgres table (partition or standard table) for ds_id."""
+        if tsv_file is None:
+            return
+
+        try:
+            if pg_table in PARTITIONED_TABLES:
+                delete_dataset_from_pg(cursor, pg_table, ds_id)
+                ensure_partition_exists(cursor, pg_table, ds_id)
+
+            copy_sql = sql.SQL(
+                "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
+            ).format(sql.Identifier(pg_table))
+
+            cursor.copy_expert(copy_sql, tsv_file)
+        finally:
+            tsv_file.close()
+            if hasattr(tsv_file, "name") and os.path.exists(tsv_file.name):
+                try:
+                    os.unlink(tsv_file.name)
+                except Exception:
+                    pass
+
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
-        Unified Sync Mode:
+        Unified Sync Mode (strictly sequential):
         - Single transaction for:
-            1. (Optional) Drop Indexes
-            2. Data Updates (Delete + Insert) for all datasets
-            3. (Optional) Recreate Indexes
+            1. Drop dependent materialized views and indexes (if requested or mandatory)
+            2. Data Updates (Delete old rows/partition + create empty partition if partitioned + COPY) for all datasets
+            3. Recreate defined indexes and materialized views
             4. Update sync_state
-        - (Separate) Refresh MVs concurrently.
         """
         bq_schema = self._get_bq_schema(table_name)
         datasets = sorted(plan["to_update"] + plan["to_insert"])
 
-        # 1. Main Transaction Block
+        # Main Transaction Block
         with psycopg2.connect(self.pg_conn_str) as conn:
             with conn.cursor() as cursor:
                 ensure_pg_table_exists(cursor, table_name, bq_schema)
@@ -588,35 +839,32 @@ class TableSynchronizer:
                     f"    Starting transaction for {len(datasets)} datasets..."
                 )
 
-                # A. Drop Indexes (if requested)
-                if self.drop_and_recreate_indexes:
-                    drop_indexes(cursor, table_name)
+                # A. Drop dependent Views and Indexes
+                drop_dependent_views_and_indexes(cursor, table_name)
 
-                # B. Ingest Loop
-                for ds_id in tqdm(
-                    datasets, desc=f"    Syncing {table_name}", unit="dataset"
-                ):
-                    # Data Ingestion
-                    self._ingest_dataset_logic(
-                        cursor, table_name, table_name, ds_id, bq_schema
-                    )
+                # B. Ingest Loop (strictly sequential)
+                logging.info("    Running sequential dataset preparation and load...")
 
-                    # Update sync state
-                    bq_ts = plan["bq_info"][ds_id][0]
-                    update_sync_state(cursor, table_name, ds_id, bq_ts)
+                pbar = tqdm(
+                    datasets,
+                    desc=f"    Syncing {table_name}",
+                    unit="dataset",
+                )
+                for ds_id in pbar:
+                    try:
+                        _, tsv_buf = self._export_and_prepare_dataset(
+                            table_name, ds_id, bq_schema
+                        )
+                        self._load_tsv_to_pg(cursor, table_name, ds_id, tsv_buf)
+                        bq_ts = plan["bq_info"][ds_id][0]
+                        update_sync_state(cursor, table_name, ds_id, bq_ts)
+                    except Exception as e:
+                        logging.error(f"Failed to process dataset {ds_id}: {e}")
+                        raise e
+                pbar.close()
 
-                # C. Recreate Indexes (if requested)
-                if self.drop_and_recreate_indexes:
-                    create_indexes(cursor, table_name)
-
-        # 2. Materialized View Refresh (concurrently, separate connection)
-        # Only if we successfully committed the transaction above.
-        with psycopg2.connect(self.pg_conn_str) as conn:
-            conn.autocommit = (
-                True  # Required for REFRESH MATERIALIZED VIEW CONCURRENTLY
-            )
-            with conn.cursor() as cursor:
-                refresh_materialized_views(cursor, table_name, concurrently=True)
+                # C. Recreate only defined Indexes and Materialized Views
+                create_defined_indexes_and_views(cursor, table_name)
 
 
 # ------------------------------------------------------------------------------
@@ -651,7 +899,6 @@ def main():
         action="store_true",
         help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
     )
-
     args = parser.parse_args()
 
     # Validate required arguments
@@ -680,6 +927,13 @@ def main():
     conn = psycopg2.connect(args.pg_conn)
     conn.autocommit = True
 
+    # Unconditionally terminate any other backend processes to prevent hanging locks.
+    logging.info("Terminating other database sessions to prevent locks...")
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != pg_backend_pid() AND datname = current_database();"
+        )
+
     try:
         with conn.cursor() as cursor:
             # fetch current state
@@ -692,7 +946,7 @@ def main():
                 # 1. Get BQ state
                 try:
                     bq_info = get_bq_latest_timestamps_and_counts(
-                        bq_client, table_name, args.bq_location
+                        bq_client, args.bq_dataset, table_name, args.bq_location
                     )
                 except Exception as e:
                     logging.warning(
@@ -700,20 +954,69 @@ def main():
                     )
                     continue
 
+                # Schema and partition validations
+                bq_schema = synchronizer._get_bq_schema(table_name)
+                schema_matches = check_pg_schema_matches_bq(
+                    cursor, table_name, bq_schema
+                )
+                is_partitioned = check_pg_table_is_partitioned(cursor, table_name)
+                should_be_partitioned = table_name in PARTITIONED_TABLES
+
+                # Determine if hard reset is required
+                hard_reset_required = not schema_matches or (
+                    is_partitioned != should_be_partitioned
+                )
+
                 # 2. Compare with PG state
                 pg_info = pg_states.get(table_name, {})
                 to_insert = []
                 to_update = []
 
-                for ds_id, (bq_ts, bq_count) in bq_info.items():
-                    if ds_id not in pg_info:
-                        to_insert.append(ds_id)
-                    else:
+                if not hard_reset_required and table_name not in PARTITIONED_TABLES:
+                    # Check if any dataset is new or updated compared to pg_info
+                    any_changes = False
+                    for ds_id, (bq_ts, bq_count) in bq_info.items():
+                        if ds_id not in pg_info:
+                            any_changes = True
+                            break
                         pg_ts = pg_info[ds_id]
                         if pg_ts and pg_ts.tzinfo is None:
                             pg_ts = pg_ts.replace(tzinfo=timezone.utc)
                         if bq_ts > pg_ts:
-                            to_update.append(ds_id)
+                            any_changes = True
+                            break
+                    if any_changes:
+                        logging.info(
+                            f"  Changes detected in non-partitioned {table_name}. Triggering full table reload."
+                        )
+                        hard_reset_required = True
+
+                if hard_reset_required:
+                    logging.warning(
+                        f"  Hard reset triggered for {table_name}: schema matches BQ={schema_matches}, partitioned={is_partitioned} (should be partitioned={should_be_partitioned})."
+                    )
+                    # Dropping table with CASCADE drops it completely along with partitions and dependent views
+                    cursor.execute(
+                        sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(
+                            sql.Identifier(table_name)
+                        )
+                    )
+                    # Clear sync state records for this table
+                    cursor.execute(
+                        "DELETE FROM sync_state WHERE table_name = %s", (table_name,)
+                    )
+                    # Reimport all datasets
+                    to_insert = list(bq_info.keys())
+                else:
+                    for ds_id, (bq_ts, bq_count) in bq_info.items():
+                        if ds_id not in pg_info:
+                            to_insert.append(ds_id)
+                        else:
+                            pg_ts = pg_info[ds_id]
+                            if pg_ts and pg_ts.tzinfo is None:
+                                pg_ts = pg_ts.replace(tzinfo=timezone.utc)
+                            if bq_ts > pg_ts:
+                                to_update.append(ds_id)
 
                 if not to_insert and not to_update:
                     logging.info(f"  {table_name} is up to date.")

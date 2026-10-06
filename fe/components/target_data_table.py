@@ -11,7 +11,7 @@ import plotly.express as px
 from dash import html, dcc
 import dash_bootstrap_components as dbc
 
-from utils import format_number, COLORS
+from utils import format_number, COLORS, reprocessed_badge
 
 GridControlFactory = Optional[Callable[[str, Dict[str, Any]], Any]]
 
@@ -38,27 +38,15 @@ DATASET_METADATA_FIELDS = [
 ]
 DATASET_FIELD_FALLBACKS = {
     "dataset_id": ["id"],
-    "dataset_tissues": ["tissue_labels", "tissues", "tissue"],
-    "dataset_cell_types": ["cell_type_labels", "cell_types", "cell_type"],
-    "dataset_cell_lines": ["cell_line_labels", "cell_lines", "cell_line"],
-    "dataset_library_perturbation_types": [
-        "library_perturbation_type_labels",
-        "library_perturbation_types",
-        "library_perturbation_type",
-        "library_type",
-    ],
-    "dataset_diseases": ["disease_labels", "diseases", "disease"],
-    "dataset_sexes": ["sex_labels", "sexes", "sex"],
-    "dataset_developmental_stages": [
-        "developmental_stage_labels",
-        "developmental_stages",
-        "developmental_stage",
-    ],
+    "dataset_tissues": ["tissue_labels"],
+    "dataset_cell_types": ["cell_type_labels"],
+    "dataset_cell_lines": ["cell_line_labels"],
+    "dataset_library_perturbation_types": ["library_perturbation_type_labels"],
+    "dataset_diseases": ["disease_labels"],
+    "dataset_sexes": ["sex_labels"],
+    "dataset_developmental_stages": ["developmental_stage_labels"],
     "dataset_score_interpretation": ["score_interpretation"],
-    "dataset_readout_technology_labels": [
-        "readout_technology_labels",
-        "readout_technology",
-    ],
+    "dataset_readout_technology_labels": ["readout_technology_labels"],
 }
 
 GREEN = "#2acc06"
@@ -79,6 +67,17 @@ METADATA_FIELD_COLORS = {
 }
 
 
+def _gene_identity(gene: Dict[str, Any], ensg_field: str) -> html.Div:
+    ensg = gene.get(ensg_field) or "N/A"
+    symbol = gene.get("gene_symbol") or ensg
+    return html.Div(
+        [
+            html.Div(symbol, className="fw-bold"),
+            *([html.Div(ensg, className="small text-muted")] if ensg != symbol else []),
+        ]
+    )
+
+
 def TargetDataTable(
     data: Optional[List[Dict[str, Any]]],
     modality: str,
@@ -90,7 +89,7 @@ def TargetDataTable(
     effect_gene_source: str = "effect",
     section_id: Optional[str] = None,
     download_url_base: Optional[str] = None,
-    perturbed_gene_name: Optional[str] = None,
+    perturbed_target_ensg: Optional[str] = None,
 ):
     """Render the reusable data table."""
     datasets = data or []
@@ -114,7 +113,7 @@ def TargetDataTable(
                     effect_gene_source,
                     section_id,
                     download_url_base,
-                    perturbed_gene_name,
+                    perturbed_target_ensg,
                 )
             )
 
@@ -160,7 +159,7 @@ def _build_dataset_rows(
     effect_gene_source: str,
     section_id: Optional[str],
     download_url_base: Optional[str] = None,
-    perturbed_gene_name: Optional[str] = None,
+    perturbed_target_ensg: Optional[str] = None,
 ) -> List[Any]:
     dataset_meta = entry.get("dataset") or {}
     dataset_id = _resolve_meta_value(dataset_meta, "dataset_id") or "Dataset"
@@ -198,10 +197,10 @@ def _build_dataset_rows(
 
     # Build GSEA button data for this dataset (perturb_seq_perturbed only)
     gsea_button_data = None
-    if perturbed_gene_name and dataset_id and section_id == "perturb_seq_perturbed":
+    if perturbed_target_ensg and dataset_id and section_id == "perturb_seq_perturbed":
         gsea_button_data = {
             "dataset_id": dataset_id,
-            "perturbed_gene_name": perturbed_gene_name,
+            "perturbed_target_ensg": perturbed_target_ensg,
             "dataset_cell_types": ds_cell_type,
         }
 
@@ -269,6 +268,16 @@ def _render_dataset_cell(
     title_elements = [
         html.Span(formatted_id, className="h4 fw-semibold text-break"),
     ]
+
+    # Perturb-seq provenance badge, shown just before the [more info] link.
+    # The modality search maps ES fields to their api_name, so this is the api_name
+    # (the /dataset and /search endpoints instead return the raw es_field).
+    provenance_badge = reprocessed_badge(
+        dataset_meta.get("dataset_perturb_seq_reprocessed"),
+        class_name="ms-2 align-self-center",
+    )
+    if provenance_badge is not None:
+        title_elements.append(provenance_badge)
 
     if url_dataset_id:
         title_elements.append(
@@ -346,9 +355,6 @@ def _perturb_seq_effect(
     section_id: Optional[str] = None,
 ) -> html.Div:
     """Render a single Perturb-Seq result row (legacy card format for non-table sections)."""
-    perturbation_gene_name = perturbation.get("gene_name") or "N/A"
-    effect_gene_name = effect.get("gene_name") or "N/A"
-
     log2fc_value = effect.get("log2fc")
     padj_value = _format_numeric(effect.get("padj"))
     base_mean_value = _format_numeric(effect.get("base_mean"))
@@ -385,19 +391,14 @@ def _perturb_seq_effect(
                 html.Div(
                     [
                         html.Span("Perturbation", className="fw-light text-muted me-2"),
-                        html.Span(
-                            perturbation_gene_name,
-                            className="h4 fw-bold mb-0 text-break",
-                        ),
+                        _gene_identity(perturbation, "perturbed_target_ensg"),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
                 html.Div(
                     [
                         html.Span("Effect gene", className="fw-light text-muted me-2"),
-                        html.Span(
-                            effect_gene_name, className="h4 fw-bold mb-0 text-break"
-                        ),
+                        _gene_identity(effect, "effect_gene_ensg"),
                     ],
                     className="d-flex flex-column flex-md-row gap-1 mb-2",
                 ),
@@ -405,17 +406,19 @@ def _perturb_seq_effect(
             className="mb-2",
         )
     else:
-        # For other sections, show only one gene based on effect_gene_source
+        # For other sections, show only one identifier based on effect_gene_source
         if effect_gene_source == "perturbation":
-            gene_name = perturbation_gene_name
-            gene_label = "Perturbation gene"
+            gene = perturbation
+            ensg_field = "perturbed_target_ensg"
+            identifier_label = "Perturbed target"
         else:
-            gene_name = effect_gene_name
-            gene_label = "Effect gene"
+            gene = effect
+            ensg_field = "effect_gene_ensg"
+            identifier_label = "Effect gene"
         gene_section = html.Div(
             [
-                html.Span(gene_label, className="fw-light text-muted me-2"),
-                html.Span(gene_name, className="h4 fw-bold mb-0 text-break"),
+                html.Span(identifier_label, className="fw-light text-muted me-2"),
+                _gene_identity(gene, ensg_field),
             ],
             className="d-flex flex-column flex-md-row gap-1 mb-2",
         )
@@ -436,34 +439,52 @@ def _perturb_seq_table(
     gsea_button_data: Optional[Dict[str, str]] = None,
     dataset_cell_types: Optional[str] = None,
     extra_controls: Optional[Any] = None,
+    header_filters: Optional[Dict[str, Any]] = None,
+    header_download: Optional[Any] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a traditional table with columns."""
-    if not results:
+    if not results and not header_filters:
         return html.Div(
             "No results available.",
             className="text-muted fst-italic py-2",
         )
 
     # Build table header
+    header_filters = header_filters or {}
     header_row = html.Tr(
         [
-            html.Th("Perturbation", className="text-start"),
-            html.Th("Effect Gene", className="text-start"),
+            html.Th(
+                [html.Div("Perturbation")]
+                + (
+                    [header_filters["perturbation"]]
+                    if "perturbation" in header_filters
+                    else []
+                ),
+                className="text-start",
+            ),
+            html.Th(
+                [html.Div("Effect Gene")]
+                + ([header_filters["effect"]] if "effect" in header_filters else []),
+                className="text-start",
+            ),
             html.Th("Log2FC", className="text-end"),
             html.Th("Padj", className="text-end"),
             html.Th("Statistical Score", className="text-start"),
             html.Th("Cell Type", className="text-start"),
         ]
     )
+    header_rows = [header_row]
+    if header_download:
+        header_rows.insert(
+            0,
+            html.Tr([html.Th(header_download, colSpan=6, className="text-end")]),
+        )
 
     # Build table rows
     table_rows = []
     for result in results:
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
-
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
-        effect_gene_name = effect.get("gene_name") or "N/A"
 
         log2fc_value = effect.get("log2fc")
         log2fc_display = _format_numeric(log2fc_value)
@@ -515,11 +536,8 @@ def _perturb_seq_table(
         table_rows.append(
             html.Tr(
                 [
-                    html.Td(
-                        perturbation_gene_name,
-                        className="text-start fw-semibold",
-                    ),
-                    html.Td(effect_gene_name, className="text-start fw-semibold"),
+                    html.Td(_gene_identity(perturbation, "perturbed_target_ensg")),
+                    html.Td(_gene_identity(effect, "effect_gene_ensg")),
                     log2fc_cell,
                     padj_cell,
                     html.Td(statistical_score, className="text-start"),
@@ -528,9 +546,22 @@ def _perturb_seq_table(
             )
         )
 
+    if not table_rows:
+        table_rows.append(
+            html.Tr(
+                [
+                    html.Td(
+                        "No results available.",
+                        colSpan=6,
+                        className="text-muted text-center",
+                    )
+                ]
+            )
+        )
+
     table = html.Table(
         [
-            html.Thead(header_row, className="table-light"),
+            html.Thead(header_rows, className="table-light"),
             html.Tbody(table_rows),
         ],
         className="table table-sm table-hover mb-0",
@@ -566,10 +597,10 @@ def _perturb_seq_table(
     # Add GSEA button for perturb_seq_perturbed section only
     if section_id == "perturb_seq_perturbed" and gsea_button_data:
         dataset_id = gsea_button_data.get("dataset_id", "")
-        perturbed_gene = gsea_button_data.get("perturbed_gene_name", "")
+        perturbed_target_ensg = gsea_button_data.get("perturbed_target_ensg", "")
         gsea_dataset_cell_type = gsea_button_data.get("dataset_cell_types") or ""
         # Generate unique ID for the popover target
-        unique_key = f"{dataset_id}_{perturbed_gene}"
+        unique_key = f"{dataset_id}_{perturbed_target_ensg}"
         gsea_icon_id = (
             f"gsea-info-icon-{hashlib.md5(unique_key.encode()).hexdigest()[:8]}"
         )
@@ -583,7 +614,7 @@ def _perturb_seq_table(
                     id={
                         "type": "gsea-modal-trigger",
                         "dataset_id": dataset_id,
-                        "perturbed_gene": perturbed_gene,
+                        "perturbed_target_ensg": perturbed_target_ensg,
                         "dataset_cell_types": gsea_dataset_cell_type,
                     },
                     color="success",
@@ -660,7 +691,6 @@ def _crispr_table(
         perturbation = result.get("perturbation") or {}
         effect = result.get("effect") or {}
 
-        perturbation_gene_name = perturbation.get("gene_name") or "N/A"
         score_name = effect.get("score_name") or "N/A"
         score_value = _format_numeric(effect.get("score_value"))
         significant = effect.get("significant")
@@ -689,10 +719,7 @@ def _crispr_table(
         table_rows.append(
             html.Tr(
                 [
-                    html.Td(
-                        perturbation_gene_name,
-                        className="text-start fw-semibold",
-                    ),
+                    html.Td(_gene_identity(perturbation, "perturbed_target_ensg")),
                     html.Td(score_name, className="text-start"),
                     html.Td(score_value, className="text-end"),
                     significant_cell,
@@ -748,7 +775,6 @@ def _crispr_table(
 def _score_effect(
     perturbation: Dict[str, Any], effect: Dict[str, Any], modality: str
 ) -> html.Div:
-    pert_gene = perturbation.get("gene_name") or "N/A"
     variant = perturbation.get("name")
     score_name = effect.get("score_name")
     score_value = _format_numeric(effect.get("score_value"))
@@ -759,7 +785,7 @@ def _score_effect(
         html.Div(
             [
                 html.Span("Perturbation", className="fw-light text-muted me-2"),
-                html.Span(pert_gene, className="h4 fw-bold mb-0 text-break"),
+                _gene_identity(perturbation, "perturbed_target_ensg"),
             ],
             className="d-flex flex-column flex-md-row gap-1",
         )
@@ -1146,6 +1172,8 @@ def perturb_seq_table(
     download_url: Optional[str] = None,
     dataset_cell_types: Optional[str] = None,
     extra_controls: Optional[Any] = None,
+    header_filters: Optional[Dict[str, Any]] = None,
+    header_download: Optional[Any] = None,
 ) -> html.Div:
     """Render Perturb-Seq results as a table.
 
@@ -1157,6 +1185,8 @@ def perturb_seq_table(
         download_url: Optional URL for downloading the data.
         dataset_cell_types: Fallback cell type from dataset metadata.
         extra_controls: Optional extra controls to render alongside the download button.
+        header_filters: Optional filter inputs to render below the table headers.
+        header_download: Optional download link to render above the table headers.
 
     Returns:
         A Dash html.Div containing the table.
@@ -1168,6 +1198,8 @@ def perturb_seq_table(
         gsea_button_data=None,
         dataset_cell_types=dataset_cell_types,
         extra_controls=extra_controls,
+        header_filters=header_filters,
+        header_download=header_download,
     )
 
 

@@ -1,7 +1,40 @@
 # Perturbation Catalogue back-end
 
 ## Environment variables
-Before running either of the deployment options below, run `dev_secrets`.
+Before running either of the deployment options below, run `pc_secrets dev`.
+`ES_INDEX_SET` is optional and selects a suffixed Elasticsearch index set; it
+defaults to the standard indexes when unset.
+`RELEASE_BUCKET` is the manually published GCS bucket containing release
+artifacts. The runtime service account must be allowed to sign URLs and read
+objects in this bucket.
+
+For the default Cloud Run identity, grant the following permissions. The
+runtime service account needs to read the bucket and sign itself; the Cloud
+Run service agent also needs to sign the runtime service account because Cloud
+Run delegates the signing request through it:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$GCLOUD_PROJECT" --format='value(projectNumber)')
+RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+CLOUD_RUN_AGENT="service-${PROJECT_NUMBER}@serverless-robot-prod.iam.gserviceaccount.com"
+
+gcloud storage buckets add-iam-policy-binding "gs://$RELEASE_BUCKET" \
+  --member="serviceAccount:$RUNTIME_SA" \
+  --role=roles/storage.objectViewer
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+  --member="serviceAccount:$RUNTIME_SA" \
+  --role=roles/iam.serviceAccountTokenCreator
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+  --member="serviceAccount:$CLOUD_RUN_AGENT" \
+  --role=roles/iam.serviceAccountTokenCreator
+```
+
+For local ADC, grant the local user `roles/storage.objectViewer` on the
+release bucket and `roles/iam.serviceAccountTokenCreator` on the runtime
+service account.
+
+Unfiltered dataset downloads redirect to seven-day V4 signed URLs in that
+bucket; filtered CSV downloads continue to run through the API.
 
 If you are running locally and as such connecting to Postges externally, allow connections from your IP:
 * https://console.cloud.google.com/sql/instances
@@ -19,6 +52,10 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
+## Local tests
+
+See [tests/README.md](tests/README.md). Run with `pc_secrets -v dev && be/fastapi-env/bin/pytest -q be/tests`.
+
 ## Docker deployment
 
 ```bash
@@ -28,6 +65,7 @@ docker run \
   -e ES_URL=${ES_URL} \
   -e ES_USERNAME=${ES_USERNAME} \
   -e ES_PASSWORD=${ES_PASSWORD} \
+  -e ES_INDEX_SET=${ES_INDEX_SET:-} \
   -e PS_HOST=${PS_HOST} \
   -e PS_PORT=${PS_PORT} \
   -e PS_USER=${PS_USER} \

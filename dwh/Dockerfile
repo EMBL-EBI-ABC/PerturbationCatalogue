@@ -5,7 +5,8 @@ RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
     git \
     postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+    > /dev/null && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -18,6 +19,12 @@ COPY bq_dbt/ bq_dbt/
 
 # Copy bq_to_postgres
 COPY bq_to_postgres/bq_to_postgres.py bq_to_postgres/bq_to_postgres.py
+
+# Copy release artifact generation
+COPY release/release.py release/release.py
+COPY release/release_stage.py release/release_stage.py
+COPY release/release_worker.py release/release_worker.py
+COPY release/metadata.py release/metadata.py
 
 # Copy bq_to_elastic
 COPY bq_to_elastic/ bq_to_elastic/

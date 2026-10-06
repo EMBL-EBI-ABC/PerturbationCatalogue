@@ -1,9 +1,22 @@
 {{ config(materialized="table") }}
 
 with
+    metadata_targets as (
+        select
+            metadata.* except (perturbed_target_ensg),
+            trim(target_ensg) as ensembl_gene_id
+        from
+            {{ ref("unified_metadata") }} as metadata,
+            unnest(split(cast(metadata.perturbed_target_ensg as string), "|")) as target_ensg
+        where
+            metadata.perturbed_target_ensg is not null
+            and trim(target_ensg) != ""
+            and starts_with(trim(target_ensg), "ENSG")
+    ),
+
     agg_meta as (
         select
-            perturbed_target_symbol,
+            ensembl_gene_id,
             array_agg(distinct data_modality ignore nulls) as data_modalities,
             array_agg(distinct tissue_label ignore nulls) as tissues_tested,
             array_agg(distinct cell_type_label ignore nulls) as cell_types_tested,
@@ -14,98 +27,124 @@ with
             ) as developmental_stages_tested,
             array_agg(distinct disease_label ignore nulls) as diseases_tested,
             array_agg(distinct license_label ignore nulls) as license
-        from {{ ref("unified_metadata") }}
-        group by perturbed_target_symbol
+        from metadata_targets
+        group by ensembl_gene_id
     ),
 
     agg_crispr as (
         select
-            perturbed_target_symbol,
+            perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_crispr,
             countif(significant = 'True') as n_sig_crispr
         from {{ source("crispr", "data") }}
-        group by perturbed_target_symbol
+        where
+            perturbed_target_ensg is not null
+            and starts_with(perturbed_target_ensg, "ENSG")
+        group by ensembl_gene_id
     ),
 
     agg_mave as (
-        select perturbed_target_symbol, count(distinct dataset_id) as n_mave
+        select
+            perturbed_target_ensg as ensembl_gene_id,
+            count(distinct dataset_id) as n_mave
         from {{ source("mave", "data") }}
-        group by perturbed_target_symbol
+        where
+            perturbed_target_ensg is not null
+            and starts_with(perturbed_target_ensg, "ENSG")
+        group by ensembl_gene_id
     ),
 
     agg_ps as (
         select
-            perturbed_target_symbol,
+            perturbed_target_ensg as ensembl_gene_id,
             count(distinct dataset_id) as n_perturb_seq,
-            countif(padj <= 0.05 and log2FoldChange > 0) as n_sig_perturb_pairs_up,
-            countif(padj <= 0.05 and log2FoldChange < 0) as n_sig_perturb_pairs_down
+            countif(padj <= 0.05 and log2foldchange > 0) as n_sig_perturb_pairs_up,
+            countif(padj <= 0.05 and log2foldchange < 0) as n_sig_perturb_pairs_down
         from {{ source("perturb_seq", "pertpy_dea") }}
-        group by perturbed_target_symbol
+        where
+            perturbed_target_ensg is not null
+            and starts_with(perturbed_target_ensg, "ENSG")
+        group by ensembl_gene_id
     ),
 
     gsea_ranked as (
         select
-            perturbed_target_symbol,
+            perturbed_target_ensg as ensembl_gene_id,
             term,
             sidak,
             row_number() over (
-                partition by perturbed_target_symbol order by sidak asc
+                partition by perturbed_target_ensg order by sidak asc
             ) as rn
         from {{ source("perturb_seq", "pertpy_gsea") }}
-        where sidak <= 0.05
+        where
+            perturbed_target_ensg is not null
+            and starts_with(perturbed_target_ensg, "ENSG")
+            and sidak <= 0.05
     ),
 
     agg_gsea as (
         select
-            perturbed_target_symbol,
+            ensembl_gene_id,
             array_agg(term order by sidak asc) as top_gsea_terms
         from gsea_ranked
         where rn <= 5
-        group by perturbed_target_symbol
+        group by ensembl_gene_id
     ),
 
-    -- Supersets of symbols to ensure we don't miss any target that might exist only
-    -- in data (unlikely but safe)
-    symbols_raw as (
-        select perturbed_target_symbol
+    effect_targets as (
+        select distinct effect_gene_ensg as ensembl_gene_id
+        from {{ source("perturb_seq", "pertpy_dea") }}
+        where
+            effect_gene_ensg is not null
+            and starts_with(effect_gene_ensg, "ENSG")
+    ),
+
+    targets as (
+        select ensembl_gene_id
         from agg_meta
         union distinct
-        select perturbed_target_symbol
+        select ensembl_gene_id
         from agg_mave
         union distinct
-        select perturbed_target_symbol
+        select ensembl_gene_id
         from agg_ps
         union distinct
-        select perturbed_target_symbol
+        select ensembl_gene_id
         from agg_crispr
         union distinct
-        select perturbed_target_symbol
+        select ensembl_gene_id
         from agg_gsea
-    ),
-    symbols as (
-        select * from symbols_raw where perturbed_target_symbol is not null
+        union distinct
+        select ensembl_gene_id
+        from effect_targets
     )
 
 select
-    s.perturbed_target_symbol,
-    coalesce(p.n_perturb_seq, 0) as n_perturb_seq,
-    coalesce(p.n_sig_perturb_pairs_up, 0) as n_sig_perturb_pairs_up,
-    coalesce(p.n_sig_perturb_pairs_down, 0) as n_sig_perturb_pairs_down,
-    coalesce(c.n_crispr, 0) as n_crispr,
-    coalesce(c.n_sig_crispr, 0) as n_sig_crispr,
-    coalesce(v.n_mave, 0) as n_mave,
-    g.top_gsea_terms,
-    m.license,
-    m.data_modalities,
-    m.tissues_tested,
-    m.cell_types_tested,
-    m.cell_lines_tested,
-    m.sex_tested,
-    m.developmental_stages_tested,
-    m.diseases_tested
-from symbols s
-left join agg_meta m on s.perturbed_target_symbol = m.perturbed_target_symbol
-left join agg_mave v on s.perturbed_target_symbol = v.perturbed_target_symbol
-left join agg_ps p on s.perturbed_target_symbol = p.perturbed_target_symbol
-left join agg_crispr c on s.perturbed_target_symbol = c.perturbed_target_symbol
-left join agg_gsea g on s.perturbed_target_symbol = g.perturbed_target_symbol
+    targets.ensembl_gene_id,
+    opentargets.approved_symbol,
+    opentargets.approved_name,
+    opentargets.exact_aliases,
+    opentargets.search_keywords,
+    coalesce(perturb_seq.n_perturb_seq, 0) as n_perturb_seq,
+    coalesce(perturb_seq.n_sig_perturb_pairs_up, 0) as n_sig_perturb_pairs_up,
+    coalesce(perturb_seq.n_sig_perturb_pairs_down, 0) as n_sig_perturb_pairs_down,
+    coalesce(crispr.n_crispr, 0) as n_crispr,
+    coalesce(crispr.n_sig_crispr, 0) as n_sig_crispr,
+    coalesce(mave.n_mave, 0) as n_mave,
+    gsea.top_gsea_terms,
+    metadata.license,
+    metadata.data_modalities,
+    metadata.tissues_tested,
+    metadata.cell_types_tested,
+    metadata.cell_lines_tested,
+    metadata.sex_tested,
+    metadata.developmental_stages_tested,
+    metadata.diseases_tested
+from targets
+inner join {{ ref("stg_opentargets_targets") }} as opentargets
+    on targets.ensembl_gene_id = opentargets.ensembl_gene_id
+left join agg_meta as metadata on targets.ensembl_gene_id = metadata.ensembl_gene_id
+left join agg_mave as mave on targets.ensembl_gene_id = mave.ensembl_gene_id
+left join agg_ps as perturb_seq on targets.ensembl_gene_id = perturb_seq.ensembl_gene_id
+left join agg_crispr as crispr on targets.ensembl_gene_id = crispr.ensembl_gene_id
+left join agg_gsea as gsea on targets.ensembl_gene_id = gsea.ensembl_gene_id

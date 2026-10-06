@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import isodate
 import dash
-from dash import ALL, Input, Output, State, callback, dcc, html
-from dash.exceptions import PreventUpdate
+from dash import ALL, Input, Output, callback, dcc, html
 import dash_bootstrap_components as dbc
 
 from components.target_data_table import crispr_table, mave_heatmap, perturb_seq_table
-from utils import BACKEND_URL, COLORS, fetch_dataset, fetch_dataset_rows
+from utils import (
+    BACKEND_URL,
+    COLORS,
+    fetch_dataset,
+    fetch_dataset_rows,
+    reprocessed_badge,
+)
 
 
 dash.register_page(
@@ -35,9 +40,11 @@ PERTURB_SEARCH_EFFECT_GENE = "dataset-perturb-search-effect-gene"
 # Search input IDs for CRISPR screen
 CRISPR_SEARCH_PERTURBATION_GENE = "dataset-crispr-search-perturbation-gene"
 
-# Download component IDs
-DATASET_DOWNLOAD_BTN = "dataset-download-btn"
-DATASET_DOWNLOAD = "dataset-download"
+# Download link IDs
+DATASET_DOWNLOAD_LINK = "dataset-download-link"
+DATASET_METADATA_DOWNLOAD_LINK = "dataset-metadata-download-link"
+DATASET_PARQUET_DOWNLOAD_LINK = "dataset-parquet-download-link"
+DATASET_FILTERED_DOWNLOAD_LINK = "dataset-filtered-download-link"
 
 # Map display names to API endpoint modality names
 MODALITY_DISPLAY_TO_API = {
@@ -155,7 +162,7 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
     """Create display for associated datasets field."""
     if not associated_datasets:
         return _create_field_display("associated_datasets", None)
-    
+
     # Parse JSON strings if needed
     items = []
     if isinstance(associated_datasets, list):
@@ -171,17 +178,17 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
                     continue
             elif isinstance(item, dict):
                 items.append(item)
-    
+
     if not items:
         return _create_field_display("associated_datasets", None)
-    
+
     # Create display for each item
     display_items = []
     for item in items:
         description = item.get("dataset_description", "N/A")
         file_name = item.get("dataset_file_name", "")
         uri = item.get("dataset_uri", "")
-        
+
         if uri and file_name:
             link = html.A(
                 file_name,
@@ -210,7 +217,7 @@ def _create_associated_datasets_display(associated_datasets: Any) -> html.Div:
                     className="mb-2",
                 )
             )
-    
+
     return html.Div(
         [
             html.Dt(
@@ -300,7 +307,6 @@ def layout(dataset_id: Optional[str] = None, **kwargs):
         [
             dcc.Store(id=DATASET_STORE, data={"dataset_id": dataset_id}),
             dcc.Store(id=DATASET_DATA_STORE, data=None),
-            dcc.Download(id=DATASET_DOWNLOAD),
             dcc.Loading(
                 html.Div(id="dataset-content"),
                 type="circle",
@@ -319,6 +325,85 @@ def _get_modality_from_dataset(dataset_data: Dict[str, Any]) -> Optional[str]:
         if display_name in MODALITY_DISPLAY_TO_API:
             return MODALITY_DISPLAY_TO_API[display_name]
     return None
+
+
+def _dataset_download_url(
+    dataset_id: str,
+    modality: str,
+    download_format: str = "csv.gz",
+    filters: Optional[Dict[str, str]] = None,
+) -> str:
+    url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
+    params = {"format": download_format}
+    params.update({key: value for key, value in (filters or {}).items() if value})
+    return f"{url}?{urlencode(params)}"
+
+
+def _dataset_download_link(
+    label: str,
+    url: str,
+    link_id: str,
+) -> html.A:
+    return html.A(
+        dbc.Button(
+            [html.I(className="bi bi-download me-2"), label],
+            color="primary",
+            size="sm",
+            style={
+                "backgroundColor": COLORS["primary"],
+                "borderColor": COLORS["primary"],
+                "borderRadius": "6px",
+            },
+        ),
+        id=link_id,
+        href=url,
+        target="_blank",
+        rel="noopener noreferrer",
+        className="text-decoration-none me-3",
+    )
+
+
+def _dataset_download_controls(dataset_id: str, modality: str) -> html.Div:
+    return html.Div(
+        [
+            _dataset_download_link(
+                "Download full data (Parquet)",
+                _dataset_download_url(dataset_id, modality, "parquet"),
+                DATASET_PARQUET_DOWNLOAD_LINK,
+            ),
+            _dataset_download_link(
+                "Download full data (CSV.gz)",
+                _dataset_download_url(dataset_id, modality),
+                DATASET_DOWNLOAD_LINK,
+            ),
+        ],
+        className="d-flex align-items-center justify-content-center flex-wrap gap-2 mb-3",
+    )
+
+
+def _perturb_seq_header_filters(
+    perturbation_value: str = "", effect_value: str = ""
+) -> Dict[str, Any]:
+    return {
+        "perturbation": dbc.Input(
+            id=PERTURB_SEARCH_PERTURBATION_GENE,
+            type="text",
+            placeholder="Filter by name or ENSG",
+            value=perturbation_value,
+            size="sm",
+            debounce=True,
+            style={"width": "200px"},
+        ),
+        "effect": dbc.Input(
+            id=PERTURB_SEARCH_EFFECT_GENE,
+            type="text",
+            placeholder="Filter by name or ENSG",
+            value=effect_value,
+            size="sm",
+            debounce=True,
+            style={"width": "200px"},
+        ),
+    }
 
 
 @callback(
@@ -417,7 +502,13 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         "data_modalities",
     ]
     PRIMARY_GROUPED = {"perturbation_type"}
-    SKIP_STANDALONE = {"dataset_id", "max_ingested_at", "study_uri"}
+    SKIP_STANDALONE = {
+        "dataset_id",
+        "max_ingested_at",
+        "study_uri",
+        # Rendered as a badge next to the title instead of in the field list.
+        "perturb_seq_reprocessed",
+    }
 
     study_uri = standalone_fields.get("study_uri")
 
@@ -539,48 +630,26 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         className="mt-4",
         style={"maxWidth": "900px", "margin": "0 auto"},
     )
+    metadata_download_control = html.Div(
+        _dataset_download_link(
+            "Download metadata (JSON)",
+            _dataset_download_url(dataset_id, modality, "metadata"),
+            DATASET_METADATA_DOWNLOAD_LINK,
+        ),
+        className="mt-3 d-flex justify-content-center",
+        style={"maxWidth": "900px", "margin": "0 auto"},
+    )
 
     # Build search controls based on modality
     is_perturb_seq = modality == "perturb-seq"
     is_crispr = modality == "crispr-screen"
+    data_download_controls = (
+        _dataset_download_controls(dataset_id, modality) if modality else html.Div()
+    )
 
     if is_perturb_seq:
         search_controls = html.Div(
             [
-                dbc.Button(
-                    [
-                        html.I(className="bi bi-download me-2"),
-                        "Download Data",
-                    ],
-                    id=DATASET_DOWNLOAD_BTN,
-                    color="primary",
-                    size="sm",
-                    className="me-3",
-                    style={
-                        "backgroundColor": COLORS["primary"],
-                        "borderColor": COLORS["primary"],
-                        "borderRadius": "6px",
-                    },
-                ),
-                dbc.Input(
-                    id=PERTURB_SEARCH_PERTURBATION_GENE,
-                    type="text",
-                    placeholder="Search by perturbed gene",
-                    value="",
-                    size="sm",
-                    debounce=True,
-                    style={"width": "200px"},
-                    className="me-2",
-                ),
-                dbc.Input(
-                    id=PERTURB_SEARCH_EFFECT_GENE,
-                    type="text",
-                    placeholder="Search by effect gene",
-                    value="",
-                    size="sm",
-                    debounce=True,
-                    style={"width": "200px"},
-                ),
                 # Hidden CRISPR input for callback compatibility
                 dbc.Input(
                     id=CRISPR_SEARCH_PERTURBATION_GENE,
@@ -589,30 +658,15 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     style={"display": "none"},
                 ),
             ],
-            className="d-flex align-items-center mb-3",
+            className="d-flex align-items-center flex-wrap gap-2 mb-3",
         )
     elif is_crispr:
         search_controls = html.Div(
             [
-                dbc.Button(
-                    [
-                        html.I(className="bi bi-download me-2"),
-                        "Download Data",
-                    ],
-                    id=DATASET_DOWNLOAD_BTN,
-                    color="primary",
-                    size="sm",
-                    className="me-3",
-                    style={
-                        "backgroundColor": COLORS["primary"],
-                        "borderColor": COLORS["primary"],
-                        "borderRadius": "6px",
-                    },
-                ),
                 dbc.Input(
                     id=CRISPR_SEARCH_PERTURBATION_GENE,
                     type="text",
-                    placeholder="Search by perturbed gene",
+                    placeholder="Filter by name or ENSG",
                     value="",
                     size="sm",
                     debounce=True,
@@ -632,10 +686,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     style={"display": "none"},
                 ),
             ],
-            className="d-flex align-items-center mb-3",
+            className="d-flex align-items-center flex-wrap gap-2 mb-3",
         )
     else:
-        # Hidden inputs for callback compatibility (MAVE modality)
+        # MAVE has no gene search, but retains the common hidden inputs.
         search_controls = html.Div(
             [
                 dbc.Input(
@@ -668,7 +722,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                         [
                             html.I(
                                 className="bi bi-info-circle-fill me-2",
-                                style={"fontSize": "1.1rem", "color": COLORS["primary"]},
+                                style={
+                                    "fontSize": "1.1rem",
+                                    "color": COLORS["primary"],
+                                },
                             ),
                             html.Strong("Score Interpretation: ", className="me-1"),
                             html.Span(score_interpretation),
@@ -687,6 +744,15 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             )
 
     # Build data visualization section
+    initial_data_content = (
+        perturb_seq_table(
+            [],
+            section_id="dataset_perturb_seq",
+            header_filters=_perturb_seq_header_filters(),
+        )
+        if is_perturb_seq
+        else None
+    )
     data_section = html.Div(
         [
             html.Hr(className="my-4"),
@@ -696,9 +762,10 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                 style={"color": COLORS["primary"]},
             ),
             score_interpretation_banner,
+            data_download_controls,
             search_controls,
             dcc.Loading(
-                html.Div(id="dataset-data-content"),
+                html.Div(initial_data_content, id="dataset-data-content"),
                 type="circle",
                 color=COLORS["primary"],
             ),
@@ -727,10 +794,19 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             "crispr_perturbation_gene_search": "",
         }
 
-    header_section = html.H1(
-        f"Dataset: {formatted_dataset_id}",
-        className="display-5 fw-bold mb-4 text-center",
-        style={"color": COLORS["primary"]},
+    provenance_badge = reprocessed_badge(dataset_data.get("perturb_seq_reprocessed"))
+    title_children = [
+        html.H1(
+            f"Dataset: {formatted_dataset_id}",
+            className="display-5 fw-bold mb-0",
+            style={"color": COLORS["primary"]},
+        )
+    ]
+    if provenance_badge is not None:
+        title_children.append(provenance_badge)
+    header_section = html.Div(
+        title_children,
+        className="d-flex align-items-center justify-content-center gap-2 mb-4 flex-wrap",
     )
 
     # Hidden inputs for no-modality case (needed for callback)
@@ -758,18 +834,23 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     content = html.Div(
         [
             header_section,
+            metadata_download_control,
             metadata_section,
-            data_section if modality else html.Div(
-                [
-                    html.Hr(className="my-4"),
-                    # Include hidden inputs when no modality
-                    hidden_search_inputs,
-                    html.Div(
-                        "No data visualization available for this dataset.",
-                        className="text-muted text-center py-4",
-                    ),
-                ],
-                style={"maxWidth": "900px", "margin": "0 auto"},
+            (
+                data_section
+                if modality
+                else html.Div(
+                    [
+                        html.Hr(className="my-4"),
+                        # Include hidden inputs when no modality
+                        hidden_search_inputs,
+                        html.Div(
+                            "No data visualization available for this dataset.",
+                            className="text-muted text-center py-4",
+                        ),
+                    ],
+                    style={"maxWidth": "900px", "margin": "0 auto"},
+                )
             ),
         ]
     )
@@ -957,24 +1038,39 @@ def _render_data_visualization(store_data: Dict[str, Any]) -> html.Div:
             className="alert alert-danger",
         )
 
-    if not results:
+    if not results and modality != "perturb-seq":
         return html.Div(
             "No data rows found for this dataset.",
             className="text-muted fst-italic text-center py-4",
         )
 
-    # Build download URL
-    download_url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
-
     # Render based on modality
     if modality == "mave":
-        table_component = mave_heatmap(results, download_url)
+        table_component = mave_heatmap(results, download_url=None)
     elif modality == "perturb-seq":
-        # Download button and search inputs are in the main layout for perturb-seq
+        # Download controls are in the main layout for perturb-seq.
+        filters = {
+            "perturbation_gene_name": (
+                store_data.get("perturbation_gene_search") or ""
+            ).strip(),
+            "effect_gene_name": (store_data.get("effect_gene_search") or "").strip(),
+        }
+        header_download = None
+        if any(filters.values()):
+            header_download = _dataset_download_link(
+                "Download filtered data (CSV)",
+                _dataset_download_url(dataset_id, modality, "csv.gz", filters),
+                DATASET_FILTERED_DOWNLOAD_LINK,
+            )
         table_component = perturb_seq_table(
             results,
             section_id="dataset_perturb_seq",
             download_url=None,
+            header_filters=_perturb_seq_header_filters(
+                store_data.get("perturbation_gene_search", ""),
+                store_data.get("effect_gene_search", ""),
+            ),
+            header_download=header_download,
         )
     elif modality == "crispr-screen":
         # Download button is in the main layout for crispr-screen
@@ -1040,7 +1136,10 @@ def render_dataset_data(
     needs_fetch = store_data.get("needs_fetch", False)
 
     # Handle pagination
-    if isinstance(triggered_id, dict) and triggered_id.get("type") == "dataset-paginate":
+    if (
+        isinstance(triggered_id, dict)
+        and triggered_id.get("type") == "dataset-paginate"
+    ):
         direction = triggered_id.get("direction")
         if direction:
             store_data = _paginate_data(store_data, direction)
@@ -1054,8 +1153,10 @@ def render_dataset_data(
         new_effect_search = effect_gene_search or ""
 
         # Check if search terms changed
-        if (new_perturbation_search != old_perturbation_search or
-                new_effect_search != old_effect_search):
+        if (
+            new_perturbation_search != old_perturbation_search
+            or new_effect_search != old_effect_search
+        ):
             store_data["perturbation_gene_search"] = new_perturbation_search
             store_data["effect_gene_search"] = new_effect_search
             # Reset pagination when search changes
@@ -1088,56 +1189,25 @@ def render_dataset_data(
 
 
 @callback(
-    Output(DATASET_DOWNLOAD, "data"),
-    Input(DATASET_DOWNLOAD_BTN, "n_clicks"),
-    State(DATASET_DATA_STORE, "data"),
-    running=[
-        (Output(DATASET_DOWNLOAD_BTN, "disabled"), True, False),
-        (
-            Output(DATASET_DOWNLOAD_BTN, "children"),
-            [dbc.Spinner(size="sm", spinner_class_name="me-2"), "Downloading Data..."],
-            [html.I(className="bi bi-download me-2"), "Download Data"],
-        ),
+    [
+        Output(DATASET_METADATA_DOWNLOAD_LINK, "href"),
+        Output(DATASET_PARQUET_DOWNLOAD_LINK, "href"),
+        Output(DATASET_DOWNLOAD_LINK, "href"),
     ],
-    prevent_initial_call=True,
+    Input(DATASET_DATA_STORE, "data"),
 )
-def download_dataset_data(n_clicks, store_data):
-    """Download dataset data as CSV."""
-    if not n_clicks or not store_data:
-        raise PreventUpdate
+def update_dataset_download_link(store_data: Optional[Dict[str, Any]]):
+    """Point full downloads at release artifacts."""
+    if not store_data:
+        return "#", "#", "#"
 
     dataset_id = store_data.get("dataset_id")
     modality = store_data.get("modality")
-
     if not dataset_id or not modality:
-        raise PreventUpdate
+        return "#", "#", "#"
 
-    # Build download URL with search filters for Perturb-seq
-    download_url = f"{BACKEND_URL}/v1/{modality}/{dataset_id}/download"
-
-    # Add search filters as query parameters
-    params = {}
-    if modality == "perturb-seq":
-        perturbation_gene = store_data.get("perturbation_gene_search", "").strip()
-        effect_gene = store_data.get("effect_gene_search", "").strip()
-        if perturbation_gene:
-            params["perturbation_gene_name"] = perturbation_gene
-        if effect_gene:
-            params["effect_gene_name"] = effect_gene
-    elif modality == "crispr-screen":
-        crispr_perturbation_gene = store_data.get(
-            "crispr_perturbation_gene_search", ""
-        ).strip()
-        if crispr_perturbation_gene:
-            params["perturbation_gene_name"] = crispr_perturbation_gene
-
-    try:
-        import requests
-        response = requests.get(download_url, params=params, timeout=60)
-        response.raise_for_status()
-        content = response.text
-    except Exception:
-        raise PreventUpdate
-
-    filename = f"{modality}_{dataset_id}.csv"
-    return dict(content=content, filename=filename)
+    return (
+        _dataset_download_url(dataset_id, modality, "metadata"),
+        _dataset_download_url(dataset_id, modality, "parquet"),
+        _dataset_download_url(dataset_id, modality, "csv.gz"),
+    )

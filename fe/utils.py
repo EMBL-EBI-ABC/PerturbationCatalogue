@@ -28,6 +28,20 @@ FACET_FIELDS = [
     "diseases_tested",
 ]
 
+# Facet fields for the datasets browse page. The backend remaps dataset facets to these
+# canonical names; perturb_seq_reprocessed is a dataset-only facet kept under its own name.
+DATASET_FACET_FIELDS = [
+    "perturb_seq_reprocessed",
+    "license",
+    "data_modalities",
+    "tissues_tested",
+    "cell_types_tested",
+    "cell_lines_tested",
+    "sex_tested",
+    "developmental_stages_tested",
+    "diseases_tested",
+]
+
 # Designer color scheme
 COLORS = {
     "primary": "#007B53",
@@ -44,6 +58,38 @@ DATA_MODALITIES_COLOURS = {
     "CRISPR screen": COLORS["secondary"],
     "MAVE": COLORS["red"],
 }
+
+STRICT_GENE_FILTER_NOTE = (
+    "Gene filters match exactly one canonical gene symbol or Ensembl Gene ID."
+)
+
+
+def reprocessed_badge(value: Any, class_name: str = "ms-2"):
+    """Provenance badge for a dataset.
+
+    ``value`` is a dataset's ``perturb_seq_reprocessed`` field. ``True`` (or the
+    string ``"true"``) -> re-processed from raw data. Anything else -- ``False``,
+    ``None``, or a missing field -- defaults to author-provided, so every dataset
+    shows a badge regardless of modality.
+    """
+    is_reprocessed = value is True or (
+        isinstance(value, str) and value.strip().lower() == "true"
+    )
+    if is_reprocessed:
+        return dbc.Badge(
+            [html.I(className="bi bi-stars me-1"), "Reprocessed"],
+            color="success",
+            pill=True,
+            className=class_name,
+        )
+    return dbc.Badge(
+        [html.I(className="bi bi-file-earmark-text me-1"), "Author-provided"],
+        color="light",
+        pill=True,
+        className=class_name,
+        style={"border": "1px solid #ced4da", "color": COLORS["gray"]},
+    )
+
 
 SUMMARY_CACHE_TTL = 60  # seconds
 
@@ -114,6 +160,19 @@ def fetch_search_results(
             "facets": {},
             "search_after": None,
         }
+
+
+def fetch_target_identity(ensembl_gene_id: str) -> Dict[str, Any]:
+    """Return the exact target record for an Ensembl gene ID."""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/v1/target/{ensembl_gene_id}", timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        print(f"Error fetching target {ensembl_gene_id}: {exc}")
+        return {}
 
 
 def fetch_all_search_results(
@@ -254,14 +313,13 @@ def fetch_dataset(dataset_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[s
 
 def fetch_perturb_seq_gsea(
     dataset_id: str,
-    perturbed_gene_name: str,
+    perturbation_gene_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Fetch GSEA results for a perturbed gene in a dataset."""
+    """Fetch GSEA results for a perturbed target in a dataset."""
     try:
-        params = {
-            "dataset_id": dataset_id,
-            "perturbed_gene_name": perturbed_gene_name,
-        }
+        params = {"dataset_id": dataset_id}
+        if perturbation_gene_name:
+            params["perturbation_gene_name"] = perturbation_gene_name
         response = requests.get(
             f"{BACKEND_URL}/v1/perturb-seq-gsea",
             params=params,
@@ -270,7 +328,8 @@ def fetch_perturb_seq_gsea(
         response.raise_for_status()
         return {"results": response.json(), "error": None}
     except Exception as exc:
-        error_message = f"Error fetching GSEA data for {perturbed_gene_name}: {exc}"
+        target = perturbation_gene_name or "target"
+        error_message = f"Error fetching GSEA data for {target}: {exc}"
         print(error_message)
         return {"results": [], "error": error_message}
 

@@ -13,10 +13,42 @@
   "mappings": {
     "dynamic": false,
     "properties": {
-      "perturbed_target_symbol": {
+      "ensembl_gene_id": {
         "type": "keyword",
         "normalizer": "lc_ascii",
         "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
+      "approved_symbol": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
+      "approved_name": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 512,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
+      "exact_aliases": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 256,
+        "fields": {
+          "text": { "type": "text", "analyzer": "en" }
+        }
+      },
+      "search_keywords": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
+        "ignore_above": 512,
         "fields": {
           "text": { "type": "text", "analyzer": "en" }
         }
@@ -35,13 +67,13 @@
           "text": { "type": "text", "analyzer": "en" }
         }
       },
-      "license": { 
-        "type": "keyword", 
-        "normalizer": "lc_ascii", 
+      "license": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
         "ignore_above": 256,
         "fields": {
           "text": { "type": "text", "analyzer": "en" }
-        } 
+        }
       },
       "data_modalities": {
         "type": "keyword",
@@ -91,9 +123,9 @@
           "text": { "type": "text", "analyzer": "en" }
         }
       },
-      "diseases_tested": { 
-        "type": "keyword", 
-        "normalizer": "lc_ascii", 
+      "diseases_tested": {
+        "type": "keyword",
+        "normalizer": "lc_ascii",
         "ignore_above": 256,
         "fields": {
           "text": { "type": "text", "analyzer": "en" }
