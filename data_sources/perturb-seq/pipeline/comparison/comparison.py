@@ -9,6 +9,7 @@ import re
 import textwrap
 from collections import Counter, defaultdict
 import argparse
+from types import SimpleNamespace
 
 import anndata as ad
 import h5py
@@ -33,6 +34,11 @@ parser.add_argument("--curated-h5ad", required=True)
 parser.add_argument("--reprocessed-h5ad", required=True)
 parser.add_argument("--gtf", required=True)
 parser.add_argument("--filtered-h5ad", default="experiment_final.filtered.h5ad")
+parser.add_argument(
+    "--cell-id-columns",
+    default="",
+    help="Comma-separated obs columns to namespace barcode prefixes across libraries",
+)
 args = parser.parse_args()
 DATASET_ID = args.dataset_id
 if not re.fullmatch(r"[A-Za-z0-9_-]+", DATASET_ID):
@@ -41,6 +47,15 @@ CURATED_H5AD_PATH = args.curated_h5ad
 REPROCESSED_H5AD_PATH = args.reprocessed_h5ad
 FILTERED_REPROCESSED_H5AD_PATH = args.filtered_h5ad
 REFERENCE_GTF_PATH = args.gtf
+if args.cell_id_columns and any(
+    not column.strip() for column in args.cell_id_columns.split(",")
+):
+    parser.error("--cell-id-columns must contain nonempty comma-separated names")
+CELL_ID_COLUMNS = tuple(
+    column.strip() for column in args.cell_id_columns.split(",") if column.strip()
+)
+if len(set(CELL_ID_COLUMNS)) != len(CELL_ID_COLUMNS):
+    parser.error("--cell-id-columns contains duplicate column names")
 
 ROW_CHUNK_SIZE = int(os.environ.get("PERTURBSEQ_ROW_CHUNK_SIZE", "2048"))
 SCATTER_MAX_POINTS = int(os.environ.get("PERTURBSEQ_SCATTER_MAX_POINTS", "200000"))
@@ -55,6 +70,29 @@ GENE_MIN_CELLS_PCT = 0.01
 TARGET_SUM = 1e4
 CONTROL_TARGET_SYMBOL = "non-targeting"
 GENE_CALL_OUTCOMES = ["0_genes", "1_gene_1_probe", "1_gene_2_probes", ">1_gene"]
+GUIDE_TARGET_ENSG_BY_SYMBOL = {}
+GUIDE_TARGET_ENSG_ALIASES = {
+    "ATP5F1": "ENSG00000116459",
+    "ATP5J2": "ENSG00000241468",
+    "ATPIF1": "ENSG00000130770",
+    "C16orf91": "ENSG00000174109",
+    "C21orf59": "ENSG00000159079",
+    "C6orf48": "ENSG00000204387",
+    "CCDC58": "ENSG00000160124",
+    "FAM96A": "ENSG00000166797",
+    "FAM96B": "ENSG00000166595",
+    "H3F3B": "ENSG00000132475",
+    "MRPS36": "ENSG00000134056",
+    "MTRNR2L1": "ENSG00000256618",
+    "MTRNR2L4": "ENSG00000232196",
+    "MTRNR2L8": "ENSG00000255823",
+    "NARS": "ENSG00000134440",
+    "OCLM": "ENSG00000262180",
+    "SEPT11": "ENSG00000138758",
+    "TARS": "ENSG00000113407",
+    "TMEM99": "ENSG00000167920",
+    "WDR61": "ENSG00000140395",
+}
 
 CELL_TOTAL_COUNT_COLUMNS = [
     "UMI_count",
@@ -129,7 +167,7 @@ def log_record(event, **fields):
         print(
             f"Gene symbol filtering - {fields['dataset']}: "
             f"removed {format_count_pct(fields['n_removed'], fields['n_before'])} "
-            "features without gene_name in the reference GTF"
+            f"features without a usable gene symbol (source={fields['source']})"
         )
     elif event == "gene_symbol_annotation":
         print(
@@ -295,6 +333,48 @@ class H5CSRMatrix:
             n_cols = len(col_idx)
             remap = {int(old): new for new, old in enumerate(col_idx)}
 
+        if (
+            len(row_idx)
+            and np.all((row_idx >= 0) & (row_idx < self.shape[0]))
+            and (col_idx is None or np.all((col_idx >= 0) & (col_idx < self.shape[1])))
+            and (col_idx is None or len(np.unique(col_idx)) == len(col_idx))
+        ):
+            unique_rows = np.unique(row_idx)
+            row_start, row_stop = int(unique_rows[0]), int(unique_rows[-1]) + 1
+            span_rows = row_stop - row_start
+            if span_rows <= 2 * len(unique_rows):
+                span_indptr = np.asarray(
+                    self.indptr[row_start : row_stop + 1], dtype=np.int64
+                )
+                row_nnz = np.diff(span_indptr)
+                selected_nnz = int(row_nnz[unique_rows - row_start].sum(dtype=np.int64))
+                span_nnz = int(span_indptr[-1] - span_indptr[0])
+                if span_nnz <= 2 * selected_nnz:
+                    first_nnz = int(span_indptr[0])
+                    data = (
+                        np.asarray(self.data[first_nnz : first_nnz + span_nnz])
+                        if span_nnz
+                        else np.array([], dtype=self.dtype)
+                    )
+                    indices = (
+                        np.asarray(
+                            self.indices[first_nnz : first_nnz + span_nnz],
+                            dtype=np.int64,
+                        )
+                        if span_nnz
+                        else np.array([], dtype=np.int64)
+                    )
+                    span = sp.csr_matrix(
+                        (data, indices, span_indptr - first_nnz),
+                        shape=(span_rows, self.shape[1]),
+                    )
+                    block = span[row_idx - row_start, :]
+                    if col_idx is not None:
+                        block = block[:, col_idx]
+                    block.indices = block.indices.astype(np.int64, copy=False)
+                    block.indptr = block.indptr.astype(np.int64, copy=False)
+                    return block
+
         data_parts = []
         index_parts = []
         indptr = np.zeros(len(row_idx) + 1, dtype=np.int64)
@@ -327,7 +407,10 @@ class H5CSRMatrix:
             if nnz
             else np.array([], dtype=np.int64)
         )
-        return sp.csr_matrix((data, indices, indptr), shape=(len(row_idx), n_cols))
+        block = sp.csr_matrix((data, indices, indptr), shape=(len(row_idx), n_cols))
+        block.indices = block.indices.astype(np.int64, copy=False)
+        block.indptr = block.indptr.astype(np.int64, copy=False)
+        return block
 
 
 def matrix_row_sum_nnz(matrix, row_pos, col_pos):
@@ -448,6 +531,17 @@ def load_gtf_gene_symbols(path):
     return mapping
 
 
+def load_gtf_gene_ensgs_by_symbol(path):
+    ids_by_symbol = defaultdict(set)
+    for gene_id, symbol in load_gtf_gene_symbols(path).items():
+        ids_by_symbol[str(symbol)].add(str(gene_id).split(".", 1)[0])
+    return {
+        symbol: next(iter(gene_ids))
+        for symbol, gene_ids in ids_by_symbol.items()
+        if len(gene_ids) == 1
+    }
+
+
 def make_unique_index(values):
     seen = {}
     result = []
@@ -512,9 +606,10 @@ def find_numeric_column(df, names, require_nonnegative=True, required_name_terms
 
 
 class DatasetView:
-    def __init__(self, path, label):
+    def __init__(self, path, label, cell_id_columns=()):
         self.path = path
         self.label = label
+        self.cell_id_columns = tuple(cell_id_columns)
         self.adata = ad.read_h5ad(path, backed="r")
         self.h5 = h5py.File(path, "r")
         x_obj = self.h5["X"]
@@ -559,6 +654,31 @@ class DatasetView:
 
     def _prepare_barcodes(self):
         base = pd.Index(self.adata.obs_names.astype(str)).str.split("-").str[0]
+        if self.cell_id_columns:
+            missing = [
+                column
+                for column in self.cell_id_columns
+                if column not in self.obs.columns
+            ]
+            if missing:
+                raise ValueError(
+                    f"{self.label} H5AD is missing cell ID columns: {', '.join(missing)}"
+                )
+            components = [pd.Series(base, dtype="string")]
+            for column in self.cell_id_columns:
+                values = self.obs[column].astype("string").str.strip()
+                if values.isna().any() or values.eq("").any():
+                    raise ValueError(
+                        f"{self.label} H5AD cell ID column {column!r} contains missing or empty values"
+                    )
+                components.append(values.reset_index(drop=True))
+            if any(part.str.contains("|", regex=False).any() for part in components):
+                raise ValueError(
+                    "Cell barcode or namespace columns cannot contain the '|' separator"
+                )
+            for component in components[1:]:
+                components[0] = components[0].str.cat(component, sep="|")
+            base = pd.Index(components[0].astype(str), name="barcode")
         counts = base.value_counts(sort=False)
         mask = np.asarray(base.isin(counts[counts == 1].index), dtype=bool)
         self.obs_pos = np.flatnonzero(mask)
@@ -575,16 +695,42 @@ class DatasetView:
     def _prepare_gene_symbols(self):
         original_index = pd.Index(self.adata.var_names.astype(str))
         var = self.var.copy()
-        if "gene_id" not in var.columns:
+        columns = {normalize_column_name(column): column for column in var.columns}
+        gene_id_column = next(
+            (
+                columns.get(name)
+                for name in ("geneid", "ensemblid", "featureid")
+                if columns.get(name)
+            ),
+            None,
+        )
+        if gene_id_column is None:
             var["gene_id"] = original_index.to_numpy()
+        else:
+            gene_ids = var[gene_id_column].astype("string").str.strip()
+            var["gene_id"] = gene_ids.where(
+                gene_ids.notna() & (gene_ids.str.len() > 0), original_index
+            )
 
-        if "gene_name" in var.columns:
-            symbols = var["gene_name"].astype("string").str.strip()
-            source = "var['gene_name']"
-            keep = ~(symbols.isna() | (symbols.str.len() == 0))
+        symbol_column = next(
+            (
+                columns.get(name)
+                for name in ("genename", "genesymbol", "symbol")
+                if columns.get(name)
+            ),
+            None,
+        )
+        if symbol_column is not None:
+            symbols = var[symbol_column].astype("string").str.strip()
+            source = f"var['{symbol_column}']"
+            keep = symbols.notna() & (symbols.str.len() > 0)
             if not keep.all():
-                raise ValueError(
-                    f"{self.label} has {int((~keep).sum())} empty var['gene_name'] values"
+                log_record(
+                    "gene_symbol_filter",
+                    dataset=self.label,
+                    n_removed=int((~keep).sum()),
+                    n_before=len(keep),
+                    source=source,
                 )
         else:
             mapping = load_gtf_gene_symbols(REFERENCE_GTF_PATH)
@@ -604,6 +750,7 @@ class DatasetView:
                     dataset=self.label,
                     n_removed=int((~keep).sum()),
                     n_before=len(keep),
+                    source=REFERENCE_GTF_PATH,
                 )
             source = REFERENCE_GTF_PATH
 
@@ -732,11 +879,15 @@ def guide_aliases(guide_name):
 
 def guide_target_name(guide_name):
     guide_name = str(guide_name).strip().replace(",", "-")
-    return (
-        CONTROL_TARGET_SYMBOL
-        if guide_name.startswith(CONTROL_TARGET_SYMBOL)
-        else guide_name.split("_", 1)[0]
-    )
+    if (
+        guide_name.startswith(CONTROL_TARGET_SYMBOL)
+        or guide_name == "NTC"
+        or guide_name.startswith("NTC-")
+    ):
+        return CONTROL_TARGET_SYMBOL
+    if "_" in guide_name:
+        return guide_name.split("_", 1)[0]
+    return re.sub(r"-\d+$", "", guide_name)
 
 
 def strip_ensembl_version(value):
@@ -746,11 +897,28 @@ def strip_ensembl_version(value):
 
 def guide_target_ensg(guide_name):
     match = re.search(r"ENSG\d+(?:\.\d+)?", str(guide_name))
-    return strip_ensembl_version(match.group(0)) if match else ""
+    if match:
+        return strip_ensembl_version(match.group(0))
+    target_name = guide_target_name(guide_name)
+    return GUIDE_TARGET_ENSG_BY_SYMBOL.get(
+        target_name
+    ) or GUIDE_TARGET_ENSG_ALIASES.get(target_name, "")
 
 
 def call_info(label):
     label = str(label).strip()
+    if label.lower() in {"multi_sgrna", "multi-guide", "multi_guide"}:
+        return {
+            "probe_label": label,
+            "n_probes": 1,
+            "control_probe_label": "None",
+            "n_control_probes": 0,
+            "gene_label": "multiple",
+            "gene_ensg_label": "None",
+            "n_genes": 2,
+            "outcome": ">1_gene",
+            "perturbation_call_type": "multi_gene",
+        }
     if label.lower() in {"", "none", "nan"}:
         probes = []
     else:
@@ -1609,6 +1777,8 @@ def plot_overlap_distributions(rep, common_cells, common_genes):
 
 
 def main():
+    global GUIDE_TARGET_ENSG_BY_SYMBOL
+    GUIDE_TARGET_ENSG_BY_SYMBOL = load_gtf_gene_ensgs_by_symbol(REFERENCE_GTF_PATH)
     os.makedirs(f"comparison_results/{DATASET_ID}", exist_ok=True)
     log_record(
         "input_paths",
@@ -1616,8 +1786,8 @@ def main():
         reprocessed_h5ad_path=REPROCESSED_H5AD_PATH,
         filtered_reprocessed_h5ad_path=FILTERED_REPROCESSED_H5AD_PATH,
     )
-    cur = DatasetView(CURATED_H5AD_PATH, "Curated")
-    rep = DatasetView(REPROCESSED_H5AD_PATH, "Reprocessed")
+    cur = DatasetView(CURATED_H5AD_PATH, "Curated", CELL_ID_COLUMNS)
+    rep = DatasetView(REPROCESSED_H5AD_PATH, "Reprocessed", CELL_ID_COLUMNS)
     try:
         qc_summary = filter_low_signal_cells_and_genes(rep)
         _, _, knockout_summary = call_probe_lists(rep)
@@ -1798,7 +1968,7 @@ def main():
             fig, ax = plt.subplots(figsize=(9, 6))
             sns.histplot(
                 cell_corrs[np.isfinite(cell_corrs)],
-                bins=100,
+                bins=np.linspace(-1.0, 1.0, 51),
                 kde=True,
                 color="purple",
                 alpha=0.4,
@@ -1840,11 +2010,15 @@ def main():
                 [
                     {
                         "Metric": "Cell Overlap",
-                        "Value": f"{len(common_cells)} ({len(common_cells) / len(cur.obs_names):.1%})",
+                        "Value": format_count_pct(
+                            len(common_cells), len(cur.obs_names)
+                        ),
                     },
                     {
                         "Metric": "Gene Overlap",
-                        "Value": f"{len(common_genes)} ({len(common_genes) / len(cur.var_names):.1%})",
+                        "Value": format_count_pct(
+                            len(common_genes), len(cur.var_names)
+                        ),
                     },
                     {
                         "Metric": "Counts Correlation",
@@ -1875,4 +2049,74 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if os.environ.get("PERTURBSEQ_SELF_TEST"):
+        assert guide_target_name("ARMC5-1") == "ARMC5"
+        assert guide_target_name("HLA-DRA-2") == "HLA-DRA"
+        assert guide_target_name("NTC-001") == CONTROL_TARGET_SYMBOL
+        assert guide_target_ensg("MTRNR2L1-1") == "ENSG00000256618"
+        assert guide_target_ensg("MTRNR2L4-1") == "ENSG00000232196"
+        assert guide_target_ensg("OCLM-1") == "ENSG00000262180"
+        assert call_info("multi_sgRNA")["perturbation_call_type"] == "multi_gene"
+        shared_prefix16 = "ACGTACGTACGTACGT"
+        barcode24a = shared_prefix16 + "AAAAAAAA"
+        barcode24b = shared_prefix16 + "CCCCCCCC"
+        test_names = pd.Index(
+            [
+                barcode24a + "-1_R1L01_libA",
+                barcode24a + "-1_R1L01_libB",
+                barcode24a + "-1_R2L17_libA",
+                barcode24b + "-1_R2L17_libA",
+                shared_prefix16 + "-1_R1L01_libA",
+            ]
+        )
+        test_obs = pd.DataFrame(
+            {
+                "lane_id": [
+                    "CD4i_R1L01",
+                    "CD4i_R1L01",
+                    "CD4i_R2L17",
+                    "CD4i_R2L17",
+                    "CD4i_R1L01",
+                ]
+            }
+        )
+        scoped = DatasetView.__new__(DatasetView)
+        scoped.adata = SimpleNamespace(obs_names=test_names, n_obs=len(test_names))
+        scoped.obs = test_obs
+        scoped.label = "self-test"
+        scoped.cell_id_columns = ("lane_id",)
+        scoped._prepare_barcodes()
+        assert scoped.obs_names.tolist() == [
+            barcode24a + "|CD4i_R2L17",
+            barcode24b + "|CD4i_R2L17",
+            shared_prefix16 + "|CD4i_R1L01",
+        ]
+        legacy = DatasetView.__new__(DatasetView)
+        legacy.adata = scoped.adata
+        legacy.obs = test_obs
+        legacy.label = "self-test-legacy"
+        legacy.cell_id_columns = ()
+        legacy._prepare_barcodes()
+        assert legacy.obs_names.tolist() == [barcode24b, shared_prefix16]
+        invalid = DatasetView.__new__(DatasetView)
+        invalid.adata = scoped.adata
+        invalid.obs = test_obs.assign(
+            lane_id=["CD4i_R1L01", None, "CD4i_R2L17", "CD4i_R2L17", "CD4i_R1L01"]
+        )
+        invalid.label = "self-test-invalid"
+        invalid.cell_id_columns = ("lane_id",)
+        try:
+            invalid._prepare_barcodes()
+        except ValueError as error:
+            assert "missing or empty" in str(error)
+        else:
+            raise AssertionError("Missing namespace value was accepted")
+        invalid.obs = test_obs.drop(columns="lane_id")
+        try:
+            invalid._prepare_barcodes()
+        except ValueError as error:
+            assert "missing cell ID columns" in str(error)
+        else:
+            raise AssertionError("Missing namespace column was accepted")
+    else:
+        main()
