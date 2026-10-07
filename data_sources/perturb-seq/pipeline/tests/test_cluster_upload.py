@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Protocol check for cluster-to-GCS resumable Parquet upload."""
+"""Checks cluster Parquet validation and the gcloud storage upload contract."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import quote
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -23,127 +22,111 @@ import cluster_upload
 from io_schemas import DEA_SCHEMA
 
 
-class ResumableUploadTest(unittest.TestCase):
-    def test_session_url_must_name_the_expected_bucket_and_object(self):
-        dataset_id = "example_2026"
-        object_name = (
-            "perturb-seq-ingest/0123456789abcdef0123456789abcdef/"
-            f"{dataset_id}/{dataset_id}.dea.parquet"
-        )
-        source_entry = {
-            "object_name": object_name,
-            "session_uri": (
-                "https://storage.googleapis.com/upload/storage/v1/b/dev-tmp/o"
-                "?uploadType=resumable&name=other.parquet&upload_id=fake"
-            ),
-        }
-        with patch.object(cluster_upload, "_http_put") as http_put:
-            with self.assertRaisesRegex(cluster_upload.TransferError, "object name"):
-                cluster_upload._upload_one(
-                    "0123456789abcdef0123456789abcdef",
-                    "dev-tmp",
-                    dataset_id,
-                    "dea",
-                    source_entry,
-                    [],
-                )
-        http_put.assert_not_called()
-
-    def test_chunk_upload_recovers_after_lost_response(self):
+class ClusterUploadTest(unittest.TestCase):
+    def test_upload_validates_data_and_uses_conditional_cli_upload(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             dataset_id = "example_2026"
             source = root / f"{dataset_id}.dea.parquet"
-            rows = [
-                {"dataset_id": dataset_id, "perturbed_target_symbol": "x" * 310_000},
-                {"dataset_id": dataset_id, "perturbed_target_symbol": "y" * 310_000},
-            ]
-            pq.write_table(
-                pa.Table.from_pylist(rows, schema=DEA_SCHEMA),
-                source,
-                compression="NONE",
-            )
+            row = {field.name: None for field in DEA_SCHEMA}
+            row["dataset_id"] = dataset_id
+            pq.write_table(pa.Table.from_pylist([row], schema=DEA_SCHEMA), source)
             content = source.read_bytes()
-            self.assertGreater(len(content), 2 * 256 * 1024)
-
-            accepted = bytearray()
-            lost_once = False
+            md5_hash = base64.b64encode(hashlib.md5(content).digest()).decode()
+            sha256_hash = hashlib.sha256(content).hexdigest()
+            run_key = "0123456789abcdef0123456789abcdef"
             object_name = (
-                "perturb-seq-ingest/0123456789abcdef0123456789abcdef/"
-                f"{dataset_id}/{dataset_id}.dea.parquet"
+                f"perturb-seq-ingest/{run_key}/{dataset_id}/{dataset_id}.dea.parquet"
             )
-            session_uri = (
-                "https://storage.googleapis.com/upload/storage/v1/b/dev-tmp/o"
-                f"?uploadType=resumable&name={quote(object_name, safe='')}&upload_id=fake"
-            )
+            metadata = {
+                "run_key": run_key,
+                "dataset_id": dataset_id,
+                "kind": "dea",
+                "sha256": sha256_hash,
+                "row_count": "1",
+            }
+            described = {
+                "name": object_name,
+                "bucket": "dev-tmp",
+                "generation": "987654321",
+                "size": str(len(content)),
+                "md5Hash": md5_hash,
+                "crc32c": None,
+                "metadata": metadata,
+            }
+            commands = []
 
-            def fake_put(_url, body, headers):
-                nonlocal lost_once
-                content_range = headers["Content-Range"]
-                if content_range.startswith("bytes */"):
-                    response_headers = (
-                        {"Range": f"bytes=0-{len(accepted) - 1}"} if accepted else {}
-                    )
-                    return 308, response_headers, b""
-                start, end = map(
-                    int,
-                    content_range.removeprefix("bytes ").split("/")[0].split("-"),
-                )
-                self.assertEqual(start, len(accepted))
-                self.assertEqual(end - start + 1, len(body))
-                accepted.extend(body)
-                if start > 0 and not lost_once:
-                    lost_once = True
-                    raise cluster_upload.RetryableTransferError("lost response")
-                if len(accepted) == len(content):
-                    self.assertEqual(
-                        headers["X-Goog-Hash"],
-                        "md5="
-                        + base64.b64encode(hashlib.md5(content).digest()).decode(),
-                    )
-                    final = {
-                        "bucket": "dev-tmp",
-                        "name": object_name,
-                        "size": str(len(content)),
-                        "generation": "987654321",
-                    }
-                    return 201, {}, json.dumps(final).encode()
-                return 308, {"Range": f"bytes=0-{len(accepted) - 1}"}, b""
+            def fake_cli(args):
+                commands.append(args)
+                return json.dumps(described) if "describe" in args else ""
 
             source_entry = {
-                "source_path": str(source),
-                "size_bytes": len(content),
-                "object_name": object_name,
-                "session_uri": session_uri,
+                "dea_parquet": str(source),
+                "dea_size_bytes": len(content),
+                "dea_rows": 1,
+                "dea_md5_hash": md5_hash,
+                "dea_sha256": sha256_hash,
+                "dea_stat": {
+                    "dev": source.stat().st_dev,
+                    "ino": source.stat().st_ino,
+                    "mtime_ns": source.stat().st_mtime_ns,
+                },
+            }
+            with (
+                patch.object(cluster_upload, "RESULTS_ROOT", str(root)),
+                patch.object(cluster_upload, "_run_cli", side_effect=fake_cli),
+            ):
+                receipt = cluster_upload._upload_one(
+                    run_key,
+                    "dev-tmp",
+                    "dev-project",
+                    dataset_id,
+                    "dea",
+                    source_entry,
+                )
+
+            cp = commands[0]
+            self.assertEqual(cp[:3], ["gcloud", "storage", "cp"])
+            self.assertIn("--if-generation-match=0", cp)
+            self.assertIn(f"--content-md5={md5_hash}", cp)
+            self.assertIn(
+                f"--custom-metadata="
+                + ",".join(f"{k}={v}" for k, v in metadata.items()),
+                cp,
+            )
+            self.assertEqual(cp[-1], f"gs://dev-tmp/{object_name}")
+            self.assertEqual(receipt["row_count"], 1)
+            self.assertEqual(receipt["generation"], "987654321")
+            self.assertEqual(receipt["sha256"], sha256_hash)
+
+    def test_wrong_dataset_rows_are_rejected_before_cloud_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "expected.dea.parquet"
+            row = {field.name: None for field in DEA_SCHEMA}
+            row["dataset_id"] = "other"
+            pq.write_table(pa.Table.from_pylist([row], schema=DEA_SCHEMA), source)
+            source_entry = {
+                "dea_parquet": str(source),
+                "dea_size_bytes": source.stat().st_size,
             }
             schema = [
                 [field.name, str(field.type), field.nullable] for field in DEA_SCHEMA
             ]
             with (
                 patch.object(cluster_upload, "RESULTS_ROOT", str(root)),
-                patch.object(cluster_upload, "CHUNK_SIZE", 256 * 1024),
-                patch.object(cluster_upload, "_http_put", fake_put),
-                patch.object(cluster_upload.time, "sleep"),
+                patch.object(cluster_upload, "_run_cli") as cli,
             ):
-                receipt = cluster_upload._upload_one(
-                    "0123456789abcdef0123456789abcdef",
-                    "dev-tmp",
-                    dataset_id,
-                    "dea",
-                    source_entry,
-                    schema,
-                )
-
-            self.assertTrue(lost_once)
-            self.assertEqual(bytes(accepted), content)
-            self.assertEqual(receipt["size_bytes"], len(content))
-            self.assertEqual(receipt["row_count"], 2)
-            self.assertEqual(
-                receipt["md5_hash"],
-                base64.b64encode(hashlib.md5(content).digest()).decode(),
-            )
-            self.assertIsNone(receipt["crc32c"])
-            self.assertEqual(receipt["generation"], "987654321")
+                with self.assertRaisesRegex(
+                    cluster_upload.TransferError, "Wrong dataset_id"
+                ):
+                    cluster_upload._verify_source(
+                        str(source),
+                        "expected",
+                        "dea",
+                        schema,
+                    )
+            cli.assert_not_called()
 
 
 if __name__ == "__main__":

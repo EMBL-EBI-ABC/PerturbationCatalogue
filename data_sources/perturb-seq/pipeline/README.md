@@ -255,18 +255,10 @@ shared warehouse, API, search and release-artifact stages using the
 [DWH publication guide](../../../dwh/README.md).
 
 The Parquet payload moves directly from the cluster to a temporary development
-GCS bucket, then from GCS to BigQuery. The control workstation handles only
-small path/size manifests, a temporary resumable-session manifest and a
-URL-free receipt; it never stores Parquet payloads. It submits BigQuery load
-jobs that read the staged objects server-side.
-
-The cluster SDK executable is
-`/hps/nobackup/mfreeberg/software/google-cloud-sdk/bin/gcloud`. Check
-credentials inside the actual Slurm allocation before using `gcloud storage
-cp`; login-node credentials are not necessarily available to connector jobs.
-The resumable-session procedure below does not require cluster gcloud
-credentials: it creates short-lived upload sessions on the control workstation
-and sends only their small manifest to the cluster uploader.
+GCS bucket, then from GCS to BigQuery. The workstation handles only small path,
+size and URL-free receipt files. Cluster jobs use the approved connector's
+`--gcloud-auth` option, which exposes the host Google Cloud SDK on `PATH` for
+those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
 
 1. Start with an ID manifest containing one `dataset_id` per selected dataset.
    For this 20-dataset run, confirm there are exactly 20 unique IDs. Set up the
@@ -322,7 +314,8 @@ and sends only their small manifest to the cluster uploader.
    access rules in `PerturbationCatalogueContext/perturb-seq/cluster/README.md`.
    Set the private context path and HPS root used by that guide. Upload the small
    worker script, then inventory the exact final Parquets on the cluster.
-   Inventory stops if it finds duplicate or missing products:
+   Inventory stops on duplicate or missing products, schema mismatches or rows
+   whose `dataset_id` differs from the selected ID:
 
    ```bash
    CONTEXT_ROOT=${PERTURBATION_CATALOGUE_CONTEXT:-../PerturbationCatalogueContext}
@@ -338,9 +331,7 @@ and sends only their small manifest to the cluster uploader.
    SOURCE_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_sources.json"
    SOURCE_MANIFEST="$RUN_DIR/${RUN_TAG}_sources.json"
    RECEIPT_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_receipt.json"
-   SESSION_LOCAL="$RUN_DIR/${RUN_TAG}_sessions.private.json"
    RECEIPT_LOCAL="$RUN_DIR/${RUN_TAG}_gcs_receipt.json"
-   SESSION_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_sessions.private.json"
 
    WORKER_BYTES=$(wc -c < "$WORKER_LOCAL")
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$WORKER_BYTES" \
@@ -352,6 +343,7 @@ and sends only their small manifest to the cluster uploader.
        --bind "$HPS_ROOT/PerturbationCatalogue" \
        --bind "$HPS_ROOT/cache" \
        --bind "$HPS_ROOT/perturb_seq_fastq/results" \
+       --env "PYTHONPATH=$PIPELINE_DIR/dea-gsea" \
        "$PIPELINE_DIR/perturb_seq.sif" \
      python3 "$WORKER_REMOTE" inventory \
        --dataset-ids "$DATASET_IDS" --output "$SOURCE_REMOTE"
@@ -362,46 +354,22 @@ and sends only their small manifest to the cluster uploader.
    diff -u \
      <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST" | sort) \
      <(jq -r '.datasets[].dataset_id' "$SOURCE_MANIFEST" | sort)
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
-     --cpus 1 --mem 1G --time 00:05:00 -- /usr/bin/rm -- "$SOURCE_REMOTE"
    ```
 
-3. Create the loader environment and authenticate Application Default
-   Credentials as described in the [DWH guide](../../../dwh/README.md). Create
-   resumable sessions in the development temporary bucket. The generated local
-   session file contains bearer upload URLs: keep it mode 0600, do not print or
-   commit it, and retain it only until the transfer is verified.
+3. Upload from the cluster with the approved host CLI. The uploader uses the
+   checksums and row counts recorded by inventory, uploads each file with a
+   create-only generation precondition, then verifies object metadata, size,
+   checksum when available and generation. Wait for the job to show
+   `COMPLETED 0:0`, then read its URL-free receipt:
 
    ```bash
-   python3 -m venv .venv-perturb-seq-publish
-   . .venv-perturb-seq-publish/bin/activate
-   python -m pip install pyarrow google-cloud-bigquery google-cloud-storage
-   python data_sources/perturb-seq/pipeline/dea-gsea/cluster_upload.py prepare \
-     --source-manifest "$SOURCE_MANIFEST" --project "$GCLOUD_PROJECT" \
-     --bucket "$CLOUD_TMP_BUCKET" --output "$SESSION_LOCAL"
-   SESSION_BYTES=$(wc -c < "$SESSION_LOCAL")
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$SESSION_BYTES" \
-     --upload "$SESSION_LOCAL" "$SESSION_REMOTE"
-   ```
-
-4. Run the uploader inside the existing cluster SIF. It verifies each file's
-   schema and `dataset_id`, resumes interrupted 32 MiB chunks, and sends the
-   full-object MD5 for Cloud Storage validation on the final chunk. It verifies
-   object size and generation; CMEK buckets can omit checksum fields from object
-   metadata. The worker deletes its private session file immediately after
-   reading it and removes itself after a successful upload.
-   Wait for the job to show `COMPLETED 0:0`, then read its URL-free receipt:
-
-   ```bash
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+   python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
      --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 4 --mem 8G --time 03:00:00 -- \
-     singularity exec \
-       --bind "$HPS_ROOT/PerturbationCatalogue" \
-       --bind "$HPS_ROOT/cache" \
-       --bind "$HPS_ROOT/perturb_seq_fastq/results" \
-       "$PIPELINE_DIR/perturb_seq.sif" \
-     python3 "$WORKER_REMOTE" upload --manifest "$SESSION_REMOTE" \
-       --receipt "$RECEIPT_REMOTE" --delete-worker
+     env "GCLOUD_PROJECT=$GCLOUD_PROJECT" "BQ_LOCATION=$BQ_LOCATION" \
+       "CLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET" \
+       python3 "$WORKER_REMOTE" upload --manifest "$SOURCE_REMOTE" \
+         --receipt "$RECEIPT_REMOTE" --project "$GCLOUD_PROJECT" \
+         --bucket "$CLOUD_TMP_BUCKET" --delete-worker
    # Check the returned job ID with `cluster.py status`; require COMPLETED 0:0.
    python3 -B "$CLUSTER_CONNECTOR" read "$RECEIPT_REMOTE" --tail 0 \
      > "$RECEIPT_LOCAL"
@@ -409,63 +377,56 @@ and sends only their small manifest to the cluster uploader.
      <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST" | sort) \
      <(jq -r '.datasets[].dataset_id' "$RECEIPT_LOCAL" | sort)
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
-     --cpus 1 --mem 1G --time 00:05:00 -- /usr/bin/rm -- "$RECEIPT_REMOTE"
+     --cpus 1 --mem 1G --time 00:05:00 -- \
+     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE"
    ```
 
-   The connector's `--upload` limit is 32 KiB; `prepare` checks the session
-   manifest size before it is written. `RUN_DIR` is created outside the checkout
-   with mode 0700, and `umask 077` keeps every local manifest private. The
-   resumable URLs expire after one week.
-   If `prepare` creates sessions but cannot write the oversized manifest, those
-   unused sessions expire without creating objects. Successful administrative
-   jobs use `--ephemeral`; source manifests and receipts are removed by exact
-   paths inside short Slurm allocations after they have been read locally.
-   If a transfer fails, the local private session file can be uploaded again to
-   resume. If abandoning that run, remove only its completed objects with the
-   exact manifest and generation preconditions:
+   `RUN_DIR` is outside the checkout with mode 0700, and `umask 077` keeps local
+   manifests private. If an upload job fails after creating some objects, the
+   worker removes only those objects at their verified generations. If BigQuery
+   apply fails, retain the receipt and retry; successful apply removes the exact
+   GCS generations after the transaction and final count checks.
+
+4. Dry-run locally and review all 20 IDs and row counts. This step validates the
+   URL-free receipt only; it uses Python's standard library and makes no cloud
+   calls. Then run the apply from the
+   cluster. The loader requires the receipt to match the selected 20-ID
+   manifest, rechecks object size, generation, checksums when available and
+   metadata, loads only those 40 objects into expiring BigQuery staging tables,
+   enables Parquet LIST inference for GSEA, verifies schemas and per-ID row
+   counts, and atomically replaces only the selected IDs in both result tables.
+   It checks final counts and deletes the exact GCS object generations only
+   after the transaction succeeds:
 
    ```bash
-   python data_sources/perturb-seq/pipeline/dea-gsea/cluster_upload.py cleanup \
-     --manifest "$SESSION_LOCAL" --project "$GCLOUD_PROJECT" --bucket "$CLOUD_TMP_BUCKET"
+   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
+     --gcs-manifest "$RECEIPT_LOCAL" --id-manifest "$ID_MANIFEST" \
+     --project "$GCLOUD_PROJECT"
+   ID_MANIFEST_REMOTE="$PIPELINE_DIR/manifests/single-condition-20.json"
+   python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
+     --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 1 --mem 8G --time 03:00:00 -- \
+     env "GCLOUD_PROJECT=$GCLOUD_PROJECT" "BQ_LOCATION=$BQ_LOCATION" \
+       "CLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET" \
+       python3 "$PIPELINE_DIR/dea-gsea/load_results_to_bigquery.py" \
+         --gcs-manifest "$RECEIPT_REMOTE" --id-manifest "$ID_MANIFEST_REMOTE" \
+         --project "$GCLOUD_PROJECT" --apply
+   # Check the returned job ID with `cluster.py status`; require COMPLETED 0:0.
    ```
 
-   Then remove that run's remaining exact remote helper/manifest paths inside a
-   short allocation, and remove its local private directory only if no retry is
-   planned:
+5. After the loader succeeds, continue with the shared
+   [DWH publication guide](../../../dwh/README.md) for PostgreSQL, Elasticsearch,
+   release artifacts, API/UI verification and reprocessed markers. These stages
+   are the same for Perturb-seq and other modalities. After BQ apply succeeds,
+   remove the local receipt and run directory, then remove the exact remote
+   manifest and receipt paths through a short allocated connector job:
 
    ```bash
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
      --cpus 1 --mem 1G --time 00:05:00 -- \
-     /usr/bin/rm -f -- "$WORKER_REMOTE" "$SOURCE_REMOTE" "$SESSION_REMOTE" "$RECEIPT_REMOTE"
-   rm -f -- "$SESSION_LOCAL" "$SOURCE_MANIFEST" "$RECEIPT_LOCAL"
+     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE"
+   rm -f -- "$SOURCE_MANIFEST" "$RECEIPT_LOCAL"
    rmdir -- "$RUN_DIR"
    ```
-
-5. Run the loader first without `--apply` and review all 20 IDs and row counts.
-   Then apply from the URL-free receipt. The loader rechecks object size,
-   generation, any available GCS checksums and dataset metadata, loads only
-   these exact 40 objects into expiring BigQuery staging tables, enables Parquet
-   LIST inference for GSEA, verifies schemas and per-ID row counts, and
-   atomically replaces only the selected IDs in both result tables. It verifies
-   final counts and removes the exact GCS object generations only after the
-   transaction succeeds:
-
-   ```bash
-   RECEIPT="$RECEIPT_LOCAL"
-   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
-     --gcs-manifest "$RECEIPT" --project "$GCLOUD_PROJECT"
-   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
-     --gcs-manifest "$RECEIPT" --project "$GCLOUD_PROJECT" --apply
-   rm -- "$SESSION_LOCAL"
-   ```
-
-6. After the loader succeeds, continue with the shared
-   [DWH publication guide](../../../dwh/README.md) for PostgreSQL, Elasticsearch,
-   release artifacts, API/UI verification and reprocessed markers. These stages
-   are the same for Perturb-seq and other modalities. After BQ apply succeeds,
-   the session file is deleted above. Keep the URL-free receipt through DWH
-   postflight and marker updates, then remove `RUN_DIR` and the small remote
-   source manifest and receipt through an allocated connector job.
 
 ## Benchmarks
 

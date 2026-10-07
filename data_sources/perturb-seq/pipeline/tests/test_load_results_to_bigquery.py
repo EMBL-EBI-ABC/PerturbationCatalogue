@@ -1,297 +1,211 @@
 #!/usr/bin/env python3
-"""Focused local checks for scoped DEA/GSEA replacement inputs and SQL."""
+"""Checks receipt validation, staging and scoped transactional replacement."""
 
 from __future__ import annotations
 
-import json
 import base64
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
-
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 PIPELINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PIPELINE / "dea-gsea"))
 
-from io_schemas import DEA_SCHEMA, GSEA_SCHEMA
 from load_results_to_bigquery import (
+    DEA_SCHEMA,
     GcsDatasetFiles,
     GcsManifest,
     GcsParquet,
-    _expected_bq_schema,
-    _stage_and_replace,
+    GSEA_SCHEMA,
+    EXPECTED_DATASET_COUNT,
+    _load_stage,
     _verify_gcs_objects,
-    apply_replacement,
+    apply_gcs_replacement,
+    main,
     transaction_sql,
-    validate_manifest,
+    validate_expected_datasets,
     validate_gcs_manifest,
 )
 
 
-def _write(path: Path, schema: pa.Schema, dataset_ids: list[str]) -> None:
-    rows = []
+def _receipt(dataset_ids: list[str]) -> dict:
+    run_key = "0123456789abcdef0123456789abcdef"
+    datasets = []
     for dataset_id in dataset_ids:
-        row = {field.name: None for field in schema}
-        row["dataset_id"] = dataset_id
-        if "leading_edge" in schema.names:
-            row["leading_edge"] = []
-        rows.append(row)
-    pq.write_table(pa.Table.from_pylist(rows, schema=schema), path)
-
-
-class BigQueryReplacementTest(unittest.TestCase):
-    def test_apply_rejects_production_project_before_cloud_access(self):
-        with self.assertRaisesRegex(ValueError, "production-like project"):
-            apply_replacement([], "local_check", project="example-prod-project")
-
-    def test_apply_project_must_match_selected_environment(self):
-        with patch.dict("os.environ", {"GCLOUD_PROJECT": "approved-dev-project"}):
-            with self.assertRaisesRegex(ValueError, "must match GCLOUD_PROJECT"):
-                apply_replacement([], "local_check", project="other-dev-project")
-
-    def test_manifest_validation_and_transaction_are_scoped(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            manifest = {"datasets": []}
-            for dataset_id in ("first_2026", "second_2026"):
-                dea = root / f"{dataset_id}.dea.parquet"
-                gsea = root / f"{dataset_id}.gsea.parquet"
-                _write(
-                    dea, DEA_SCHEMA, [dataset_id] if dataset_id == "first_2026" else []
-                )
-                _write(gsea, GSEA_SCHEMA, [])
-                manifest["datasets"].append(
-                    {
-                        "dataset_id": dataset_id,
-                        "dea_parquet": dea.name,
-                        "gsea_parquet": gsea.name,
-                    }
-                )
-            manifest_path = root / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest))
-
-            files = validate_manifest(manifest_path)
-            self.assertEqual(
-                [item.dataset_id for item in files], ["first_2026", "second_2026"]
-            )
-            self.assertEqual(
-                [(item.dea_rows, item.gsea_rows) for item in files], [(1, 0), (0, 0)]
-            )
-
-            sql = transaction_sql(
-                "dev-project",
-                "ingest_run_dea",
-                "ingest_run_gsea",
-            )
-            self.assertEqual(sql.count("DELETE FROM"), 2)
-            self.assertEqual(sql.count("INSERT INTO"), 2)
-            self.assertEqual(sql.count("WHERE dataset_id IN UNNEST(@dataset_ids)"), 4)
-            self.assertIn("BEGIN TRANSACTION", sql)
-            self.assertIn("COMMIT TRANSACTION", sql)
-            self.assertNotIn("TRUNCATE", sql)
-
-    def test_manifest_rejects_rows_for_a_different_id(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            dea = root / "expected_2026.dea.parquet"
-            gsea = root / "expected_2026.gsea.parquet"
-            _write(dea, DEA_SCHEMA, ["other_2026"])
-            _write(gsea, GSEA_SCHEMA, [])
-            manifest_path = root / "manifest.json"
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "datasets": [
-                            {
-                                "dataset_id": "expected_2026",
-                                "dea_parquet": dea.name,
-                                "gsea_parquet": gsea.name,
-                            }
-                        ]
-                    }
-                )
-            )
-            with self.assertRaisesRegex(ValueError, "dataset_id values must all equal"):
-                validate_manifest(manifest_path)
-
-    def test_gcs_receipt_is_bound_to_exact_run_dataset_and_object(self):
-        run_key = "0123456789abcdef0123456789abcdef"
-        dataset_id = "first_2026"
-
-        def file_receipt(kind):
+        item = {"dataset_id": dataset_id}
+        for kind in ("dea", "gsea"):
             name = (
                 f"perturb-seq-ingest/{run_key}/{dataset_id}/{dataset_id}.{kind}.parquet"
             )
-            return {
+            item[kind] = {
                 "uri": f"gs://dev-tmp/{name}",
                 "size_bytes": 123,
-                "row_count": 0,
+                "row_count": 1,
                 "sha256": "a" * 64,
                 "md5_hash": base64.b64encode(b"m" * 16).decode(),
-                "crc32c": base64.b64encode(b"crc!").decode(),
+                "crc32c": None,
                 "generation": "987654321",
             }
+        datasets.append(item)
+    return {"run_key": run_key, "bucket": "dev-tmp", "datasets": datasets}
 
+
+class BigQueryReplacementTest(unittest.TestCase):
+    def test_receipt_is_bound_to_run_bucket_and_exact_object_names(self):
+        receipt = _receipt(["first_2026"])
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "receipt.json"
-            receipt = {
-                "run_key": run_key,
-                "bucket": "dev-tmp",
-                "datasets": [
-                    {
-                        "dataset_id": dataset_id,
-                        "dea": file_receipt("dea"),
-                        "gsea": file_receipt("gsea"),
-                    }
-                ],
-            }
             path.write_text(json.dumps(receipt))
-            parsed = validate_gcs_manifest(path)
-            self.assertEqual(parsed.datasets[0].dea.rows, 0)
-            self.assertEqual(parsed.datasets[0].gsea.generation, 987654321)
-
-            receipt["datasets"][0]["dea"]["crc32c"] = None
-            path.write_text(json.dumps(receipt))
-            self.assertIsNone(validate_gcs_manifest(path).datasets[0].dea.crc32c)
+            manifest = validate_gcs_manifest(path)
+            self.assertEqual(manifest.datasets[0].dea.rows, 1)
+            self.assertEqual(manifest.datasets[0].gsea.generation, 987654321)
 
             receipt["datasets"][0]["dea"]["uri"] = "gs://other-bucket/other-object"
             path.write_text(json.dumps(receipt))
             with self.assertRaisesRegex(ValueError, "unexpected GCS URI"):
                 validate_gcs_manifest(path)
 
-    def test_gcs_sources_are_rechecked_after_staging_before_replacement(self):
-        from types import SimpleNamespace
-        from unittest.mock import patch
-
-        events = []
-
-        class SchemaField:
-            def __init__(self, name, field_type, mode):
-                self.name = name
-                self.field_type = field_type
-                self.mode = mode
-
-        class BigQuery:
-            SourceFormat = SimpleNamespace(PARQUET="PARQUET")
-            WriteDisposition = SimpleNamespace(WRITE_TRUNCATE="WRITE_TRUNCATE")
-            LoadJobConfig = staticmethod(lambda **kwargs: kwargs)
-            QueryJobConfig = staticmethod(lambda **kwargs: kwargs)
-            ArrayQueryParameter = staticmethod(lambda *args: args)
-            format_options = SimpleNamespace(
-                ParquetOptions=lambda: SimpleNamespace(enable_list_inference=False)
+    def test_selected_manifest_must_have_exactly_twenty_unique_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ids.json"
+            entries = [{"dataset_id": f"dataset_{index}"} for index in range(20)]
+            path.write_text(json.dumps({"datasets": entries}))
+            self.assertEqual(
+                len(validate_expected_datasets(path)), EXPECTED_DATASET_COUNT
             )
 
-        BigQuery.SchemaField = SchemaField
+            path.write_text(json.dumps({"datasets": entries[:-1]}))
+            with self.assertRaisesRegex(ValueError, "exactly 20"):
+                validate_expected_datasets(path)
 
-        class Job:
-            errors = None
+            entries[-1] = entries[0]
+            path.write_text(json.dumps({"datasets": entries}))
+            with self.assertRaisesRegex(ValueError, "must be unique"):
+                validate_expected_datasets(path)
 
-            def result(self):
-                return None
-
-        class Client:
-            def load_table_from_uri(self, _uris, table_id, **kwargs):
-                self_outer.assertTrue(
-                    kwargs["job_config"]["parquet_options"].enable_list_inference
+    def test_receipt_must_match_selected_twenty_ids_before_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ids = [f"dataset_{index}" for index in range(EXPECTED_DATASET_COUNT)]
+            receipt_path = root / "receipt.json"
+            receipt_path.write_text(json.dumps(_receipt(ids)))
+            selected_path = root / "selected.json"
+            selected_ids = ids[:-1] + ["different_dataset"]
+            selected_path.write_text(
+                json.dumps(
+                    {"datasets": [{"dataset_id": value} for value in selected_ids]}
                 )
-                events.append("load:" + table_id.rsplit("_", 1)[-1])
-                return Job()
-
-            def get_table(self, table_id):
-                kind = "gsea" if table_id.endswith("_gsea") else "dea"
-                schema = GSEA_SCHEMA if kind == "gsea" else DEA_SCHEMA
-                return SimpleNamespace(
-                    schema=_expected_bq_schema(schema, BigQuery), num_rows=1
+            )
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                main(
+                    [
+                        "--gcs-manifest",
+                        str(receipt_path),
+                        "--id-manifest",
+                        str(selected_path),
+                    ]
                 )
 
-            def query(self, *_args, **_kwargs):
-                events.append("replace")
-                return Job()
-
-        def verify_sources():
-            events.append("verify")
-
-        self_outer = self
-        with (
-            patch("load_results_to_bigquery._expire_stage"),
-            patch("load_results_to_bigquery._counts", return_value={"demo": 1}),
-        ):
-            _stage_and_replace(
-                Client(),
-                BigQuery,
-                "dev-project",
-                "europe-west2",
-                "0123456789abcdef0123456789abcdef",
-                ["demo"],
-                {"dea": ["gs://bucket/dea"], "gsea": ["gs://bucket/gsea"]},
-                {"dea": {"demo": 1}, "gsea": {"demo": 1}},
-                verify_sources=verify_sources,
-            )
-
-        self.assertEqual(events, ["load:dea", "load:gsea", "verify", "replace"])
-
-    def test_cmek_objects_without_gcs_checksums_are_accepted(self):
-        run_key = "0123456789abcdef0123456789abcdef"
-        dataset_id = "first_2026"
-        objects = {}
-        parquet_files = {}
-        for kind in ("dea", "gsea"):
-            name = (
-                f"perturb-seq-ingest/{run_key}/{dataset_id}/{dataset_id}.{kind}.parquet"
-            )
-            checksum_metadata = {
-                "run_key": run_key,
-                "dataset_id": dataset_id,
-                "kind": kind,
-                "sha256": "a" * 64,
-                "row_count": "4",
+    def test_apply_rejects_a_receipt_outside_the_twenty_dataset_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "receipt.json"
+            path.write_text(json.dumps(_receipt(["dataset_0"])))
+            manifest = validate_gcs_manifest(path)
+            env = {
+                "GCLOUD_PROJECT": "dev-project",
+                "BQ_LOCATION": "europe-west2",
+                "CLOUD_TMP_BUCKET": "dev-tmp",
             }
-            objects[name] = SimpleNamespace(
-                generation="987654321",
-                size=123,
-                md5_hash=None,
-                crc32c=None,
-                metadata=checksum_metadata,
-            )
-            parquet_files[kind] = GcsParquet(
-                uri=f"gs://dev-tmp/{name}",
+            with (
+                patch.dict("os.environ", env),
+                patch("load_results_to_bigquery._run_cli") as cli,
+            ):
+                with self.assertRaisesRegex(ValueError, "exactly 20 unique datasets"):
+                    apply_gcs_replacement(manifest)
+            cli.assert_not_called()
+
+    def test_transaction_deletes_and_inserts_only_selected_ids_in_both_tables(self):
+        sql = transaction_sql("dev-project", "ingest_run_dea", "ingest_run_gsea")
+        self.assertEqual(sql.count("DELETE FROM"), 2)
+        self.assertEqual(sql.count("INSERT INTO"), 2)
+        self.assertEqual(sql.count("WHERE dataset_id IN UNNEST(@dataset_ids)"), 4)
+        self.assertIn("BEGIN TRANSACTION", sql)
+        self.assertIn("COMMIT TRANSACTION", sql)
+        self.assertNotIn("TRUNCATE", sql)
+
+    def test_cluster_receipt_objects_are_checked_by_generation_and_metadata(self):
+        manifest_data = _receipt(["first_2026"])
+        dataset = manifest_data["datasets"][0]
+        files = {}
+        for kind in ("dea", "gsea"):
+            value = dataset[kind]
+            name = value["uri"].split("/", 3)[-1]
+            files[kind] = GcsParquet(
+                uri=value["uri"],
                 object_name=name,
-                size_bytes=123,
-                rows=4,
-                sha256="a" * 64,
-                md5_hash=base64.b64encode(b"m" * 16).decode(),
-                crc32c=None,
-                generation=987654321,
+                size_bytes=value["size_bytes"],
+                rows=value["row_count"],
+                sha256=value["sha256"],
+                md5_hash=value["md5_hash"],
+                crc32c=value["crc32c"],
+                generation=int(value["generation"]),
+            )
+        manifest = GcsManifest(
+            manifest_data["run_key"],
+            "dev-tmp",
+            [GcsDatasetFiles("first_2026", files["dea"], files["gsea"])],
+        )
+        responses = []
+        for kind in ("dea", "gsea"):
+            responses.append(
+                json.dumps(
+                    {
+                        "generation": "987654321",
+                        "size": "123",
+                        "md5Hash": None,
+                        "crc32c": None,
+                        "metadata": {
+                            "run_key": manifest.run_key,
+                            "dataset_id": "first_2026",
+                            "kind": kind,
+                            "sha256": "a" * 64,
+                            "row_count": "1",
+                        },
+                    }
+                )
+            )
+        with patch("load_results_to_bigquery._run_cli", side_effect=responses):
+            self.assertEqual(
+                _verify_gcs_objects(manifest, "dev-project"),
+                {item.object_name: item.generation for item in files.values()},
             )
 
-        class Bucket:
-            def get_blob(self, name):
-                return objects[name]
+    def test_load_stage_uses_parquet_list_inference_and_expires_table(self):
+        files = [
+            GcsParquet("gs://dev-tmp/one", "one", 10, 2, "a" * 64, "", None, 1),
+            GcsParquet("gs://dev-tmp/two", "two", 10, 3, "b" * 64, "", None, 2),
+        ]
+        table_json = json.dumps({"schema": {"fields": DEA_SCHEMA}, "numRows": "5"})
+        commands = []
 
-        class StorageClient:
-            def bucket(self, _name):
-                return Bucket()
+        def fake_cli(args):
+            commands.append(args)
+            return table_json if args[0] == "bq" and args[2] == "show" else ""
 
-        manifest = GcsManifest(
-            run_key=run_key,
-            bucket="dev-tmp",
-            datasets=[
-                GcsDatasetFiles(
-                    dataset_id=dataset_id,
-                    dea=parquet_files["dea"],
-                    gsea=parquet_files["gsea"],
-                )
-            ],
-        )
-        self.assertEqual(
-            _verify_gcs_objects(StorageClient(), manifest),
-            {name: 987654321 for name in objects},
-        )
+        with patch("load_results_to_bigquery._run_cli", side_effect=fake_cli):
+            stage = _load_stage(
+                "dev-project", "europe-west2", "0" * 32, "dea", DEA_SCHEMA, files
+            )
+
+        self.assertEqual(stage, "dev-project.perturb_seq.ingest_" + "0" * 32 + "_dea")
+        self.assertIn("--parquet_enable_list_inference=true", commands[0])
+        self.assertIn("--replace=true", commands[0])
+        self.assertEqual(commands[0][-1], "gs://dev-tmp/one,gs://dev-tmp/two")
+        self.assertIn("--expiration=172800", commands[1])
+        self.assertEqual(len(GSEA_SCHEMA), 13)
 
 
 if __name__ == "__main__":
