@@ -245,8 +245,9 @@ batches. One `-resume` covers the entire workflow.
 
 ## Publish DEA/GSEA results to BigQuery
 
-Run these commands from the main repository root in one Bash shell; later steps
-reuse variables created earlier in that shell.
+Run these commands from the main repository root on the control workstation in
+one Bash shell; later steps reuse variables created earlier in that shell.
+Commands explicitly submitted with `cluster.py` run inside Slurm allocations.
 
 Only the final DEA and GSEA Parquets are loaded into BigQuery. Keep the raw and
 filtered H5ADs with the cluster outputs. Continue from BigQuery through the
@@ -254,9 +255,18 @@ shared warehouse, API, search and release-artifact stages using the
 [DWH publication guide](../../../dwh/README.md).
 
 The Parquet payload moves directly from the cluster to a temporary development
-GCS bucket, then from GCS to BigQuery. The loader machine handles only small
-path/size manifests, a temporary resumable-session manifest and a URL-free
-receipt; it never stores the Parquet payloads.
+GCS bucket, then from GCS to BigQuery. The control workstation handles only
+small path/size manifests, a temporary resumable-session manifest and a
+URL-free receipt; it never stores Parquet payloads. It submits BigQuery load
+jobs that read the staged objects server-side.
+
+The cluster SDK executable is
+`/hps/nobackup/mfreeberg/software/google-cloud-sdk/bin/gcloud`. Check
+credentials inside the actual Slurm allocation before using `gcloud storage
+cp`; login-node credentials are not necessarily available to connector jobs.
+The resumable-session procedure below does not require cluster gcloud
+credentials: it creates short-lived upload sessions on the control workstation
+and sends only their small manifest to the cluster uploader.
 
 1. Start with an ID manifest containing one `dataset_id` per selected dataset.
    For this 20-dataset run, confirm there are exactly 20 unique IDs. Set up the
