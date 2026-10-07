@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./trigger_pipeline.sh [--suppress-datasets id1,id2,...] \
-#       [--force-dataset-ids id1,id2,...]
+#       [--force-dataset-ids id1,id2,...] [--release-dataset-ids id1,id2,...]
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
@@ -22,6 +22,8 @@ set -euo pipefail
 SUPPRESS_DATASETS=""
 FORCE_DATASET_IDS=""
 FORCE_DATASET_IDS_SET=false
+RELEASE_DATASET_IDS=""
+RELEASE_DATASET_IDS_SET=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -38,9 +40,18 @@ while [[ $# -gt 0 ]]; do
             FORCE_DATASET_IDS_SET=true
             shift 2
             ;;
+        --release-dataset-ids)
+            if [[ $# -lt 2 ]]; then
+                echo "--release-dataset-ids requires a comma-separated ID list" >&2
+                exit 1
+            fi
+            RELEASE_DATASET_IDS="$2"
+            RELEASE_DATASET_IDS_SET=true
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--suppress-datasets id1,id2,...] [--force-dataset-ids id1,id2,...]"
+            echo "Usage: $0 [--suppress-datasets id1,id2,...] [--force-dataset-ids id1,id2,...] [--release-dataset-ids id1,id2,...]"
             exit 1
             ;;
     esac
@@ -48,6 +59,10 @@ done
 
 if [[ "$FORCE_DATASET_IDS_SET" == true && ! "$FORCE_DATASET_IDS" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]]; then
     echo "ERROR: --force-dataset-ids must be a non-empty comma-separated list of valid dataset IDs" >&2
+    exit 1
+fi
+if [[ "$RELEASE_DATASET_IDS_SET" == true && ! "$RELEASE_DATASET_IDS" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]]; then
+    echo "ERROR: --release-dataset-ids must be a non-empty comma-separated list of valid dataset IDs" >&2
     exit 1
 fi
 
@@ -121,6 +136,7 @@ echo "  GCS Bucket:         $CLOUD_TMP_BUCKET"
 echo "  ES Index Set:       ${ES_INDEX_SET:-<default>}"
 echo "  Suppress Datasets:  ${SUPPRESS_DATASETS:-<none>}"
 echo "  Force Datasets:    ${FORCE_DATASET_IDS:-<none>}"
+echo "  Release Datasets:  ${RELEASE_DATASET_IDS:-<all>}"
 echo "============================================"
 echo ""
 
@@ -143,6 +159,7 @@ _ES_USERNAME=$ES_USERNAME|\
 _ES_PASSWORD=$ES_PASSWORD|\
 _ES_INDEX_SET=$ES_INDEX_SET|\
 _FORCE_DATASET_IDS=$FORCE_DATASET_IDS|\
+_RELEASE_DATASET_IDS=$RELEASE_DATASET_IDS|\
 _SUPPRESS_DATASETS=$SUPPRESS_DATASETS" \
     --async \
     --format='value(id)')
