@@ -47,6 +47,13 @@ the environment for the intended development deployment before invoking the
 trigger; it prints the project and region and immediately submits the build. The
 trigger refuses project IDs containing `prod`.
 
+After `pc_secrets dev`, normalize the bucket variable for the manual commands:
+
+```bash
+export CLOUD_TMP_BUCKET="${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}"
+test -n "$CLOUD_TMP_BUCKET"
+```
+
 Each build writes artifacts under its own temporary prefix:
 `gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/`. Its manifest is under
 `release-staging/$BUILD_ID/`. Existing objects under `release/` do not block a
@@ -91,6 +98,8 @@ the versioned objects therefore leaves the current production artifacts in
 place.
 
 ```bash
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RELEASE_VERSION_PREFIX:=2026.10}"
 files=()
 while IFS= read -r dataset_id; do
   for suffix in metadata.json csv.gz parquet gsea.csv.gz gsea.parquet; do
@@ -98,7 +107,7 @@ while IFS= read -r dataset_id; do
   done
 done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
 gcloud storage cp "${files[@]}" \
-  "gs://perturbation-catalogue-release/2026.10/perturb-seq/"
+  "gs://perturbation-catalogue-release/$RELEASE_VERSION_PREFIX/perturb-seq/"
 ```
 
 For Perturb-seq, finish publication checks before setting reprocessed markers.
@@ -403,6 +412,9 @@ Perturb-seq metadata objects in the versioned serving prefix:
 
 ```bash
 set -euo pipefail
+CLOUD_TMP_BUCKET="${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}"
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RELEASE_VERSION_PREFIX:=2026.10}"
 METADATA_PREFIX="release/marker-refresh-$(date +%s)"
 python3 release/metadata.py --prefix "$METADATA_PREFIX"
 while IFS= read -r dataset_id; do
