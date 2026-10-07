@@ -334,6 +334,26 @@ def fetch_perturb_seq_gsea(
         return {"results": [], "error": error_message}
 
 
+def fetch_dataset_gsea(dataset_id: str, limit: int, offset: int) -> Dict[str, Any]:
+    """Fetch one page of GSEA results for a dataset."""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/v1/perturb-seq/{dataset_id}/gsea",
+            params={"limit": limit, "offset": offset},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return {**response.json(), "error": None}
+    except Exception as exc:
+        error_message = f"Error fetching GSEA data for dataset {dataset_id}: {exc}"
+        print(error_message)
+        return {
+            "results": [],
+            "total_rows_count": 0,
+            "error": error_message,
+        }
+
+
 # Helper function to format value for display
 def format_value(value: Any) -> str:
     """Format a value for display"""

@@ -16,7 +16,9 @@ from utils import (
     BACKEND_URL,
     COLORS,
     fetch_dataset,
+    fetch_dataset_gsea,
     fetch_dataset_rows,
+    format_number,
     reprocessed_badge,
 )
 
@@ -30,6 +32,7 @@ dash.register_page(
 
 DATASET_STORE = "dataset-store"
 DATASET_DATA_STORE = "dataset-data-store"
+DATASET_GSEA_STORE = "dataset-gsea-store"
 ROWS_PER_PAGE = 15
 MAVE_POSITION_RANGE_SIZE = 20
 
@@ -44,6 +47,8 @@ CRISPR_SEARCH_PERTURBATION_GENE = "dataset-crispr-search-perturbation-gene"
 DATASET_DOWNLOAD_LINK = "dataset-download-link"
 DATASET_METADATA_DOWNLOAD_LINK = "dataset-metadata-download-link"
 DATASET_PARQUET_DOWNLOAD_LINK = "dataset-parquet-download-link"
+DATASET_GSEA_PARQUET_DOWNLOAD_LINK = "dataset-gsea-parquet-download-link"
+DATASET_GSEA_CSV_DOWNLOAD_LINK = "dataset-gsea-csv-download-link"
 DATASET_FILTERED_DOWNLOAD_LINK = "dataset-filtered-download-link"
 
 # Map display names to API endpoint modality names
@@ -307,6 +312,7 @@ def layout(dataset_id: Optional[str] = None, **kwargs):
         [
             dcc.Store(id=DATASET_STORE, data={"dataset_id": dataset_id}),
             dcc.Store(id=DATASET_DATA_STORE, data=None),
+            dcc.Store(id=DATASET_GSEA_STORE, data=None),
             dcc.Loading(
                 html.Div(id="dataset-content"),
                 type="circle",
@@ -381,6 +387,13 @@ def _dataset_download_controls(dataset_id: str, modality: str) -> html.Div:
     )
 
 
+def _dataset_gsea_download_url(dataset_id: str, download_format: str) -> str:
+    return (
+        f"{BACKEND_URL}/v1/perturb-seq/{dataset_id}/gsea/download?"
+        f"{urlencode({'format': download_format})}"
+    )
+
+
 def _perturb_seq_header_filters(
     perturbation_value: str = "", effect_value: str = ""
 ) -> Dict[str, Any]:
@@ -410,6 +423,7 @@ def _perturb_seq_header_filters(
     [
         Output("dataset-content", "children"),
         Output(DATASET_DATA_STORE, "data"),
+        Output(DATASET_GSEA_STORE, "data"),
     ],
     Input(DATASET_STORE, "data"),
 )
@@ -421,6 +435,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                 "No dataset ID provided.",
                 className="text-muted text-center",
             ),
+            None,
             None,
         )
 
@@ -444,6 +459,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                 ]
             ),
             None,
+            None,
         )
 
     if not dataset_data:
@@ -461,6 +477,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                     ),
                 ]
             ),
+            None,
             None,
         )
 
@@ -769,6 +786,40 @@ def render_dataset(data: Optional[Dict[str, Any]]):
                 type="circle",
                 color=COLORS["primary"],
             ),
+            (
+                html.Div(
+                    [
+                        html.H3(
+                            "Pathway Enrichment (GSEA)",
+                            className="fw-bold mt-5 mb-3 text-center",
+                            style={"color": COLORS["primary"]},
+                        ),
+                        html.Div(
+                            [
+                                _dataset_download_link(
+                                    "Download GSEA (Parquet)",
+                                    _dataset_gsea_download_url(dataset_id, "parquet"),
+                                    DATASET_GSEA_PARQUET_DOWNLOAD_LINK,
+                                ),
+                                _dataset_download_link(
+                                    "Download GSEA (CSV.gz)",
+                                    _dataset_gsea_download_url(dataset_id, "csv.gz"),
+                                    DATASET_GSEA_CSV_DOWNLOAD_LINK,
+                                ),
+                            ],
+                            className="d-flex justify-content-center flex-wrap gap-2 mb-3",
+                        ),
+                        dcc.Loading(
+                            html.Div(id="dataset-gsea-content"),
+                            type="circle",
+                            color=COLORS["primary"],
+                        ),
+                    ],
+                    className="mt-5",
+                )
+                if is_perturb_seq
+                else None
+            ),
         ],
         style={"maxWidth": "1200px", "margin": "0 auto"},
     )
@@ -793,6 +844,20 @@ def render_dataset(data: Optional[Dict[str, Any]]):
             # CRISPR search filters
             "crispr_perturbation_gene_search": "",
         }
+
+    initial_gsea_store = (
+        {
+            "dataset_id": dataset_id,
+            "results": None,
+            "total_rows_count": None,
+            "current_page": 1,
+            "current_offset": 0,
+            "has_more": False,
+            "error": None,
+        }
+        if is_perturb_seq
+        else None
+    )
 
     provenance_badge = reprocessed_badge(dataset_data.get("perturb_seq_reprocessed"))
     title_children = [
@@ -855,7 +920,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         ]
     )
 
-    return content, initial_data_store
+    return content, initial_data_store, initial_gsea_store
 
 
 def _fetch_data_rows(store_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -968,7 +1033,9 @@ def _paginate_data(store_data: Dict[str, Any], direction: str) -> Dict[str, Any]
     return store_data
 
 
-def _build_pagination_controls(store_data: Dict[str, Any]) -> html.Div:
+def _build_pagination_controls(
+    store_data: Dict[str, Any], pagination_type: str = "dataset-paginate"
+) -> html.Div:
     """Build pagination controls for data rows."""
     current_page = store_data.get("current_page", 1)
     has_more = store_data.get("has_more", False)
@@ -985,7 +1052,7 @@ def _build_pagination_controls(store_data: Dict[str, Any]) -> html.Div:
         buttons.append(
             dbc.Button(
                 "← Previous",
-                id={"type": "dataset-paginate", "direction": "previous"},
+                id={"type": pagination_type, "direction": "previous"},
                 color="secondary",
                 outline=True,
                 size="sm",
@@ -1012,7 +1079,7 @@ def _build_pagination_controls(store_data: Dict[str, Any]) -> html.Div:
         buttons.append(
             dbc.Button(
                 "Next →",
-                id={"type": "dataset-paginate", "direction": "next"},
+                id={"type": pagination_type, "direction": "next"},
                 color="secondary",
                 outline=True,
                 size="sm",
@@ -1085,6 +1152,61 @@ def _render_data_visualization(store_data: Dict[str, Any]) -> html.Div:
     pagination = _build_pagination_controls(store_data)
 
     return html.Div([table_component, pagination])
+
+
+def _render_dataset_gsea(store_data: Dict[str, Any]) -> html.Div:
+    if store_data.get("error"):
+        return html.Div(store_data["error"], className="alert alert-danger")
+
+    results = store_data.get("results") or []
+    if not results:
+        return html.Div(
+            "No GSEA results found for this dataset.",
+            className="text-muted fst-italic text-center py-3",
+        )
+
+    columns = [
+        ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("term", "Term"),
+        ("es", "ES"),
+        ("nes", "NES"),
+        ("pval", "P-value"),
+        ("sidak", "Sidak"),
+        ("fdr", "FDR"),
+        ("geneset_size", "Geneset Size"),
+        ("cell_type", "Cell Type"),
+    ]
+    table = html.Table(
+        [
+            html.Thead(
+                html.Tr([html.Th(label) for _, label in columns]),
+                className="table-light",
+            ),
+            html.Tbody(
+                [
+                    html.Tr(
+                        [
+                            html.Td(
+                                format_number(row.get(field))
+                                if field in {"es", "nes", "pval", "sidak", "fdr"}
+                                else _format_value(row.get(field))
+                            )
+                            for field, _ in columns
+                        ]
+                    )
+                    for row in results
+                ]
+            ),
+        ],
+        className="table table-sm table-hover table-striped mb-0",
+        style={"fontSize": "0.9rem", "minWidth": "900px"},
+    )
+    return html.Div(
+        [
+            html.Div(table, style={"overflowX": "auto"}),
+            _build_pagination_controls(store_data, "dataset-gsea-paginate"),
+        ]
+    )
 
 
 @callback(
@@ -1186,6 +1308,50 @@ def render_dataset_data(
     content = _render_data_visualization(store_data)
 
     return content, store_data
+
+
+@callback(
+    [
+        Output("dataset-gsea-content", "children"),
+        Output(DATASET_GSEA_STORE, "data", allow_duplicate=True),
+    ],
+    [
+        Input(DATASET_GSEA_STORE, "data"),
+        Input({"type": "dataset-gsea-paginate", "direction": ALL}, "n_clicks"),
+    ],
+    prevent_initial_call=True,
+)
+def render_dataset_gsea_page(store_data: Optional[Dict[str, Any]], _paginate_clicks):
+    if not store_data:
+        return html.Div(), store_data
+
+    triggered_id = dash.callback_context.triggered_id
+    if isinstance(triggered_id, dict):
+        direction = triggered_id.get("direction")
+        if direction == "previous" or (
+            direction == "next" and store_data.get("has_more")
+        ):
+            store_data = _paginate_data(store_data, direction)
+            store_data["error"] = None
+            should_fetch = True
+        else:
+            should_fetch = False
+    else:
+        should_fetch = store_data.get("results") is None
+
+    if should_fetch:
+        response = fetch_dataset_gsea(
+            store_data["dataset_id"], ROWS_PER_PAGE, store_data["current_offset"]
+        )
+        store_data["results"] = response.get("results") or []
+        store_data["total_rows_count"] = response.get("total_rows_count") or 0
+        store_data["error"] = response.get("error")
+        store_data["has_more"] = (
+            store_data["current_offset"] + len(store_data["results"])
+            < store_data["total_rows_count"]
+        )
+
+    return _render_dataset_gsea(store_data), store_data
 
 
 @callback(
