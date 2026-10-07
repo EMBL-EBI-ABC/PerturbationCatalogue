@@ -394,6 +394,23 @@ dbt run --profiles-dir . --select dataset_summary
 cd ..
 python3 bq_to_elastic/bq_to_es_projector.py \
   --dataset-metadata ../be/dataset_metadata.json
+cd ..
+```
+
+The published metadata JSONs also contain the dataset summary. Regenerate
+metadata into a unique temporary prefix, then replace only the selected
+Perturb-seq metadata objects in the versioned serving prefix:
+
+```bash
+set -euo pipefail
+METADATA_PREFIX="release/marker-refresh-$(date +%s)"
+python3 release/metadata.py --prefix "$METADATA_PREFIX"
+while IFS= read -r dataset_id; do
+  gcloud storage cp \
+    "gs://$CLOUD_TMP_BUCKET/$METADATA_PREFIX/perturb-seq/$dataset_id.metadata.json" \
+    "gs://perturbation-catalogue-release/$RELEASE_VERSION_PREFIX/perturb-seq/$dataset_id.metadata.json"
+done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+gcloud storage rm --recursive "gs://$CLOUD_TMP_BUCKET/$METADATA_PREFIX/**"
 ```
 
 Finally verify the dataset API responses, result-table row counts and the
