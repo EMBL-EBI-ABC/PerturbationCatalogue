@@ -40,21 +40,47 @@ gcloud services enable servicenetworking.googleapis.com --project=$GCLOUD_PROJEC
 
 ### 3. Environment variables
 
-The trigger script requires the following variables (all provided by `pc_secrets dev`): `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`, `BQ_LOCATION`, `CLOUD_TMP_BUCKET` (or legacy `GCLOUD_TMP_BUCKET`), `PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`.
+The trigger script requires `GCLOUD_PROJECT`, `GCLOUD_REGION`, `BQ_DATASET`,
+`BQ_LOCATION`, `CLOUD_TMP_BUCKET` (or legacy `GCLOUD_TMP_BUCKET`),
+`PG_CONN_INTERNAL`, `ES_URL`, `ES_USERNAME` and `ES_PASSWORD`. Source and verify
+the environment for the intended development deployment before invoking the
+trigger; it prints the project and region and immediately submits the build. The
+trigger refuses project IDs containing `prod`.
 
-Each pipeline run first requires an empty `gs://$CLOUD_TMP_BUCKET/release`
-prefix. Release staging tables are clustered by `dataset_id`, then one Cloud
-Run Job task per dataset streams the dataset-level row from `dataset_summary`
-as JSON plus CSV.GZ and Parquet data into that prefix, grouped by `crispr`,
-`perturb-seq`, and `mave`. The staging tables and task job are removed after
-completion; move the reviewed prefix to the release bucket manually.
+Each build writes artifacts under its own temporary prefix:
+`gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/`. Its manifest is under
+`release-staging/$BUILD_ID/`. Existing objects under `release/` do not block a
+build, and a failed build removes only its own staging and `release/$BUILD_ID/`
+objects. Release staging tables and the Cloud Run Job are removed after the
+build. A successful run's artifacts remain in the temporary prefix for manual
+review, along with its small `release-staging/$BUILD_ID/manifest.json`.
+No empty global `release/` prefix is required.
+
+The release stage clusters source data by `dataset_id`, then runs one Cloud Run
+Job task per dataset. It writes dataset metadata JSON, CSV.GZ and Parquet files
+under the modality folders `crispr`, `perturb-seq` and `mave`. To review a
+specific build, list only its Perturb-seq objects:
+
+```bash
+gcloud storage ls --long --recursive \
+  "gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/perturb-seq/"
+```
+
+Compare the dataset IDs and the three expected file types for each selected
+dataset with the run manifest; check that every object has a nonzero size.
+Copy reviewed objects manually to the serving bucket only after verifying that
+the destination is isolated to the intended deployment. Stop if development
+and production use the same serving bucket, because copying would expose the
+new files to both deployments. Proper artifact versioning and promotion is a
+separate future protocol.
 
 To regenerate only metadata JSONs, run `python3 release/metadata.py` with the
 same project, dataset, location, and bucket options.
 
 `OPENTARGETS_RELEASE` is optional and defaults to `26.03`. `ES_INDEX_SET` is
-optional and defaults to empty. Its value is appended directly to all three
-Elasticsearch index names.
+optional and defaults to empty. The projector creates a unique timestamped
+index set on each run; the optional suffix is appended to index names and
+aliases.
 
 ### 4. Grant IAM permissions to Cloud Build service account
 
@@ -130,6 +156,20 @@ To exclude datasets from metadata tables (while keeping them in data tables):
 ./dwh/trigger_pipeline.sh --suppress-datasets "dataset_id_1,dataset_id_2"
 ```
 
+### Force-refresh replaced Perturb-seq datasets
+
+When selected DEA/GSEA rows were replaced in BigQuery, pass their exact IDs so
+Postgres reloads those partitions even if `max_ingested_at` did not change:
+
+```bash
+./dwh/trigger_pipeline.sh --force-dataset-ids "dataset_id_1,dataset_id_2"
+```
+
+The preflight requires every ID to exist in `perturb_seq.metadata`; an ID may
+have zero result rows in either result table. It replaces only those Perturb-seq
+partitions, clearing stale rows when a result table is empty; other modalities
+and unselected Perturb-seq data use the normal incremental sync.
+
 ### What happens
 
 1. The script submits a Cloud Build job and starts streaming logs
@@ -177,6 +217,9 @@ Additional dbt commands:
 
 ### BQ → Postgres
 
+Cloud Build uses `PG_CONN_INTERNAL` to reach Cloud SQL over the private VPC.
+For a manual run from an approved network path, use `PG_CONN` instead.
+
 ```bash
 cd dwh
 python3 -m venv .venv && source .venv/bin/activate
@@ -189,6 +232,12 @@ python3 bq_to_postgres/bq_to_postgres.py \
     --drop-and-recreate-indexes
 ```
 
+For datasets whose BigQuery rows were explicitly replaced, pass their exact
+comma-separated IDs with `--force-dataset-ids`. This drops and reloads only
+those dataset partitions in `perturb_seq_dea` and `perturb_seq_gsea`, even when
+their `max_ingested_at` timestamps are unchanged. Without this option the
+incremental sync selects replacements by timestamp.
+
 ### BQ → Elasticsearch
 
 ```bash
@@ -198,12 +247,45 @@ pip install -r requirements.txt
 python3 bq_to_elastic/bq_to_es_projector.py --dataset-metadata ../be/dataset_metadata.json
 ```
 
-With an empty `ES_INDEX_SET`, projections use dated indexes and update the
-`dataset-summary`, `target-summary`, and `landing-page-summary` aliases, keeping
-the three newest dated indexes in each family. With a custom suffix, for example
-`-ensg-dev`, projections overwrite the standalone `dataset-summary-ensg-dev`,
-`target-summary-ensg-dev`, and `landing-page-summary-ensg-dev` indexes without
-updating aliases or pruning old indexes.
+The projector loads all three summary tables into new timestamped indexes,
+then moves the
+`dataset-summary`, `target-summary` and `landing-page-summary` aliases only
+after all three loads succeed. It keeps the three newest indexes per family.
+With a custom suffix such as `-ensg-dev`, the dated names and aliases include
+that suffix.
+
+## Mark datasets as reprocessed
+
+Do not check or set `perturb_seq.reprocessed_datasets` before publication. Once
+BigQuery replacement, Postgres/API synchronization, Elasticsearch metadata and
+serving-bucket artifact checks have all succeeded, add the exact IDs using an
+idempotent BigQuery merge:
+
+```sql
+MERGE `PROJECT_ID.perturb_seq.reprocessed_datasets` AS target
+USING (
+  SELECT dataset_id
+  FROM UNNEST(["dataset_id_1", "dataset_id_2"]) AS dataset_id
+) AS source
+ON target.dataset_id = source.dataset_id
+WHEN NOT MATCHED THEN
+  INSERT (dataset_id) VALUES (source.dataset_id);
+```
+
+Replace `PROJECT_ID` and the example IDs with the development project and the
+exact IDs from the successful run manifest. Then refresh the dataset mart and
+search index so the reprocessed flag is visible in dataset discovery:
+
+```bash
+cd dwh/bq_dbt
+dbt run --profiles-dir . --select dataset_summary
+cd ..
+python3 bq_to_elastic/bq_to_es_projector.py \
+  --dataset-metadata ../be/dataset_metadata.json
+```
+
+Finally verify the dataset API responses, result-table row counts and the
+`perturb_seq_reprocessed` value in the development dataset-summary index.
 
 ## Creating the PostgreSQL instance
 
