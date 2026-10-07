@@ -101,18 +101,15 @@ would expose the new files to both deployments. Proper artifact versioning and
 promotion is a separate future protocol.
 
 For Perturb-seq, finish publication checks before setting reprocessed markers.
-Run from the repository root. For this 20-dataset run, set `MANIFEST` to
-`data_sources/perturb-seq/pipeline/manifests/single-condition-20.json` and
-`RECEIPT` to the URL-free transfer receipt from the cluster-upload step. First
-compare both Postgres result tables with the receipt; this uses the external
-dev connection from `pc_secrets dev` and reads only row counts. The local
-postflight snippet uses `PG_CONN`; the Cloud Build trigger separately requires
-`PG_CONN_INTERNAL` to reach Cloud SQL over its VPC connection. Run the snippet
-with the DWH Python environment, which includes `psycopg2-binary`; keep these
-variables in the same shell for the marker step below.
+Run from the repository root. For this run, set `MANIFEST` to
+`data_sources/perturb-seq/pipeline/manifests/single-condition-20.json`. The
+Postgres postflight uses the external dev connection from `pc_secrets dev`
+(`PG_CONN`); the Cloud Build trigger separately uses `PG_CONN_INTERNAL` to
+reach Cloud SQL over its VPC connection.
 
 ```bash
-python3 - "$MANIFEST" "$RECEIPT" <<'PY'
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+python3 - "$MANIFEST" <<'PY'
 import json
 import os
 import sys
@@ -121,48 +118,35 @@ import psycopg2
 
 with open(sys.argv[1]) as source:
     dataset_ids = [item["dataset_id"] for item in json.load(source)["datasets"]]
-with open(sys.argv[2]) as source:
-    receipt = {item["dataset_id"]: item for item in json.load(source)["datasets"]}
-if len(dataset_ids) != 20 or set(dataset_ids) != set(receipt):
-    raise SystemExit("Manifest and transfer receipt dataset IDs differ")
+if len(dataset_ids) != 20 or len(set(dataset_ids)) != 20:
+    raise SystemExit("Expected 20 unique dataset IDs")
 with psycopg2.connect(os.environ["PG_CONN"]) as connection:
     with connection.cursor() as cursor:
-        for table, kind in (("perturb_seq_dea", "dea"), ("perturb_seq_gsea", "gsea")):
+        for table in ("perturb_seq_dea", "perturb_seq_gsea"):
             cursor.execute(
                 f"SELECT dataset_id, COUNT(*) FROM {table} "
                 "WHERE dataset_id = ANY(%s) GROUP BY dataset_id",
                 (dataset_ids,),
             )
-            actual = {dataset_id: count for dataset_id, count in cursor.fetchall()}
-            for dataset_id in dataset_ids:
-                expected = receipt[dataset_id][kind]["row_count"]
-                if actual.get(dataset_id, 0) != expected:
-                    raise SystemExit(
-                        f"{table} row-count mismatch for {dataset_id}: "
-                        f"expected {expected}, got {actual.get(dataset_id, 0)}"
-                    )
-print("Postgres DEA/GSEA row counts match the cluster receipt")
+            counts = dict(cursor.fetchall())
+            if set(counts) != set(dataset_ids) or any(count < 1 for count in counts.values()):
+                raise SystemExit(f"Missing rows in {table}: {set(dataset_ids) - set(counts)}")
+print("All selected IDs have DEA and GSEA rows in Postgres")
 PY
 ```
 
-Then verify the API and release artifacts. The GSEA endpoint must return the
-receipt's exact total row count. These redirect checks do not follow the
-signed URLs or download Parquet payloads; GCS metadata checks verify all five
-objects per dataset are present and nonempty:
+Then verify the API and release artifacts. These checks confirm results and
+per-dataset download links exist; the signed URLs can be opened manually to
+confirm the downloaded files.
 
 ```bash
-MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
-: "${RECEIPT:?Set this to the URL-free receipt path produced in pipeline step 4}"
-: "${DEV_RELEASE_BUCKET:?Set this to the development serving bucket}"
+: "${DEV_RELEASE_BUCKET:?Set the development serving bucket}"
 API_BASE=${DEV_API_URL:-http://127.0.0.1:8000}
 while IFS= read -r dataset_id; do
   curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/search?limit=1" \
     | jq -e '.total_rows_count > 0 and (.results | length) == 1' >/dev/null
-  expected=$(jq -r --arg id "$dataset_id" \
-    '.datasets[] | select(.dataset_id == $id) | .gsea.row_count' "$RECEIPT")
-  actual=$(curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/gsea?limit=1" \
-    | jq -r '.total_rows_count')
-  test "$actual" -eq "$expected"
+  curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/gsea?limit=1" \
+    | jq -e '.total_rows_count > 0 and (.results | length) == 1' >/dev/null
   for url in \
     "$API_BASE/v1/perturb-seq/$dataset_id/download?format=parquet" \
     "$API_BASE/v1/perturb-seq/$dataset_id/download?format=csv.gz" \

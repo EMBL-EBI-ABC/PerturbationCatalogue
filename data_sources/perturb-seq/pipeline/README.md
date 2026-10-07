@@ -245,192 +245,78 @@ batches. One `-resume` covers the entire workflow.
 
 ## Publish DEA/GSEA results to BigQuery
 
-Run these commands from the main repository root on the control workstation in
-one Bash shell; later steps reuse variables created earlier in that shell.
-Commands explicitly submitted with `cluster.py` run inside Slurm allocations.
+This is the Perturb-seq-specific publication step. After BigQuery, continue with
+the shared [DWH publication guide](../../../dwh/README.md).
 
-Only the final DEA and GSEA Parquets are loaded into BigQuery. Keep the raw and
-filtered H5ADs with the cluster outputs. Continue from BigQuery through the
-shared warehouse, API, search and release-artifact stages using the
-[DWH publication guide](../../../dwh/README.md).
+Set up the development environment and confirm all selected datasets exist in
+BigQuery metadata, Elasticsearch, and the development API. Do not set the
+reprocessed markers here; the DWH guide sets them after the full publication.
 
-The Parquet payload moves directly from the cluster to a temporary development
-GCS bucket, then from GCS to BigQuery. The workstation handles only small path,
-size and URL-free receipt files. Cluster jobs use the approved connector's
-`--gcloud-auth` option, which exposes the host Google Cloud SDK on `PATH` for
-those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
+```bash
+set -euo pipefail
+umask 077
+ID_MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+ids_json=$(jq -ce '[.datasets[].dataset_id]' "$ID_MANIFEST")
+test "$(jq -r 'length' <<<"$ids_json")" -eq 20
+test "$(jq -r 'unique | length' <<<"$ids_json")" -eq 20
+pc_secrets dev
+case "$GCLOUD_PROJECT" in *prod*) echo 'Refusing a production project' >&2; exit 1;; esac
+BQ_LOCATION=${BQ_LOCATION:?Set BQ_LOCATION}
+CLOUD_TMP_BUCKET=${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}
+test -n "$CLOUD_TMP_BUCKET"
+DEV_API_URL=${DEV_API_URL:-http://127.0.0.1:8000}
+found=$(bq query --project_id="$GCLOUD_PROJECT" --location="$BQ_LOCATION" \
+  --use_legacy_sql=false --format=csv \
+  "SELECT COUNT(DISTINCT dataset_id) FROM \`$GCLOUD_PROJECT.perturb_seq.metadata\` WHERE dataset_id IN UNNEST($ids_json)" \
+  | tail -n 1)
+test "$found" -eq 20
+es_alias="dataset-summary${ES_INDEX_SET:-}"
+curl -fsS -u "$ES_USERNAME:$ES_PASSWORD" -H 'Content-Type: application/json' \
+  --data-binary "{\"size\":100,\"query\":{\"terms\":{\"dataset_id\":$ids_json}}}" \
+  "$ES_URL/$es_alias/_search" \
+  | jq -e --argjson ids "$ids_json" '.hits.total.value == 20 and ([.hits.hits[]._source.dataset_id] | unique | sort) == ($ids | sort)' >/dev/null
+while IFS= read -r dataset_id; do
+  curl -fsS "$DEV_API_URL/dataset/$dataset_id" \
+    | jq -e --arg id "$dataset_id" '.dataset_id == $id' >/dev/null
+done < <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST")
+```
 
-1. Start with an ID manifest containing one `dataset_id` per selected dataset.
-   For this 20-dataset run, confirm there are exactly 20 unique IDs. Set up the
-   development environment and verify that every ID exists in BigQuery metadata,
-   the Elasticsearch dataset-summary alias and the development dataset API:
+The Parquet files move directly from HPS to the temporary GCS bucket using the
+cluster's authenticated `gcloud`; BigQuery loads them from GCS. The workstation
+sends only the small worker and ID manifest through the approved private
+connector. Read `PerturbationCatalogueContext/perturb-seq/cluster/README.md`
+before using the connector.
 
-   ```json
-   {
-     "datasets": [
-       {"dataset_id": "example_2026"}
-     ]
-   }
-   ```
+```bash
+CONTEXT_ROOT=${PERTURBATION_CATALOGUE_CONTEXT:-../PerturbationCatalogueContext}
+CLUSTER_CONNECTOR="$CONTEXT_ROOT/perturb-seq/cluster/cluster.py"
+test -f "$CLUSTER_CONNECTOR"
+HPS_ROOT=/hps/nobackup/mfreeberg
+RUN_TAG="ps_$(date -u +%Y%m%d_%H%M%S)"
+WORKER_LOCAL=data_sources/perturb-seq/pipeline/dea-gsea/publish_cluster_results.py
+WORKER_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_publish.py"
+ID_MANIFEST_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_ids.json"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --upload "$WORKER_LOCAL" "$WORKER_REMOTE"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --upload "$ID_MANIFEST" "$ID_MANIFEST_REMOTE"
+python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
+  --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 2 --mem 4G --time 03:00:00 -- \
+  python3 "$WORKER_REMOTE" --manifest "$ID_MANIFEST_REMOTE" \
+    --project "$GCLOUD_PROJECT" --location "$BQ_LOCATION" \
+    --bucket "$CLOUD_TMP_BUCKET"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --cwd "$HPS_ROOT/cache" --cpus 1 --mem 1G --time 00:05:00 -- \
+  /usr/bin/rm -f -- "$WORKER_REMOTE" "$ID_MANIFEST_REMOTE"
+```
 
-   ```bash
-   set -euo pipefail
-   umask 077
-   ID_MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
-   listed=$(jq -r '.datasets | length' "$ID_MANIFEST")
-   unique=$(jq -r '[.datasets[].dataset_id] | unique | length' "$ID_MANIFEST")
-   test "$listed" -eq 20 && test "$unique" -eq 20
-   jq -e 'all(.datasets[].dataset_id; type == "string" and test("^[A-Za-z0-9_-]+$"))' \
-     "$ID_MANIFEST" >/dev/null
-   DATASET_IDS=$(jq -r '[.datasets[].dataset_id] | join(",")' "$ID_MANIFEST")
-   ids_json=$(jq -c '[.datasets[].dataset_id]' "$ID_MANIFEST")
-   pc_secrets dev
-   case "$GCLOUD_PROJECT" in *prod*) echo 'Refusing a production project' >&2; exit 1;; esac
-   DEV_API_URL=${DEV_API_URL:-http://127.0.0.1:8000}
-   test -n "$BQ_LOCATION" && test -n "$CLOUD_TMP_BUCKET" && test -n "$DEV_API_URL"
-   found=$(bq query --project_id="$GCLOUD_PROJECT" --location="$BQ_LOCATION" \
-     --use_legacy_sql=false --format=csv \
-     "SELECT COUNT(DISTINCT dataset_id) FROM \`$GCLOUD_PROJECT.perturb_seq.metadata\` WHERE dataset_id IN UNNEST($ids_json)" \
-     | tail -n 1)
-   test "$found" -eq 20
-   es_alias="dataset-summary${ES_INDEX_SET:-}"
-   curl -fsS -u "$ES_USERNAME:$ES_PASSWORD" \
-     -H 'Content-Type: application/json' \
-     --data-binary "{\"size\":100,\"query\":{\"terms\":{\"dataset_id\":$ids_json}}}" \
-     "$ES_URL/$es_alias/_search" | jq -e --argjson ids "$ids_json" '
-       .hits.total.value == ($ids | length)
-       and ([.hits.hits[]._source.dataset_id] | unique | sort) == ($ids | unique | sort)
-     ' >/dev/null
-   while IFS= read -r dataset_id; do
-     curl -fsS "$DEV_API_URL/dataset/$dataset_id" \
-       | jq -e --arg id "$dataset_id" '.dataset_id == $id' >/dev/null
-   done < <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST")
-   ```
-
-   Do not check `perturb_seq.reprocessed_datasets` here. Set its markers only
-   after the complete development publication succeeds.
-
-2. Before cluster operations, follow the approved private connector and
-   access rules in `PerturbationCatalogueContext/perturb-seq/cluster/README.md`.
-   Set the private context path and HPS root used by that guide. Upload the small
-   worker script, then inventory the exact final Parquets on the cluster.
-   Inventory stops on duplicate or missing products, schema mismatches or rows
-   whose `dataset_id` differs from the selected ID:
-
-   ```bash
-   CONTEXT_ROOT=${PERTURBATION_CATALOGUE_CONTEXT:-../PerturbationCatalogueContext}
-   CLUSTER_CONNECTOR="$CONTEXT_ROOT/perturb-seq/cluster/cluster.py"
-   test -f "$CLUSTER_CONNECTOR"
-   HPS_ROOT=/hps/nobackup/mfreeberg
-   PIPELINE_DIR="$HPS_ROOT/PerturbationCatalogue/data_sources/perturb-seq/pipeline"
-   RUN_TAG="ps_$(date -u +%Y%m%d_%H%M%S)"
-   RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/perturb-seq-publish.XXXXXX")
-   chmod 700 "$RUN_DIR"
-   ID_MANIFEST_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_ids.json"
-   WORKER_LOCAL=data_sources/perturb-seq/pipeline/dea-gsea/cluster_upload.py
-   WORKER_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_cluster_upload.py"
-   SOURCE_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_sources.json"
-   SOURCE_MANIFEST="$RUN_DIR/${RUN_TAG}_sources.json"
-   RECEIPT_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_receipt.json"
-   RECEIPT_LOCAL="$RUN_DIR/${RUN_TAG}_gcs_receipt.json"
-
-   WORKER_BYTES=$(wc -c < "$WORKER_LOCAL")
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$WORKER_BYTES" \
-     --upload "$WORKER_LOCAL" "$WORKER_REMOTE"
-   # Wait for that upload job to finish successfully before continuing.
-   ID_MANIFEST_BYTES=$(wc -c < "$ID_MANIFEST")
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$ID_MANIFEST_BYTES" \
-     --upload "$ID_MANIFEST" "$ID_MANIFEST_REMOTE"
-   # Wait for that upload job to finish successfully before continuing.
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
-     --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 1 --mem 2G --time 00:15:00 -- \
-     singularity exec \
-       --bind "$HPS_ROOT/PerturbationCatalogue" \
-       --bind "$HPS_ROOT/cache" \
-       --bind "$HPS_ROOT/perturb_seq_fastq/results" \
-       --env "PYTHONPATH=$PIPELINE_DIR/dea-gsea" \
-       "$PIPELINE_DIR/perturb_seq.sif" \
-     python3 "$WORKER_REMOTE" inventory \
-       --dataset-ids "$DATASET_IDS" --output "$SOURCE_REMOTE"
-   # Check the returned job ID with `cluster.py status`; require COMPLETED 0:0.
-   python3 -B "$CLUSTER_CONNECTOR" read "$SOURCE_REMOTE" --tail 0 > "$SOURCE_MANIFEST"
-   jq -e --argjson n 20 '(.datasets | length) == $n and ([.datasets[].dataset_id] | unique | length) == $n' \
-     "$SOURCE_MANIFEST" >/dev/null
-   diff -u \
-     <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST" | sort) \
-     <(jq -r '.datasets[].dataset_id' "$SOURCE_MANIFEST" | sort)
-   ```
-
-3. Upload from the cluster with the approved host CLI. The uploader uses the
-   checksums and row counts recorded by inventory, uploads each file with a
-   create-only generation precondition, then verifies object metadata, size,
-   checksum when available and generation. Wait for the job to show
-   `COMPLETED 0:0`, then read its URL-free receipt:
-
-   ```bash
-   python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
-     --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 4 --mem 8G --time 03:00:00 -- \
-     env "GCLOUD_PROJECT=$GCLOUD_PROJECT" "BQ_LOCATION=$BQ_LOCATION" \
-       "CLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET" \
-       python3 "$WORKER_REMOTE" upload --manifest "$SOURCE_REMOTE" \
-         --receipt "$RECEIPT_REMOTE" --project "$GCLOUD_PROJECT" \
-         --bucket "$CLOUD_TMP_BUCKET" --delete-worker
-   # Check the returned job ID with `cluster.py status`; require COMPLETED 0:0.
-   python3 -B "$CLUSTER_CONNECTOR" read "$RECEIPT_REMOTE" --tail 0 \
-     > "$RECEIPT_LOCAL"
-   diff -u \
-     <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST" | sort) \
-     <(jq -r '.datasets[].dataset_id' "$RECEIPT_LOCAL" | sort)
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
-     --cpus 1 --mem 1G --time 00:05:00 -- \
-     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE"
-   ```
-
-   `RUN_DIR` is outside the checkout with mode 0700, and `umask 077` keeps local
-   manifests private. If an upload job fails after creating some objects, the
-   worker removes only those objects at their verified generations. If BigQuery
-   apply fails, retain the receipt and retry; successful apply removes the exact
-   GCS generations after the transaction and final count checks.
-
-4. Dry-run locally and review all 20 IDs and row counts. This step validates the
-   URL-free receipt only; it uses Python's standard library and makes no cloud
-   calls. Then run the apply from the
-   cluster. The loader requires the receipt to match the selected 20-ID
-   manifest, rechecks object size, generation, checksums when available and
-   metadata, loads only those 40 objects into expiring BigQuery staging tables,
-   enables Parquet LIST inference for GSEA, verifies schemas and per-ID row
-   counts, and atomically replaces only the selected IDs in both result tables.
-   It checks final counts and deletes the exact GCS object generations only
-   after the transaction succeeds:
-
-   ```bash
-   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
-     --gcs-manifest "$RECEIPT_LOCAL" --id-manifest "$ID_MANIFEST" \
-     --project "$GCLOUD_PROJECT"
-   python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
-     --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 1 --mem 8G --time 03:00:00 -- \
-     env "GCLOUD_PROJECT=$GCLOUD_PROJECT" "BQ_LOCATION=$BQ_LOCATION" \
-       "CLOUD_TMP_BUCKET=$CLOUD_TMP_BUCKET" \
-       python3 "$PIPELINE_DIR/dea-gsea/load_results_to_bigquery.py" \
-         --gcs-manifest "$RECEIPT_REMOTE" --id-manifest "$ID_MANIFEST_REMOTE" \
-         --project "$GCLOUD_PROJECT" --apply
-   # Check the returned job ID with `cluster.py status`; require COMPLETED 0:0.
-   ```
-
-5. After the loader succeeds, continue with the shared
-   [DWH publication guide](../../../dwh/README.md) for PostgreSQL, Elasticsearch,
-   release artifacts, API/UI verification and reprocessed markers. These stages
-   are the same for Perturb-seq and other modalities. After BQ apply succeeds,
-   remove the local receipt and run directory, then remove the exact remote
-   manifest and receipt paths through a short allocated connector job:
-
-   ```bash
-   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
-     --cpus 1 --mem 1G --time 00:05:00 -- \
-     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE" "$ID_MANIFEST_REMOTE"
-   rm -f -- "$SOURCE_MANIFEST" "$RECEIPT_LOCAL"
-   rmdir -- "$RUN_DIR"
-   ```
+The worker requires 20 unique IDs and exactly one DEA and GSEA Parquet for each.
+It uploads the 40 files to a unique temporary prefix, deletes only these IDs
+from `pertpy_dea` and `pertpy_gsea`, and uses `bq load` to append the files to
+the existing tables. BigQuery checks the table schemas. On success, the worker
+removes its temporary GCS prefix. If a job fails, use its connector log to
+resume or clean up that run's prefix before retrying. Keep only the raw and
+filtered H5ADs and final DEA/GSEA Parquets on the cluster.
 
 ## Benchmarks
 
