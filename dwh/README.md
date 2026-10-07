@@ -50,11 +50,13 @@ trigger refuses project IDs containing `prod`.
 Each build writes artifacts under its own temporary prefix:
 `gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/`. Its manifest is under
 `release-staging/$BUILD_ID/`. Existing objects under `release/` do not block a
-build, and a failed build removes only its own staging and `release/$BUILD_ID/`
-objects. Release staging tables and the Cloud Run Job are removed after the
-build. A successful run's artifacts remain in the temporary prefix for manual
-review, along with its small `release-staging/$BUILD_ID/manifest.json`.
-No empty global `release/` prefix is required.
+build: Cloud Storage prefixes are virtual, and the preflight checks only that
+this unique `release/$BUILD_ID/` path has no objects from an earlier run. A
+failed build removes only its own staging and `release/$BUILD_ID/` objects.
+Release staging tables and the Cloud Run Job are removed after the build. A
+successful run's artifacts remain in the temporary prefix for manual review,
+along with its small `release-staging/$BUILD_ID/manifest.json`. No global
+`release/` prefix needs to be empty.
 
 The release stage clusters source data by `dataset_id`, then runs one Cloud Run
 Job task per selected dataset. It writes metadata JSON, CSV.GZ and Parquet files
@@ -97,6 +99,92 @@ gcloud storage cp "${files[@]}" "gs://$DEV_RELEASE_BUCKET/perturb-seq/"
 Stop if development and production use the same serving bucket, because copying
 would expose the new files to both deployments. Proper artifact versioning and
 promotion is a separate future protocol.
+
+For Perturb-seq, finish publication checks before setting reprocessed markers.
+Run from the repository root. For this 20-dataset run, set `MANIFEST` to
+`data_sources/perturb-seq/pipeline/manifests/single-condition-20.json` and
+`RECEIPT` to the URL-free transfer receipt from the cluster-upload step. First
+compare both Postgres result tables with the receipt; this uses the external
+dev connection from `pc_secrets dev` and reads only row counts. The local
+postflight snippet uses `PG_CONN`; the Cloud Build trigger separately requires
+`PG_CONN_INTERNAL` to reach Cloud SQL over its VPC connection. Run the snippet
+with the DWH Python environment, which includes `psycopg2-binary`; keep these
+variables in the same shell for the marker step below.
+
+```bash
+python3 - "$MANIFEST" "$RECEIPT" <<'PY'
+import json
+import os
+import sys
+
+import psycopg2
+
+with open(sys.argv[1]) as source:
+    dataset_ids = [item["dataset_id"] for item in json.load(source)["datasets"]]
+with open(sys.argv[2]) as source:
+    receipt = {item["dataset_id"]: item for item in json.load(source)["datasets"]}
+if len(dataset_ids) != 20 or set(dataset_ids) != set(receipt):
+    raise SystemExit("Manifest and transfer receipt dataset IDs differ")
+with psycopg2.connect(os.environ["PG_CONN"]) as connection:
+    with connection.cursor() as cursor:
+        for table, kind in (("perturb_seq_dea", "dea"), ("perturb_seq_gsea", "gsea")):
+            cursor.execute(
+                f"SELECT dataset_id, COUNT(*) FROM {table} "
+                "WHERE dataset_id = ANY(%s) GROUP BY dataset_id",
+                (dataset_ids,),
+            )
+            actual = {dataset_id: count for dataset_id, count in cursor.fetchall()}
+            for dataset_id in dataset_ids:
+                expected = receipt[dataset_id][kind]["row_count"]
+                if actual.get(dataset_id, 0) != expected:
+                    raise SystemExit(
+                        f"{table} row-count mismatch for {dataset_id}: "
+                        f"expected {expected}, got {actual.get(dataset_id, 0)}"
+                    )
+print("Postgres DEA/GSEA row counts match the cluster receipt")
+PY
+```
+
+Then verify the API and release artifacts. The GSEA endpoint must return the
+receipt's exact total row count. These redirect checks do not follow the
+signed URLs or download Parquet payloads; GCS metadata checks verify all five
+objects per dataset are present and nonempty:
+
+```bash
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RECEIPT:?Set this to the URL-free receipt path produced in pipeline step 4}"
+: "${DEV_RELEASE_BUCKET:?Set this to the development serving bucket}"
+API_BASE=${DEV_API_URL:-http://127.0.0.1:8000}
+while IFS= read -r dataset_id; do
+  curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/search?limit=1" \
+    | jq -e '.total_rows_count > 0 and (.results | length) == 1' >/dev/null
+  expected=$(jq -r --arg id "$dataset_id" \
+    '.datasets[] | select(.dataset_id == $id) | .gsea.row_count' "$RECEIPT")
+  actual=$(curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/gsea?limit=1" \
+    | jq -r '.total_rows_count')
+  test "$actual" -eq "$expected"
+  for url in \
+    "$API_BASE/v1/perturb-seq/$dataset_id/download?format=parquet" \
+    "$API_BASE/v1/perturb-seq/$dataset_id/download?format=csv.gz" \
+    "$API_BASE/v1/perturb-seq/$dataset_id/gsea/download?format=parquet" \
+    "$API_BASE/v1/perturb-seq/$dataset_id/gsea/download?format=csv.gz"; do
+    status=$(curl -sS -o /dev/null -w '%{http_code}' "$url")
+    test "$status" -eq 307
+  done
+  for suffix in metadata.json csv.gz parquet gsea.csv.gz gsea.parquet; do
+    size=$(gcloud storage objects describe \
+      "gs://$DEV_RELEASE_BUCKET/perturb-seq/$dataset_id.$suffix" \
+      --format='value(size)')
+    test "$size" -gt 0
+  done
+done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+```
+
+Open representative dataset pages in the GSEA-enabled frontend and confirm the
+GSEA table appears below DEA with Parquet and CSV.GZ download buttons. Check
+that both DEA and GSEA download endpoints follow to nonempty files in the
+development serving bucket. The API and frontend revisions must include the
+dataset-level GSEA routes and display before this check can pass.
 
 To regenerate only metadata JSONs, run `python3 release/metadata.py` with the
 same project, dataset, location, and bucket options.
