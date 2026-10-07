@@ -34,11 +34,24 @@ def _schema_signatures() -> dict[str, list[list[object]]]:
     from io_schemas import DEA_SCHEMA, GSEA_SCHEMA
 
     return {
-        "dea": [[field.name, str(field.type), field.nullable] for field in DEA_SCHEMA],
-        "gsea": [
-            [field.name, str(field.type), field.nullable] for field in GSEA_SCHEMA
-        ],
+        "dea": _schema_signature(DEA_SCHEMA),
+        "gsea": _schema_signature(GSEA_SCHEMA),
     }
+
+
+def _schema_signature(schema) -> list[list[object]]:
+    import pyarrow as pa
+
+    def type_signature(value) -> str:
+        if pa.types.is_list(value):
+            return f"list<{value.value_type}>"
+        if pa.types.is_large_list(value):
+            return f"large_list<{value.value_type}>"
+        return str(value)
+
+    return [
+        [field.name, type_signature(field.type), field.nullable] for field in schema
+    ]
 
 
 def _read_source_manifest_from_stream(stream) -> list[dict[str, object]]:
@@ -268,9 +281,7 @@ def _verify_source(path_value: str, dataset_id: str, kind: str, expected_schema)
         )
 
     parquet = pq.ParquetFile(path)
-    signature = [
-        [field.name, str(field.type), field.nullable] for field in parquet.schema_arrow
-    ]
+    signature = _schema_signature(parquet.schema_arrow)
     if signature != expected_schema:
         raise TransferError(f"Parquet schema mismatch for {dataset_id} {kind}")
     rows = parquet.metadata.num_rows

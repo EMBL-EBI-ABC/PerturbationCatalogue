@@ -19,7 +19,7 @@ PIPELINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PIPELINE / "dea-gsea"))
 
 import cluster_upload
-from io_schemas import DEA_SCHEMA
+from io_schemas import DEA_SCHEMA, GSEA_SCHEMA
 
 
 class ClusterUploadTest(unittest.TestCase):
@@ -127,6 +127,40 @@ class ClusterUploadTest(unittest.TestCase):
                         schema,
                     )
             cli.assert_not_called()
+
+    def test_schema_validation_ignores_parquet_list_child_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset_id = "expected_2026"
+            fields = [
+                (
+                    pa.field(
+                        field.name,
+                        pa.list_(pa.field("element", pa.string())),
+                        nullable=field.nullable,
+                    )
+                    if field.name == "leading_edge"
+                    else field
+                )
+                for field in GSEA_SCHEMA
+            ]
+            schema = pa.schema(fields)
+            row = {field.name: None for field in schema}
+            row["dataset_id"] = dataset_id
+            row["leading_edge"] = []
+            source = root / f"{dataset_id}.gsea.parquet"
+            pq.write_table(pa.Table.from_pylist([row], schema=schema), source)
+
+            with patch.object(cluster_upload, "RESULTS_ROOT", str(root)):
+                stream, rows, _ = cluster_upload._verify_source(
+                    str(source),
+                    dataset_id,
+                    "gsea",
+                    cluster_upload._schema_signatures()["gsea"],
+                )
+                stream.close()
+
+            self.assertEqual(rows, 1)
 
 
 if __name__ == "__main__":
