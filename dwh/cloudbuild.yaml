@@ -14,7 +14,7 @@
 #   _OPENTARGETS_RELEASE,
 #   _GCLOUD_TMP_BUCKET, _CLOUD_TMP_BUCKET, _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD, _ES_INDEX_SET,
-#   _SUPPRESS_DATASETS (optional, comma-separated)
+#   _SUPPRESS_DATASETS, _FORCE_DATASET_IDS (optional, comma-separated)
 
 timeout: 86400s  # 24 hours
 
@@ -24,7 +24,8 @@ options:
     name: projects/$PROJECT_ID/locations/$_GCLOUD_REGION/workerPools/dwh-pipeline-pool
 
 steps:
-  # The release directory is a hand-off area. Never append to an old release.
+  # Give every build an isolated hand-off prefix. Existing/manual releases in
+  # the bucket must not block a run or be mixed with its new objects.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: check-release-path
     entrypoint: bash
@@ -32,8 +33,8 @@ steps:
       - -c
       - |
         gcloud storage ls "gs://$_CLOUD_TMP_BUCKET" >/dev/null
-        if gcloud storage ls --recursive "gs://$_CLOUD_TMP_BUCKET/release/**" >/dev/null 2>&1; then
-          echo "gs://$_CLOUD_TMP_BUCKET/release already contains objects" >&2
+        if gcloud storage ls --recursive "gs://$_CLOUD_TMP_BUCKET/release/$BUILD_ID/**" >/dev/null 2>&1; then
+          echo "gs://$_CLOUD_TMP_BUCKET/release/$BUILD_ID already contains objects" >&2
           exit 1
         fi
 
@@ -92,18 +93,22 @@ steps:
   - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: bq-to-postgres
     dir: /app/bq_to_postgres
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - bq_to_postgres.py
-      - --bq-dataset
-      - $_BQ_DATASET
-      - --bq-location
-      - $_BQ_LOCATION
-      - --pg-conn
-      - $_PG_CONN_INTERNAL
-      - --gcs-bucket
-      - $_GCLOUD_TMP_BUCKET
-      - --drop-and-recreate-indexes
+      - -ceu
+      - |
+        pg_args=(
+          bq_to_postgres.py
+          --bq-dataset "$_BQ_DATASET"
+          --bq-location "$_BQ_LOCATION"
+          --pg-conn "$_PG_CONN_INTERNAL"
+          --gcs-bucket "$_GCLOUD_TMP_BUCKET"
+          --drop-and-recreate-indexes
+        )
+        if [ -n "$_FORCE_DATASET_IDS" ]; then
+          pg_args+=(--force-dataset-ids "$_FORCE_DATASET_IDS")
+        fi
+        exec python3 "${pg_args[@]}"
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
 
@@ -164,10 +169,10 @@ steps:
           done
           bq rm -f -t \
             "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_dataset_metadata" || true
-          gcloud storage rm --recursive \
-            "gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/**" >/dev/null 2>&1 || true
           if [ "$$status" -ne 0 ]; then
-            gcloud storage rm --recursive "gs://$_CLOUD_TMP_BUCKET/release/**" >/dev/null 2>&1 || true
+            gcloud storage rm --recursive \
+              "gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/**" >/dev/null 2>&1 || true
+            gcloud storage rm --recursive "gs://$_CLOUD_TMP_BUCKET/release/$$run_id/**" >/dev/null 2>&1 || true
           fi
           gcloud run jobs delete "$$job" \
             --project=$_GCLOUD_PROJECT --region=$_GCLOUD_REGION --quiet || true
@@ -197,7 +202,7 @@ steps:
           --task-timeout=24h \
           --cpu=4 \
           --memory=16Gi \
-          --set-env-vars="GCLOUD_PROJECT=$_GCLOUD_PROJECT,BQ_LOCATION=$_BQ_LOCATION,RELEASE_BUCKET=$_CLOUD_TMP_BUCKET,RELEASE_MANIFEST_URI=gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/manifest.json,RELEASE_PREFIX=release" \
+          --set-env-vars="GCLOUD_PROJECT=$_GCLOUD_PROJECT,BQ_LOCATION=$_BQ_LOCATION,RELEASE_BUCKET=$_CLOUD_TMP_BUCKET,RELEASE_MANIFEST_URI=gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/manifest.json,RELEASE_PREFIX=release/$$run_id" \
           --quiet
         gcloud run jobs execute "$$job" \
           --project=$_GCLOUD_PROJECT --region=$_GCLOUD_REGION --wait
@@ -210,4 +215,5 @@ substitutions:
   _ES_INDEX_SET: ""
   _OPENTARGETS_RELEASE: "26.03"
   _CLOUD_TMP_BUCKET: ""
+  _FORCE_DATASET_IDS: ""
   _SUPPRESS_DATASETS: ""
