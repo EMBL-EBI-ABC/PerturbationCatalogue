@@ -1,0 +1,11 @@
+rule_id,phase,action,scope_type,scope_column,scope_value,target_column,value,value_type,reason
+clear_cell_line_for_other_model_systems,pre_mapping,clear,not_equals,model_system_label,cell_line,cell_line_label,,missing,Cell line is only applicable to cell-line model systems
+clear_cell_line_for_other_model_systems,pre_mapping,clear,not_equals,model_system_label,cell_line,cell_line_id,,missing,Cell line is only applicable to cell-line model systems
+default_perturbation_type,post_mapping,fill_missing,all,,,perturbation_type_label,DMS,string,Missing perturbation types in MaveDB are DMS
+set_year_00000010_a1,post_mapping,set,equals,dataset_id,urn:mavedb:00000010-a-1,study_year,2013,integer,Study year correction
+set_year_00000079_a1,post_mapping,set,equals,dataset_id,urn:mavedb:00000079-a-1,study_year,2015,integer,Study year correction
+set_year_00000094,post_mapping,set,prefix,dataset_id,urn:mavedb:00000094-a,study_year,2022,integer,Study year correction
+set_year_00000658,post_mapping,set,prefix,dataset_id,urn:mavedb:00000658,study_year,2023,integer,Study year correction
+set_year_00000661,post_mapping,set,prefix,dataset_id,urn:mavedb:00000661,study_year,2024,integer,Study year correction
+set_doi_00000658,post_mapping,set,prefix,dataset_id,urn:mavedb:00000658,study_uri,https://doi.org/10.1038/s41467-023-43041-4,string,Study DOI correction
+set_doi_00001201,post_mapping,set,prefix,dataset_id,urn:mavedb:00001201,study_uri,https://doi.org/10.1101/2024.06.07.597916,string,Study DOI correction
