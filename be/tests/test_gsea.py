@@ -116,6 +116,7 @@ def test_gsea_release_signing_uses_sibling_artifact(monkeypatch):
     client = Mock()
     client.bucket.return_value.blob.return_value = blob
     monkeypatch.setenv("RELEASE_BUCKET", "release-bucket")
+    monkeypatch.setenv("RELEASE_VERSION_PREFIX", "2026.10/")
     monkeypatch.setattr(google.auth, "default", lambda: (credentials, "project"))
     monkeypatch.setattr(storage, "Client", lambda **_: client)
 
@@ -125,5 +126,5 @@ def test_gsea_release_signing_uses_sibling_artifact(monkeypatch):
 
     assert result == "https://storage.example/signed"
     client.bucket.return_value.blob.assert_called_once_with(
-        "perturb-seq/demo.gsea.parquet"
+        "2026.10/perturb-seq/demo.gsea.parquet"
     )
