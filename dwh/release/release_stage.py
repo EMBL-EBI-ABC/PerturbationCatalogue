@@ -93,18 +93,17 @@ def create_staging(
             data_query(project, dataset, modality),
             dataset_ids,
         )
-        dataset_id_query = (
-            f"SELECT dataset_id FROM {table(project, dataset, data_name)} "
-            "WHERE dataset_id IS NOT NULL"
-            if dataset_ids is not None
-            else (
-                "SELECT dataset_id FROM "
-                f"{table(project, dataset, data_name)} WHERE dataset_id IS NOT NULL "
-                "UNION DISTINCT SELECT dataset_id FROM "
-                f"{table(project, dataset, metadata_name)} "
-                "WHERE dataset_id IS NOT NULL"
+        id_sources = [
+            f"SELECT DISTINCT dataset_id FROM {table(project, dataset, data_name)} "
+            "WHERE dataset_id IS NOT NULL",
+            f"SELECT dataset_id FROM {table(project, dataset, metadata_name)} "
+            "WHERE dataset_id IS NOT NULL",
+        ]
+        if modality == "perturb-seq":
+            id_sources.append(
+                f"SELECT dataset_id FROM {gsea_table} WHERE dataset_id IS NOT NULL"
             )
-        )
+        dataset_id_query = " UNION DISTINCT ".join(id_sources)
         rows = client.query(
             dataset_id_query,
             location=location,

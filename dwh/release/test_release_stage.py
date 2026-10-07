@@ -15,7 +15,11 @@ class _Job:
 
 
 class _Client:
+    def __init__(self):
+        self.query_history = []
+
     def query(self, query, **kwargs):
+        self.query_history.append(query)
         self.query_text = query
         self.query_kwargs = kwargs
         return _Job()
@@ -41,7 +45,12 @@ class _StagingClient(_Client):
         if query.startswith("CREATE OR REPLACE TABLE"):
             return _Job()
         if "release_run_perturb_seq_data" in query:
-            return _JobWithRows([SimpleNamespace(dataset_id="pseq-1")])
+            return _JobWithRows(
+                [
+                    SimpleNamespace(dataset_id="pseq-1"),
+                    SimpleNamespace(dataset_id="pseq-empty"),
+                ]
+            )
         return _JobWithRows()
 
 
@@ -121,16 +130,30 @@ class TestReleaseStage(unittest.TestCase):
             patch.object(release_stage.storage, "Client", return_value=storage_client),
         ):
             task_count = create_staging(
-                "project", "dataset", "US", "bucket", "run", ["pseq-1"]
+                "project",
+                "dataset",
+                "US",
+                "bucket",
+                "run",
+                ["pseq-1", "pseq-empty"],
             )
 
         manifest = json.loads(storage_client.manifest_blob.content)
-        self.assertEqual(task_count, 1)
+        self.assertEqual(task_count, 2)
         self.assertEqual(
             [(item["modality"], item["dataset_id"]) for item in manifest["items"]],
-            [("perturb-seq", "pseq-1")],
+            [("perturb-seq", "pseq-1"), ("perturb-seq", "pseq-empty")],
         )
         self.assertIn("gsea_table", manifest["items"][0])
+        query = next(
+            query
+            for query in client.query_history
+            if "release_run_perturb_seq_data" in query
+            and query.startswith("SELECT DISTINCT")
+        )
+        self.assertIn("UNION DISTINCT", query)
+        self.assertIn("release_run_dataset_metadata", query)
+        self.assertIn("release_run_perturb_seq_gsea", query)
 
 
 if __name__ == "__main__":
