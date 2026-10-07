@@ -326,6 +326,7 @@ those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
    RUN_TAG="ps_$(date -u +%Y%m%d_%H%M%S)"
    RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/perturb-seq-publish.XXXXXX")
    chmod 700 "$RUN_DIR"
+   ID_MANIFEST_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_ids.json"
    WORKER_LOCAL=data_sources/perturb-seq/pipeline/dea-gsea/cluster_upload.py
    WORKER_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_cluster_upload.py"
    SOURCE_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_sources.json"
@@ -336,6 +337,10 @@ those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
    WORKER_BYTES=$(wc -c < "$WORKER_LOCAL")
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$WORKER_BYTES" \
      --upload "$WORKER_LOCAL" "$WORKER_REMOTE"
+   # Wait for that upload job to finish successfully before continuing.
+   ID_MANIFEST_BYTES=$(wc -c < "$ID_MANIFEST")
+   python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --expected-bytes "$ID_MANIFEST_BYTES" \
+     --upload "$ID_MANIFEST" "$ID_MANIFEST_REMOTE"
    # Wait for that upload job to finish successfully before continuing.
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
      --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 1 --mem 2G --time 00:15:00 -- \
@@ -402,7 +407,6 @@ those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
    python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
      --gcs-manifest "$RECEIPT_LOCAL" --id-manifest "$ID_MANIFEST" \
      --project "$GCLOUD_PROJECT"
-   ID_MANIFEST_REMOTE="$PIPELINE_DIR/manifests/single-condition-20.json"
    python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
      --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 1 --mem 8G --time 03:00:00 -- \
      env "GCLOUD_PROJECT=$GCLOUD_PROJECT" "BQ_LOCATION=$BQ_LOCATION" \
@@ -423,7 +427,7 @@ those jobs; the uploader calls `gcloud storage`, and the loader calls `bq`.
    ```bash
    python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral --cwd "$HPS_ROOT/cache" \
      --cpus 1 --mem 1G --time 00:05:00 -- \
-     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE"
+     /usr/bin/rm -f -- "$SOURCE_REMOTE" "$RECEIPT_REMOTE" "$ID_MANIFEST_REMOTE"
    rm -f -- "$SOURCE_MANIFEST" "$RECEIPT_LOCAL"
    rmdir -- "$RUN_DIR"
    ```
