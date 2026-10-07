@@ -245,113 +245,78 @@ batches. One `-resume` covers the entire workflow.
 
 ## Publish DEA/GSEA results to BigQuery
 
-Only the final DEA and GSEA Parquets are loaded into BigQuery. Keep the raw and
-filtered H5ADs with the cluster outputs. Continue from BigQuery through the
-shared warehouse, API, search and release-artifact stages using the
-[DWH publication guide](../../../dwh/README.md).
+This is the Perturb-seq-specific publication step. After BigQuery, continue with
+the shared [DWH publication guide](../../../dwh/README.md).
 
-1. Create a JSON manifest containing exactly one entry per dataset, with both
-   final Parquet paths. Paths may be absolute or relative to the manifest:
+Set up the development environment and confirm all selected datasets exist in
+BigQuery metadata, Elasticsearch, and the development API. Do not set the
+reprocessed markers here; the DWH guide sets them after the full publication.
 
-   ```json
-   {
-     "datasets": [
-       {
-         "dataset_id": "example_2026",
-         "dea_parquet": "example_2026.dea.parquet",
-         "gsea_parquet": "example_2026.gsea.parquet"
-       }
-     ]
-   }
-   ```
+```bash
+set -euo pipefail
+umask 077
+ID_MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+ids_json=$(jq -ce '[.datasets[].dataset_id]' "$ID_MANIFEST")
+test "$(jq -r 'length' <<<"$ids_json")" -eq 20
+test "$(jq -r 'unique | length' <<<"$ids_json")" -eq 20
+pc_secrets dev
+case "$GCLOUD_PROJECT" in *prod*) echo 'Refusing a production project' >&2; exit 1;; esac
+BQ_LOCATION=${BQ_LOCATION:?Set BQ_LOCATION}
+CLOUD_TMP_BUCKET=${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}
+test -n "$CLOUD_TMP_BUCKET"
+DEV_API_URL=${DEV_API_URL:-http://127.0.0.1:8000}
+found=$(bq query --project_id="$GCLOUD_PROJECT" --location="$BQ_LOCATION" \
+  --use_legacy_sql=false --format=csv \
+  "SELECT COUNT(DISTINCT dataset_id) FROM \`$GCLOUD_PROJECT.perturb_seq.metadata\` WHERE dataset_id IN UNNEST($ids_json)" \
+  | tail -n 1)
+test "$found" -eq 20
+es_alias="dataset-summary${ES_INDEX_SET:-}"
+curl -fsS -u "$ES_USERNAME:$ES_PASSWORD" -H 'Content-Type: application/json' \
+  --data-binary "{\"size\":100,\"query\":{\"terms\":{\"dataset_id\":$ids_json}}}" \
+  "$ES_URL/$es_alias/_search" \
+  | jq -e --argjson ids "$ids_json" '.hits.total.value == 20 and ([.hits.hits[]._source.dataset_id] | unique | sort) == ($ids | sort)' >/dev/null
+while IFS= read -r dataset_id; do
+  curl -fsS "$DEV_API_URL/dataset/$dataset_id" \
+    | jq -e --arg id "$dataset_id" '.dataset_id == $id' >/dev/null
+done < <(jq -r '.datasets[].dataset_id' "$ID_MANIFEST")
+```
 
-2. Set up the development environment with `pc_secrets dev`, then verify the
-   project, `BQ_LOCATION` and `DEV_API_URL`. Confirm the
-   manifest IDs exist in the development metadata table and Elasticsearch-backed
-   dataset API before transferring or replacing results:
+The Parquet files move directly from HPS to the temporary GCS bucket using the
+cluster's authenticated `gcloud`; BigQuery loads them from GCS. The workstation
+sends only the small worker and ID manifest through the approved private
+connector. Read `PerturbationCatalogueContext/perturb-seq/cluster/README.md`
+before using the connector.
 
-   ```bash
-   set -euo pipefail
-   MANIFEST=results/manifest.json
-   jq -e '(.datasets | map(.dataset_id)) as $ids | ($ids | length) > 0 and all($ids[]; type == "string" and test("^[A-Za-z0-9_-]+$"))' "$MANIFEST" >/dev/null
-   ids_json=$(jq -c '[.datasets[].dataset_id]' "$MANIFEST")
-   expected=$(jq -r '.datasets | length' "$MANIFEST")
-   found=$(bq query --project_id="$GCLOUD_PROJECT" --location="$BQ_LOCATION" \
-     --use_legacy_sql=false --format=csv \
-     "SELECT COUNT(DISTINCT dataset_id) FROM \`$GCLOUD_PROJECT.perturb_seq.metadata\` WHERE dataset_id IN UNNEST($ids_json)" | tail -n 1)
-   test "$found" -eq "$expected"
-   while IFS= read -r dataset_id; do
-     curl -fsS "$DEV_API_URL/dataset/$dataset_id" \
-       | jq -e --arg id "$dataset_id" '.dataset_id == $id' >/dev/null
-   done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
-   ```
+```bash
+CONTEXT_ROOT=${PERTURBATION_CATALOGUE_CONTEXT:-../PerturbationCatalogueContext}
+CLUSTER_CONNECTOR="$CONTEXT_ROOT/perturb-seq/cluster/cluster.py"
+test -f "$CLUSTER_CONNECTOR"
+HPS_ROOT=/hps/nobackup/mfreeberg
+RUN_TAG="ps_$(date -u +%Y%m%d_%H%M%S)"
+WORKER_LOCAL=data_sources/perturb-seq/pipeline/dea-gsea/publish_cluster_results.py
+WORKER_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_publish.py"
+ID_MANIFEST_REMOTE="$HPS_ROOT/cache/${RUN_TAG}_ids.json"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --upload "$WORKER_LOCAL" "$WORKER_REMOTE"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --upload "$ID_MANIFEST" "$ID_MANIFEST_REMOTE"
+python3 -B "$CLUSTER_CONNECTOR" submit --gcloud-auth --ephemeral \
+  --cwd "$HPS_ROOT/PerturbationCatalogue" --cpus 2 --mem 4G --time 03:00:00 -- \
+  python3 "$WORKER_REMOTE" --manifest "$ID_MANIFEST_REMOTE" \
+    --project "$GCLOUD_PROJECT" --location "$BQ_LOCATION" \
+    --bucket "$CLOUD_TMP_BUCKET"
+python3 -B "$CLUSTER_CONNECTOR" submit --ephemeral \
+  --cwd "$HPS_ROOT/cache" --cpus 1 --mem 1G --time 00:05:00 -- \
+  /usr/bin/rm -f -- "$WORKER_REMOTE" "$ID_MANIFEST_REMOTE"
+```
 
-   Do not precheck `perturb_seq.reprocessed_datasets`; add those markers only
-   after publication succeeds.
-
-3. Copy only the final DEA/GSEA Parquets from each dataset's processing output
-   directory to the loader machine. Set `CLUSTER_HOST` to the configured
-   cluster login host, `REMOTE_RESULTS_ROOT` to the parent of the per-dataset
-   `--outdir` paths, and `IMPORT_DIR` to a local directory with enough free
-   space. `rsync` can resume interrupted large-file copies:
-
-   ```bash
-   mkdir -p "$IMPORT_DIR"
-   while IFS= read -r dataset_id; do
-     for kind in dea gsea; do
-       rsync --partial --info=progress2 \
-         "$CLUSTER_HOST:$REMOTE_RESULTS_ROOT/$dataset_id/dea_gsea/$dataset_id.$kind.parquet" \
-         "$IMPORT_DIR/"
-     done
-   done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
-   ```
-
-   Set each local Parquet path in the manifest to the corresponding file under
-   `IMPORT_DIR`. Do not transfer H5ADs for this step.
-
-4. Create a Python environment with the loader dependencies and authenticate
-   Application Default Credentials as described in the [DWH guide](../../../dwh/README.md):
-
-   ```bash
-   python3 -m venv .venv-perturb-seq-publish
-   . .venv-perturb-seq-publish/bin/activate
-   python -m pip install pyarrow google-cloud-bigquery google-cloud-storage
-   ```
-
-   Set the development BigQuery project, location and co-located temporary GCS
-   bucket. Run the loader once without `--apply`; review every ID and row
-   count and stop if a file is missing, has the wrong schema or has an
-   unexpected row count:
-
-   ```bash
-   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
-     --manifest results/manifest.json --project "$GCLOUD_PROJECT"
-   ```
-
-5. After the dry-run output matches the intended manifest, confirm the active
-   project and bucket are for development, then apply with a new lowercase run
-   ID. The uploader removes its temporary GCS objects after staging, including
-   when validation or the replacement fails; review any cleanup warning and
-   remove only the named `perturb-seq-ingest/<run-key>/` objects:
-
-   ```bash
-   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
-     --manifest results/manifest.json --project "$GCLOUD_PROJECT" \
-     --apply --run-id "ps_$(date -u +%Y%m%d_%H%M%S)"
-   ```
-
-   The loader validates schemas and dataset IDs, stages both tables, checks
-   staged row counts, then atomically replaces only the manifest IDs in
-   `perturb_seq.pertpy_dea` and `perturb_seq.pertpy_gsea`. It verifies final
-   counts and removes its temporary GCS objects after success. A run without
-   `--apply` is read-only.
-
-6. After the loader succeeds, run the common DWH pipeline from the linked guide
-   with both `--force-dataset-ids` and `--release-dataset-ids` set to the
-   comma-separated IDs in the manifest. The first refreshes the replaced
-   Postgres partitions; the second limits artifact generation to these datasets.
-   Verify the development API, Elasticsearch metadata and release artifacts,
-   then set the reprocessed markers as described in that guide.
+The worker requires 20 unique IDs and exactly one DEA and GSEA Parquet for each.
+It uploads the 40 files to a unique temporary prefix, deletes only these IDs
+from `pertpy_dea` and `pertpy_gsea`, and uses `bq load` to append the files to
+the existing tables. BigQuery checks the table schemas. On success, the worker
+removes its temporary GCS prefix. If a job fails, use its connector log to
+resume or clean up that run's prefix before retrying. Keep only the raw and
+filtered H5ADs and final DEA/GSEA Parquets on the cluster.
 
 ## Benchmarks
 

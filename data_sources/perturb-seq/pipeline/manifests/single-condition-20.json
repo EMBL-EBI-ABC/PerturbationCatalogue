@@ -1,0 +1,64 @@
+{
+  "datasets": [
+    {
+      "dataset_id": "adamson_2016_pilot"
+    },
+    {
+      "dataset_id": "adamson_2016_upr_perturb_seq"
+    },
+    {
+      "dataset_id": "norman_2019_raw"
+    },
+    {
+      "dataset_id": "nadig_2025_hepg2"
+    },
+    {
+      "dataset_id": "nadig_2025_jurkat"
+    },
+    {
+      "dataset_id": "replogle_2022_k562_essential_normalized"
+    },
+    {
+      "dataset_id": "replogle_2022_rpe1_essential_normalized"
+    },
+    {
+      "dataset_id": "replogle_2022_k562_gw_normalized"
+    },
+    {
+      "dataset_id": "zhu_2025_D1_rest_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D1_stim48hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D1_stim8hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D2_rest_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D2_stim48hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D2_stim8hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D3_rest_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D3_stim48hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D3_stim8hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D4_rest_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D4_stim48hr_cl"
+    },
+    {
+      "dataset_id": "zhu_2025_D4_stim8hr_cl"
+    }
+  ]
+}
