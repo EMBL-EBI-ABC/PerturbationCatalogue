@@ -47,6 +47,13 @@ the environment for the intended development deployment before invoking the
 trigger; it prints the project and region and immediately submits the build. The
 trigger refuses project IDs containing `prod`.
 
+After `pc_secrets dev`, normalize the bucket variable for the manual commands:
+
+```bash
+export CLOUD_TMP_BUCKET="${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}"
+test -n "$CLOUD_TMP_BUCKET"
+```
+
 Each build writes artifacts under its own temporary prefix:
 `gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/`. Its manifest is under
 `release-staging/$BUILD_ID/`. Existing objects under `release/` do not block a
@@ -82,23 +89,26 @@ diff -u \
       | jq -r '.items[] | select(.modality == "perturb-seq") | .dataset_id' | sort -u)
 ```
 
-Copy the reviewed files only after confirming the development backend serves
-from a bucket isolated from production. Set `DEV_RELEASE_BUCKET` to that exact
-bucket; then the following copies only the IDs in the input manifest:
+After manual review, copy only the IDs in the input manifest to the shared
+serving bucket under the release version prefix. For this release, the
+development backend must use `RELEASE_BUCKET=perturbation-catalogue-release`
+and `RELEASE_VERSION_PREFIX=2026.10`. Production keeps using the same bucket's
+existing unprefixed paths by leaving `RELEASE_VERSION_PREFIX` unset. Copying
+the versioned objects therefore leaves the current production artifacts in
+place.
 
 ```bash
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RELEASE_VERSION_PREFIX:=2026.10}"
 files=()
 while IFS= read -r dataset_id; do
   for suffix in metadata.json csv.gz parquet gsea.csv.gz gsea.parquet; do
     files+=("gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/perturb-seq/$dataset_id.$suffix")
   done
 done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
-gcloud storage cp "${files[@]}" "gs://$DEV_RELEASE_BUCKET/perturb-seq/"
+gcloud storage cp "${files[@]}" \
+  "gs://perturbation-catalogue-release/$RELEASE_VERSION_PREFIX/perturb-seq/"
 ```
-
-Stop if development and production use the same serving bucket, because copying
-would expose the new files to both deployments. Proper artifact versioning and
-promotion is a separate future protocol.
 
 For Perturb-seq, finish publication checks before setting reprocessed markers.
 Run from the repository root. For this run, set `MANIFEST` to
@@ -140,7 +150,8 @@ per-dataset download links exist; the signed URLs can be opened manually to
 confirm the downloaded files.
 
 ```bash
-: "${DEV_RELEASE_BUCKET:?Set the development serving bucket}"
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RELEASE_VERSION_PREFIX:=2026.10}"
 API_BASE=${DEV_API_URL:-http://127.0.0.1:8000}
 while IFS= read -r dataset_id; do
   curl -fsS "$API_BASE/v1/perturb-seq/$dataset_id/search?limit=1" \
@@ -157,7 +168,7 @@ while IFS= read -r dataset_id; do
   done
   for suffix in metadata.json csv.gz parquet gsea.csv.gz gsea.parquet; do
     size=$(gcloud storage objects describe \
-      "gs://$DEV_RELEASE_BUCKET/perturb-seq/$dataset_id.$suffix" \
+      "gs://perturbation-catalogue-release/$RELEASE_VERSION_PREFIX/perturb-seq/$dataset_id.$suffix" \
       --format='value(size)')
     test "$size" -gt 0
   done
@@ -392,6 +403,26 @@ dbt run --profiles-dir . --select dataset_summary
 cd ..
 python3 bq_to_elastic/bq_to_es_projector.py \
   --dataset-metadata ../be/dataset_metadata.json
+cd ..
+```
+
+The published metadata JSONs also contain the dataset summary. Regenerate
+metadata into a unique temporary prefix, then replace only the selected
+Perturb-seq metadata objects in the versioned serving prefix:
+
+```bash
+set -euo pipefail
+CLOUD_TMP_BUCKET="${CLOUD_TMP_BUCKET:-${GCLOUD_TMP_BUCKET:-}}"
+MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
+: "${RELEASE_VERSION_PREFIX:=2026.10}"
+METADATA_PREFIX="release/marker-refresh-$(date +%s)"
+python3 release/metadata.py --prefix "$METADATA_PREFIX"
+while IFS= read -r dataset_id; do
+  gcloud storage cp \
+    "gs://$CLOUD_TMP_BUCKET/$METADATA_PREFIX/perturb-seq/$dataset_id.metadata.json" \
+    "gs://perturbation-catalogue-release/$RELEASE_VERSION_PREFIX/perturb-seq/$dataset_id.metadata.json"
+done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+gcloud storage rm --recursive "gs://$CLOUD_TMP_BUCKET/$METADATA_PREFIX/**"
 ```
 
 Finally verify the dataset API responses, result-table row counts and the

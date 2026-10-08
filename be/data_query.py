@@ -1585,15 +1585,17 @@ def _release_signed_url(
         raise HTTPException(status_code=503, detail="Release signing is not configured")
 
     bucket_name = release_bucket.removeprefix("gs://").rstrip("/")
+    version_prefix = os.getenv("RELEASE_VERSION_PREFIX", "").strip("/")
     file_format = (
         GSEA_RELEASE_FORMATS[download_format]
         if artifact == "gsea"
         else RELEASE_FORMATS[download_format]
     )
+    object_name = f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{file_format}"
+    if version_prefix:
+        object_name = f"{version_prefix}/{object_name}"
     try:
-        blob = client.bucket(bucket_name).blob(
-            f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{file_format}"
-        )
+        blob = client.bucket(bucket_name).blob(object_name)
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Release artifact not found")
         filename = f"{modality}_{dataset_id}.{file_format}".replace('"', "")
