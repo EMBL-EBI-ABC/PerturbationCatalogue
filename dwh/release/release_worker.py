@@ -20,7 +20,7 @@ except ImportError:  # The REST fallback keeps local checks dependency-light.
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from release import DATASETS, table
+from release import DATASETS, GSEA_DATA, table
 
 
 BATCH_SIZE = 100_000
@@ -48,7 +48,8 @@ def _arrow_type(field):
         "TIME": pa.time64("us"),
         "TIMESTAMP": pa.timestamp("us", tz="UTC"),
     }
-    return types.get(field.field_type, pa.string())
+    arrow_type = types.get(field.field_type, pa.string())
+    return pa.list_(arrow_type) if field.mode == "REPEATED" else arrow_type
 
 
 def _empty_schema(client, relation):
@@ -77,6 +78,11 @@ def _batches(result, bqstorage_client):
                 rows = []
         if rows:
             yield from pa.Table.from_pylist(rows).to_batches()
+
+
+def _csv_value(row, field):
+    value = row.get(field)
+    return ";".join(map(str, value)) if isinstance(value, (list, tuple)) else value
 
 
 @contextmanager
@@ -109,16 +115,21 @@ def _query(
         client.delete_table(destination, not_found_ok=True)
 
 
-def _write_data(bucket, prefix, client, item, location, bqstorage_client):
-    config = DATASETS[item["modality"]]
-    with _query(client, item["data_table"], item["dataset_id"], location) as result:
+def _write_table(
+    bucket,
+    prefix,
+    client,
+    relation,
+    dataset_id,
+    config,
+    location,
+    bqstorage_client,
+    kind,
+):
+    with _query(client, relation, dataset_id, location, kind=kind) as result:
         batches = iter(_batches(result, bqstorage_client))
         first = next(batches, None)
-        schema = (
-            first.schema
-            if first is not None
-            else _empty_schema(client, item["data_table"])
-        )
+        schema = first.schema if first is not None else _empty_schema(client, relation)
         parquet_blob = bucket.blob(f"{prefix}.parquet")
         csv_blob = bucket.blob(f"{prefix}.csv.gz")
         with ExitStack() as stack:
@@ -152,9 +163,37 @@ def _write_data(bucket, prefix, client, item, location, bqstorage_client):
                     continue
                 parquet_writer.write_batch(batch)
                 writer.writerows(
-                    [row.get(field) for field, _ in config["fields"]]
+                    [_csv_value(row, field) for field, _ in config["fields"]]
                     for row in batch.to_pylist()
                 )
+
+
+def _write_data(bucket, prefix, client, item, location, bqstorage_client):
+    _write_table(
+        bucket,
+        prefix,
+        client,
+        item["data_table"],
+        item["dataset_id"],
+        DATASETS[item["modality"]],
+        location,
+        bqstorage_client,
+        "data",
+    )
+
+
+def _write_gsea_data(bucket, prefix, client, item, location, bqstorage_client):
+    _write_table(
+        bucket,
+        f"{prefix}.gsea",
+        client,
+        item["gsea_table"],
+        item["dataset_id"],
+        GSEA_DATA,
+        location,
+        bqstorage_client,
+        "gsea",
+    )
 
 
 def _write_metadata(bucket, prefix, client, item, location, bqstorage_client):
@@ -185,8 +224,12 @@ def _write_metadata(bucket, prefix, client, item, location, bqstorage_client):
 
 def generate(item, bucket, prefix, client, location, bqstorage_client):
     names = [f"{prefix}.{suffix}" for suffix in ("metadata.json", "csv.gz", "parquet")]
+    if item.get("gsea_table"):
+        names.extend(f"{prefix}.gsea.{suffix}" for suffix in ("csv.gz", "parquet"))
     try:
         _write_data(bucket, prefix, client, item, location, bqstorage_client)
+        if item.get("gsea_table"):
+            _write_gsea_data(bucket, prefix, client, item, location, bqstorage_client)
         _write_metadata(bucket, prefix, client, item, location, bqstorage_client)
     except Exception:
         for name in names:

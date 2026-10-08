@@ -14,7 +14,7 @@
 #   _OPENTARGETS_RELEASE,
 #   _GCLOUD_TMP_BUCKET, _CLOUD_TMP_BUCKET, _PG_CONN_INTERNAL,
 #   _ES_URL, _ES_USERNAME, _ES_PASSWORD, _ES_INDEX_SET,
-#   _SUPPRESS_DATASETS, _FORCE_DATASET_IDS (optional, comma-separated)
+#   _SUPPRESS_DATASETS, _FORCE_DATASET_IDS, _RELEASE_DATASET_IDS (optional, comma-separated)
 
 timeout: 86400s  # 24 hours
 
@@ -138,12 +138,18 @@ steps:
       - -ceu
       - |
         rm -f /workspace/release-tasks /workspace/release-ready
-        python3 release_stage.py create \
-          --project $_GCLOUD_PROJECT \
-          --dataset $_BQ_DATASET \
-          --location $_BQ_LOCATION \
-          --bucket $_CLOUD_TMP_BUCKET \
-          --run-id "$BUILD_ID" > /workspace/release-tasks
+        stage_args=(
+          release_stage.py create
+          --project $_GCLOUD_PROJECT
+          --dataset $_BQ_DATASET
+          --location $_BQ_LOCATION
+          --bucket $_CLOUD_TMP_BUCKET
+          --run-id "$BUILD_ID"
+        )
+        if [ -n "$_RELEASE_DATASET_IDS" ]; then
+          stage_args+=(--dataset-ids "$_RELEASE_DATASET_IDS")
+        fi
+        python3 "${stage_args[@]}" > /workspace/release-tasks
         touch /workspace/release-ready
     allowFailure: true
     env:
@@ -169,6 +175,8 @@ steps:
           done
           bq rm -f -t \
             "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_dataset_metadata" || true
+          bq rm -f -t \
+            "$_GCLOUD_PROJECT:$_BQ_DATASET.release_$${safe_id}_perturb_seq_gsea" || true
           if [ "$$status" -ne 0 ]; then
             gcloud storage rm --recursive \
               "gs://$_CLOUD_TMP_BUCKET/release-staging/$$run_id/**" >/dev/null 2>&1 || true
@@ -216,4 +224,5 @@ substitutions:
   _OPENTARGETS_RELEASE: "26.03"
   _CLOUD_TMP_BUCKET: ""
   _FORCE_DATASET_IDS: ""
+  _RELEASE_DATASET_IDS: ""
   _SUPPRESS_DATASETS: ""

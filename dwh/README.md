@@ -57,22 +57,46 @@ review, along with its small `release-staging/$BUILD_ID/manifest.json`.
 No empty global `release/` prefix is required.
 
 The release stage clusters source data by `dataset_id`, then runs one Cloud Run
-Job task per dataset. It writes dataset metadata JSON, CSV.GZ and Parquet files
-under the modality folders `crispr`, `perturb-seq` and `mave`. To review a
-specific build, list only its Perturb-seq objects:
+Job task per selected dataset. It writes metadata JSON, CSV.GZ and Parquet files
+for CRISPR and MAVE. Perturb-seq also gets `*.gsea.csv.gz` and `*.gsea.parquet`
+alongside its DEA files. To review a specific build, list only its Perturb-seq
+objects:
 
 ```bash
 gcloud storage ls --long --recursive \
   "gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/perturb-seq/"
 ```
 
-Compare the dataset IDs and the three expected file types for each selected
-dataset with the run manifest; check that every object has a nonzero size.
-Copy reviewed objects manually to the serving bucket only after verifying that
-the destination is isolated to the intended deployment. Stop if development
-and production use the same serving bucket, because copying would expose the
-new files to both deployments. Proper artifact versioning and promotion is a
-separate future protocol.
+Compare the selected IDs with the successful run manifest and verify five
+nonempty objects for each Perturb-seq dataset: metadata JSON, DEA CSV.GZ and
+Parquet, and GSEA CSV.GZ and Parquet. A scoped run can be checked against its
+input manifest with:
+
+```bash
+diff -u \
+  <(jq -r '.datasets[].dataset_id' "$MANIFEST" | sort -u) \
+  <(gcloud storage cat \
+      "gs://$CLOUD_TMP_BUCKET/release-staging/$BUILD_ID/manifest.json" \
+      | jq -r '.items[] | select(.modality == "perturb-seq") | .dataset_id' | sort -u)
+```
+
+Copy the reviewed files only after confirming the development backend serves
+from a bucket isolated from production. Set `DEV_RELEASE_BUCKET` to that exact
+bucket; then the following copies only the IDs in the input manifest:
+
+```bash
+files=()
+while IFS= read -r dataset_id; do
+  for suffix in metadata.json csv.gz parquet gsea.csv.gz gsea.parquet; do
+    files+=("gs://$CLOUD_TMP_BUCKET/release/$BUILD_ID/perturb-seq/$dataset_id.$suffix")
+  done
+done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+gcloud storage cp "${files[@]}" "gs://$DEV_RELEASE_BUCKET/perturb-seq/"
+```
+
+Stop if development and production use the same serving bucket, because copying
+would expose the new files to both deployments. Proper artifact versioning and
+promotion is a separate future protocol.
 
 To regenerate only metadata JSONs, run `python3 release/metadata.py` with the
 same project, dataset, location, and bucket options.
@@ -169,6 +193,20 @@ The preflight requires every ID to exist in `perturb_seq.metadata`; an ID may
 have zero result rows in either result table. It replaces only those Perturb-seq
 partitions, clearing stale rows when a result table is empty; other modalities
 and unselected Perturb-seq data use the normal incremental sync.
+
+To restrict release-artifact generation to a selected dataset set, also pass
+`--release-dataset-ids`. For this publication run, use the same manifest IDs
+for both options:
+
+```bash
+./dwh/trigger_pipeline.sh \
+  --force-dataset-ids "$DATASET_IDS" \
+  --release-dataset-ids "$DATASET_IDS"
+```
+
+The release filter applies to the staged metadata, DEA, and GSEA tables, so the
+Cloud Run Job creates artifacts only for the selected IDs. Without this option,
+release artifacts are generated for all available datasets.
 
 ### What happens
 
