@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple, Optional, Any, Set
 
 import psycopg2
 from psycopg2 import sql
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery, storage
 from tqdm import tqdm
 import pyarrow as pa
@@ -747,44 +748,59 @@ class TableSynchronizer:
 
     def _export_and_prepare_dataset(self, table_name, ds_id, bq_schema):
         """Exports a dataset to GCS, downloads and converts shards to a single TSV file on disk, and cleans up GCS."""
-        gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
         import tempfile
 
         tmp_file = tempfile.NamedTemporaryFile(delete=False)
         try:
-            export_dataset_to_gcs(
-                self.bq_client,
-                self.bq_dataset,
-                table_name,
-                self.bq_location,
-                self.gcs_bucket,
-                gcs_prefix,
-                ds_id,
-            )
-
-            bucket = self.gcs_client.get_bucket(self.gcs_bucket)
-            blobs = list(bucket.list_blobs(prefix=gcs_prefix))
-
-            if not blobs:
-                tmp_file.close()
+            for attempt in range(2):
+                gcs_prefix = f"tmp/{table_name}/{ds_id}/{uuid.uuid4().hex}"
                 try:
-                    os.unlink(tmp_file.name)
-                except Exception:
-                    pass
-                return ds_id, None
+                    export_dataset_to_gcs(
+                        self.bq_client,
+                        self.bq_dataset,
+                        table_name,
+                        self.bq_location,
+                        self.gcs_bucket,
+                        gcs_prefix,
+                        ds_id,
+                    )
 
-            for blob in blobs:
-                with tempfile.NamedTemporaryFile() as shard_file:
-                    blob.download_to_file(shard_file)
-                    shard_file.seek(0)
-                    table = pq.read_table(shard_file.name)
+                    bucket = self.gcs_client.get_bucket(self.gcs_bucket)
+                    blobs = list(bucket.list_blobs(prefix=gcs_prefix))
 
-                    chunk_buf = _prepare_table_for_copy(table, bq_schema)
-                    tmp_file.write(chunk_buf.getvalue())
-                    chunk_buf.close()
+                    if not blobs:
+                        tmp_file.close()
+                        try:
+                            os.unlink(tmp_file.name)
+                        except Exception:
+                            pass
+                        return ds_id, None
 
-            tmp_file.seek(0)
-            return ds_id, tmp_file
+                    try:
+                        for blob in blobs:
+                            with tempfile.NamedTemporaryFile() as shard_file:
+                                blob.download_to_file(shard_file)
+                                shard_file.seek(0)
+                                table = pq.read_table(shard_file.name)
+
+                                chunk_buf = _prepare_table_for_copy(table, bq_schema)
+                                tmp_file.write(chunk_buf.getvalue())
+                                chunk_buf.close()
+                    except NotFound:
+                        if attempt:
+                            raise
+                        logging.warning(
+                            "        Export shard disappeared for %s; retrying once with a fresh export...",
+                            ds_id,
+                        )
+                        tmp_file.seek(0)
+                        tmp_file.truncate()
+                        continue
+
+                    tmp_file.seek(0)
+                    return ds_id, tmp_file
+                finally:
+                    cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
         except BaseException as e:
             tmp_file.close()
             if os.path.exists(tmp_file.name):
@@ -793,8 +809,6 @@ class TableSynchronizer:
                 except Exception:
                     pass
             raise e
-        finally:
-            cleanup_gcs(self.gcs_bucket, gcs_prefix, self.gcs_client)
 
     def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_file):
         """Loads a prepared TSV file into the Postgres table (partition or standard table) for ds_id."""
