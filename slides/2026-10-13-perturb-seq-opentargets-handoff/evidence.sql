@@ -117,3 +117,34 @@ SELECT table_name, column_name, data_type, is_nullable
 FROM `prj-ext-dev-pertcat-437314.perturb_seq.INFORMATION_SCHEMA.COLUMNS`
 WHERE table_name IN ('pertpy_dea', 'pertpy_gsea')
 ORDER BY table_name, ordinal_position;
+
+-- Representative CRISPR release row (score_value is exported as STRING).
+SELECT
+  dataset_id,
+  perturbed_target_ensg,
+  perturbed_target_symbol AS perturbed_target_name,
+  score_name,
+  score_value,
+  significant,
+  significance_criteria
+FROM `prj-ext-dev-pertcat-437314.crispr.data`
+WHERE dataset_id = 'biogrid_1161'
+LIMIT 1;
+
+-- Representative MAVE release row with the same derived fields as the export.
+SELECT
+  dataset_id,
+  perturbed_target_ensg,
+  perturbed_target_symbol AS perturbed_target_name,
+  perturbation_name,
+  SAFE_CAST(REGEXP_EXTRACT(perturbation_name, r'p\.[A-Za-z]+(\d+)') AS INT64)
+    AS perturbation_position,
+  REGEXP_EXTRACT(perturbation_name, r'p\.([A-Za-z]+)\d+')
+    AS perturbation_aa_wt,
+  REGEXP_EXTRACT(perturbation_name, r'p\.[A-Za-z]+\d+([A-Za-z=]+)')
+    AS perturbation_aa_change,
+  score_name,
+  score_value
+FROM `prj-ext-dev-pertcat-437314.mavedb.data`
+WHERE dataset_id = 'urn:mavedb:00000001-a-1'
+LIMIT 1;

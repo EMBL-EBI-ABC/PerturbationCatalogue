@@ -184,18 +184,27 @@
 
 \begin{frame}{CRISPR screens: target-level score and interpretation}
   \small
-  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l X@{}}
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
     \toprule
-    \textbf{Export field} & \textbf{Meaning} \\
+    \textbf{Export field} & \textbf{Type} & \textbf{Meaning} \\
     \midrule
-    perturbed\_target\_ensg & Ensembl gene targeted by the screen \\
-    perturbed\_target\_name & Display symbol for the target \\
-    score\_name & Name of the assay's score \\
-    score\_value & Measured score for the target \\
-    significant & Source-provided significance call \\
-    significance\_criteria & Rule or threshold used for that call \\
+    perturbed\_target\_ensg & STRING & Ensembl gene targeted by the screen \\
+    perturbed\_target\_name & STRING & Display symbol for the target \\
+    score\_name & STRING & Name of the assay's score \\
+    score\_value & STRING & Measured score for the target \\
+    significant & STRING & Source-provided significance call \\
+    significance\_criteria & STRING & Rule or threshold used for that call \\
     \bottomrule
   \end{tabularx}
+  \vfill
+  \begin{block}{Example row: \texttt{biogrid\_1161}}
+    \scriptsize
+    \begin{tabularx}{\textwidth}{@{}p{3.4cm} p{4.5cm} p{1.8cm} X@{}}
+      \textbf{Target} & \textbf{Score} & \textbf{Value} & \textbf{Call / criterion} \\
+      \midrule
+      GAB3 (ENSG00000160219) & Rho (Log2e Treated vs. Untreated) & 0.055800993 & False / \texttt{-} \\
+    \end{tabularx}
+  \end{block}
   \vfill
   \begin{block}{Interpretation}
     Scores are assay-specific. The significance flag travels with the source criterion so downstream users can interpret calls in the context of each screen.
@@ -204,20 +213,28 @@
 
 \begin{frame}{MAVE: variant-level functional scores}
   \small
-  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l X@{}}
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
     \toprule
-    \textbf{Export field} & \textbf{Meaning} \\
+    \textbf{Export field} & \textbf{Type} & \textbf{Meaning} \\
     \midrule
-    perturbed\_target\_ensg & Ensembl gene associated with the variant \\
-    perturbed\_target\_name & Display symbol for the target \\
-    perturbation\_name & Variant notation supplied by MaveDB \\
-    perturbation\_position & Protein position parsed from the variant notation \\
-    perturbation\_aa\_wt & Wild-type amino acid parsed from the notation \\
-    perturbation\_aa\_change & Amino-acid change parsed from the notation \\
-    score\_name & Name of the assay's score \\
-    score\_value & Measured functional score \\
+    perturbed\_target\_ensg & STRING & Ensembl gene associated with the variant \\
+    perturbed\_target\_name & STRING & Display symbol for the target \\
+    perturbation\_name & STRING & Variant notation supplied by MaveDB \\
+    perturbation\_position & INT64 & Protein position parsed from the variant notation \\
+    perturbation\_aa\_wt & STRING & Wild-type amino acid parsed from the notation \\
+    perturbation\_aa\_change & STRING & Amino-acid change parsed from the notation \\
+    score\_name & STRING & Name of the assay's score \\
+    score\_value & FLOAT64 & Measured functional score \\
     \bottomrule
   \end{tabularx}
+  \vfill
+  \begin{block}{Example row: \texttt{urn:mavedb:00000001-a-1}}
+    \scriptsize
+    \begin{tabularx}{\textwidth}{@{}X X@{}}
+      \textbf{Target:} UBE2I (ENSG00000103275) & \textbf{Variant:} p.Pro73Gln (position 73) \\
+      \textbf{Change:} Pro $\rightarrow$ Gln & \textbf{Score:} exp.score = -0.0275390812623933 \\
+    \end{tabularx}
+  \end{block}
   \vfill
   \begin{block}{Interpretation}
     Variant identity and derived protein-change fields stay alongside the original assay score, making residue-level evidence searchable without replacing the source notation.
