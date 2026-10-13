@@ -374,7 +374,12 @@ place. The DEA summary materialized views are refreshed once after all changed
 datasets in that table have loaded. PostgreSQL native materialized views do not
 support refreshing only selected dataset IDs, so this remains a full summary
 refresh. A validated incremental summary-table migration is still needed to
-avoid that work. For a deliberate bulk rebuild only, append
+avoid that work. These plain `REFRESH MATERIALIZED VIEW` statements block API
+reads of each summary view until the sync transaction commits; the first view
+can remain locked while the later views refresh. This replaces the old longer
+window that dropped the views before ingestion, but requests can still wait at
+the end of a sync. We have not switched to `CONCURRENTLY` because its resource
+and throughput trade-offs need benchmarking. For a deliberate bulk rebuild only, append
 `--drop-and-recreate-indexes`; this drops and rebuilds the pipeline-defined
 indexes and can be expensive on large tables. The Cloud Build fast path omits
 this option. Index definitions have not been removed or reordered because the
