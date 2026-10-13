@@ -71,8 +71,6 @@ def create_staging(
         f"SELECT * FROM {table(project, dataset, DATASET_METADATA)}",
         dataset_ids,
     )
-    # ponytail: cloudbuild's cleanup list only covers per-modality data tables;
-    # this extra stage expires after two days until that list is generalized.
     gsea_table = _stage(
         client,
         project,
