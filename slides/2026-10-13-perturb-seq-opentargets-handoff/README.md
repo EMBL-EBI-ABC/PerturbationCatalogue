@@ -1,8 +1,8 @@
-# Perturb-Seq handoff deck
+# Development data inventory deck
 
-The PDF is a six-slide summary of the handoff interface for the 20 single-condition Perturb-Seq datasets. The Beamer source is handoff.tex; it has no external image assets.
+The eight-slide PDF summarizes the development inventory across CRISPR screen, MAVE and Perturb-seq, including the 20 reprocessed single-condition Perturb-seq datasets and the exported result schemas. The Beamer source is handoff.tex; it has no external image assets.
 
-The coverage counts and example rows are a read-only snapshot from dev BigQuery queried on 2026-10-13. evidence.sql contains the corresponding SELECT queries. The file and column contract is defined in dwh/release/release.py, dwh/release/release_worker.py, and the download naming in be/data_query.py.
+The modality dataset counts are the current development Elasticsearch inventory (1,197 CRISPR screen, 795 MAVE, 30 Perturb-seq) and are rounded in the PDF. Perturb-seq DEA/GSEA row totals and example rows are from the development BigQuery snapshot queried on 2026-10-13; evidence.sql contains the corresponding read-only SELECTs. The exported fields are defined in dwh/release/release.py and dwh/release/release_worker.py; API mappings and download naming are in be/data_query.py.
 
 To reproduce the PDF from this directory, run:
 
