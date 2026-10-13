@@ -1,0 +1,188 @@
+\documentclass[handout,aspectratio=169]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{xcolor}
+
+\title{Perturb-Seq data handoff}
+\subtitle{20 single-condition datasets for Open Targets}
+\date{2026-10-13}
+\author{Perturbation Catalogue}
+\institute{Dataset export contract}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,leftskip=15pt,rightskip=15pt]{}
+    \usebeamerfont{author in head/foot}Perturb-Seq handoff
+    \hfill
+    \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber
+  \end{beamercolorbox}%
+}
+\setlength{\tabcolsep}{4pt}
+\urlstyle{tt}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{gray!35}
+}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Coverage and record counts}
+  \centering
+  \large
+  \textbf{20 datasets}\hspace{1.4em}
+  \textbf{1.661B DEA rows}\hspace{1.4em}
+  \textbf{7.286M GSEA rows}
+
+  \vspace{0.7em}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{1.5cm}Xr r r@{}}
+    \toprule
+    \textbf{Study set} & \textbf{Dataset IDs} & \textbf{N} & \textbf{DEA rows} & \textbf{GSEA rows} \\
+    \midrule
+    Adamson &
+      \url{adamson_2016_pilot}; \url{adamson_2016_upr_perturb_seq} &
+      2 & 1.108M & 4.27K \\
+    Norman &
+      \url{norman_2019_raw} &
+      1 & 1.345M & 5.10K \\
+    Nadig &
+      \url{nadig_2025_hepg2}; \url{nadig_2025_jurkat} &
+      2 & 60.402M & 229.97K \\
+    Replogle &
+      \url{replogle_2022_k562_essential_normalized}\par
+      \url{replogle_2022_rpe1_essential_normalized}\par
+      \url{replogle_2022_k562_gw_normalized} &
+      3 & 174.930M & 669.66K \\
+    Zhu &
+      \url{zhu_2025_D{1,2,3,4}_{rest,stim8hr,stim48hr}_cl} &
+      12 & 1.423B & 6.377M \\
+    \midrule
+    Total & All 20 IDs above & 20 & 1.661B & 7.286M \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \footnotesize Counts are from the dev data snapshot queried on 2026-10-13. Zhu brace notation expands to three IDs for each of D1--D4.
+\end{frame}
+
+\begin{frame}[fragile]{Metadata JSON: study and dataset context}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.38\textwidth}
+      \begin{block}{Common fields}
+        \footnotesize
+        \begin{itemize}
+          \item Identity: \texttt{dataset\_id}, study title, year and authors
+          \item Context: modalities, perturbation, tissue, cell type and cell line
+          \item Scale: target and sample counts
+          \item Full JSON also has assay, ontology, license and processing fields
+        \end{itemize}
+      \end{block}
+      \footnotesize Repeated annotations and counts are JSON arrays.
+    \column{0.60\textwidth}
+      \begin{block}{Example record excerpt}
+        \tiny
+        \begin{lstlisting}
+{
+  "dataset_id": "adamson_2016_pilot",
+  "study_title": "A Multiplexed Single-Cell CRISPR Screening Platform Enables Systematic Dissection of the Unfolded Protein Response",
+  "study_year": "2016",
+  "first_author": "Britt Adamson",
+  "data_modalities": ["Perturb-seq"],
+  "perturbation_type_labels": ["CRISPRi"],
+  "cell_type_labels": ["lymphoblast"],
+  "cell_line_labels": ["K 562 cell"],
+  "number_of_perturbed_targets": ["8"],
+  "number_of_perturbed_samples": ["5752"]
+}
+        \end{lstlisting}
+      \end{block}
+  \end{columns}
+  \vfill
+  \footnotesize Values are an excerpt from the dataset metadata record; count fields retain their source array representation.
+\end{frame}
+
+\begin{frame}{DEA Parquet: one row per target--effect-gene pair}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Column} & \textbf{Type} & \textbf{Example value: adamson\_2016\_pilot} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & ENSG00000134107 \\
+    perturbed\_target\_name & STRING & BHLHE40 \\
+    effect\_gene\_ensg & STRING & ENSG00000094914 \\
+    effect\_gene\_name & STRING & AAAS \\
+    log2foldchange & FLOAT64 & 0.0722239017 \\
+    padj & FLOAT64 & 0.9998721657 \\
+    score\_name & STRING & Wilcoxon Score \\
+    score\_value & FLOAT64 & 0.4150409698 \\
+    cell\_type & STRING, nullable & null \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Record interpretation}
+    The perturbed target is the intervention; the effect gene is the measured transcript. The per-dataset file omits \texttt{dataset\_id}; the filename supplies it.
+  \end{block}
+\end{frame}
+
+\begin{frame}{GSEA Parquet: enrichment by target and gene set}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Column} & \textbf{Type} & \textbf{Example value: adamson\_2016\_pilot} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & ENSG00000066336 \\
+    perturbed\_target\_symbol & STRING & SPI1 \\
+    term & STRING & HALLMARK\_ALLOGRAFT\_REJECTION \\
+    es & FLOAT64 & -0.3599006142 \\
+    nes & FLOAT64 & -1.1792592227 \\
+    pval & FLOAT64 & 0.1935483871 \\
+    sidak & FLOAT64 & 0.9999593387 \\
+    fdr & FLOAT64 & 0.3540276454 \\
+    geneset\_size & INT64 & 81 \\
+    leading\_edge & ARRAY<STRING> & [SPI1, NPM1, RPS9, CTSS, RPS19, \ldots] \\
+    cell\_type & STRING, nullable & null \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Record interpretation}
+    \texttt{leading\_edge} is a typed string array in Parquet. In the CSV.GZ companion it is represented as a semicolon-separated list.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Per-dataset artifact names}
+  \small
+  \footnotesize Paths are relative to the release bucket; an optional version prefix may precede \texttt{perturb-seq/}.
+  \vspace{0.3em}
+  \begin{tabularx}{\textwidth}{@{}l@{\hspace{1em}}X@{}}
+    \toprule
+    \textbf{Artifact} & \textbf{Object name pattern} \\
+    \midrule
+    Metadata & \texttt{perturb-seq/<dataset\_id>.metadata.json} \\
+    DEA data & \texttt{perturb-seq/<dataset\_id>.parquet} \\
+    DEA CSV mirror & \texttt{perturb-seq/<dataset\_id>.csv.gz} \\
+    GSEA data & \texttt{perturb-seq/<dataset\_id>.gsea.parquet} \\
+    GSEA CSV mirror & \texttt{perturb-seq/<dataset\_id>.gsea.csv.gz} \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{itemize}
+    \item One metadata JSON plus DEA and GSEA files for each of the 20 dataset IDs.
+    \item Parquet preserves typed columns; CSV.GZ uses the matching human-readable field labels.
+    \item The metadata object contains the join key; DEA and GSEA rows are scoped by their per-dataset filenames.
+  \end{itemize}
+\end{frame}
+
+\end{document}
