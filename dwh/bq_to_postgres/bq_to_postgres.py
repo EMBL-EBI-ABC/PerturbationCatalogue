@@ -140,45 +140,45 @@ INDEX_DEFINITIONS = {
     "perturb_seq_dea": [
         (
             "idx_perturbation_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (perturbed_target_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturbation_phenotype_dea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (perturbed_target_ensg, effect_gene_ensg, dataset_id, padj, score_value, log2foldchange)",
         ),
         (
             "idx_perturb_seq_dea_dataset_id_padj",
-            "CREATE INDEX {idx} ON {table} (dataset_id, padj) WHERE effect_gene_ensg IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (dataset_id, padj) WHERE effect_gene_ensg IS NOT NULL",
         ),
     ],
     "perturb_seq_gsea": [
         (
             "idx_perturbation_gsea",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id, fdr, nes)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (perturbed_target_ensg, dataset_id, fdr, nes)",
         ),
     ],
     "crispr_data": [
         (
             "idx_crispr_data_dataset",
-            "CREATE INDEX {idx} ON {table} (dataset_id)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (dataset_id)",
         ),
         (
             "idx_crispr_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (perturbed_target_ensg)",
         ),
     ],
     "mave_data": [
         (
             "idx_mave_data_dataset",
-            "CREATE INDEX {idx} ON {table} (dataset_id)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (dataset_id)",
         ),
         (
             "idx_mave_data_target",
-            "CREATE INDEX {idx} ON {table} (perturbed_target_ensg, dataset_id)",
+            "CREATE INDEX IF NOT EXISTS {idx} ON {table} (perturbed_target_ensg, dataset_id)",
         ),
     ],
 }
@@ -206,7 +206,7 @@ MATERIALIZED_VIEW_DEFINITIONS = {
             WHERE padj <= 0.05 AND perturbed_target_ensg IS NOT NULL
             GROUP BY dataset_id, perturbed_target_ensg;
         """,
-        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);",
+        "index_sql": "CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_perturbation_pk ON perturb_seq_summary_perturbation (dataset_id, perturbed_target_ensg);",
     },
     "perturb_seq_summary_effect": {
         "create_sql": """
@@ -222,7 +222,7 @@ MATERIALIZED_VIEW_DEFINITIONS = {
             WHERE padj <= 0.05 AND effect_gene_ensg IS NOT NULL
             GROUP BY dataset_id, effect_gene_ensg;
         """,
-        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);",
+        "index_sql": "CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_effect_pk ON perturb_seq_summary_effect (dataset_id, effect_gene_ensg);",
     },
     "perturb_seq_summary_dataset": {
         "create_sql": """
@@ -234,7 +234,7 @@ MATERIALIZED_VIEW_DEFINITIONS = {
             WHERE effect_gene_ensg IS NOT NULL
             GROUP BY dataset_id;
         """,
-        "index_sql": "CREATE UNIQUE INDEX idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
+        "index_sql": "CREATE UNIQUE INDEX IF NOT EXISTS idx_perturb_seq_summary_dataset_pk ON perturb_seq_summary_dataset (dataset_id);",
     },
 }
 
@@ -636,69 +636,60 @@ def check_pg_table_is_partitioned(cursor, pg_table) -> bool:
     return is_valid
 
 
-def drop_dependent_views_and_indexes(cursor, table_name):
-    """Finds and drops all materialized views and indexes depending on the table."""
-    # 1. Find all dependent materialized views
-    cursor.execute(
-        """
-        SELECT DISTINCT dependee.relname AS mv_name
-        FROM pg_depend d
-        JOIN pg_rewrite r ON d.objid = r.oid
-        JOIN pg_class dependee ON r.ev_class = dependee.oid
-        JOIN pg_class dependent ON d.refobjid = dependent.oid
-        WHERE dependent.relname = %s AND dependee.relkind = 'm';
-        """,
-        (table_name,),
-    )
-    mvs = [row[0] for row in cursor.fetchall()]
-    for mv in mvs:
-        logging.info(f"    Dropping dependent materialized view {mv}...")
+def drop_defined_indexes(cursor, table_name):
+    """Drops only pipeline-defined indexes, on explicit request."""
+    for index_name, _ in INDEX_DEFINITIONS.get(table_name, []):
+        logging.info(f"    Dropping defined index {index_name}...")
         cursor.execute(
-            sql.SQL("DROP MATERIALIZED VIEW IF EXISTS {} CASCADE").format(
-                sql.Identifier(mv)
+            sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(index_name))
+        )
+
+
+def ensure_defined_indexes(cursor, table_name):
+    """Creates configured indexes only when absent, preserving indexes on routine refreshes."""
+    for index_name, index_sql_template in INDEX_DEFINITIONS.get(table_name, []):
+        logging.info(f"    Ensuring index {index_name}...")
+        cursor.execute(
+            sql.SQL(index_sql_template).format(
+                idx=sql.Identifier(index_name),
+                table=sql.Identifier(table_name),
             )
         )
 
-    # 2. Find and drop all indexes
-    cursor.execute(
-        """
-        SELECT c.relname AS index_name
-        FROM pg_index i
-        JOIN pg_class c ON c.oid = i.indexrelid
-        JOIN pg_class t ON t.oid = i.indrelid
-        WHERE t.relname = %s AND i.indisprimary = FALSE;
-        """,
-        (table_name,),
-    )
-    indexes = [row[0] for row in cursor.fetchall()]
-    for idx in indexes:
-        logging.info(f"    Dropping index {idx}...")
-        cursor.execute(sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(idx)))
 
+def ensure_defined_materialized_views(cursor, table_name, refresh_existing):
+    """Creates missing MVs and refreshes existing ones in place after changed data loads."""
+    for mv_name in TABLE_MATERIALIZED_VIEWS.get(table_name, []):
+        mv_def = MATERIALIZED_VIEW_DEFINITIONS.get(mv_name)
+        if not mv_def:
+            continue
 
-def create_defined_indexes_and_views(cursor, table_name):
-    """Recreates only the indexes and materialized views defined in DWH pipeline configs."""
-    # 1. Recreate indexes
-    if table_name in INDEX_DEFINITIONS:
-        logging.info(f"    Creating defined indexes for {table_name}...")
-        for index_name, index_sql_template in INDEX_DEFINITIONS[table_name]:
-            logging.info(f"        Creating index {index_name}...")
-            index_sql = index_sql_template.format(
-                idx=sql.Identifier(index_name).as_string(cursor.connection),
-                table=sql.Identifier(table_name).as_string(cursor.connection),
+        cursor.execute(
+            "SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)",
+            (mv_name,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            logging.info(f"    Creating missing materialized view {mv_name}...")
+            cursor.execute(mv_def["create_sql"])
+        elif row[0] != "m":
+            raise RuntimeError(
+                f"Expected {mv_name} to be a materialized view, found relation kind {row[0]!r}"
             )
-            cursor.execute(index_sql)
+        elif refresh_existing:
+            logging.info(f"    Refreshing materialized view {mv_name} in place...")
+            cursor.execute(
+                sql.SQL("REFRESH MATERIALIZED VIEW {}").format(sql.Identifier(mv_name))
+            )
 
-    # 2. Recreate materialized views
-    if table_name in TABLE_MATERIALIZED_VIEWS:
-        logging.info(f"    Creating defined materialized views for {table_name}...")
-        for mv_name in TABLE_MATERIALIZED_VIEWS[table_name]:
-            if mv_name in MATERIALIZED_VIEW_DEFINITIONS:
-                logging.info(f"        Creating materialized view {mv_name}...")
-                mv_def = MATERIALIZED_VIEW_DEFINITIONS[mv_name]
-                cursor.execute(mv_def["create_sql"])
-                if mv_def.get("index_sql"):
-                    cursor.execute(mv_def["index_sql"])
+        if mv_def.get("index_sql"):
+            cursor.execute(mv_def["index_sql"])
+
+
+def ensure_defined_indexes_and_views(cursor, table_name, refresh_views):
+    """Ensures configured indexes/views exist while retaining their objects across refreshes."""
+    ensure_defined_indexes(cursor, table_name)
+    ensure_defined_materialized_views(cursor, table_name, refresh_views)
 
 
 # ------------------------------------------------------------------------------
@@ -838,11 +829,9 @@ class TableSynchronizer:
     def _sync_unified(self, table_name: str, plan: Dict[str, Any]):
         """
         Unified Sync Mode (strictly sequential):
-        - Single transaction for:
-            1. Drop dependent materialized views and indexes (if requested or mandatory)
-            2. Data Updates (Delete old rows/partition + create empty partition if partitioned + COPY) for all datasets
-            3. Recreate defined indexes and materialized views
-            4. Update sync_state
+        - One transaction for selected dataset updates and sync-state changes.
+        - Existing indexes and materialized views stay in place during routine syncs.
+        - Indexes are dropped only when the explicit maintenance flag is passed.
         """
         bq_schema = self._get_bq_schema(table_name)
         datasets = sorted(plan["to_update"] + plan["to_insert"])
@@ -856,8 +845,9 @@ class TableSynchronizer:
                     f"    Starting transaction for {len(datasets)} datasets..."
                 )
 
-                # A. Drop dependent Views and Indexes
-                drop_dependent_views_and_indexes(cursor, table_name)
+                # A. Rebuild indexes only for explicitly requested maintenance runs.
+                if self.drop_and_recreate_indexes:
+                    drop_defined_indexes(cursor, table_name)
 
                 # B. Ingest Loop (strictly sequential)
                 logging.info("    Running sequential dataset preparation and load...")
@@ -887,8 +877,13 @@ class TableSynchronizer:
                         raise e
                 pbar.close()
 
-                # C. Recreate only defined Indexes and Materialized Views
-                create_defined_indexes_and_views(cursor, table_name)
+                # C. Ensure configured objects exist and update aggregate summaries.
+                # Native PostgreSQL MVs still need a full refresh; incremental
+                # changed-dataset maintenance requires a separately validated
+                # schema/permission migration.
+                ensure_defined_indexes_and_views(
+                    cursor, table_name, refresh_views=bool(datasets)
+                )
 
 
 # ------------------------------------------------------------------------------
@@ -921,7 +916,7 @@ def main():
     parser.add_argument(
         "--drop-and-recreate-indexes",
         action="store_true",
-        help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
+        help="Explicitly drop and rebuild pipeline-defined indexes during ingestion; expensive for large tables.",
     )
     parser.add_argument(
         "--force-dataset-ids",

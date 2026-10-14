@@ -6,19 +6,30 @@ Automated pipeline for transforming and loading data from BigQuery to Postgres a
 
 ## Pipeline stages
 
-The pipeline runs five stages sequentially:
+The pipeline runs the Open Targets load and dbt first. After dbt, the
+Postgres sync and release staging can run concurrently; Elasticsearch remains
+ordered after Postgres, and artifact generation starts after release staging:
 
 | Stage | Directory | Description | Duration |
 |-------|-----------|-------------|----------|
 | 1. **Open Targets reference** | (Native) | Loads Open Targets Platform targets into the configured BQ reference table | ~minutes |
 | 2. **dbt** | `bq_dbt/` | Transforms source BQ tables into final data mart tables | ~minutes |
-| 3. **BQ → Postgres** | `bq_to_postgres/` | Loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
-| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch | ~minutes |
-| 5. **Release artifacts** | `release/` | Clusters source data, then fans out one Cloud Run task per dataset | variable |
+| 3. **BQ → Postgres** | `bq_to_postgres/` | Selectively loads final BQ data tables into Cloud SQL (Postgres) | ~hours |
+| 4. **BQ → Elastic** | `bq_to_elastic/` | Loads summary tables into Elasticsearch after Postgres | ~minutes |
+| 5. **Release staging** | `release/` | Clusters source data in run-scoped BigQuery tables; runs after dbt | variable |
+| 6. **Release artifacts** | `release/` | Fans out one Cloud Run task per dataset after staging | variable |
 
-Each stage depends on the previous one. If any stage fails, the pipeline stops.
-For the ENSG dev stack, the Open Targets reference stage writes to
-`BQ_DATASET.opentargets_targets`.
+Release staging depends on dbt output, not Postgres, so it can overlap the
+Postgres sync. Artifact generation depends on release staging and can overlap
+both Postgres and Elasticsearch. Elasticsearch stays after Postgres so search
+metadata is not published before result data. A release-staging error fails the
+build after a best-effort cleanup attempt for that run's partial staging tables
+and manifest; cleanup errors are logged without masking the build failure.
+Promote no artifacts unless the entire Cloud Build succeeds. If a sibling step
+fails after artifact generation has succeeded, that build's private
+`release/$BUILD_ID/` objects can remain; review and remove only that failed
+build's prefix before retrying. For the ENSG dev stack, the Open Targets
+reference stage writes to `BQ_DATASET.opentargets_targets`.
 
 ## Prerequisites
 
@@ -59,11 +70,17 @@ Each build writes artifacts under its own temporary prefix:
 `release-staging/$BUILD_ID/`. Existing objects under `release/` do not block a
 build: Cloud Storage prefixes are virtual, and the preflight checks only that
 this unique `release/$BUILD_ID/` path has no objects from an earlier run. A
-failed build removes only its own staging and `release/$BUILD_ID/` objects.
-Release staging tables and the Cloud Run Job are removed after the build. A
-successful run's artifacts remain in the temporary prefix for manual review,
-along with its small `release-staging/$BUILD_ID/manifest.json`. No global
-`release/` prefix needs to be empty.
+release-staging error attempts to remove its partial staging tables and
+manifest. If cleanup reports a warning, remove only that run's leftover tables
+and `release-staging/$BUILD_ID/` prefix; staging tables otherwise expire after
+two days. A failure in release artifact generation removes that step's own
+staging and `release/$BUILD_ID/` objects. If a different pipeline stage fails after
+artifact generation succeeds, the private run-scoped objects can remain for
+review/cleanup and must not be promoted. Release staging tables and the Cloud
+Run Job are removed after the artifact step. A successful run's artifacts
+remain in the temporary prefix for manual review, along with its small
+`release-staging/$BUILD_ID/manifest.json`. No global `release/` prefix needs to
+be empty.
 
 The release stage clusters source data by `dataset_id`, then runs one Cloud Run
 Job task per selected dataset. It writes metadata JSON, CSV.GZ and Parquet files
@@ -349,9 +366,26 @@ python3 bq_to_postgres/bq_to_postgres.py \
     --bq-dataset $BQ_DATASET \
     --bq-location $BQ_LOCATION \
     --pg-conn "$PG_CONN" \
-    --gcs-bucket "$GCLOUD_TMP_BUCKET" \
-    --drop-and-recreate-indexes
+    --gcs-bucket "$GCLOUD_TMP_BUCKET"
 ```
+
+Routine selective refreshes keep the configured parent/partition indexes in
+place. The DEA summary materialized views are refreshed once after all changed
+datasets in that table have loaded. PostgreSQL native materialized views do not
+support refreshing only selected dataset IDs, so this remains a full summary
+refresh. A validated incremental summary-table migration is still needed to
+avoid that work. These plain `REFRESH MATERIALIZED VIEW` statements block API
+reads of each summary view until the sync transaction commits; the first view
+can remain locked while the later views refresh. This replaces the old longer
+window that dropped the views before ingestion, but requests can still wait at
+the end of a sync. We have not switched to `CONCURRENTLY` because its resource
+and throughput trade-offs need benchmarking. For a deliberate bulk rebuild only, append
+`--drop-and-recreate-indexes`; this drops and rebuilds the pipeline-defined
+indexes and can be expensive on large tables. The Cloud Build fast path omits
+this option. Index definitions have not been removed or reordered because the
+current API query plans have not been verified. Dataset exports and COPY remain
+sequential until representative per-dataset size, worker scratch-space, and
+Cloud SQL load benchmarks support a safe concurrency limit.
 
 For datasets whose BigQuery rows were explicitly replaced, pass their exact
 comma-separated IDs with `--force-dataset-ids`. This drops and reloads only
