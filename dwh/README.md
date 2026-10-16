@@ -2,6 +2,11 @@
 
 Automated pipeline for transforming and loading data from BigQuery to Postgres and Elasticsearch.
 
+For the production release sequence, safety gates and rollback checklist, see
+[Production release checklist](production-release-checklist.md). This DWH
+runbook describes development publishing and does not authorize a production
+pipeline run.
+
 > **Before running any commands in this document**, set up the environment by running `pc_secrets dev`.
 
 ## Pipeline stages
@@ -107,12 +112,13 @@ diff -u \
 ```
 
 After manual review, copy only the IDs in the input manifest to the shared
-serving bucket under the release version prefix. For this release, the
-development backend must use `RELEASE_BUCKET=perturbation-catalogue-release`
-and `RELEASE_VERSION_PREFIX=2026.10`. Production keeps using the same bucket's
-existing unprefixed paths by leaving `RELEASE_VERSION_PREFIX` unset. Copying
-the versioned objects therefore leaves the current production artifacts in
-place.
+serving bucket under the release version prefix. For the 2026.10 development
+deployment, use `RELEASE_BUCKET=perturbation-catalogue-release` and
+`RELEASE_VERSION_PREFIX=2026.10`. At the time those artifacts were published,
+production still used the same bucket's unprefixed paths. A production prefix
+switch is a separate release step; follow the
+[production release checklist](production-release-checklist.md). Copying the
+versioned objects leaves the existing unprefixed artifacts in place.
 
 ```bash
 MANIFEST=data_sources/perturb-seq/pipeline/manifests/single-condition-20.json
@@ -462,7 +468,11 @@ gcloud storage rm --recursive "gs://$CLOUD_TMP_BUCKET/$METADATA_PREFIX/**"
 Finally verify the dataset API responses, result-table row counts and the
 `perturb_seq_reprocessed` value in the development dataset-summary index.
 
-## Creating the PostgreSQL instance
+## Creating a development PostgreSQL instance
+
+These settings are for development only. Do not copy them into production;
+production sizing, storage and recovery requirements are covered by the
+[production release checklist](production-release-checklist.md).
 
 Create the database at: https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_PLUS_DATA_CACHE_ENABLED_DEV_TEMPLATE
 
@@ -473,7 +483,7 @@ Settings:
 * Password: `$PG_PASSWORD`
 * Zonal availability: Single zone
 * Customise your instance:
-  - Machine configuration: Dedicated core, 4 vCPU, 16 GB
+  - Machine configuration: Dedicated core, 4 vCPU, 16 GB (development default)
   - Data protection: disable "Automated daily backups" and "Enable point-in-time recovery"
   - Flags and parameters:
     - `temp_file_limit` = 104857600
