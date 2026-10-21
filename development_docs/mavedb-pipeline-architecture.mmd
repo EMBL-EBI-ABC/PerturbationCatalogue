@@ -1,0 +1,37 @@
+flowchart TD
+    ZENODO[Zenodo dump] --> INGEST[Ingest and parse]
+    INGEST --> PARSED_DATA
+    INGEST --> PARSED_METADATA
+
+    subgraph GCS[GCS]
+        PARSED_DATA[Parsed data]
+        PARSED_METADATA[Parsed metadata]
+    end
+
+    subgraph HPC[HPC/Slurm]
+        METAANALYSIS[Meta-analysis]
+    end
+
+    PARSED_DATA --> POSITION_MAPPING[Position Mapping against UNIPROT]
+    PARSED_DATA --> METAANALYSIS
+    PARSED_METADATA --> METADATA_CURATION[Metadata curation]
+
+    METADATA_CURATION --> CURATED_METADATA
+
+    METAANALYSIS --> METAANALYSIS_RESULTS
+    POSITION_MAPPING --> MAPPED_SCORES
+
+    subgraph BQ[BigQuery]
+        PARSED_METADATA
+        MAPPED_SCORES[Mapped scores]
+        CURATED_METADATA[Curated metadata]
+        METAANALYSIS_RESULTS[Meta-analysis results]
+    end
+
+    CURATED_METADATA --> RELEASE[Build release]
+    METAANALYSIS_RESULTS --> RELEASE
+    MAPPED_SCORES --> RELEASE
+
+    RELEASE --> P[Postgres]
+    RELEASE --> E[Elasticsearch]
+    RELEASE --> D[Portal downloads]
