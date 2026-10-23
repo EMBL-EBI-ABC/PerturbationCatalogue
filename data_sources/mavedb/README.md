@@ -46,6 +46,7 @@ records their source taxonomy ID.
 
 ```bash
 python data_sources/mavedb/scripts/download_zenodo.py \
+  --url "https://zenodo.org/records/18511521/files/mavedb-dump.20260206153444.zip"
   --output data_sources/mavedb/tmp
 python data_sources/mavedb/scripts/extract_metadata.py \
   --input data_sources/mavedb/tmp \
@@ -54,6 +55,25 @@ python data_sources/mavedb/scripts/extract_metadata.py \
 
 The extractor also accepts the path to `main.json` directly. Use `--dry-run` to
 print summary counts without writing the CSV.
+
+## Extract variant scores
+
+Run from `data_sources/mavedb` with the project virtual environment active. The
+script reads `*.scores.csv` files from the dump's `csv/` directory and streams
+one output row per variant. It splits variant numbers from accessions ending in
+`#<number>`, detects the HGVS scheme in `hgvs_pro`, and parses simple protein
+substitutions into reference amino acid, position, and alternate amino acid.
+Missing score tokens are written as `NA`; `*.counts.csv` files are not read.
+
+```bash
+python scripts/extract_score.py \
+  --input tmp/mavedb_dump/csv \
+  --output tmp/mave_score.csv
+```
+
+The input can also be the dump directory `tmp/mavedb_dump`; the script selects
+its `csv/` subdirectory automatically. With no arguments, it uses the paths
+shown above.
 
 Before processing, set the following environment secrets:
 
