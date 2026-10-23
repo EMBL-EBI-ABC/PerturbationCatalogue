@@ -26,3 +26,4 @@ debug*
 
 coessentiality_feature/required_data
 dwh/bq_dbt/.user.yml
+data_sources/mavedb/tmp/

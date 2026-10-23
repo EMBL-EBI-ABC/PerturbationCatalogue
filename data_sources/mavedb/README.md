@@ -11,6 +11,50 @@ The ZIP archive contains:
   - `*.scores.csv` — always present
   - `*.counts.csv` — sometimes present
 
+## Inspect the dump schema
+
+Run these commands from `data_sources/mavedb` with the project virtual
+environment active. Install the `genson` dependency first if needed:
+
+```bash
+pip install -r requirements.txt
+```
+
+Infer a JSON Schema from the dump and save it to `tmp/inferred_schema.json`:
+
+```bash
+python utils/infer_schema.py --input tmp/mavedb_dump/main.json > tmp/inferred_schema.json
+```
+
+Write a readable key and value-type summary to `tmp/json_schema_summary.txt`:
+
+```bash
+python utils/describe_json.py --input tmp/mavedb_dump/main.json > tmp/json_schema_summary.txt
+```
+
+The inferred schema captures the structure observed in the dump. The summary
+shows the nested keys and types, inspecting the first item of each list.
+
+## Extract target gene identifiers
+
+After downloading and unpacking the dump, extract one row per target gene from
+`main.json`. The CSV includes the flattened fields from the
+`sourceScoreSetMetadata` contract, along with the existing UniProt, RefSeq and
+Ensembl identifier columns and their offsets. List and object values are
+JSON-encoded in their CSV cells. The extractor keeps non-human target rows and
+records their source taxonomy ID.
+
+```bash
+python data_sources/mavedb/scripts/download_zenodo.py \
+  --output data_sources/mavedb/tmp
+python data_sources/mavedb/scripts/extract_metadata.py \
+  --input data_sources/mavedb/tmp \
+  --output data_sources/mavedb/tmp/mave_identifier.csv
+```
+
+The extractor also accepts the path to `main.json` directly. Use `--dry-run` to
+print summary counts without writing the CSV.
+
 Before processing, set the following environment secrets:
 
 - LAKE_BUCKET
