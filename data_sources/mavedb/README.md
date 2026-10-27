@@ -75,7 +75,64 @@ The input can also be the dump directory `tmp/mavedb_dump`; the script selects
 its `csv/` subdirectory automatically. With no arguments, it uses the paths
 shown above.
 
-Before processing, set the following environment secrets:
+## Process MAVE, MPRA and splicing data
+
+`scripts/process_mavedb.py` reproduces the TSV analysis in
+`ot_perturbation_catalog_mave_experiments/bin/process_mavedb_data.R`. Run from
+the repository root after installing `data_sources/mavedb/requirements.txt`:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/process_mavedb.py \
+  --input data_sources/mavedb/tmp/mavedb_dump \
+  --output data_sources/mavedb/output/processed
+```
+
+`--input` also accepts `main.json` directly. `--scores` overrides the sibling
+`csv/` directory. The script caches NCBI's `categories.dmp` as
+`data_sources/mavedb/tmp/taxcat.dmp`, downloading it from the NCBI taxonomy FTP
+archive when it is missing. `--taxonomy` accepts an existing `taxcat.dmp` to
+use instead, for example when running offline with a pinned copy. The cache is
+reused on later runs. With no arguments, input and output use the paths shown
+above, independently of the working directory.
+
+The output directory contains:
+
+| Directory | Files |
+| --- | --- |
+| `maves/` | `meta.tsv`, `meta_columns.tsv`, `full.tsv`, `singles.tsv`, `doubles.tsv`, `wide.tsv` |
+| `mpras/` | `meta.tsv`, `meta_columns.tsv`, `full.tsv` |
+| `splicing/` | `meta.tsv`, `meta_columns.tsv`, `full.tsv` |
+
+Existing output files are replaced. The script processes one score file at a
+time, ignores count files, drops missing scores, and excludes the same two
+multi-gene localization score sets as the R workflow. Protein-coding rows with
+protein HGVS calls enter MAVEs; regulatory targets enter MPRAs; protein-coding
+rows with splice HGVS calls and `other_noncoding` targets enter splicing. A row
+can enter both MAVEs and splicing.
+
+Single mutants are aggregated after applying the UniProt offset, retaining the
+mean score, replicate count and sample standard deviation. As in R,
+`doubles.tsv` contains calls with **at most two mutations** from score sets
+that contain multiple mutants, including their single mutants and WT controls.
+`wide.tsv` includes all 20 standard amino acids, deletion and stop columns,
+even for sparse inputs. It also accepts `*` stop notation. Missing values are
+`NA`, logical values are `TRUE`/`FALSE`, and metadata text is quoted. DNA is
+translated only when its length is divisible by three. Both legacy `taxId` and
+newer `code` taxonomy fields are supported, and targets without external
+identifiers or sequences are retained. No FASTA or sequence-mapping files are
+written.
+
+The wide-table column order follows the corrected R workflow (commit
+`58eed32`): each score, count and standard-deviation block lists the 20 standard
+amino acids, followed by deletion and stop. Synonymous scores are selected by
+the reference amino acid's column name, so synonymous flags and derived
+missense-completeness metrics do not depend on column order. The Python
+wild-type code list also accepts `n.=` and `n.(=)` individually, alongside the
+original R literal `n.=, n.(=)`. Sparse-input cases that R cannot process
+(such as missing stop/deletion columns or nucleotide calls with no positions)
+produce complete headers and `NA` metrics where needed.
+
+For the ingestion workflow below, set the following environment secrets:
 
 - LAKE_BUCKET
 - WAREHOUSE_BUCKET
