@@ -75,6 +75,7 @@ SOURCE_COLUMNS = (
 TSV_TEXT_ESCAPES = str.maketrans({"\\": "\\\\", "\t": "\\t", "\r": "\\r", "\n": "\\n"})
 # Keep the combined R token for compatibility and match its components too.
 WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=", "n.(=)", "n.=, n.(=)"}
+MAVE_WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=, n.(=)"}
 AA_3_TO_1 = dict(
     zip(
         "Ala Arg Asn Asp Cys Gln Glu Gly His Ile Leu Lys Met Phe Pro Ser Thr Trp Tyr Val Asx Glx Xaa Sec Pyl Ter del".split(),
@@ -93,7 +94,7 @@ DOUBLE_PATTERN = re.compile(
 )
 SCORE_COLUMNS = (
     "dataset_id source_row variant_num source_accession hgvs_nt hgvs_pro hgvs_splice "
-    "is_simple_p ref_aa_abbr ref_aa_sym position alt_aa_abbr alt_aa_sym score score_raw"
+    "is_simple_p ref_aa_abbr ref_aa_sym position alt_aa_abbr alt_aa_sym wt_mut score score_raw"
 ).split()
 SIMPLE_P_PATTERN = re.compile(
     r"^(?:[^:]+:)?p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2}|=|\*)$"
@@ -489,6 +490,7 @@ def read_scores(path: Path) -> pd.DataFrame:
         if column not in scores:
             scores[column] = pd.Series(pd.NA, index=scores.index, dtype="string")
     scores["hgvs_pro"] = scores["hgvs_pro"].str.strip()
+    scores["wt_mut"] = scores["hgvs_pro"].isin(MAVE_WT_HGVS_CODES)
     scores["source_row"] = np.arange(1, len(scores) + 1)
     accession = scores["accession"].str.strip()
     parts = accession.str.extract(r"^(.+?)#([0-9]+)$")

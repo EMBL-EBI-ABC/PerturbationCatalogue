@@ -58,7 +58,7 @@ The default output contains only these two tables, joined by **`dataset_id`**:
 
 | File | Grain | Contents |
 | --- | --- | --- |
-| `scores.tsv` | One original variant record | Dataset ID, original variant number, source row number, nucleotide/protein/splice HGVS, simple-protein-variant parsing and score |
+| `scores.tsv` | One original variant record | Dataset ID, original variant number, source row number, nucleotide/protein/splice HGVS, simple-protein-variant parsing, amino-acid codes, `wt_mut` and score |
 | `metadata.tsv` | One dataset | Source and unpacked target metadata, analysis types, variant counts and derived statistics including coverage/completeness |
 
 ### Dataset selection and complete scores
@@ -91,6 +91,9 @@ excluded from analysis. Custom auxiliary score/count columns are not exported.
 reference R project's `AA_3_TO_1` mapping. Synonymous `=` uses the reference
 amino-acid letter; `Ter` and `*` use `stop`. Both columns are `NA` for protein calls outside
 the simple-HGVS parser, including multi-substitution calls.
+
+`wt_mut` is true when `hgvs_pro` matches one of the `WT_HGVS_CODES` values:
+`p.=`, `p.(=)`, `_wt`, `_sy`, `n.=`, `n.(=)` or `n.=, n.(=)`.
 
 ### Non-redundant source metadata
 
