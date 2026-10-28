@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Reproduce the MAVE, MPRA and splicing TSV analysis of process_mavedb_data.R.
+"""Export complete MaveDB scores and selected dataset metadata.
 
 Read a Zenodo dump (main.json and csv/*.scores.csv), processing one score set at
 a time. Scores are not normalized. Standard deviations use the sample formula
 (n - 1), and missing output values are written as NA. If the local taxonomy
 cache is absent, the NCBI category dump is downloaded to data_sources/mavedb/tmp.
-No FASTA files are made.
+Write scores.tsv and metadata.tsv, joined by dataset_id. Optional compatibility
+tables retain the original R singles/doubles/wide layout. No FASTA files are made.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 from contextlib import ExitStack
 import csv
+from functools import lru_cache
 import json
 import logging
 import os
@@ -36,6 +38,41 @@ DEFAULT_OUTPUT = MAVEDB_DIRECTORY / "output" / "processed"
 DEFAULT_TAXONOMY = MAVEDB_DIRECTORY / "tmp" / "taxcat.dmp"
 TAXONOMY_URL = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxcat.tar.gz"
 EXCLUDED_URNS = {"urn:mavedb:00001237-a-1", "urn:mavedb:00001237-a-2"}
+SOURCE_METADATA_FIELDS = {
+    "title": "title",
+    "short_description": "description",
+    "abstract_text": "abstract",
+    "num_variants": "n_variants_reported",
+}
+TARGET_SOURCE_FIELDS = {
+    "target_name": ("name",),
+    "target_category": ("category",),
+    "sequence_type": ("target_sequence", "sequence_type"),
+    "sequence": ("target_sequence", "sequence"),
+    "label": ("target_sequence", "label"),
+    "taxid": ("target_sequence", "taxonomy", "taxid"),
+    "organism": ("target_sequence", "taxonomy", "organism_name"),
+    "uniprot_id_from_mapped_metadata": ("uniprot_id_from_mapped_metadata",),
+}
+TARGET_DERIVED_FIELDS = {
+    "kingdom": ("target_sequence", "taxonomy", "kingdom"),
+    "reported_taxid": ("target_sequence", "taxonomy", "reported_taxid"),
+    "derived_protein_sequence": ("derived_protein_sequence",),
+}
+TARGET_DATABASES = ("uniprot", "ensembl", "refseq")
+SOURCE_COLUMNS = (
+    (
+        "dataset_id experiment_id experiment_set_id title description abstract "
+        "n_variants_reported"
+    ).split()
+    + list(TARGET_SOURCE_FIELDS)
+    + [
+        f"{field}_{database}"
+        for database in TARGET_DATABASES
+        for field in ("identifier", "offset")
+    ]
+)
+TSV_TEXT_ESCAPES = str.maketrans({"\\": "\\\\", "\t": "\\t", "\r": "\\r", "\n": "\\n"})
 # Keep the combined R token for compatibility and match its components too.
 WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=", "n.(=)", "n.=, n.(=)"}
 AA_3_TO_1 = dict(
@@ -54,7 +91,14 @@ SINGLE_PATTERN = re.compile(
 DOUBLE_PATTERN = re.compile(
     r"^p\.\[?([A-Za-z]*)([0-9]*)([A-Za-z]*);?" r"([A-Za-z]*)([0-9]*)([A-Za-z]*)"
 )
-FULL_COLUMNS = "score_urn hgvs_nt hgvs_splice hgvs_pro wt_mut score".split()
+SCORE_COLUMNS = (
+    "dataset_id source_row variant_num source_accession hgvs_nt hgvs_pro hgvs_splice "
+    "is_simple_p ref_aa_abbr ref_aa_sym position alt_aa_abbr alt_aa_sym score score_raw"
+).split()
+SIMPLE_P_PATTERN = re.compile(
+    r"^(?:[^:]+:)?p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2}|=|\*)$"
+)
+ANALYSIS_TYPES = ("maves", "mpras", "splicing")
 IDENTITY_COLUMNS = (
     "score_urn experiment_set_urn experiment_urn target_name identifier_uniprot taxid organism"
 ).split()
@@ -69,45 +113,24 @@ WIDE_COLUMNS = (
     + [f"{mut}_{metric}" for metric in ("score", "n", "sd") for mut in MUTATIONS]
     + "missing synonymous_score median_score mean_score sd_score stop synonymous del".split()
 )
-MAVE_META_COLUMNS = (
-    "experiment_set_urn experiment_urn score_urn meta_study title desc abstract target_category "
-    "kingdom organism taxid target_name label identifier_uniprot identifier_ensembl identifier_refseq "
-    "offset_uniprot offset_ensembl offset_refseq dna_sequence protein_sequence "
-    "single_mutations multiple_mutations wt_mutants stop_proportion del_proportion synonymous_proportion "
-    "n n_subs n_positions mean_variant_reps max_muts min_muts mean_muts mean_backgrounds "
-    "region_start region_end region_length n_outlier p_outlier mean_score median_score sd_score "
-    "min_score max_score mean_position_median_score completeness completeness_missense "
-    "positions_50 positions_75 positions_100 coverage_50 coverage_75 coverage_100 "
-    "coverage_nonsense coverage_synonymous"
-).split()
-NUCLEOTIDE_META_PREFIX = (
-    "experiment_set_urn experiment_urn score_urn meta_study title desc abstract target_category "
-    "kingdom organism taxid target_name label identifier_ensembl identifier_refseq identifier_uniprot "
-    "offset_ensembl offset_refseq offset_uniprot dna_sequence"
-).split()
-NUCLEOTIDE_META_SUFFIX = (
-    "n n_muts n_positions region_start region_end region_length wt_mutants "
-    "single_mutations multiple_mutations"
-).split()
 SCORE_METRICS = "mean_score median_score sd_score min_score max_score".split()
-MPRA_META_COLUMNS = (
-    NUCLEOTIDE_META_PREFIX
-    + NUCLEOTIDE_META_SUFFIX
-    + ["delins_mutations"]
+DERIVED_COLUMNS = (
+    (
+        "analysis_types primary_analysis source_accession_prefix n_variants "
+        "n_scored_variants n_missing_scores n_invalid_scores n_analyzed_variants"
+    ).split()
     + SCORE_METRICS
+    + (
+        "meta_study position_reference single_mutations multiple_mutations wt_mutants "
+        "n_subs n_positions n_muts mean_variant_reps max_muts min_muts mean_muts "
+        "mean_backgrounds region_start region_end region_length n_outlier p_outlier "
+        "mean_position_median_score completeness completeness_missense positions_50 "
+        "positions_75 positions_100 coverage_50 coverage_75 coverage_100 coverage_nonsense "
+        "coverage_synonymous stop_proportion del_proportion synonymous_proportion delins_mutations"
+    ).split()
 )
-SPLICING_META_COLUMNS = (
-    NUCLEOTIDE_META_PREFIX
-    + ["protein_sequence"]
-    + NUCLEOTIDE_META_SUFFIX
-    + SCORE_METRICS
-)
-META_COLUMNS = {
-    "maves": MAVE_META_COLUMNS,
-    "mpras": MPRA_META_COLUMNS,
-    "splicing": SPLICING_META_COLUMNS,
-}
 BOOLEAN_COLUMNS = {
+    "is_simple_p",
     "wt_mut",
     "meta_study",
     "single_mutations",
@@ -119,6 +142,14 @@ BOOLEAN_COLUMNS = {
     "del",
 }
 INTEGER_COLUMNS = {
+    "source_row",
+    "variant_num",
+    "n_variants",
+    "n_variants_reported",
+    "n_scored_variants",
+    "n_missing_scores",
+    "n_invalid_scores",
+    "n_analyzed_variants",
     "position",
     "position1",
     "position2",
@@ -142,212 +173,215 @@ INTEGER_COLUMNS = {
 } | {f"{mut}_n" for mut in MUTATIONS}
 
 
-COMMON_COLUMN_DESCRIPTIONS = {
-    "experiment_set_urn": ("str", "URN for a group of linked experiments"),
-    "experiment_urn": ("str", "URN for a single assay"),
-    "score_urn": ("str", "URN for a score set calculated against an experiment"),
-    "meta_study": ("bool", "Whether the score set is raw data or a meta analysis set"),
-    "title": ("str", "Paper title"),
-    "desc": ("str", "MaveDB description of the entry"),
-    "abstract": ("str", "Paper abstract"),
-    "target_category": ("str", "Target category"),
-    "kingdom": ("str", "Phyogenetic kingdom of target"),
-    "organism": ("str", "Organism of target"),
-    "taxid": ("str", "Organism NCBI TaxID"),
-    "target_name": ("str", "Target gene name"),
-    "label": ("str", "Target label/additional description"),
-    "identifier_uniprot": ("str", "Target Uniprot ID"),
-    "identifier_ensembl": ("str", "Target Ensembl ID"),
-    "identifier_refseq": ("str", "Target RefSeq ID"),
-    "offset_uniprot": ("int", "Offset between protein_sequence and Uniprot"),
-    "offset_ensembl": ("int", "Offset between dna_sequence and Ensembl"),
-    "offset_refseq": ("int", "Offset between dna_sequence and RefSeq"),
-    "dna_sequence": ("str", "Target nucleotide sequence"),
-    "protein_sequence": ("str", "Target AA sequence"),
-    "single_mutations": ("bool", "Whether the study has single mutations"),
-    "multiple_mutations": ("bool", "Whether the study has multiple mutations"),
-    "wt_mutants": (
-        "bool",
-        "Whether the study has any variants marked as WT/fully synonymous (note this is p.= and different to synonymous proportion)",
-    ),
-    "stop_proportion": ("float", "Proportion of positions with a nonsense mutation"),
-    "del_proportion": (
-        "float",
-        "Proportion of positions with a single AA deletion mutation",
-    ),
-    "synonymous_proportion": (
-        "float",
-        "Proportion of positions with an explicit p.Met1Met/p.Met1= style synonymous substitution",
-    ),
-    "n": ("int", "Number of variants"),
-    "n_subs": ("int", "Number of distinct substitutions"),
-    "n_positions": ("int", "Number of positions covered"),
-    "mean_variant_reps": ("float", "Mean number of measurements of each variant"),
-    "min_muts": ("int", "Smallest number of variants in one measurement"),
-    "max_muts": ("int", "Largest number of variants in one measurement"),
-    "mean_muts": (
-        "int",
-        "Mean number of substitution per variant (NA for studies without multiple mutation)",
-    ),
-    "mean_backgrounds": (
-        "int",
-        "Mean number of background each variant is found in (NA for studies without multiple mutation)",
-    ),
-    "region_start": ("int", "First mutated position"),
-    "region_end": ("int", "Final mutated position"),
-    "region_length": (
-        "int",
-        "Length of region covered (not all subsection will be mutated though, compare n_positions)",
-    ),
-    "n_outlier": (
-        "int",
-        "Number of measurements more than 2 s.d. from the mean score (caution - MAVEs are not normally distributed, this is a rough measurement)",
-    ),
-    "p_outlier": (
-        "float",
-        "Proportion of measurements more than 2 s.d. from the mean score",
-    ),
-    "mean_score": ("float", "Mean fitness score"),
-    "median_score": ("float", "Median fitness score"),
-    "sd_score": ("float", "SD of fitness score"),
-    "min_score": ("float", "Minimum fitness score"),
-    "max_score": ("float", "Maximum fitness score"),
-    "mean_position_median_score": (
-        "float",
-        "Mean value of the median fitness score at a position",
-    ),
-    "completeness": (
-        "float",
-        "Proportion of single substitutions measured at positions with at least one variant",
-    ),
-    "completeness_missense": (
-        "float",
-        "Proportion of missense substitutions measured at positions with at least one variant",
-    ),
-    "positions_50": (
-        "int",
-        "Number of positions with at least 50% of missense variants measured",
-    ),
-    "positions_75": (
-        "int",
-        "Number of positions with at least 75% of missense variants measured",
-    ),
-    "positions_100": ("int", "Number of positions with all missense variants measured"),
-    "coverage_50": (
-        "float",
-        "positions_50/region_length (i.e. coverage across the whole region spanned, not just mutated positions)",
-    ),
-    "coverage_75": (
-        "float",
-        "positions_75/region_length (i.e. coverage across the whole region spanned, not just mutated positions)",
-    ),
-    "coverage_100": (
-        "float",
-        "positions_100/region_length (i.e. coverage across the whole region spanned, not just mutated positions)",
-    ),
-    "coverage_nonsense": (
-        "float",
-        "Proportion of region spanned with nonsense variants measured",
-    ),
-    "coverage_synonymous": (
-        "float",
-        "Proportion of region spanned with synonymous variants measured",
-    ),
-    "n_muts": ("int", "Number of distinct mutation tested in any combination"),
-    "delins_mutations": ("bool", "Study includes complex delins mutations"),
-}
-COLUMN_DESCRIPTIONS = {
-    "maves": {
-        **COMMON_COLUMN_DESCRIPTIONS,
-    },
-    "mpras": {
-        **COMMON_COLUMN_DESCRIPTIONS,
-        "n": ("int", "Total variants measured"),
-        "n_positions": ("int", "Number of positions mutated"),
-        "region_start": ("int", "Start of the targeted region"),
-        "region_end": ("int", "End of the targeted region"),
-        "region_length": ("int", "Length of the targted region"),
-        "wt_mutants": ("bool", "Study includes WT alleles"),
-        "single_mutations": ("bool", "Study includes single substitutions"),
-        "multiple_mutations": ("bool", "Study includes multiple mutations"),
-        "sd_score": ("float", "SD of fitness scores"),
-    },
-    "splicing": {
-        **COMMON_COLUMN_DESCRIPTIONS,
-        "n": ("int", "Total variants measured"),
-        "n_positions": ("int", "Number of positions mutated"),
-        "region_start": ("int", "Start of the targeted region"),
-        "region_end": ("int", "End of the targeted region"),
-        "region_length": ("int", "Length of the targted region"),
-        "wt_mutants": ("bool", "Study includes WT alleles"),
-        "single_mutations": ("bool", "Study includes single substitutions"),
-        "multiple_mutations": ("bool", "Study includes multiple mutations"),
-        "sd_score": ("float", "SD of fitness scores"),
-    },
-}
+@lru_cache(maxsize=None)
+def snake_case(name: str) -> str:
+    """Use one spelling for source field names."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
 
 
-def load_metadata(input_path: Path) -> dict[str, list[dict[str, object]]]:
-    """Flatten target metadata, retaining targets with no external identifiers."""
+def present(value: object) -> bool:
+    """Treat zero and FALSE as information, but omit empty source fields."""
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def value_key(value: object) -> str:
+    """Compare structured values independently of key order and text whitespace."""
+
+    def canonical(item: object) -> object:
+        if isinstance(item, str):
+            return " ".join(item.split())
+        if isinstance(item, dict):
+            return {key: canonical(child) for key, child in item.items()}
+        if isinstance(item, list):
+            return [canonical(child) for child in item]
+        return item
+
+    return json.dumps(canonical(value), ensure_ascii=False, sort_keys=True)
+
+
+def normalized(value: object) -> object:
+    """Retain nonempty source data, normalizing names and duplicate list entries."""
+    if isinstance(value, dict):
+        return {
+            snake_case(key): normalized(item)
+            for key, item in value.items()
+            if present(item)
+        }
+    if isinstance(value, list):
+        result = []
+        seen = set()
+        for item in value:
+            item = normalized(item)
+            key = value_key(item)
+            if present(item) and key not in seen:
+                result.append(item)
+                seen.add(key)
+        return result
+    return value
+
+
+def normalize_target(target: dict[str, object]) -> dict[str, object]:
+    """Select the reference extractors' target fields and retain derived provenance."""
+    result = normalized(
+        {
+            key: value
+            for key, value in target.items()
+            if snake_case(key)
+            in {
+                "name",
+                "category",
+                "target_sequence",
+                "external_identifiers",
+                "uniprot_id_from_mapped_metadata",
+            }
+        }
+    )
+    sequence = result.get("target_sequence", {})
+    for key in list(sequence):
+        if key not in {"sequence_type", "sequence", "label", "taxonomy"}:
+            del sequence[key]
+    taxonomy = sequence.get("taxonomy", {})
+    for key in list(taxonomy):
+        if key not in {"code", "tax_id", "organism_name"}:
+            del taxonomy[key]
+    taxid = taxonomy.pop("code", taxonomy.get("tax_id"))
+    legacy = taxonomy.pop("tax_id", None)
+    if taxid is not None:
+        taxonomy["taxid"] = str(taxid)
+    if legacy is not None and str(legacy) != str(taxid):
+        taxonomy["reported_taxid"] = str(legacy)
+    mapped = result.pop("uniprot_id_from_mapped_metadata", None)
+    identifiers = result.get("external_identifiers", [])
+    for external in identifiers:
+        for key in list(external):
+            if key not in {"identifier", "offset"}:
+                del external[key]
+        identifier = external.get("identifier", {})
+        for key in list(identifier):
+            if key not in {"db_name", "identifier"}:
+                del identifier[key]
+    matches = [
+        external
+        for external in identifiers
+        if str(external.get("identifier", {}).get("db_name", "")).lower() == "uniprot"
+    ]
+    if mapped:
+        same = next(
+            (
+                external
+                for external in matches
+                if external.get("identifier", {}).get("identifier") == mapped
+            ),
+            None,
+        )
+        if same is not None:
+            same["sources"] = ["external_identifiers", "mapped_metadata"]
+        elif not matches:
+            identifiers.append(
+                {
+                    "identifier": {"db_name": "UniProt", "identifier": mapped},
+                    "source": "mapped_metadata",
+                }
+            )
+            result["external_identifiers"] = identifiers
+        else:
+            result["uniprot_id_from_mapped_metadata"] = mapped
+    return result
+
+
+def analysis_target(
+    target: dict[str, object],
+    dataset_id: str,
+    experiment_id: str,
+    experiment_set_id: str,
+) -> dict[str, object]:
+    """Build the small target view used by the R-compatible analysis functions."""
+    sequence = target.get("target_sequence", {})
+    taxonomy = sequence.get("taxonomy", {})
+    row = {
+        "score_urn": dataset_id,
+        "experiment_urn": experiment_id,
+        "experiment_set_urn": experiment_set_id,
+        "target_name": target.get("name"),
+        "target_category": target.get("category"),
+        "taxid": taxonomy.get("taxid"),
+        "organism": taxonomy.get("organism_name"),
+        "kingdom": taxonomy.get("kingdom"),
+        "sequence_type": sequence.get("sequence_type"),
+        "label": sequence.get("label"),
+        "dna_sequence": None,
+        "protein_sequence": None,
+    }
+    if sequence.get("sequence_type") in {"dna", "protein"}:
+        row[f"{sequence['sequence_type']}_sequence"] = sequence.get("sequence")
+    for database in ("uniprot", "ensembl", "refseq"):
+        row[f"identifier_{database}"] = None
+        row[f"offset_{database}"] = None
+    for external in target.get("external_identifiers", []):
+        identifier = external.get("identifier", {})
+        database = str(identifier.get("db_name", "")).lower()
+        if database in {"uniprot", "ensembl", "refseq"}:
+            key = f"identifier_{database}"
+            if row[key] is None:
+                row[key] = identifier.get("identifier")
+                offset = external.get("offset")
+                try:
+                    row[f"offset_{database}"] = (
+                        int(offset) if offset is not None else None
+                    )
+                except (ValueError, TypeError):
+                    LOGGER.warning(
+                        "%s: invalid %s offset %r", dataset_id, database, offset
+                    )
+    return row
+
+
+def load_datasets(input_path: Path) -> dict[str, dict[str, object]]:
+    """Read only source fields extracted by the MAVE experiments or ProtVar scripts."""
     with input_path.open(encoding="utf-8") as handle:
         data = json.load(handle)
     experiment_sets = data if isinstance(data, list) else data["experimentSets"]
-    result: dict[str, list[dict[str, object]]] = {}
+    result = {}
     for experiment_set in experiment_sets:
         for experiment in experiment_set.get("experiments", []):
             for score_set in experiment.get("scoreSets", []):
-                urn = score_set["urn"]
-                targets = result.setdefault(urn, [])
-                for target in score_set.get("targetGenes") or []:
-                    sequence = target.get("targetSequence") or {}
-                    taxonomy = sequence.get("taxonomy") or {}
-                    taxid = taxonomy.get("taxId", taxonomy.get("code"))
-                    row = {
-                        "score_urn": urn,
-                        "experiment_set_urn": experiment_set.get("urn")
-                        or urn.rsplit("-", 2)[0],
-                        "experiment_urn": experiment.get("urn")
-                        or urn.rsplit("-", 1)[0],
-                        "meta_study": bool(re.search(r"urn:mavedb:\d*-0-", urn)),
-                        "title": score_set.get("title"),
-                        "desc": score_set.get("shortDescription"),
-                        "abstract": score_set.get("abstractText"),
-                        "n": score_set.get("numVariants"),
-                        "target_name": target.get("name"),
-                        "target_category": target.get("category"),
-                        "label": sequence.get("label"),
-                        "sequence_type": sequence.get("sequenceType"),
-                        "dna_sequence": None,
-                        "protein_sequence": None,
-                        "taxid": str(taxid) if taxid is not None else None,
-                        "organism": taxonomy.get("organismName"),
-                        "kingdom": taxonomy.get("kingdom"),
-                    }
-                    if sequence.get("sequenceType") in {"dna", "protein"}:
-                        row[f"{sequence['sequenceType']}_sequence"] = sequence.get(
-                            "sequence"
+                dataset_id = score_set["urn"]
+                if dataset_id in result:
+                    raise ValueError(f"Duplicate dataset_id in main.json: {dataset_id}")
+                experiment_id = experiment.get("urn") or dataset_id.rsplit("-", 1)[0]
+                experiment_set_id = (
+                    experiment_set.get("urn") or dataset_id.rsplit("-", 2)[0]
+                )
+                targets = [
+                    normalize_target(target)
+                    for target in score_set.get("targetGenes") or []
+                ]
+                metadata = {
+                    "dataset_id": dataset_id,
+                    "experiment_id": experiment_id,
+                    "experiment_set_id": experiment_set_id,
+                    **{
+                        SOURCE_METADATA_FIELDS[snake_case(key)]: value
+                        for key, value in score_set.items()
+                        if snake_case(key) in SOURCE_METADATA_FIELDS and present(value)
+                    },
+                    "targets": targets,
+                }
+                result[dataset_id] = {
+                    "metadata": metadata,
+                    "targets": [
+                        analysis_target(
+                            target, dataset_id, experiment_id, experiment_set_id
                         )
-                    for database in ("uniprot", "ensembl", "refseq"):
-                        row[f"identifier_{database}"] = None
-                        row[f"offset_{database}"] = None
-                    for external in target.get("externalIdentifiers") or []:
-                        identifier = external.get("identifier") or {}
-                        database = (identifier.get("dbName") or "").lower()
-                        if database in {"uniprot", "ensembl", "refseq"}:
-                            key = f"identifier_{database}"
-                            if row[key] is not None and row[key] != identifier.get(
-                                "identifier"
-                            ):
-                                raise ValueError(
-                                    f"{urn}: multiple {database} identifiers for one target"
-                                )
-                            row[key] = identifier.get("identifier")
-                            offset = external.get("offset")
-                            row[f"offset_{database}"] = (
-                                int(offset) if offset is not None else None
-                            )
-                    targets.append(row)
+                        for target in targets
+                    ],
+                }
     return result
+
+
+def load_metadata(input_path: Path) -> dict[str, list[dict[str, object]]]:
+    """Compatibility view of the shared dataset reader."""
+    return {key: value["targets"] for key, value in load_datasets(input_path).items()}
 
 
 def download_taxonomy(destination: Path) -> None:
@@ -428,10 +462,11 @@ def add_kingdoms(
 
 
 def read_scores(path: Path) -> pd.DataFrame:
-    """Read only relevant columns and discard missing or unparseable scores."""
+    """Read all variant records; retain missing/invalid scores for the main export."""
     scores = pd.read_csv(
         path,
-        usecols=lambda column: column in FULL_COLUMNS,
+        usecols=lambda column: column
+        in {"accession", "hgvs_nt", "hgvs_pro", "hgvs_splice", "score"},
         dtype="string",
         keep_default_na=False,
         na_values=["", "NA"],
@@ -439,19 +474,35 @@ def read_scores(path: Path) -> pd.DataFrame:
     )
     if "score" not in scores:
         raise ValueError(f"{path}: missing required score column")
-    numeric = pd.to_numeric(scores["score"], errors="coerce")
+    raw = scores["score"].str.strip()
+    numeric = pd.to_numeric(raw, errors="coerce").astype(float)
     invalid = (
-        numeric.isna()
-        & scores["score"].notna()
-        & ~scores["score"].isin(["None", "NaN", "nan", "null", "NULL"])
+        numeric.isna() & raw.notna() & ~raw.isin(["None", "NaN", "nan", "null", "NULL"])
     )
+    scores["score_raw"] = raw.where(invalid)
     if invalid.any():
-        LOGGER.warning("%s: dropping %d invalid scores", path.name, invalid.sum())
-    scores["score"] = numeric.astype(float)
-    for column in ("hgvs_nt", "hgvs_splice", "hgvs_pro"):
+        LOGGER.warning(
+            "%s: retaining %d invalid scores outside analysis", path.name, invalid.sum()
+        )
+    scores["score"] = numeric
+    for column in ("accession", "hgvs_nt", "hgvs_splice", "hgvs_pro"):
         if column not in scores:
             scores[column] = pd.Series(pd.NA, index=scores.index, dtype="string")
-    return scores.dropna(subset=["score"]).reset_index(drop=True)
+    scores["hgvs_pro"] = scores["hgvs_pro"].str.strip()
+    scores["source_row"] = np.arange(1, len(scores) + 1)
+    accession = scores["accession"].str.strip()
+    parts = accession.str.extract(r"^(.+?)#([0-9]+)$")
+    scores["variant_num"] = pd.to_numeric(parts[1], errors="coerce").astype("Int64")
+    scores["source_accession"] = accession.where(parts[0].isna())
+    scores["source_prefix"] = parts[0]
+    parsed = scores["hgvs_pro"].str.extract(SIMPLE_P_PATTERN)
+    scores["is_simple_p"] = parsed[0].notna()
+    scores["ref_aa_abbr"] = parsed[0]
+    scores["position"] = pd.to_numeric(parsed[1], errors="coerce").astype("Int64")
+    scores["alt_aa_abbr"] = parsed[2]
+    scores["ref_aa_sym"] = parsed[0].map(AA_3_TO_1)
+    scores["alt_aa_sym"] = parsed[2].where(parsed[2].ne("="), parsed[0]).map(AA_3_TO_1)
+    return scores
 
 
 def score_summary(scores: pd.Series) -> dict[str, float]:
@@ -642,20 +693,76 @@ def nucleotide_summary(scores: pd.DataFrame, category: str) -> dict[str, object]
     return result
 
 
+def json_safe(value: object) -> object:
+    """Make nested metadata valid JSON, including numpy scalars and missing values."""
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        value = value.item()
+    return (
+        None
+        if value is pd.NA or (isinstance(value, float) and not np.isfinite(value))
+        else value
+    )
+
+
 def write_tsv(
     frame: pd.DataFrame,
     destination: Path | TextIO,
     *,
     header: bool = True,
     quote: bool = False,
+    single_line: bool = False,
+    max_cell_chars: int | None = None,
 ) -> None:
     """Use R-compatible NA, logical values and integer output columns."""
     frame = frame.copy()
     for column in frame.columns:
-        if column in BOOLEAN_COLUMNS:
-            frame[column] = frame[column].map({True: "TRUE", False: "FALSE"})
+        if single_line:
+            # Escape scalar text before JSON serialization, so JSON cells remain
+            # valid JSON while every dataset occupies exactly one physical line.
+            frame[column] = frame[column].map(
+                lambda value: (
+                    value.translate(TSV_TEXT_ESCAPES)
+                    if isinstance(value, str)
+                    else value
+                )
+            )
+        structured = (
+            frame[column].map(lambda value: isinstance(value, (dict, list)))
+            if frame[column].dtype == object
+            else pd.Series(False, index=frame.index)
+        )
+        if column in BOOLEAN_COLUMNS or pd.api.types.is_bool_dtype(frame[column]):
+            frame[column] = frame[column].astype(object)
+            frame.loc[~structured, column] = frame.loc[~structured, column].map(
+                {True: "TRUE", False: "FALSE"}
+            )
         elif column in INTEGER_COLUMNS:
-            frame[column] = frame[column].astype("Int64")
+            scalar = frame.loc[~structured, column].astype("Int64")
+            frame[column] = frame[column].astype(object)
+            frame.loc[~structured, column] = scalar.astype(object)
+        if structured.any():
+            frame[column] = frame[column].map(
+                lambda value: (
+                    json.dumps(
+                        json_safe(value), ensure_ascii=False, separators=(",", ":")
+                    )
+                    if isinstance(value, (dict, list))
+                    else value
+                )
+            )
+        if max_cell_chars is not None:
+            lengths = frame[column].map(
+                lambda value: len(value) if isinstance(value, str) else 0
+            )
+            if lengths.gt(max_cell_chars).any():
+                raise ValueError(
+                    f"Metadata column {column!r} exceeds {max_cell_chars:,} characters; "
+                    "no values were truncated"
+                )
     frame.to_csv(
         destination,
         sep="\t",
@@ -667,209 +774,320 @@ def write_tsv(
     )
 
 
+def category_scores(
+    scores: pd.DataFrame, targets: list[dict[str, object]]
+) -> dict[str, list[tuple[int, pd.DataFrame]]]:
+    """Decide dataset eligibility once using the original analysis selection rules."""
+    scored = scores.dropna(subset=["score"])
+    result: dict[str, list[tuple[int, pd.DataFrame]]] = {}
+    for index, target in enumerate(targets):
+        category = target["target_category"]
+        if category == "protein_coding":
+            protein = scored.dropna(subset=["hgvs_pro"]).copy()
+            if not protein.empty:
+                protein["wt_mut"] = protein["hgvs_pro"].isin(WT_HGVS_CODES)
+                result.setdefault("maves", []).append((index, protein))
+        if category == "regulatory":
+            nucleotide = scored.copy()
+            if not nucleotide.empty:
+                nucleotide["wt_mut"] = nucleotide["hgvs_nt"].isin(WT_HGVS_CODES)
+                result.setdefault("mpras", []).append((index, nucleotide))
+        if category in {"protein_coding", "other_noncoding"}:
+            splice = (
+                scored.dropna(subset=["hgvs_splice"]).copy()
+                if category == "protein_coding"
+                else scored.copy()
+            )
+            if not splice.empty:
+                splice["wt_mut"] = splice["hgvs_nt"].str.contains("A>A|C>C|G>G|T>T")
+                result.setdefault("splicing", []).append((index, splice))
+    return result
+
+
+def mave_analysis(
+    scores: pd.DataFrame, target: dict[str, object]
+) -> tuple[dict[str, object], pd.DataFrame, pd.DataFrame]:
+    """Calculate the corrected R metrics without duplicating source variant rows."""
+    hgvs = scores["hgvs_pro"]
+    counts = hgvs.str.count(";") + 1
+    singles = make_singles(scores, target)
+    wide = make_wide(singles, target)
+    summary = score_summary(scores["score"])
+    sd = summary["sd_score"]
+    outliers = (
+        int(((scores["score"] - summary["mean_score"]).abs() > 2 * sd).sum())
+        if pd.notna(sd)
+        else None
+    )
+    summary.update(
+        n_analyzed_variants=len(scores),
+        n_subs=int(counts.sum()),
+        n_positions=hgvs.str.findall(r"[0-9]+").explode().nunique(),
+        multiple_mutations=bool((counts > 1).any()),
+        single_mutations=bool((counts == 1).any()),
+        wt_mutants=bool(scores["wt_mut"].any()),
+        n_outlier=outliers,
+        p_outlier=outliers / len(scores) if outliers is not None else None,
+        mean_variant_reps=singles["n"].mean(),
+    )
+    summary.update(position_summary(wide))
+    if summary["multiple_mutations"]:
+        summary.update(multiple_summary(hgvs))
+    return summary, singles, wide
+
+
+def dataset_analysis(
+    dataset: dict[str, object],
+    scores: pd.DataFrame,
+    categories: dict[str, list[tuple[int, pd.DataFrame]]],
+    compatibility: dict[str, TextIO],
+) -> dict[str, object]:
+    """One dataset row with primary-analysis metrics and source target metadata."""
+    row = dict(dataset["metadata"])
+    targets = dataset["targets"]
+    source_targets = row["targets"]
+    primary = next(category for category in ANALYSIS_TYPES if category in categories)
+    row.update(
+        analysis_types=[
+            category for category in ANALYSIS_TYPES if category in categories
+        ],
+        primary_analysis=primary,
+        meta_study=bool(re.search(r"urn:mavedb:\d*-0-", row["dataset_id"])),
+        n_variants=len(scores),
+        n_scored_variants=int(scores["score"].notna().sum()),
+        n_invalid_scores=int(scores["score_raw"].notna().sum()),
+        n_missing_scores=int(
+            (scores["score"].isna() & scores["score_raw"].isna()).sum()
+        ),
+    )
+    row.update(score_summary(scores["score"].dropna()))
+    row["n_analyzed_variants"] = len(
+        set().union(*(set(subset.index) for _, subset in categories[primary]))
+    )
+    for index, target in enumerate(targets):
+        source = source_targets[index]
+        if target.get("kingdom"):
+            source.setdefault("target_sequence", {}).setdefault("taxonomy", {})[
+                "kingdom"
+            ] = target["kingdom"]
+        if (
+            target["target_category"] == "protein_coding"
+            and target["protein_sequence"] is None
+            and target["dna_sequence"] is not None
+        ):
+            translated = translate_dna(target["dna_sequence"])
+            if translated is not None:
+                source["derived_protein_sequence"] = translated
+    for category in ANALYSIS_TYPES:
+        analyses = categories.get(category, [])
+        for index, subset in analyses:
+            target = targets[index]
+            if category == "maves":
+                metrics, singles, wide = mave_analysis(subset, target)
+                if compatibility:
+                    write_tsv(singles, compatibility["singles"], header=False)
+                    write_tsv(wide, compatibility["wide"], header=False)
+                    if metrics["multiple_mutations"]:
+                        write_tsv(
+                            make_doubles(subset, target),
+                            compatibility["doubles"],
+                            header=False,
+                        )
+            else:
+                metrics = {
+                    "n_analyzed_variants": len(subset),
+                    **nucleotide_summary(subset, category),
+                }
+            metrics["position_reference"] = (
+                "uniprot"
+                if category == "maves" and target.get("offset_uniprot") is not None
+                else "source"
+            )
+            if category == primary and len(analyses) == 1:
+                row.update(metrics)
+    return row
+
+
+def unpack_targets(row: dict[str, object]) -> dict[str, object]:
+    """Use scalar target columns, or aligned arrays when a dataset has several targets."""
+    result = {key: value for key, value in row.items() if key != "targets"}
+    targets = []
+    for target in row.get("targets", []):
+        flat = {}
+        for column, path in (TARGET_SOURCE_FIELDS | TARGET_DERIVED_FIELDS).items():
+            value = target
+            for key in path:
+                value = value.get(key) if isinstance(value, dict) else None
+            if column in TARGET_SOURCE_FIELDS or value is not None:
+                flat[column] = value
+        for database in TARGET_DATABASES:
+            identifiers = [
+                external
+                for external in target.get("external_identifiers", [])
+                if str(external.get("identifier", {}).get("db_name", "")).lower()
+                == database
+            ]
+            values = {
+                f"identifier_{database}": [
+                    external["identifier"].get("identifier") for external in identifiers
+                ],
+                f"offset_{database}": [
+                    external.get("offset") for external in identifiers
+                ],
+                f"identifier_{database}_sources": [
+                    external.get("sources")
+                    or ([external["source"]] if external.get("source") else None)
+                    for external in identifiers
+                ],
+            }
+            for column, items in values.items():
+                if not column.endswith("_sources") or any(
+                    item is not None for item in items
+                ):
+                    flat[column] = items[0] if len(items) == 1 else items or None
+        targets.append(flat)
+    for column in dict.fromkeys(key for target in targets for key in target):
+        values = [target.get(column) for target in targets]
+        result[column] = values[0] if len(values) == 1 else values
+    return result
+
+
+def metadata_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
+    """Expand target metadata, keeping dataset-level derived fields last."""
+    frame = pd.DataFrame([unpack_targets(row) for row in rows])
+    target_derived = list(TARGET_DERIVED_FIELDS) + [
+        f"identifier_{database}_sources" for database in TARGET_DATABASES
+    ]
+    columns = (
+        SOURCE_COLUMNS
+        + DERIVED_COLUMNS
+        + [column for column in target_derived if column in frame]
+    )
+    return frame.reindex(columns=columns)
+
+
+def resolve_metadata_path(input_path: Path) -> Path:
+    """Accept main.json, the dump, its parent extraction directory or csv/."""
+    if not input_path.is_dir():
+        return input_path
+    candidates = [input_path / "main.json", input_path / "mavedb_dump/main.json"]
+    if input_path.name == "csv":
+        candidates.append(input_path.parent / "main.json")
+    for path in candidates:
+        if path.is_file():
+            return path
+    raise FileNotFoundError(f"No main.json found under {input_path}")
+
+
 def process_mavedb(
     input_path: Path,
     output_path: Path,
     *,
     scores_path: Path | None = None,
     taxonomy_path: Path | None = None,
+    compatibility_tables: bool = False,
 ) -> dict[str, int]:
-    """Write the requested TSVs; return the number of metadata rows by category."""
-    metadata_path = input_path / "main.json" if input_path.is_dir() else input_path
+    """Publish two canonical tables, with the same dataset selection for both."""
+    metadata_path = resolve_metadata_path(input_path)
     scores_path = (
         scores_path if scores_path is not None else metadata_path.parent / "csv"
     )
     score_files = sorted(scores_path.glob("*.scores.csv"))
     if not score_files:
         raise FileNotFoundError(f"No *.scores.csv files found in {scores_path}")
-    taxonomy_path = resolve_taxonomy(taxonomy_path)
-    metadata = load_metadata(metadata_path)
-    add_kingdoms(metadata, taxonomy_path)
-    summaries: dict[str, list[dict[str, object]]] = {
-        category: [] for category in META_COLUMNS
-    }
-    with ExitStack() as stack:
-        outputs = {}
-        for category in META_COLUMNS:
-            directory = output_path / category
-            directory.mkdir(parents=True, exist_ok=True)
-            schemas = {"full": FULL_COLUMNS}
-            if category == "maves":
-                schemas.update(
-                    singles=SINGLE_COLUMNS, doubles=DOUBLE_COLUMNS, wide=WIDE_COLUMNS
-                )
-            for name, columns in schemas.items():
-                handle = stack.enter_context(
-                    (directory / f"{name}.tsv").open("w", encoding="utf-8", newline="")
-                )
-                outputs[category, name] = handle
-                write_tsv(pd.DataFrame(columns=columns), handle)
-        for index, score_file in enumerate(score_files, start=1):
-            urn = score_file.name.removesuffix(".scores.csv").replace(
-                "urn-mavedb-", "urn:mavedb:", 1
+    datasets = load_datasets(metadata_path)
+    target_metadata = {key: value["targets"] for key, value in datasets.items()}
+    add_kingdoms(target_metadata, resolve_taxonomy(taxonomy_path))
+    output_path.mkdir(parents=True, exist_ok=True)
+    rows = []
+    score_count = 0
+    with tempfile.TemporaryDirectory(
+        prefix=".processing-", dir=output_path
+    ) as temporary:
+        stage = Path(temporary)
+        with ExitStack() as stack:
+            score_handle = stack.enter_context(
+                (stage / "scores.tsv").open("w", encoding="utf-8", newline="")
             )
-            if urn in EXCLUDED_URNS:
-                continue
-            targets = metadata.get(urn)
-            if not targets:
-                LOGGER.warning("%s: no target metadata; skipping", urn)
-                continue
-            scores = read_scores(score_file)
-            if scores.empty:
-                continue
-            scores["score_urn"] = urn
-            for category in META_COLUMNS:
-                if category == "maves":
-                    selected = [
-                        target
-                        for target in targets
-                        if target["target_category"] == "protein_coding"
-                    ]
-                    if not selected:
-                        continue
-                    subset = scores.dropna(subset=["hgvs_pro"]).copy()
-                    subset["wt_mut"] = subset["hgvs_pro"].isin(WT_HGVS_CODES)
-                elif category == "mpras":
-                    selected = [
-                        target
-                        for target in targets
-                        if target["target_category"] == "regulatory"
-                    ]
-                    if not selected:
-                        continue
-                    subset = scores.copy()
-                    subset["wt_mut"] = subset["hgvs_nt"].isin(WT_HGVS_CODES)
-                else:
-                    selected = [
-                        target
-                        for target in targets
-                        if target["target_category"]
-                        in {"protein_coding", "other_noncoding"}
-                    ]
-                    if not selected or (
-                        all(
-                            target["target_category"] == "protein_coding"
-                            for target in selected
+            write_tsv(pd.DataFrame(columns=SCORE_COLUMNS), score_handle)
+            compatibility = {}
+            if compatibility_tables:
+                directory = stage / "maves"
+                directory.mkdir()
+                for name, columns in [
+                    ("singles", SINGLE_COLUMNS),
+                    ("doubles", DOUBLE_COLUMNS),
+                    ("wide", WIDE_COLUMNS),
+                ]:
+                    handle = stack.enter_context(
+                        (directory / f"{name}.tsv").open(
+                            "w", encoding="utf-8", newline=""
                         )
-                        and scores["hgvs_splice"].isna().all()
-                    ):
-                        continue
-                    subset = scores.copy()
-                    subset["wt_mut"] = subset["hgvs_nt"].str.contains("A>A|C>C|G>G|T>T")
-                category_summaries = []
-                all_singles, all_wide, all_measurements = [], [], []
-                for target in selected:
-                    target_scores = subset
-                    if (
-                        category == "splicing"
-                        and target["target_category"] == "protein_coding"
-                    ):
-                        target_scores = subset.dropna(subset=["hgvs_splice"])
-                    if target_scores.empty:
-                        continue
-                    write_tsv(
-                        target_scores[FULL_COLUMNS],
-                        outputs[category, "full"],
-                        header=False,
                     )
-                    if category != "maves":
-                        category_summaries.append(dict(target))
-                        all_measurements.append(target_scores)
-                        continue
-                    hgvs = target_scores["hgvs_pro"]
-                    counts = hgvs.str.count(";") + 1
-                    row = {
-                        **target,
-                        "n": len(target_scores),
-                        "n_subs": int(counts.sum()),
-                        "n_positions": hgvs.str.findall(r"[0-9]+").explode().nunique(),
-                        "multiple_mutations": bool((counts > 1).any()),
-                        "single_mutations": bool((counts == 1).any()),
-                        "wt_mutants": bool(target_scores["wt_mut"].any()),
-                    }
-                    if row["protein_sequence"] is None:
-                        row["protein_sequence"] = translate_dna(row["dna_sequence"])
-                    singles = make_singles(target_scores, target)
-                    wide = make_wide(singles, target)
-                    write_tsv(singles, outputs[category, "singles"], header=False)
-                    write_tsv(wide, outputs[category, "wide"], header=False)
-                    if row["multiple_mutations"]:
-                        write_tsv(
-                            make_doubles(target_scores, target),
-                            outputs[category, "doubles"],
-                            header=False,
-                        )
-                    category_summaries.append(row)
-                    all_singles.append(singles)
-                    all_wide.append(wide)
-                    all_measurements.append(target_scores)
-                if not category_summaries:
+                    compatibility[name] = handle
+                    write_tsv(pd.DataFrame(columns=columns), handle)
+            for index, score_file in enumerate(score_files, start=1):
+                dataset_id = score_file.name.removesuffix(".scores.csv").replace(
+                    "urn-mavedb-", "urn:mavedb:", 1
+                )
+                if dataset_id in EXCLUDED_URNS:
                     continue
-                combined = pd.concat(all_measurements, ignore_index=True)
-                if category == "maves":
-                    summary = score_summary(combined["score"])
-                    sd = summary["sd_score"]
-                    outliers = (
-                        int(
-                            (
-                                (combined["score"] - summary["mean_score"]).abs()
-                                > 2 * sd
-                            ).sum()
-                        )
-                        if pd.notna(sd)
-                        else None
-                    )
-                    summary.update(
-                        n_outlier=outliers,
-                        p_outlier=(
-                            outliers / len(combined) if outliers is not None else None
-                        ),
-                        mean_variant_reps=pd.concat(all_singles)["n"].mean(),
-                    )
-                    summary.update(
-                        position_summary(pd.concat(all_wide, ignore_index=True))
-                    )
-                    if any(row["multiple_mutations"] for row in category_summaries):
-                        summary.update(multiple_summary(combined["hgvs_pro"]))
-                else:
-                    summary = nucleotide_summary(combined, category)
-                summaries[category].extend(
-                    {**row, **summary} for row in category_summaries
+                dataset = datasets.get(dataset_id)
+                if dataset is None or not dataset["targets"]:
+                    LOGGER.warning("%s: no target metadata; skipping", dataset_id)
+                    continue
+                scores = read_scores(score_file)
+                categories = category_scores(scores, dataset["targets"])
+                if not categories:
+                    continue
+                scores["dataset_id"] = dataset_id
+                # The legacy name is internal to the optional R compatibility functions.
+                scores["score_urn"] = dataset_id
+                row = dataset_analysis(dataset, scores, categories, compatibility)
+                prefixes = scores["source_prefix"].dropna().unique().tolist()
+                aliases = [prefix for prefix in prefixes if prefix != dataset_id]
+                if len(prefixes) == 1 and aliases:
+                    row["source_accession_prefix"] = aliases[0]
+                elif aliases:
+                    mismatched = scores["source_prefix"].notna() & scores[
+                        "source_prefix"
+                    ].ne(dataset_id)
+                    scores.loc[mismatched, "source_accession"] = scores.loc[
+                        mismatched, "accession"
+                    ]
+                write_tsv(
+                    scores.reindex(columns=SCORE_COLUMNS), score_handle, header=False
                 )
-            if index % 100 == 0:
-                LOGGER.info("Processed %d/%d score files", index, len(score_files))
-    for category, rows in summaries.items():
-        columns = META_COLUMNS[category]
-        # R only emits protein_sequence for splicing when such targets exist.
-        if category == "splicing" and not any(
-            row["sequence_type"] == "protein" for row in rows
-        ):
-            columns = [column for column in columns if column != "protein_sequence"]
-        frame = pd.DataFrame(rows).reindex(columns=columns)
-        write_tsv(frame, output_path / category / "meta.tsv", quote=True)
-        description_columns = list(META_COLUMNS[category])
-        if category == "maves":
-            # The R descriptor table lists min_muts before max_muts, whereas
-            # meta.tsv itself lists max_muts first.
-            first, second = (
-                description_columns.index(name) for name in ("min_muts", "max_muts")
-            )
-            description_columns[first], description_columns[second] = (
-                description_columns[second],
-                description_columns[first],
-            )
-        descriptions = [
-            dict(
-                column=column,
-                type=COLUMN_DESCRIPTIONS[category][column][0],
-                description=COLUMN_DESCRIPTIONS[category][column][1],
-            )
-            for column in description_columns
-        ]
+                rows.append(row)
+                score_count += len(scores)
+                if index % 100 == 0:
+                    LOGGER.info("Processed %d/%d score files", index, len(score_files))
         write_tsv(
-            pd.DataFrame(descriptions), output_path / category / "meta_columns.tsv"
+            metadata_frame(rows),
+            stage / "metadata.tsv",
+            quote=True,
+            single_line=True,
+            max_cell_chars=32767,
         )
-    return {category: len(rows) for category, rows in summaries.items()}
+        for name in ("scores.tsv", "metadata.tsv"):
+            os.replace(stage / name, output_path / name)
+        # Remove only files managed by the previous version of this processor.
+        # Other files in the output directory are never touched.
+        for category in ANALYSIS_TYPES:
+            directory = output_path / category
+            for name in ("full.tsv", "meta.tsv", "meta_columns.tsv"):
+                (directory / name).unlink(missing_ok=True)
+            if category == "maves":
+                for name in ("singles.tsv", "doubles.tsv", "wide.tsv"):
+                    destination = directory / name
+                    if compatibility_tables:
+                        directory.mkdir(exist_ok=True)
+                        os.replace(stage / "maves" / name, destination)
+                    else:
+                        destination.unlink(missing_ok=True)
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+    return {"datasets": len(rows), "scores": score_count}
 
 
 def main() -> None:
@@ -884,7 +1102,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Parent directory for maves/, mpras/ and splicing/.",
+        help="Directory for scores.tsv, metadata.tsv and optional compatibility tables.",
     )
     parser.add_argument(
         "--scores", type=Path, help="Override the dump's csv/ directory."
@@ -894,6 +1112,11 @@ def main() -> None:
         type=Path,
         help="Use this existing NCBI taxcat.dmp instead of the cached/downloaded file.",
     )
+    parser.add_argument(
+        "--compatibility-tables",
+        action="store_true",
+        help="Also generate maves/singles.tsv, doubles.tsv and wide.tsv in the R layout.",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     try:
@@ -902,10 +1125,11 @@ def main() -> None:
             args.output,
             scores_path=args.scores,
             taxonomy_path=args.taxonomy,
+            compatibility_tables=args.compatibility_tables,
         )
     except (OSError, ValueError, KeyError, pd.errors.ParserError) as error:
         parser.error(str(error))
-    LOGGER.info("Wrote metadata rows %s to %s", counts, args.output)
+    LOGGER.info("Wrote %s to %s", counts, args.output)
 
 
 if __name__ == "__main__":
