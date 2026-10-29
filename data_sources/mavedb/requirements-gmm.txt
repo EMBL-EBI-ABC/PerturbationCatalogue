@@ -1,0 +1,8 @@
+# Tested with Python 3.12.8 and CmdStan 2.37.0.
+numpy==2.2.6
+pandas==2.2.3
+scipy==1.14.1
+xarray==2025.3.0
+arviz==0.22.0
+cmdstanpy==1.2.5
+stanio==0.5.1

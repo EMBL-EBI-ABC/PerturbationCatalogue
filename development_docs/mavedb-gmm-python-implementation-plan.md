@@ -313,15 +313,15 @@ Run a representative large-study check for peak RAM, scratch space and runtime o
 
 The initial port deliberately changes operational behavior in these documented ways: repository-owned code/dependencies, canonical-input support, an explicit bounded smoke profile, 1-based positive batching, reproducible optional seeds, stable nullable headers, complete study-failure handling, source-row tracing and bounded/staged output handling. Repairs to the downstream readers are compatibility work. Scientific quirks described in section 4 and the modes comparison sequence remain preserved; reduced rows/draws are explicit smoke settings and do not alter production defaults.
 
-- [ ] All five Stan models and their include are retained without scientific changes.
-- [ ] Bundled smoke inputs and both real-sampler smoke commands run on the 16 GB Mac, with one study, at most 500 rows, sequential chains/candidates, separate outputs and measured memory/time.
-- [ ] Smoke limits apply before large allocations and full-study post-processing; production remains an explicit separate profile with its original defaults.
-- [ ] Canonical and legacy inputs have explicit, validated selection/identity contracts.
+- [x] All five Stan models and their include are retained without scientific changes; source hashes are recorded in `data_sources/mavedb/analysis/stan/README.md`.
+- [x] Bundled smoke inputs and both real-sampler smoke commands run on the 16 GiB Mac, with one study, at most 500 rows, sequential chains/candidates, separate outputs and measured memory/time. The flexible smoke fit retains divergence and high Pareto-k warnings in QC; see `data_sources/mavedb/analysis/VALIDATION.md`.
+- [x] Smoke limits apply before large allocations and full-study post-processing; production remains an explicit separate profile with its original defaults.
+- [x] Canonical and legacy inputs have explicit, validated selection/identity contracts.
 - [ ] Production sampler settings, candidate initializations and shared subsamples match the R workflow.
-- [ ] All six files have declared schemas for success, mixed failure and all-failed batches.
-- [ ] Both summary diagnostics and every LOO field pass shared-input parity checks.
-- [ ] Modes selection preserves the positive exclusion, `p_loo < 12` cutoff and compare-before-filter behavior.
-- [ ] Batch planning covers every eligible score set exactly once, with positive indices starting at 1.
+- [x] All six files have declared schemas for success, mixed failure and all-failed batches, including zero-eligible study placeholders.
+- [x] Both summary diagnostics and every LOO field pass shared-input parity checks. One-ULP CSV rounding can change rank-based R-hat at tied ranks; this sensitivity is documented in `data_sources/mavedb/analysis/VALIDATION.md`.
+- [x] Modes selection preserves the positive exclusion, `p_loo < 12` cutoff and compare-before-filter behavior.
+- [x] Batch planning covers every eligible score set exactly once, with positive indices starting at 1.
 - [ ] Large-study memory and disk use are measured, with no hidden reduction in sampling fidelity.
-- [ ] Clean R reader tests pass after the documented consumer fixes.
-- [ ] Setup, CLI examples, deviations and acceptance evidence are documented before production migration.
+- [x] Clean R reader tests pass for real flexible and modes smoke outputs and an all-failed modes fixture; mixed failure outputs and literal `NA` IDs are also covered by contract tests.
+- [x] Setup, smoke-first CLI examples, deviations and local acceptance evidence are documented. Production migration remains gated on representative large-study resources and independent sampling comparisons.

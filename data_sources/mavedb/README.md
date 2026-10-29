@@ -11,6 +11,153 @@ The ZIP archive contains:
   - `*.scores.csv` — always present
   - `*.counts.csv` — sometimes present
 
+## GMM fitting
+
+### Run the bounded smoke workflow
+
+After the one-time environment setup below, these commands run real CmdStan
+fits against the bundled 500-row fixture. They do not read the full processed
+catalogue.
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile smoke --model flexible \
+  --out data_sources/mavedb/output/gmm-smoke
+
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile smoke --model modes \
+  --out data_sources/mavedb/output/gmm-smoke
+
+# Print the smoke selection and batch plan without fitting or creating outputs.
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile smoke --list-batches \
+  --out data_sources/mavedb/output/gmm-smoke
+```
+
+The smoke profile selects at most one study and 500 rows for fitting and
+post-processing. It uses two chains sequentially, 200 warmup and 200 retained
+draws per chain, seed `123`, and a 2,048 MiB memory budget. Outputs are isolated
+under `data_sources/mavedb/output/gmm-smoke/smoke/maves/<model>/`; QC records
+effective settings, source identities, exclusions and sampler/PSIS warnings.
+The fixture is a fixed, source-row-preserving reservoir sample of 500 from the
+3,180 eligible rows of `urn:mavedb:00000001-a-1`. Its attribution and selection
+details are in [the fixture notes](tests/fixtures/gmm/README.md).
+
+The CLI resolves its bundled smoke fixtures and default canonical production
+paths from the repository root, even when invoked from another working
+directory. To invoke it elsewhere, use absolute paths for both the virtual
+environment and script, for example:
+
+```bash
+repo=/path/to/PerturbationCatalogue
+"$repo/.venv/bin/python" "$repo/data_sources/mavedb/scripts/fit_gmm_batch.py" \
+  --profile smoke --model flexible --out "$repo/data_sources/mavedb/output/gmm-smoke"
+```
+
+Relative paths supplied explicitly with `--scores`, `--meta` or `--out` are
+resolved from the current working directory; use absolute paths when launching
+from elsewhere.
+
+### One-time local setup
+
+Use the repository's `.venv`. The validated environment is Python 3.12.8,
+NumPy 2.2.6, pandas 2.2.3, SciPy 1.14.1, xarray 2025.3.0, ArviZ 0.22.0,
+CmdStanPy 1.2.5 and stanio 0.5.1, with CmdStan 2.37.0. On the validated Mac,
+Apple clang++ 21.0.0 was available for `arm64-apple-darwin25.6.0`. If `clang++`
+is missing, install the Apple command-line developer tools with
+`xcode-select --install`, then run from the repository root:
+
+```bash
+xcode-select -p
+clang++ --version
+.venv/bin/python -m pip install -r data_sources/mavedb/requirements-gmm.txt
+mkdir -p data_sources/mavedb/tmp/cmdstan
+.venv/bin/python -c 'from cmdstanpy import install_cmdstan; install_cmdstan(version="2.37.0", dir="data_sources/mavedb/tmp/cmdstan", cores=1, progress=True, verbose=True)'
+export CMDSTAN="$PWD/data_sources/mavedb/tmp/cmdstan/cmdstan-2.37.0"
+```
+
+Provisioning CmdStan is an explicit developer setup step. The fitting runtime
+does not download or install toolchains or dependencies. Stan executables are
+cached below the ignored `data_sources/mavedb/tmp/` directory and are reused
+when their sources/settings match.
+
+### Outputs, limits and failure behavior
+
+Each completed batch writes `score{index}.tsv`, `density{index}.tsv`,
+`fitted_params{index}.tsv`, `posterior{index}.tsv`, `fit_summary{index}.tsv`
+and `loo{index}.tsv`. For catalogue inputs the score table also carries
+`dataset_id` and `source_row`; repeated observations remain separate. Study QC
+is written to `qc/batch{index}/`, including `study_diagnostics.tsv`,
+`run_metadata.json`, `eligibility.tsv` and `exclusions.tsv` (and the selected
+identities for smoke runs).
+
+Expected study-level numerical failures yield one raw-score placeholder per
+eligible input row and identifier-preserving sentinel rows in the other five
+tables; all required candidates must succeed for a study to be successful.
+A metadata-eligible study with no valid score/protein-HGVS rows is retained as
+a failed study with zero score rows, QC exclusions and compact-table
+placeholders. Global input, dependency, compile and output errors exit
+nonzero. The six TSVs are staged and validated before replacement, but separate
+filesystem replacements are not a multi-file transaction. Downstream jobs
+should wait for a successful process exit before reading the files. Convergence
+and Pareto-k warnings remain visible in QC and do not change model selection.
+
+### Batch planning and production inputs
+
+Production defaults use the processed canonical `scores.tsv` and `metadata.tsv`
+tables. Start by generating the current plan; it counts analysis-eligible rows,
+orders studies by decreasing count then full ID, and assigns whole studies to
+deterministic batches. Positive `--index` values are 1-based; `--index 0` means
+all selected studies in one run. Oversized studies occupy their own batch.
+`--list-batches` reports the plan without fitting or creating outputs.
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile production --model modes --list-batches --index 0 \
+  --scores data_sources/mavedb/output/processed/scores.tsv \
+  --meta data_sources/mavedb/output/processed/metadata.tsv
+
+# Run one planned batch.
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile production --model modes --index 1 --variants_per_batch 50000 \
+  --scores data_sources/mavedb/output/processed/scores.tsv \
+  --meta data_sources/mavedb/output/processed/metadata.tsv \
+  --out data_sources/mavedb/output/gmm-production
+
+# Or explicitly request every planned study in one invocation.
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile production --model modes --index 0 \
+  --scores data_sources/mavedb/output/processed/scores.tsv \
+  --meta data_sources/mavedb/output/processed/metadata.tsv \
+  --out data_sources/mavedb/output/gmm-production
+```
+
+Production defaults retain the R sampler settings: four chains and four
+parallel chains, 1,000 warmup and 2,000 retained draws, `adapt_delta=0.9`,
+`max_treedepth=10`, and no seed unless one is supplied. Fitting is capped at
+256,000 rows per study; `--max-fit-rows` can lower that cap. Use
+`--max-study-rows` only when intentionally limiting both fitting and
+post-processing. `--variants_per_batch` controls batch size, not memory.
+
+The default input format is `catalogue`. For the legacy score/meta tables,
+provide both files explicitly and select `--input-format legacy`:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile production --input-format legacy --model modes --index 1 \
+  --scores /absolute/path/to/legacy-scores.tsv \
+  --meta /absolute/path/to/legacy-metadata.tsv \
+  --out /absolute/path/to/gmm-production
+```
+
+The Python port preserves the R transforms, output-density constants,
+classification order, candidate comparison and `p_loo < 12` behavior. It keeps
+Stan's distinct likelihood constants and the positive candidate's exclusion
+from winner selection. See the detailed [GMM acceptance record](analysis/VALIDATION.md)
+and [implementation plan](../../development_docs/mavedb-gmm-python-implementation-plan.md)
+for parity evidence, measured local resources and the remaining production
+gate.
+
 ## Inspect the dump schema
 
 Run these commands from `data_sources/mavedb` with the project virtual
