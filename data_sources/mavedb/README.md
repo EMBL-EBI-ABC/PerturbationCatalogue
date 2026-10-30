@@ -318,6 +318,49 @@ controls. Wide columns list the 20 amino acids, then `del` and `stop`, within
 each score/count/standard-deviation block. Synonymous scores are selected by
 reference amino-acid column name and do not depend on column order.
 
+### MAVE summary and QC figures
+
+The Python port of `ot_perturbation_catalog_mave_experiments/analysis/mave_qc.R`
+reads the canonical `scores.tsv` and `metadata.tsv`, plus the optional
+`maves/singles.tsv` compatibility table. Generate the latter with
+`process_mavedb.py --compatibility-tables` when processing the dump.
+
+```bash
+.venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
+.venv/bin/python data_sources/mavedb/analysis/mave_qc.py
+```
+
+Defaults resolve relative to this module, so the command also works from another
+working directory. Override inputs or the figure destination explicitly:
+
+```bash
+.venv/bin/python data_sources/mavedb/analysis/mave_qc.py \
+  --scores data_sources/mavedb/output/processed/scores.tsv \
+  --metadata data_sources/mavedb/output/processed/metadata.tsv \
+  --singles data_sources/mavedb/output/processed/maves/singles.tsv \
+  --output data_sources/mavedb/output/figures/maves/qc
+```
+
+The default run writes 13 figures in both PNG and PDF (26 files), replacing
+existing figures with the same names. Use `--formats png` or `--formats pdf`
+for a single format, `--dpi` for raster resolution, and `--chunk-size` for
+input read batches. It does not modify the processed data or export analysis
+tables. Neither `doubles.tsv` nor `wide.tsv` is required.
+
+Figures cover dataset/organism counts, study sizes, data per gene and variant,
+completeness and positional coverage, mutation backgrounds, correlations between
+score sets, and correlations with BLOSUM100. The exact Biostrings BLOSUM100
+matrix is bundled in `analysis/data/BLOSUM100.txt`; R is not needed at runtime.
+The four per-variant panels use their respective counts, correcting the original
+R script's repeated experiment-set axis.
+
+Scores are selected for the MAVE analysis using finite numeric scores and
+nonmissing protein HGVS, rather than counting every exported canonical record.
+Meta-analysis score sets are omitted from coverage, per-variant counts, and
+between-score-set correlations, as in the R script. Multi-target datasets remain
+in global dataset counts; ambiguous target assignments are logged and omitted
+from target-specific comparisons rather than duplicating their score rows.
+
 The new tables are staged before replacing existing outputs. A successful run
 removes the processor's obsolete category-specific `full.tsv`, `meta.tsv` and
 `meta_columns.tsv` files, plus compatibility files when the flag is absent.
