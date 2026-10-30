@@ -318,6 +318,78 @@ controls. Wide columns list the 20 amino acids, then `del` and `stop`, within
 each score/count/standard-deviation block. Synonymous scores are selected by
 reference amino-acid column name and do not depend on column order.
 
+### Per-study GMM summary reports
+
+The Python replacement for
+`ot_perturbation_catalog_mave_experiments/bin/summary_plot_batch.R` lives here:
+
+- `scripts/summary_plot_batch.py`: batch report CLI.
+- `analysis/mave_summary/`: input adapters, report layout, and GMM diagnostics.
+- `tests/summary*_test.py`: plotting and input regression tests.
+
+It uses the plotting dependencies already listed in `requirements.txt`; R,
+CmdStan, and neural-network packages are not needed to generate reports from
+completed fits. From the repository root:
+
+```bash
+.venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
+.venv/bin/python data_sources/mavedb/scripts/summary_plot_batch.py \
+  --model modes \
+  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes \
+  --meta data_sources/mavedb/output/processed/metadata.tsv \
+  --index 1
+```
+
+One of `--gmm-dir` or `--data-root` is required. For native outputs, pass the
+directory containing the fitter's completed `score<N>.tsv`,
+`density<N>.tsv`, `fitted_params<N>.tsv`, `posterior<N>.tsv`,
+`fit_summary<N>.tsv`, and `loo<N>.tsv` files. The loader selects the best
+candidate for each study while retaining all candidates for the LOO panel.
+It accepts canonical metadata keyed by `dataset_id` and derives mutation
+heatmaps from fitted score rows, averaging repeated observations and applying
+unambiguous UniProt offsets. No separate singles export is required. Missing or
+ambiguous target identifiers are not used to group correlation comparisons.
+
+For the bounded smoke fits described above:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/summary_plot_batch.py \
+  --model flexible \
+  --gmm-dir data_sources/mavedb/output/gmm-smoke/smoke/maves/flexible \
+  --meta data_sources/mavedb/tests/fixtures/gmm/smoke/metadata.tsv
+```
+
+`--index 0` (the default) plots all available score sets. Positive indices select
+consecutive, non-overlapping groups of 100 studies in input order;
+`--batch-size` changes that group size. This is a report batch index, independent
+of the fitting batch numbers in filenames. Use one coherent set of fitting
+batches: overlapping studies across batch files are rejected rather than
+counted twice.
+
+The default output root is `data_sources/mavedb/output/figures`, with reports
+under `maves/studies_<model>/`. Each score-set URN becomes a PDF filename with
+colons and hyphens replaced by underscores. Override the destination using
+`--out`. Metadata and output defaults resolve from the repository, while
+explicitly supplied relative paths resolve from the calling directory.
+
+Reports contain original and standardized mutation heatmaps, the fitted score
+transformation and component densities, posterior parameter histograms colored
+by Rhat, LOO model comparisons, and correlations with related score sets.
+Failed fits retain their raw-score plots; studies with no score rows receive
+empty-data panels. The layout uses Matplotlib and can differ visually from R.
+MPRA and splicing reports remain unsupported.
+
+The original consolidated R exports remain supported through an explicit
+`--data-root PATH`: `PATH/maves/meta.tsv` plus the seven tables in
+`PATH/maves/gmm_<model>/` (`scores`, `singles`, `density`, `posterior`,
+`fit_summary`, `params`, and `loo`, each with a `.tsv` suffix).
+
+Run the focused regression tests with:
+
+```bash
+.venv/bin/python -m pytest data_sources/mavedb/tests/summary*_test.py
+```
+
 ### MAVE summary and QC figures
 
 The Python port of `ot_perturbation_catalog_mave_experiments/analysis/mave_qc.R`
