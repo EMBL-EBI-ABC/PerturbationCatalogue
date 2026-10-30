@@ -29,3 +29,4 @@ dwh/bq_dbt/.user.yml
 data_sources/mavedb/tmp/
 data_sources/mavedb/output/
 data_sources/mavedb/tests/
+!data_sources/mavedb/tests/test_*homology*.py
