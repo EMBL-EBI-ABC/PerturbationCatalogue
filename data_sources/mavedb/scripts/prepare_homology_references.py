@@ -88,6 +88,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--coding-url", default=DEFAULT_CODING)
     parser.add_argument("--ensembl-url", default=DEFAULT_ENSEMBL)
     parser.add_argument("--batch-size", type=_positive_int, default=65_536)
+    parser.add_argument(
+        "--workers",
+        type=_positive_int,
+        default=4,
+        help="Maximum concurrent Ensembl gene queries (default: 4)",
+    )
     parser.add_argument("--timeout", type=_positive, default=60)
     parser.add_argument(
         "--retries",
@@ -98,8 +104,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--request-interval",
         type=_nonnegative,
-        default=1,
-        help="Seconds between uncached Ensembl requests",
+        default=0.2,
+        help="Minimum global seconds between uncached Ensembl HTTP attempts (default: 0.2)",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -116,6 +122,11 @@ def _parser() -> argparse.ArgumentParser:
         "--allow-missing-homology",
         action="store_true",
         help="Skip HTTP 400/404 Ensembl genes and record every skip in references.json",
+    )
+    parser.add_argument(
+        "--allow-incomplete-homology",
+        action="store_true",
+        help="Explicitly publish partial homology after exhausted transient failures; record all failed genes",
     )
     return parser
 
@@ -141,7 +152,9 @@ def run(args: argparse.Namespace) -> dict:
                 timeout=args.timeout,
                 retries=args.retries,
                 interval=args.request_interval,
+                workers=args.workers,
                 allow_missing=args.allow_missing_homology,
+                allow_incomplete=args.allow_incomplete_homology,
             )
         if args.only in ("all", "clinvar"):
             sources = {}

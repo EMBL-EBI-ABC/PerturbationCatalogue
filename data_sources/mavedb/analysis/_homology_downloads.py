@@ -5,19 +5,89 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import tempfile
 import time
+from concurrent.futures import CancelledError
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from http.client import HTTPException
 from pathlib import Path
-from typing import Any
+from threading import Event, Lock
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlsplit
 from urllib.request import Request, urlopen
 
 LOGGER = logging.getLogger(__name__)
 _USER_AGENT = "PerturbationCatalogue MAVE reference generator"
+RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
+
+
+class RequestRateLimiter:
+    """Space HTTP attempts globally and share any server-requested cooldown."""
+
+    def __init__(self, interval: float) -> None:
+        if not math.isfinite(interval) or interval < 0:
+            raise ValueError("Request interval must be finite and nonnegative")
+        self.interval = interval
+        self._lock = Lock()
+        self._next_request_at = 0.0
+        self._cooldown_until = 0.0
+
+    def acquire(self, cancellation_event: Event | None = None) -> None:
+        """Wait for a fresh slot, rechecking cooldown after every wait."""
+        while True:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError("Request cancelled after another query failed")
+            with self._lock:
+                now = time.monotonic()
+                ready_at = max(self._next_request_at, self._cooldown_until)
+                if ready_at <= now:
+                    self._next_request_at = now + self.interval
+                    return
+                delay = ready_at - now
+            _interruptible_sleep(min(delay, 0.25), cancellation_event)
+
+    def defer(self, seconds: float) -> None:
+        """Extend the shared no-request window without reserving future slots."""
+        if seconds <= 0:
+            return
+        with self._lock:
+            self._cooldown_until = max(self._cooldown_until, time.monotonic() + seconds)
+
+
+def _interruptible_sleep(delay: float, cancellation_event: Event | None) -> None:
+    deadline = time.monotonic() + max(0, delay)
+    while True:
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise CancelledError("Request cancelled after another query failed")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, 0.25))
+
+
+def _retry_delay(error: OSError | HTTPException, attempt: int) -> float:
+    if isinstance(error, HTTPError):
+        retry_after = (error.headers or {}).get("Retry-After", "")
+        if retry_after:
+            try:
+                delay = float(retry_after)
+                if math.isfinite(delay):
+                    return max(0.0, delay)
+            except ValueError:
+                pass
+            try:
+                retry_at = parsedate_to_datetime(retry_after)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    return float(min(2**attempt, 30))
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -34,29 +104,49 @@ def write_json(path: Path, value: Any) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _pause(error: OSError | HTTPException, attempt: int) -> None:
-    if isinstance(error, HTTPError) and error.code not in (429, 500, 502, 503, 504):
+def _pause(
+    error: OSError | HTTPException,
+    attempt: int,
+    *,
+    rate_limiter: RequestRateLimiter | None = None,
+    cancellation_event: Event | None = None,
+    url: str | None = None,
+) -> None:
+    if isinstance(error, HTTPError) and error.code not in RETRYABLE_HTTP_CODES:
         raise error
-    retry_after = (
-        (error.headers or {}).get("Retry-After", "")
-        if isinstance(error, HTTPError)
-        else ""
-    )
-    try:
-        delay = float(retry_after)
-    except ValueError:
-        delay = 2**attempt
+    delay = _retry_delay(error, attempt)
     LOGGER.warning(
-        "HTTP request failed; retrying in %.1f seconds: %s", min(delay, 30), error
+        "HTTP request failed for %s; retrying in %.1f seconds: %s",
+        url or getattr(error, "url", "unknown URL"),
+        delay,
+        error,
     )
-    time.sleep(max(0, min(delay, 30)))
+    if rate_limiter is not None and _shared_cooldown(error):
+        rate_limiter.defer(delay)
+    else:
+        _interruptible_sleep(delay, cancellation_event)
+
+
+def _shared_cooldown(error: OSError | HTTPException) -> bool:
+    """Only rate limits or explicit server instructions pause other requests."""
+    return isinstance(error, HTTPError) and (
+        error.code == 429 or bool((error.headers or {}).get("Retry-After"))
+    )
 
 
 def request_bytes(
-    url: str, timeout: float, retries: int, *, accept: str = "application/json"
+    url: str,
+    timeout: float,
+    retries: int,
+    *,
+    accept: str = "application/json",
+    rate_limiter: RequestRateLimiter | None = None,
+    cancellation_event: Event | None = None,
 ) -> bytes:
+    limiter = rate_limiter or RequestRateLimiter(0)
     for attempt in range(retries + 1):
         try:
+            limiter.acquire(cancellation_event)
             headers = {"User-Agent": _USER_AGENT, "Accept": accept}
             if accept == "application/json":
                 headers["Content-Type"] = "application/json"
@@ -65,13 +155,53 @@ def request_bytes(
                 return response.read()
         except (URLError, OSError, TimeoutError, HTTPException) as exc:
             if attempt == retries:
+                if _shared_cooldown(exc):
+                    limiter.defer(_retry_delay(exc, attempt))
                 raise
-            _pause(exc, attempt)
+            _pause(
+                exc,
+                attempt,
+                rate_limiter=limiter,
+                cancellation_event=cancellation_event,
+                url=url,
+            )
     raise RuntimeError("Unreachable retry state")
 
 
 def json_cache_path(cache: Path, url: str) -> Path:
     return cache / "ensembl" / f"{hashlib.sha256(url.encode()).hexdigest()}.json"
+
+
+def _error_body(error: HTTPError) -> str:
+    """Keep bounded provider diagnostics and release the failed connection."""
+    try:
+        return error.read(8192).decode("utf-8", errors="replace")
+    except (OSError, HTTPException):
+        return ""
+    finally:
+        error.close()
+
+
+def _contextual_http_error(
+    url: str,
+    status: int,
+    reason: str,
+    body: str = "",
+    headers: Any = None,
+) -> HTTPError:
+    detail = body
+    if body:
+        try:
+            parsed = json.loads(body)
+            if isinstance(parsed, dict) and parsed.get("error") is not None:
+                detail = parsed["error"]
+        except json.JSONDecodeError:
+            pass
+    if not isinstance(detail, str):
+        detail = json.dumps(detail)
+    detail = " ".join(detail.split())[:2000]
+    message = f"{reason}: {detail}" if detail else reason
+    return HTTPError(url, status, f"{message} [URL: {url}]", headers or {}, None)
 
 
 def cached_json(
@@ -83,34 +213,56 @@ def cached_json(
     timeout: float,
     retries: int,
     interval: float,
+    rate_limiter: RequestRateLimiter | None = None,
+    cancellation_event: Event | None = None,
+    on_cache_hit: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     path = json_cache_path(cache, url)
     if path.is_file() and not refresh:
         entry = json.loads(path.read_text())
         if entry.get("url") == url and entry.get("http_status") in (400, 404):
-            raise HTTPError(
+            if on_cache_hit is not None:
+                on_cache_hit()
+            raise _contextual_http_error(
                 url,
                 entry["http_status"],
                 entry.get("reason", "Unavailable Ensembl gene"),
-                {},
-                None,
+                entry.get("error_body", ""),
             )
         if entry.get("url") != url or not isinstance(entry.get("payload"), dict):
             raise ValueError(f"Invalid Ensembl cache entry: {path}")
+        if on_cache_hit is not None:
+            on_cache_hit()
         return entry["payload"]
     if offline:
         raise FileNotFoundError(
             f"No cached Ensembl response for {url}; rerun without --offline"
         )
-    time.sleep(interval)
     try:
-        payload = json.loads(request_bytes(url, timeout, retries))
+        payload = json.loads(
+            request_bytes(
+                url,
+                timeout,
+                retries,
+                rate_limiter=rate_limiter or RequestRateLimiter(interval),
+                cancellation_event=cancellation_event,
+            )
+        )
     except HTTPError as exc:
+        body = _error_body(exc)
         if exc.code in (400, 404):
             write_json(
-                path, {"url": url, "http_status": exc.code, "reason": str(exc.reason)}
+                path,
+                {
+                    "url": url,
+                    "http_status": exc.code,
+                    "reason": str(exc.reason),
+                    "error_body": body,
+                },
             )
-        raise
+        raise _contextual_http_error(
+            url, exc.code, str(exc.reason), body, exc.headers
+        ) from exc
     if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
         raise ValueError(f"Invalid Ensembl homology response from {url}")
     write_json(path, {"url": url, "payload": payload})
@@ -191,7 +343,7 @@ def _download(
         except (URLError, OSError, TimeoutError, HTTPException) as exc:
             if attempt == retries:
                 raise
-            _pause(exc, attempt)
+            _pause(exc, attempt, url=url)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)

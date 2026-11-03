@@ -71,15 +71,17 @@ is missing, install the Apple command-line developer tools with
 xcode-select -p
 clang++ --version
 .venv/bin/python -m pip install -r data_sources/mavedb/requirements-gmm.txt
-mkdir -p data_sources/mavedb/tmp/cmdstan
-.venv/bin/python -c 'from cmdstanpy import install_cmdstan; install_cmdstan(version="2.37.0", dir="data_sources/mavedb/tmp/cmdstan", cores=1, progress=True, verbose=True)'
-export CMDSTAN="$PWD/data_sources/mavedb/tmp/cmdstan/cmdstan-2.37.0"
+.venv/bin/python -c 'from cmdstanpy import install_cmdstan; install_cmdstan(version="2.37.0", cores=1, progress=True, verbose=True)'
+export CMDSTAN="$HOME/.cmdstan/cmdstan-2.37.0"
 ```
 
+CmdStan is installed persistently under `$HOME/.cmdstan/`, which CmdStanPy also
+discovers automatically when `CMDSTAN` is unset. The export above selects the
+validated version explicitly.
+
 Provisioning CmdStan is an explicit developer setup step. The fitting runtime
-does not download or install toolchains or dependencies. Stan executables are
-cached below the ignored `data_sources/mavedb/tmp/` directory and are reused
-when their sources/settings match.
+does not download or install toolchains or dependencies. Compiled model
+executables are cached and reused when their sources and settings match.
 
 ### Outputs, limits and failure behavior
 
@@ -177,9 +179,36 @@ ClinVar reference from Open Targets Parquet inputs. R is unnecessary:
 .venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
 .venv/bin/python data_sources/mavedb/scripts/prepare_homology_references.py
 
+# Use completed fits from multiple comparable studies (see below).
 .venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
-  --gmm-dir data_sources/mavedb/output/gmm-study/maves/modes
+  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes
 ```
+
+The `gmm-study` validation directory contains a single fitted UBE2I score set.
+It cannot produce between-study correlations. Metadata coverage is separate from
+fitted-score coverage; the CLI reports both and records them in `manifest.json`.
+Two or more fitted score sets must have overlapping substitutions on the same
+protein or aligned homologs to produce correlations. ClinVar evaluation additionally
+requires annotated substitutions on homologs of the fitted proteins; fitting more
+studies of UBE2I alone does not supply those annotations.
+
+To fit every eligible study using the production sampler settings, then analyze
+the results (this is a substantial fitting run):
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
+  --profile production --model modes --index 0 \
+  --out data_sources/mavedb/output/gmm-production
+
+.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
+  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes
+```
+
+For a smaller correlation check, repeat `--study-id` to select comparable studies,
+for example `--study-id urn:mavedb:00000001-a-1 --study-id urn:mavedb:00000001-a-3`.
+Both measure UBE2I; this checks same-protein comparisons but will not produce
+ClinVar transfer results with the current reference bundle. Use a separate output
+directory for a subset run so it is distinguishable from the full production fit.
 
 The generator uses canonical `output/processed/metadata.tsv` by default and
 writes these files under `data_sources/mavedb/output/homology_references/`:
@@ -222,9 +251,34 @@ Raw files and per-gene API responses are cached below
 reused after checking their size and footer; interrupted downloads resume at
 file boundaries. `--cache-dir` changes the cache location, `--refresh` refetches
 inputs, and `--offline` forbids network access and requires complete cached or
-explicit local inputs. Ensembl requests default to one per second with retries
-for transient failures and rate limits; `--request-interval`, `--timeout` and
-`--retries` control this behavior.
+explicit local inputs. Ensembl requests use up to four workers and a shared
+global interval of 0.2 seconds between uncached HTTP attempts by default (five
+requests per second, below Ensembl's documented limit). `--workers` controls
+the concurrency bound; `--request-interval`, `--timeout` and `--retries`
+control request pacing and retry behavior. Cached responses and offline reads
+do not use request slots. `Retry-After` responses pause all workers for the
+server-specified duration.
+
+Completed query results are buffered on disk and merged in input order, so a
+slow earlier gene does not stop other workers from fetching later genes. Only
+active requests hold response payloads in memory. Rate limits and explicit
+`Retry-After` instructions pause all workers; ordinary server errors use
+per-request backoff. Retry messages include the request URL.
+
+If a gene still encounters a transient HTTP error (408/429/500/502/503/504),
+timeout or connection failure after retries, other genes continue. The run
+records failed genes, URLs and errors in
+`tmp/homology_references/homology_failures.json` (below `--cache-dir` when
+overridden). By default it exits nonzero after the remaining requests finish
+and preserves previously published references. Rerunning the same command
+reuses successful cached responses and retries the unresolved genes.
+
+To explicitly export available results despite those failures, add
+`--allow-incomplete-homology`. Every failed gene remains listed in the failure
+report and in `references.json`; the homology manifest entry has
+`complete: false`. This flag never permits malformed alignments or a run where
+every query failed. The default requires complete successful fetching, except
+for missing/retired genes explicitly permitted with `--allow-missing-homology`.
 
 Use `--only homology` or `--only clinvar` to generate one table. ClinVar-only mode
 does not require metadata or Ensembl access. Other previously generated tables
@@ -232,7 +286,11 @@ are retained; `references.json` describes the components generated by the
 current invocation. Use one consistent ID mapping when generating components
 separately. Homology requests fail on missing/retired genes by default;
 `--allow-missing-homology` explicitly permits HTTP 400/404 skips, records them in
-the manifest and logs each skip. Successful responses with no homologs produce
+the manifest and logs each skip. Skipped records include the gene, species,
+URL and provider error; new negative-cache entries retain the response body
+for offline diagnostics. Older cached errors still identify their request URL.
+This flag does not permit skipping malformed alignment data. Successful
+responses with no homologs produce
 no rows. Missing/ambiguous metadata is reported rather than guessed.
 
 ClinVar processing projects and filters Parquet batches by mapped Ensembl gene

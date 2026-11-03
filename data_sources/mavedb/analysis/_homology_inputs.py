@@ -238,11 +238,15 @@ def load_inputs(
         frame["identifier_uniprot"] = frame["score_urn"].map(
             meta.set_index("score_urn")["identifier_uniprot"]
         )
+    fitted_count = scores["score_urn"].nunique()
     LOGGER.info(
-        "Loaded %d score sets, %d score rows and %d single substitutions",
-        len(meta),
+        "Loaded %d fitted score set%s, %d score rows and %d single substitutions "
+        "(%d eligible metadata score sets)",
+        fitted_count,
+        "" if fitted_count == 1 else "s",
         len(scores),
         len(singles),
+        len(meta),
     )
     return HomologyInputs(meta, scores, singles, params, paths)
 

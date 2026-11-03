@@ -223,6 +223,7 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
         data_root=args.data_root,
         model=args.model,
     )
+    fitted_urns = sorted(inputs.scores["score_urn"].dropna().unique().tolist())
     homology = read_tsv(args.homology)
     id_map = read_tsv(args.id_map)
     homology_key = build_homology_key(homology, id_map)
@@ -264,12 +265,41 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
         correlations = calculate_correlations(
             inputs.meta, inputs.scores, inputs.singles, inputs.params, homology_key
         )
+    if correlations.empty:
+        if len(fitted_urns) < 2:
+            LOGGER.warning(
+                "No correlations: at least two fitted score sets are required; "
+                "loaded %d. Fit additional comparable studies before rerunning.",
+                len(fitted_urns),
+            )
+        else:
+            LOGGER.warning(
+                "No correlations: no eligible pairs share at least three "
+                "aligned variants with nonconstant scores in both studies."
+            )
     tables = {"correlations": correlations}
     if not args.skip_clinvar:
         clinvar = read_tsv(args.clinvar)
         tables.update(
             evaluate_clinvar(clinvar, inputs.scores, inputs.params, homology_key)
         )
+        if tables["clinvar_summary"].empty:
+            fitted_proteins = inputs.scores["identifier_uniprot"].dropna()
+            targets = homology_key.loc[
+                homology_key["source_uniprot"].isin(fitted_proteins),
+                "target_uniprot",
+            ].dropna()
+            if targets.empty:
+                reason = "no mapped homolog proteins for the fitted score sets"
+            elif (
+                not tables["combined_clinvar"]["identifier_uniprot"].isin(targets).any()
+            ):
+                reason = "no ClinVar variants for the mapped homolog proteins"
+            elif tables["clinvar_homologs"].empty:
+                reason = "no ClinVar substitutions match the aligned fitted variants"
+            else:
+                reason = "matched variants do not support a binary ClinVar evaluation"
+            LOGGER.warning("No pooled ClinVar results: %s.", reason)
     clinvar_roc = tables.get("clinvar_roc", pd.DataFrame())
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -301,6 +331,11 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
                 input_fingerprint([args.clinvar]) if not args.skip_clinvar else {}
             ),
             "correlations_from_cache": cached,
+            "input_coverage": {
+                "eligible_metadata_score_sets": len(inputs.meta),
+                "fitted_score_sets": len(fitted_urns),
+                "fitted_score_urns": fitted_urns,
+            },
             "tables": {name: len(frame) for name, frame in tables.items()},
             "directed_pairs": True,
             "files": sorted(
@@ -315,7 +350,7 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
         (staged / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         _publish(staged, args.out)
     LOGGER.info("Saved %d directed comparisons to %s", len(correlations), args.out)
-    if "clinvar_summary" in tables:
+    if "clinvar_summary" in tables and not tables["clinvar_summary"].empty:
         LOGGER.info(
             "Pooled ClinVar results:\n%s",
             tables["clinvar_summary"].to_string(index=False),

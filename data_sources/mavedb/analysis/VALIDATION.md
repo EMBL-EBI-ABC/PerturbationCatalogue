@@ -18,9 +18,9 @@ with R 4.6.1, CmdStanR 0.9.0, posterior 1.7.0, loo 2.10.1, sn 2.1.3 and
 readr 2.2.0. See the [fixture provenance](../tests/fixtures/gmm/README.md) and
 [Stan source hashes](stan/README.md).
 
-CmdStan was installed explicitly under the repository's ignored
-`data_sources/mavedb/tmp/cmdstan/` directory. The fitting CLI does not install
-packages, download CmdStan or compile unrelated candidate models.
+CmdStan is installed explicitly under `$HOME/.cmdstan/cmdstan-2.37.0`. The fitting
+CLI does not install packages, download CmdStan or compile unrelated candidate
+models.
 
 ## Deterministic and shared-input parity
 
