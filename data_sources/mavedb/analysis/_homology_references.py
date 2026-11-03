@@ -77,7 +77,8 @@ CLINVAR_COLUMNS = (
 _CODING_COLUMNS = ("targetId", "variantId", *CLINVAR_COLUMNS[8:])
 
 
-def load_id_map(path: Path) -> pd.DataFrame:
+def load_id_map(path: Path, *, deduplicate: bool = True) -> pd.DataFrame:
+    """Normalize IDs, optionally retaining mapping multiplicity for drug joins."""
     frame = read_tsv(path).rename(columns={"uniprot_id": "From", "ensembl_id": "To"})
     if not {"From", "To"}.issubset(frame.columns):
         raise ValueError("ID mapping requires From/To or uniprot_id/ensembl_id columns")
@@ -86,7 +87,9 @@ def load_id_map(path: Path) -> pd.DataFrame:
     frame["To"] = (
         frame["To"].astype(str).str.strip().str.replace(r"\.\d+$", "", regex=True)
     )
-    frame = frame.loc[frame["From"].ne("") & frame["To"].ne("")].drop_duplicates()
+    frame = frame.loc[frame["From"].ne("") & frame["To"].ne("")]
+    if deduplicate:
+        frame = frame.drop_duplicates()
     if frame.empty:
         raise ValueError("ID mapping contains no usable UniProt/Ensembl pairs")
     return frame.reset_index(drop=True)

@@ -170,7 +170,56 @@ evaluates how homolog measurements distinguish pathogenic/likely pathogenic
 from benign/likely benign ClinVar variants. It consumes completed GMM fits;
 it does not fit models or download reference data.
 
-### Generate the reference inputs in Python
+### Download all external inputs with one command
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/download_reference_data.py
+```
+
+This downloads all five Open Targets Parquet datasets (coding variants, ClinVar
+evidence, GWAS credible sets, pharmacogenomics and drug molecules), downloads and
+unpacks the exact ProtVar `2024.05.28_pockets.tsv.gz`, and retrieves the Ensembl
+aligned protein homologies. It uses the existing shared download/API cache under
+`tmp/homology_references/` and writes a completed input manifest to
+`output/reference_data/downloads.json`. Homology tables and their manifest remain
+under `output/homology_references/`. Existing successful downloads are reused;
+`--refresh` redownloads every source, including Ensembl responses. `--offline`
+requires complete cached inputs and performs no network requests.
+
+The Open Targets sources are pinned to `25.12/output/`, except for the coding
+variant table, which retains the original `25.06/view/` source. Ensembl uses the
+live REST endpoint. All source URLs can be overridden with the corresponding
+`--*-url` arguments. `--metadata` and `--id-map` select the inputs used to decide
+which Ensembl genes/species to query. `--workers`, `--request-interval`,
+`--timeout` and `--retries` retain the homology downloader's controls.
+
+Unavailable Ensembl HTTP 400/404 entries stop the run by default. Use
+`--allow-missing-homology` to explicitly skip and record those entries;
+`--allow-incomplete-homology` separately permits exhausted transient failures.
+`--skip-homology` fetches only Open Targets and ProtVar, without requiring
+processed metadata or querying Ensembl. A failed run preserves the previous
+completed download manifest; successfully downloaded source files remain cached
+for the next attempt.
+
+Then generate every variant reference TSV from those raw inputs:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py --offline
+```
+
+The processor detects the default download manifest automatically. ClinVar is
+rebuilt from raw evidence and coding-variant Parquet files, rather than reading
+an existing generated ClinVar TSV. If the downloader used a custom `--out`, pass
+`--sources /path/to/downloads.json` to the processor. Explicit local input paths
+override manifest entries. The processor's `--out` still selects its generated
+table destination (`output/variant_data/` by default).
+
+ProtVar download validation checks the gzip stream, required TSV columns, sizes
+and checksums. Missing or damaged unpacked TSVs are rebuilt from a verified
+compressed cache. The unified downloader needs only the existing Python
+dependencies in `requirements.txt`; no shell downloader is required.
+
+### Generate homology and ClinVar references separately
 
 The companion command fetches Ensembl aligned protein homologies and builds the
 ClinVar reference from Open Targets Parquet inputs. R is unnecessary:
@@ -385,6 +434,77 @@ Run the focused tests with:
 
 ```bash
 .venv/bin/python -m pytest data_sources/mavedb/tests/test_*homology*.py
+```
+
+## Variant, drug and pocket reference tables
+
+`scripts/process_variant_data.py` ports the original `process_variant_data.R`.
+It generates all five reference tables under `output/variant_data/`:
+`mave_clinvar_variants.tsv`, `mave_gwas_variants.tsv`,
+`mave_pharmacogenomics.tsv`, `mave_drugs.tsv`, and `mave_pockets.tsv`.
+`variant_data_manifest.json` records selected stages, source paths/URLs,
+Parquet file sizes, ID-map/pocket hashes and row counts. These references are
+separate from the GMM score exports and the homology reference bundle.
+
+For GWAS alone, supply the Open Targets credible-set and coding-variant
+Parquet directories (or individual Parquet files):
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py \
+  --only gwas \
+  --credible-sets /path/to/credible_set \
+  --coding-variants /path/to/coding_variant_table \
+  --offline
+```
+
+To process every table from the original Open Targets directory layout:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py \
+  --input-root /path/to/ot_variant_data \
+  --pockets /path/to/2024.05.28_pockets.tsv \
+  --offline
+```
+
+The root must contain `coding_variant_table/`, `evidence_eva/`, `credible_set/`,
+`pharmacogenomics/` and `drug_molecule/`. Individual overrides are
+`--coding-variants`, `--evidence`, `--credible-sets`, `--pharmacogenomics`,
+and `--drugs`. `--only` also accepts `clinvar`, `pharmacogenomics`, `drugs`,
+or `pockets`; unselected sources are unnecessary. GWAS alone needs no ID map.
+Other stages default to the bundled UniProt/Ensembl mapping; use `--id-map`
+to change its coverage. Canonical `metadata.tsv` and fitted GMM tables are
+not inputs to this reference-generation step.
+
+After the unified download command, no source arguments are needed: the processor
+uses `output/reference_data/downloads.json`. Without a source manifest or local
+inputs, all five Open Targets datasets have default release URLs; the coding
+variant source uses `25.06/view/`, and the other four use `25.12/output/`.
+The existing homology download cache is reused. Use `--offline` to require local
+inputs, and run the unified downloader with `--refresh` to refresh those inputs.
+`--coding-variants-url`, `--evidence-url`, `--credible-sets-url`,
+`--pharmacogenomics-url` and `--drugs-url` allow explicit alternate sources.
+The unified downloader also supplies the ProtVar pocket TSV. When processing
+without its manifest, provide that file with `--pockets`. All selected local
+input paths are checked before processing starts.
+
+The port reuses the homology ClinVar generator. To use its new ClinVar output
+with the homology analysis, pass
+`--clinvar data_sources/mavedb/output/variant_data/mave_clinvar_variants.tsv`.
+GWAS selection follows the original global coding-variant join and is not
+restricted to the ID-map genes. Joins retain duplicate matches, list fields are
+expanded as in the original workflow, and remaining nested values use JSON in
+TSV cells. Pocket confidence uses the strict `score > 800` boundary.
+Parquet inputs are scanned in batches and coding joins use temporary SQLite
+indexes. Completed selected tables are staged before publication, with rollback
+on publication errors; unrelated and unselected output files are preserved.
+The manifest describes the current invocation. `--out` changes the destination;
+defaults resolve from the repository and explicit relative paths resolve from
+the calling directory. `--batch-size` controls source scanning.
+
+```bash
+.venv/bin/python -m pytest data_sources/mavedb/tests/test_variant_*.py \
+  data_sources/mavedb/tests/test_process_variant_data.py \
+  data_sources/mavedb/tests/test_reference_downloads.py
 ```
 
 ## Inspect the dump schema
