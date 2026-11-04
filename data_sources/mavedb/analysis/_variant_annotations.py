@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import math
 import re
-import tempfile
+import sqlite3
 from collections.abc import Sequence
 from itertools import chain
 from pathlib import Path
@@ -15,11 +15,12 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.dataset as ds
 
-from data_sources.mavedb.analysis._homology_references import _explode
+from data_sources.mavedb.analysis._reference_sources import POCKET_COLUMNS
 from data_sources.mavedb.analysis._variant_data import (
-    coding_index,
+    explode,
     parquet_batches,
     tsv_value,
+    validate_batch_size,
 )
 
 PHARMACOGENOMICS_COLUMNS = (
@@ -93,14 +94,6 @@ DRUG_OUTPUT_COLUMNS = (
     "synonyms",
     "description",
 )
-_POCKET_REQUIRED_COLUMNS = (
-    "struct_id",
-    "pocket_id",
-    "pocket_resid",
-    "pocket_score_combined_scaled",
-    "pocket_rad_gyration",
-    "pocket_plddt_mean",
-)
 _POCKET_PREFIX = (
     "uniprot_id",
     "pocket_id",
@@ -112,7 +105,7 @@ _POCKET_PREFIX = (
 
 def generate_pharmacogenomics(
     pharma: Path | Sequence[Path],
-    coding: Path | Sequence[Path],
+    connection: sqlite3.Connection,
     mapping: pd.DataFrame,
     destination: Path,
     *,
@@ -120,67 +113,59 @@ def generate_pharmacogenomics(
 ) -> dict[str, int]:
     """Write the mapped Open Targets pharmacogenomics annotations as a TSV."""
     mapped_uniprots, _ = _mapping_values(mapping)
-    _validate_batch_size(batch_size)
+    validate_batch_size(batch_size)
     destination.parent.mkdir(parents=True, exist_ok=True)
     output_rows = 0
     pharma_columns = _pharmacogenomics_columns(pharma)
 
-    with tempfile.TemporaryDirectory(
-        prefix=".pharmacogenomics-join-", dir=destination.parent
-    ) as directory:
-        with coding_index(coding, Path(directory), batch_size=batch_size) as connection:
-            batches = iter(
-                parquet_batches(pharma, pharma_columns, batch_size=batch_size)
-            )
-            first_batch = next(batches, None)
-            with destination.open("w", newline="") as handle:
-                writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-                writer.writerow(PHARMACOGENOMICS_OUTPUT_COLUMNS)
-                for batch in chain(
-                    () if first_batch is None else (first_batch,), batches
-                ):
-                    for row in batch:
-                        for drug in _explode(row["drugs"]):
-                            if drug is None:
-                                drug = {}
-                            if not isinstance(drug, dict):
-                                raise ValueError(
-                                    "Pharmacogenomics drugs entries must be structs"
-                                )
-                            matches = connection.execute(
-                                "SELECT uniprot, position, wt, mut "
-                                "FROM coding WHERE target IS ? AND variant IS ? "
-                                "ORDER BY rowid",
-                                (row["targetFromSourceId"], row["variantId"]),
-                            )
-                            for uniprot, position, reference, alternate in matches:
-                                if uniprot not in mapped_uniprots:
-                                    continue
-                                output = (
-                                    row["targetFromSourceId"],
-                                    uniprot,
-                                    row["variantId"],
-                                    position,
-                                    reference,
-                                    alternate,
-                                    row["genotypeId"],
-                                    drug.get("drugFromSource"),
-                                    drug.get("drugId"),
-                                    _direct_target_value(row, drug),
-                                    row["genotype"],
-                                    row["genotypeId"],
-                                    row["genotypeAnnotationText"],
-                                    row["directionality"],
-                                    row["evidenceLevel"],
-                                    row["variantFunctionalConsequenceId"],
-                                    row["studyId"],
-                                    row["phenotypeFromSourceId"],
-                                    row["phenotypeText"],
-                                    row["pgxCategory"],
-                                    _collapsed_list(row["literature"]),
-                                )
-                                writer.writerow([tsv_value(value) for value in output])
-                                output_rows += 1
+    batches = iter(parquet_batches(pharma, pharma_columns, batch_size=batch_size))
+    first_batch = next(batches, None)
+    with destination.open("w", newline="") as handle:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer.writerow(PHARMACOGENOMICS_OUTPUT_COLUMNS)
+        for batch in chain(() if first_batch is None else (first_batch,), batches):
+            for row in batch:
+                for drug in explode(row["drugs"]):
+                    if drug is None:
+                        drug = {}
+                    if not isinstance(drug, dict):
+                        raise ValueError(
+                            "Pharmacogenomics drugs entries must be structs"
+                        )
+                    matches = connection.execute(
+                        "SELECT uniprot, position, wt, mut "
+                        "FROM coding WHERE target IS ? AND variant IS ? "
+                        "ORDER BY rowid",
+                        (row["targetFromSourceId"], row["variantId"]),
+                    )
+                    for uniprot, position, reference, alternate in matches:
+                        if uniprot not in mapped_uniprots:
+                            continue
+                        output = (
+                            row["targetFromSourceId"],
+                            uniprot,
+                            row["variantId"],
+                            position,
+                            reference,
+                            alternate,
+                            row["genotypeId"],
+                            drug.get("drugFromSource"),
+                            drug.get("drugId"),
+                            _direct_target_value(row, drug),
+                            row["genotype"],
+                            row["genotypeId"],
+                            row["genotypeAnnotationText"],
+                            row["directionality"],
+                            row["evidenceLevel"],
+                            row["variantFunctionalConsequenceId"],
+                            row["studyId"],
+                            row["phenotypeFromSourceId"],
+                            row["phenotypeText"],
+                            row["pgxCategory"],
+                            _collapsed_list(row["literature"]),
+                        )
+                        writer.writerow([tsv_value(value) for value in output])
+                        output_rows += 1
 
     return {"rows": output_rows}
 
@@ -193,7 +178,7 @@ def generate_drugs(
     batch_size: int = 65_536,
 ) -> dict[str, int]:
     """Write drug annotations linked to MAVE-mapped Ensembl targets."""
-    _validate_batch_size(batch_size)
+    validate_batch_size(batch_size)
     pairs = _mapping_pairs(mapping)
     uniprots_by_gene: dict[str, list[str]] = {}
     for uniprot, gene in pairs:
@@ -214,7 +199,7 @@ def generate_drugs(
                 if not isinstance(linked_targets, dict):
                     raise ValueError("Drug linkedTargets entries must be structs")
                 target_count = linked_targets.get("count")
-                for gene in _explode(linked_targets.get("rows")):
+                for gene in explode(linked_targets.get("rows")):
                     if gene is None:
                         continue
                     for uniprot in uniprots_by_gene.get(str(gene), ()):
@@ -249,10 +234,10 @@ def generate_pockets(
     batch_size: int = 65_536,
 ) -> dict[str, int]:
     """Explode ProtVar residue sets and retain pockets for mapped UniProt IDs."""
-    _validate_batch_size(batch_size)
+    validate_batch_size(batch_size)
     mapped_uniprots, _ = _mapping_values(mapping)
     header = list(pd.read_csv(source, sep="\t", nrows=0).columns)
-    missing = set(_POCKET_REQUIRED_COLUMNS) - set(header)
+    missing = POCKET_COLUMNS - set(header)
     if missing:
         raise ValueError(f"Pocket TSV is missing required columns: {sorted(missing)}")
     metric_start = header.index("pocket_rad_gyration")
@@ -295,15 +280,6 @@ def generate_pockets(
     return {"rows": output_rows}
 
 
-def _validate_batch_size(batch_size: int) -> None:
-    if (
-        isinstance(batch_size, bool)
-        or not isinstance(batch_size, int)
-        or batch_size <= 0
-    ):
-        raise ValueError("Batch size must be a positive integer")
-
-
 def _pharmacogenomics_columns(
     pharma: Path | Sequence[Path],
 ) -> tuple[str, ...]:
@@ -313,7 +289,7 @@ def _pharmacogenomics_columns(
         sources = [str(path) for path in pharma]
         if not sources:
             raise ValueError("At least one Parquet path is required")
-    schema = ds.dataset(sources, format="parquet", exclude_invalid_files=True).schema
+    schema = ds.dataset(sources, format="parquet", exclude_invalid_files=False).schema
     missing = sorted(set(PHARMACOGENOMICS_COLUMNS) - set(schema.names))
     if missing:
         raise ValueError(f"Parquet dataset is missing requested columns: {missing}")

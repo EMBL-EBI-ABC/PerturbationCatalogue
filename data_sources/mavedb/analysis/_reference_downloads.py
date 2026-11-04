@@ -1,7 +1,9 @@
-"""Cached HTTP inputs for MAVE reference generation."""
+"""HTTP acquisition, verified source files and Ensembl response caching."""
 
 from __future__ import annotations
 
+import csv
+import gzip
 import hashlib
 import json
 import logging
@@ -20,6 +22,12 @@ from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlsplit
 from urllib.request import Request, urlopen
+
+from data_sources.mavedb.analysis._reference_io import file_record, write_json
+from data_sources.mavedb.analysis._reference_sources import (
+    POCKET_COLUMNS,
+    POCKET_FILENAME,
+)
 
 LOGGER = logging.getLogger(__name__)
 _USER_AGENT = "PerturbationCatalogue MAVE reference generator"
@@ -88,20 +96,6 @@ def _retry_delay(error: OSError | HTTPException, attempt: int) -> float:
             except (TypeError, ValueError, OverflowError):
                 pass
     return float(min(2**attempt, 30))
-
-
-def write_json(path: Path, value: Any) -> None:
-    """Publish a JSON cache entry only after the complete write succeeds."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-        try:
-            json.dump(value, handle, indent=2, allow_nan=False)
-            handle.write("\n")
-            handle.close()
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
 
 
 def _pause(
@@ -313,9 +307,16 @@ def _parquet_valid(path: Path) -> bool:
         return False
 
 
-def _download(
-    url: str, destination: Path, timeout: float, retries: int
+def _download_file(
+    url: str,
+    destination: Path,
+    timeout: float,
+    retries: int,
+    *,
+    suffix: str = ".part",
+    validate: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
+    """Stream one response to a temporary file, validate it, then install it."""
     for attempt in range(retries + 1):
         temporary: Path | None = None
         try:
@@ -325,7 +326,7 @@ def _download(
             with urlopen(request, timeout=timeout) as response:
                 length = response.headers.get("Content-Length")
                 with tempfile.NamedTemporaryFile(
-                    dir=destination.parent, suffix=".part", delete=False
+                    dir=destination.parent, suffix=suffix, delete=False
                 ) as handle:
                     temporary = Path(handle.name)
                     while block := response.read(1024 * 1024):
@@ -336,11 +337,11 @@ def _download(
                 raise OSError(
                     f"Incomplete download of {url}: received {count}/{length} bytes"
                 )
-            if not _parquet_valid(temporary):
-                raise ValueError(f"Downloaded file is not valid Parquet: {url}")
+            if validate is not None:
+                validate(temporary)
             os.replace(temporary, destination)
             return {"bytes": count, "sha256": digest.hexdigest()}
-        except (URLError, OSError, TimeoutError, HTTPException) as exc:
+        except (URLError, OSError, TimeoutError, HTTPException, EOFError) as exc:
             if attempt == retries:
                 raise
             _pause(exc, attempt, url=url)
@@ -350,22 +351,39 @@ def _download(
     raise RuntimeError("Unreachable retry state")
 
 
+def _download_parquet(
+    url: str, destination: Path, timeout: float, retries: int
+) -> dict[str, Any]:
+    def validate(path: Path) -> None:
+        if not _parquet_valid(path):
+            raise ValueError(f"Downloaded file is not valid Parquet: {url}")
+
+    return _download_file(
+        url,
+        destination,
+        timeout,
+        retries,
+        suffix=".parquet.part",
+        validate=validate,
+    )
+
+
 def download_dataset(
     url: str,
-    cache: Path,
+    directory: Path,
     *,
     offline: bool = False,
     refresh: bool = False,
     timeout: float = 60,
     retries: int = 3,
-) -> list[Path]:
+) -> dict[str, Any]:
     """Download a complete partitioned dataset, resuming verified local files.
 
-    Cache locations are isolated by source URL. The complete expected file list
+    The caller names the dataset directory. The complete expected file list
     is saved before downloading, so an offline run cannot use an incomplete cache.
+    The returned descriptors contain the exact verified files in the active listing.
     """
     url = url.rstrip("/") + "/"
-    directory = cache / "parquet" / hashlib.sha256(url.encode()).hexdigest()[:16]
     directory.mkdir(parents=True, exist_ok=True)
     manifest_path = directory / "download.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
@@ -382,16 +400,22 @@ def download_dataset(
     if any(Path(name).name != name or not name.endswith(".parquet") for name in links):
         raise ValueError(f"Invalid filename in download cache: {manifest_path}")
     old_files = manifest.get("files", {}) if manifest.get("url") == url else {}
+    if not isinstance(old_files, dict):
+        old_files = {}
+    old_files = {name: old_files[name] for name in links if name in old_files}
     manifest = {"url": url, "expected": list(links), "files": old_files}
     if not offline:
         write_json(manifest_path, manifest)
-    paths = []
+    files = []
     for index, (name, file_url) in enumerate(links.items(), 1):
         path = directory / name
         info = old_files.get(name, {})
+        local_record = file_record(path) if path.is_file() else None
         valid = (
-            path.is_file()
-            and info.get("bytes") == path.stat().st_size
+            local_record is not None
+            and isinstance(info, dict)
+            and info.get("bytes") == local_record["bytes"]
+            and info.get("sha256") == local_record["sha256"]
             and _parquet_valid(path)
         )
         if refresh or not valid:
@@ -400,7 +424,123 @@ def download_dataset(
                     f"Missing or invalid cached Parquet file: {path}"
                 )
             LOGGER.info("Downloading Parquet %d/%d: %s", index, len(links), file_url)
-            manifest["files"][name] = _download(file_url, path, timeout, retries)
+            manifest["files"][name] = _download_parquet(
+                file_url, path, timeout, retries
+            )
             write_json(manifest_path, manifest)
-        paths.append(path)
-    return paths
+            info = manifest["files"][name]
+        files.append(
+            {
+                "path": str(path.resolve()),
+                "bytes": info["bytes"],
+                "sha256": info["sha256"],
+            }
+        )
+    return {"url": url, "path": str(directory.resolve()), "files": files}
+
+
+def _matches(path: Path, record: dict[str, Any]) -> bool:
+    if (
+        not isinstance(record, dict)
+        or not path.is_file()
+        or path.stat().st_size != record.get("bytes")
+    ):
+        return False
+    return file_record(path)["sha256"] == record.get("sha256")
+
+
+def _unpack_pockets(compressed: Path, destination: Path) -> None:
+    """Validate the complete gzip stream and TSV header before replacing a file."""
+    temporary: Path | None = None
+    try:
+        with gzip.open(compressed, "rb") as source, tempfile.NamedTemporaryFile(
+            dir=destination.parent, suffix=".part", delete=False
+        ) as target:
+            temporary = Path(target.name)
+            while block := source.read(1024 * 1024):
+                target.write(block)
+        with temporary.open(newline="", encoding="utf-8") as handle:
+            header = next(csv.reader(handle, delimiter="\t"), [])
+        if missing := POCKET_COLUMNS - set(header):
+            raise ValueError(
+                f"ProtVar pocket TSV is missing columns: {sorted(missing)}"
+            )
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def download_pockets(
+    url: str,
+    directory: Path,
+    *,
+    offline: bool = False,
+    refresh: bool = False,
+    timeout: float = 60,
+    retries: int = 3,
+) -> dict[str, Any]:
+    """Download, verify and unpack the dated ProtVar gzip, with offline reuse."""
+    directory.mkdir(parents=True, exist_ok=True)
+    compressed = directory / f"{POCKET_FILENAME}.gz"
+    destination = directory / POCKET_FILENAME
+    manifest_path = directory / "download.json"
+    manifest = (
+        json.loads(manifest_path.read_text())
+        if manifest_path.is_file() and not refresh
+        else {}
+    )
+    if not isinstance(manifest, dict):
+        raise ValueError(f"Invalid ProtVar pocket cache manifest: {manifest_path}")
+    same_source = manifest.get("url") == url
+    if (
+        not refresh
+        and same_source
+        and _matches(compressed, manifest.get("compressed", {}))
+    ):
+        uncompressed = manifest.get("uncompressed", {})
+        if not _matches(destination, uncompressed):
+            _unpack_pockets(compressed, destination)
+            uncompressed = {
+                key: value
+                for key, value in file_record(destination).items()
+                if key != "path"
+            }
+            manifest["uncompressed"] = uncompressed
+            write_json(manifest_path, manifest)
+        return {
+            "url": url,
+            "path": str(destination.resolve()),
+            "bytes": uncompressed["bytes"],
+            "sha256": uncompressed["sha256"],
+        }
+    if offline:
+        raise FileNotFoundError(
+            f"No verified ProtVar pocket cache for {url}; rerun online"
+        )
+
+    compressed_info = _download_file(
+        url,
+        compressed,
+        timeout,
+        retries,
+        suffix=".gz.part",
+        validate=lambda path: _unpack_pockets(path, destination),
+    )
+    uncompressed_info = file_record(destination)
+    manifest = {
+        "url": url,
+        "compressed": {
+            **compressed_info,
+        },
+        "uncompressed": {
+            key: value for key, value in uncompressed_info.items() if key != "path"
+        },
+    }
+    write_json(manifest_path, manifest)
+    return {
+        "url": url,
+        "path": str(destination.resolve()),
+        "bytes": uncompressed_info["bytes"],
+        "sha256": uncompressed_info["sha256"],
+    }

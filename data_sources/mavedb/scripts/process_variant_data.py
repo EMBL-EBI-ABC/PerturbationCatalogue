@@ -1,40 +1,33 @@
 #!/usr/bin/env python3
-"""Build MAVE variant, drug and pocket reference tables from local source data."""
+"""Build MAVE variant, drug and pocket tables from a downloaded source bundle."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import logging
-import math
-import os
+import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timezone
-from http.client import HTTPException
 from pathlib import Path
 from typing import Any, Sequence
-from urllib.error import URLError
 
+import pandas as pd
 import pyarrow.dataset as ds
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from data_sources.mavedb.analysis._homology_downloads import (
-    download_dataset,
+from data_sources.mavedb.analysis._reference_io import (
+    positive_int,
+    publish_tables,
+    verify_file,
     write_json,
-)
-from data_sources.mavedb.analysis._homology_references import (
-    DEFAULT_CACHE,
-    DEFAULT_ID_MAP,
-    generate_clinvar,
-    load_id_map,
 )
 from data_sources.mavedb.analysis._reference_sources import (
     DEFAULT_SOURCE_MANIFEST,
-    SOURCE_URLS,
+    load_id_map,
     load_sources,
 )
 from data_sources.mavedb.analysis._variant_annotations import (
@@ -42,25 +35,29 @@ from data_sources.mavedb.analysis._variant_annotations import (
     generate_pharmacogenomics,
     generate_pockets,
 )
-from data_sources.mavedb.analysis._variant_data import generate_gwas
+from data_sources.mavedb.analysis._variant_data import (
+    coding_index,
+    generate_clinvar,
+    generate_gwas,
+)
 
 LOGGER = logging.getLogger("process_variant_data")
 DEFAULT_OUT = REPOSITORY_ROOT / "data_sources/mavedb/output/variant_data"
 MANIFEST = "variant_data_manifest.json"
 STAGES = ("clinvar", "gwas", "pharmacogenomics", "drugs", "pockets")
-SOURCE_NAMES = {
-    "coding_variants": "coding_variant_table",
-    "evidence": "evidence_eva",
-    "credible_sets": "credible_set",
-    "pharmacogenomics": "pharmacogenomics",
-    "drugs": "drug_molecule",
+PARQUET_SOURCES = {
+    "coding_variants",
+    "evidence",
+    "credible_sets",
+    "pharmacogenomics",
+    "drugs",
 }
 REQUIRED_SOURCES = {
-    "clinvar": ("coding_variants", "evidence"),
+    "clinvar": ("coding_variants", "evidence", "id_map"),
     "gwas": ("coding_variants", "credible_sets"),
-    "pharmacogenomics": ("coding_variants", "pharmacogenomics"),
-    "drugs": ("drugs",),
-    "pockets": (),
+    "pharmacogenomics": ("coding_variants", "pharmacogenomics", "id_map"),
+    "drugs": ("drugs", "id_map"),
+    "pockets": ("pockets", "id_map"),
 }
 OUTPUT_NAMES = {
     "clinvar": "mave_clinvar_variants.tsv",
@@ -71,257 +68,150 @@ OUTPUT_NAMES = {
 }
 
 
-def _positive_int(value: str) -> int:
-    number = int(value)
-    if number <= 0:
-        raise argparse.ArgumentTypeError("Must be a positive integer")
-    return number
-
-
-def _positive_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number) or number <= 0:
-        raise argparse.ArgumentTypeError("Must be finite and positive")
-    return number
-
-
-def _nonnegative_int(value: str) -> int:
-    number = int(value)
-    if number < 0:
-        raise argparse.ArgumentTypeError("Must be nonnegative")
-    return number
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sources", type=Path, default=DEFAULT_SOURCE_MANIFEST)
     parser.add_argument("--only", choices=("all", *STAGES), default="all")
-    parser.add_argument("--id-map", type=Path)
-    parser.add_argument(
-        "--sources",
-        type=Path,
-        help="downloads.json from download_reference_data.py; detected automatically at its default location",
-    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
-    parser.add_argument(
-        "--input-root",
-        "--ot-root",
-        type=Path,
-        help="Directory containing the original Open Targets dataset subdirectories",
-    )
-    for name, directory in SOURCE_NAMES.items():
-        flags = ["--" + name.replace("_", "-")]
-        if name == "credible_sets":
-            flags.append("--credible-set")
-        parser.add_argument(*flags, type=Path, help=f"Local {directory} Parquet input")
-        parser.add_argument(
-            "--" + name.replace("_", "-") + "-url",
-            default=SOURCE_URLS[name],
-            help=f"Optional FTP/HTTP directory listing for {directory} Parquet files",
-        )
-    parser.add_argument("--pockets", type=Path, help="Local ProtVar pocket TSV input")
-    parser.add_argument("--batch-size", type=_positive_int, default=65_536)
-    parser.add_argument("--timeout", type=_positive_float, default=60)
-    parser.add_argument("--retries", type=_nonnegative_int, default=3)
-    modes = parser.add_mutually_exclusive_group()
-    modes.add_argument(
-        "--offline",
-        action="store_true",
-        help="Use local inputs or complete caches only",
-    )
-    modes.add_argument(
-        "--refresh", action="store_true", help="Refresh downloaded source datasets"
-    )
+    parser.add_argument("--batch-size", type=positive_int, default=65_536)
     return parser
 
 
-def _source_plan(
-    args: argparse.Namespace, stages: Sequence[str]
-) -> dict[str, Path | str]:
-    """Validate every selected stage before starting any downloads or processing."""
-    names = dict.fromkeys(name for stage in stages for name in REQUIRED_SOURCES[stage])
-    plan: dict[str, Path | str] = {}
-    for name in names:
-        local = getattr(args, name)
-        if local is None and args.input_root is not None:
-            local = args.input_root / SOURCE_NAMES[name]
-        if local is not None:
-            if not local.exists():
-                raise FileNotFoundError(
-                    f"Local {SOURCE_NAMES[name]} input not found: {local}"
-                )
-            dataset = ds.dataset(
-                str(local), format="parquet", exclude_invalid_files=True
+def _source_path(sources: dict[str, Any], name: str) -> Path | tuple[Path, ...]:
+    """Resolve and validate one source from the completed download manifest."""
+    record = sources.get(name)
+    if not isinstance(record, dict):
+        raise ValueError(f"Downloads manifest is missing required source {name!r}")
+    if name in PARQUET_SOURCES:
+        files = record.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError(
+                f"Downloads manifest source {name!r} requires a nonempty files list"
             )
-            if next(dataset.get_fragments(), None) is None:
-                raise ValueError(
-                    f"Local {SOURCE_NAMES[name]} input contains no Parquet files: {local}"
-                )
-            plan[name] = local
-        else:
-            url = getattr(args, name + "_url")
-            if not url:
-                flag = name.replace("_", "-")
-                raise ValueError(f"Provide --{flag}, --input-root, or --{flag}-url")
-            plan[name] = url
-    if "pockets" in stages and (args.pockets is None or not args.pockets.is_file()):
-        raise FileNotFoundError(
-            "The pockets stage requires --pockets with an existing ProtVar TSV"
+        if any(not isinstance(descriptor, dict) for descriptor in files):
+            raise ValueError(
+                f"Downloads manifest source {name!r} requires file descriptors"
+            )
+        paths = tuple(verify_file(descriptor) for descriptor in files)
+        dataset = ds.dataset(
+            [str(file) for file in paths], format="parquet", exclude_invalid_files=False
         )
-    return plan
+        if next(dataset.get_fragments(), None) is None:
+            raise ValueError(f"Downloaded {name} source contains no Parquet files")
+        return paths
+    return verify_file(record)
 
 
-def _source_record(paths: Path | Sequence[Path], source: Path | str) -> dict[str, Any]:
-    files = (
-        sorted(paths.rglob("*.parquet"))
-        if isinstance(paths, Path) and paths.is_dir()
-        else ([paths] if isinstance(paths, Path) else list(paths))
+def _resolve_sources(
+    manifest_path: Path, stages: Sequence[str]
+) -> tuple[dict[str, Path | tuple[Path, ...]], dict[str, Any]]:
+    manifest = load_sources(manifest_path)
+    records = manifest["sources"]
+    names = tuple(
+        dict.fromkeys(name for stage in stages for name in REQUIRED_SOURCES[stage])
     )
-    return {
-        "path" if isinstance(source, Path) else "url": (
-            str(source.resolve()) if isinstance(source, Path) else source
-        ),
-        "files": [
-            {"path": str(path.resolve()), "bytes": path.stat().st_size}
-            for path in files
-        ],
-    }
+    paths = {name: _source_path(records, name) for name in names}
+    return paths, {name: records[name] for name in names}
 
 
-def _publish(staged: Path, output: Path) -> None:
-    """Publish all selected tables together, restoring previous files on error."""
-    output.mkdir(parents=True, exist_ok=True)
-    names = sorted(path.name for path in staged.iterdir() if path.name != MANIFEST)
-    names.append(MANIFEST)
-    with tempfile.TemporaryDirectory(
-        prefix=".variant-data-backup-", dir=output.parent
-    ) as directory:
-        backup = Path(directory)
-        saved, installed = [], []
-        try:
-            for name in names:
-                destination = output / name
-                if destination.exists():
-                    if not destination.is_file():
-                        raise OSError(f"Output is not a regular file: {destination}")
-                    os.replace(destination, backup / name)
-                    saved.append(name)
-                os.replace(staged / name, destination)
-                installed.append(name)
-        except (OSError, KeyboardInterrupt):
-            for name in reversed(installed):
-                (output / name).unlink(missing_ok=True)
-            for name in reversed(saved):
-                os.replace(backup / name, output / name)
-            raise
-
-
-def _resolve_sources(args: argparse.Namespace) -> None:
-    path = args.sources
-    if path is None and args.input_root is None and DEFAULT_SOURCE_MANIFEST.is_file():
-        path = DEFAULT_SOURCE_MANIFEST
-    sources = load_sources(path)["sources"] if path is not None else {}
-    if args.input_root is None:
-        for name in SOURCE_NAMES:
-            if (
-                getattr(args, name) is None
-                and name in sources
-                and getattr(args, name + "_url") == SOURCE_URLS[name]
-            ):
-                setattr(args, name, Path(sources[name]["path"]))
-    if args.pockets is None and "pockets" in sources:
-        args.pockets = Path(sources["pockets"]["path"])
-    if args.id_map is None:
-        args.id_map = (
-            Path(sources["id_map"]["path"]) if "id_map" in sources else DEFAULT_ID_MAP
-        )
+def _generate_stages(
+    stages: Sequence[str],
+    sources: dict[str, Path | tuple[Path, ...]],
+    mapping: pd.DataFrame | None,
+    connection: sqlite3.Connection | None,
+    staged: Path,
+    batch_size: int,
+) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    for stage in stages:
+        destination = staged / OUTPUT_NAMES[stage]
+        options = {"batch_size": batch_size}
+        if stage == "clinvar":
+            if mapping is None or connection is None:
+                raise ValueError(
+                    "ClinVar generation requires an ID map and coding index"
+                )
+            result = generate_clinvar(
+                sources["evidence"], connection, mapping, destination, **options
+            )
+        elif stage == "gwas":
+            if connection is None:
+                raise ValueError("GWAS generation requires a coding index")
+            result = generate_gwas(
+                sources["credible_sets"], connection, destination, **options
+            )
+        elif stage == "pharmacogenomics":
+            if mapping is None or connection is None:
+                raise ValueError(
+                    "Pharmacogenomics generation requires an ID map and coding index"
+                )
+            result = generate_pharmacogenomics(
+                sources["pharmacogenomics"], connection, mapping, destination, **options
+            )
+        elif stage == "drugs":
+            if mapping is None:
+                raise ValueError("Drug generation requires an ID map")
+            result = generate_drugs(sources["drugs"], mapping, destination, **options)
+        else:
+            if mapping is None:
+                raise ValueError("Pocket generation requires an ID map")
+            result = generate_pockets(
+                sources["pockets"], mapping, destination, **options
+            )
+        results[stage] = {**result, "file": OUTPUT_NAMES[stage]}
+        LOGGER.info("%s: %d rows", stage, result["rows"])
+    return results
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    _resolve_sources(args)
     stages = list(STAGES) if args.only == "all" else [args.only]
-    plan = _source_plan(args, stages)
+    sources, provenance = _resolve_sources(args.sources, stages)
     mapping = (
-        load_id_map(args.id_map, deduplicate=False)
+        load_id_map(sources["id_map"])
         if any(stage != "gwas" for stage in stages)
         else None
     )
-    sources = {
-        name: (
-            source
-            if isinstance(source, Path)
-            else download_dataset(
-                source,
-                args.cache_dir,
-                offline=args.offline,
-                refresh=args.refresh,
-                timeout=args.timeout,
-                retries=args.retries,
-            )
-        )
-        for name, source in plan.items()
-    }
-    provenance = {
-        name: _source_record(paths, plan[name]) for name, paths in sources.items()
-    }
-    if mapping is not None:
-        provenance["id_map"] = {
-            "path": str(args.id_map.resolve()),
-            "sha256": hashlib.sha256(args.id_map.read_bytes()).hexdigest(),
-        }
-    if "pockets" in stages:
-        provenance["pockets"] = {
-            "path": str(args.pockets.resolve()),
-            "sha256": hashlib.sha256(args.pockets.read_bytes()).hexdigest(),
-        }
+    coding_stages = {"clinvar", "gwas", "pharmacogenomics"}.intersection(stages)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    results = {}
-    with tempfile.TemporaryDirectory(
-        prefix=".variant-data-", dir=args.out.parent
-    ) as directory:
-        staged = Path(directory)
-        for stage in stages:
-            destination = staged / OUTPUT_NAMES[stage]
-            options = {"batch_size": args.batch_size}
-            if stage == "clinvar":
-                result = generate_clinvar(
-                    sources["evidence"],
-                    sources["coding_variants"],
+    with tempfile.TemporaryDirectory(prefix=".variant-data-", dir=args.out.parent) as d:
+        staged = Path(d)
+        if coding_stages:
+            genes = None
+            if not {"gwas", "pharmacogenomics"}.intersection(stages):
+                if mapping is None:
+                    raise ValueError("ClinVar generation requires an ID map")
+                genes = sorted(set(mapping["To"].dropna().astype(str)))
+            with coding_index(
+                sources["coding_variants"],
+                staged,
+                batch_size=args.batch_size,
+                genes=genes,
+            ) as connection:
+                results = _generate_stages(
+                    stages,
+                    sources,
                     mapping,
-                    destination,
-                    **options,
+                    connection,
+                    staged,
+                    args.batch_size,
                 )
-            elif stage == "gwas":
-                result = generate_gwas(
-                    sources["credible_sets"],
-                    sources["coding_variants"],
-                    destination,
-                    **options,
-                )
-            elif stage == "pharmacogenomics":
-                result = generate_pharmacogenomics(
-                    sources["pharmacogenomics"],
-                    sources["coding_variants"],
-                    mapping,
-                    destination,
-                    **options,
-                )
-            elif stage == "drugs":
-                result = generate_drugs(
-                    sources["drugs"], mapping, destination, **options
-                )
-            else:
-                result = generate_pockets(args.pockets, mapping, destination, **options)
-            results[stage] = {**result, "file": OUTPUT_NAMES[stage]}
-            LOGGER.info("%s: %d rows", stage, result["rows"])
+        else:
+            results = _generate_stages(
+                stages, sources, mapping, None, staged, args.batch_size
+            )
         manifest = {
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "source_manifest": str(args.sources.resolve()),
             "stages": stages,
             "sources": provenance,
             "results": results,
         }
         write_json(staged / MANIFEST, manifest)
-        _publish(staged, args.out)
+        publish_tables(
+            staged,
+            args.out,
+            manifest=MANIFEST,
+            managed={Path(OUTPUT_NAMES[stage]) for stage in stages},
+        )
     LOGGER.info("Saved variant references to %s", args.out)
     return manifest
 
@@ -331,8 +221,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         run(args)
-    except (OSError, URLError, ValueError, ImportError, HTTPException) as exc:
-        LOGGER.error("Variant reference generation failed: %s", exc)
+    except (OSError, ValueError, ImportError) as exc:
+        LOGGER.error("Variant reference processing failed: %s", exc)
         return 1
     return 0
 

@@ -1,29 +1,29 @@
-"""Shared source locations and the cached ProtVar pocket download."""
+"""Source catalogue, bundle paths, and canonical ID mappings for MaveDB."""
 
 from __future__ import annotations
 
-import csv
-import gzip
 import hashlib
 import json
-import os
-import tempfile
-from http.client import HTTPException
+import re
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
-from data_sources.mavedb.analysis._homology_downloads import _pause, write_json
-from data_sources.mavedb.analysis._homology_references import (
-    DEFAULT_CODING,
-    DEFAULT_EVIDENCE,
-    MAVEDB_ROOT,
-)
+import pandas as pd
 
-DEFAULT_SOURCE_ROOT = MAVEDB_ROOT / "output" / "reference_data"
-SOURCE_MANIFEST = "downloads.json"
+from data_sources.mavedb.analysis._reference_io import read_tsv
+
+MAVEDB_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CACHE = MAVEDB_ROOT / "tmp" / "reference_data"
+DEFAULT_SOURCE_ROOT = MAVEDB_ROOT / "references"
+SOURCE_MANIFEST = "manifest.json"
+SOURCE_SCHEMA_VERSION = 3
 DEFAULT_SOURCE_MANIFEST = DEFAULT_SOURCE_ROOT / SOURCE_MANIFEST
+DEFAULT_ID_MAP = Path(__file__).parent / "data" / "mavedb_uniprot_to_ensembl.tsv"
+DEFAULT_METADATA = MAVEDB_ROOT / "output" / "processed" / "metadata.tsv"
+DEFAULT_ENSEMBL = "https://rest.ensembl.org"
+DEFAULT_EVIDENCE = "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/evidence_eva/"
+DEFAULT_CODING = "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.06/view/coding_variant_table/"
 OT_ROOT = "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output"
 SOURCE_URLS = {
     "coding_variants": DEFAULT_CODING,
@@ -33,10 +33,6 @@ SOURCE_URLS = {
     "drugs": f"{OT_ROOT}/drug_molecule/",
 }
 POCKET_FILENAME = "2024.05.28_pockets.tsv"
-DEFAULT_POCKETS_URL = (
-    "https://ftp.ebi.ac.uk/pub/databases/ProtVar/predictions/pockets/"
-    f"{POCKET_FILENAME}.gz"
-)
 POCKET_COLUMNS = {
     "struct_id",
     "pocket_id",
@@ -45,142 +41,118 @@ POCKET_COLUMNS = {
     "pocket_rad_gyration",
     "pocket_plddt_mean",
 }
+DEFAULT_POCKETS_URL = (
+    "https://ftp.ebi.ac.uk/pub/databases/ProtVar/predictions/pockets/"
+    f"{POCKET_FILENAME}.gz"
+)
 
 
-def file_record(path: Path) -> dict[str, Any]:
-    """Hash a file without collecting it in memory."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while block := handle.read(1024 * 1024):
-            digest.update(block)
-    return {
-        "path": str(path.resolve()),
-        "bytes": path.stat().st_size,
-        "sha256": digest.hexdigest(),
-    }
+def reference_directory(root: Path, name: str, url: str) -> Path:
+    """Name stored datasets by provider, source release, and dataset role."""
+    custom = "custom-" + hashlib.sha256(url.rstrip("/").encode()).hexdigest()[:12]
+    if name in SOURCE_URLS:
+        release = re.search(r"/platform/(\d{2}\.\d{2})/", urlsplit(url).path)
+        dataset = "evidence_eva" if name == "evidence" else name
+        return root / "opentargets" / (release[1] if release else custom) / dataset
+    if name == "pockets":
+        date = re.search(r"\d{4}\.\d{2}\.\d{2}", Path(urlsplit(url).path).name)
+        return root / "protvar" / (date[0] if date else custom)
+    raise ValueError(f"Unknown downloaded reference source: {name}")
 
 
-def _matches(path: Path, record: dict[str, Any]) -> bool:
-    if (
-        not isinstance(record, dict)
-        or not path.is_file()
-        or path.stat().st_size != record.get("bytes")
-    ):
-        return False
-    return file_record(path)["sha256"] == record.get("sha256")
-
-
-def _unpack_pockets(compressed: Path, destination: Path) -> None:
-    """Validate the complete gzip stream and TSV header before replacing a file."""
-    temporary: Path | None = None
-    try:
-        with gzip.open(compressed, "rb") as source, tempfile.NamedTemporaryFile(
-            dir=destination.parent, suffix=".part", delete=False
-        ) as target:
-            temporary = Path(target.name)
-            while block := source.read(1024 * 1024):
-                target.write(block)
-        with temporary.open(newline="", encoding="utf-8") as handle:
-            header = next(csv.reader(handle, delimiter="\t"), [])
-        if missing := POCKET_COLUMNS - set(header):
-            raise ValueError(
-                f"ProtVar pocket TSV is missing columns: {sorted(missing)}"
-            )
-        os.replace(temporary, destination)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
-def download_pockets(
-    url: str,
-    cache: Path,
-    *,
-    offline: bool = False,
-    refresh: bool = False,
-    timeout: float = 60,
-    retries: int = 3,
-) -> tuple[Path, dict[str, Any]]:
-    """Download, verify and unpack the dated ProtVar gzip, with offline reuse."""
-    directory = cache / "pockets" / hashlib.sha256(url.encode()).hexdigest()[:16]
-    directory.mkdir(parents=True, exist_ok=True)
-    compressed = directory / f"{POCKET_FILENAME}.gz"
-    destination = directory / POCKET_FILENAME
-    manifest_path = directory / "download.json"
-    manifest = (
-        json.loads(manifest_path.read_text())
-        if manifest_path.is_file() and not refresh
-        else {}
+def load_id_map(path: Path) -> pd.DataFrame:
+    """Load canonical UniProt/Ensembl pairs, preserving duplicate rows."""
+    frame = read_tsv(path).rename(columns={"uniprot_id": "From", "ensembl_id": "To"})
+    if not {"From", "To"}.issubset(frame.columns):
+        raise ValueError("ID mapping requires From/To or uniprot_id/ensembl_id columns")
+    frame = frame[["From", "To"]].dropna().copy()
+    frame["From"] = frame["From"].astype(str).str.strip()
+    frame["To"] = (
+        frame["To"].astype(str).str.strip().str.replace(r"\.\d+$", "", regex=True)
     )
-    if not isinstance(manifest, dict):
-        raise ValueError(f"Invalid ProtVar pocket cache manifest: {manifest_path}")
-    same_source = manifest.get("url") == url
-    if (
-        not refresh
-        and same_source
-        and _matches(compressed, manifest.get("compressed", {}))
-    ):
-        if not _matches(destination, manifest.get("uncompressed", {})):
-            _unpack_pockets(compressed, destination)
-            manifest["uncompressed"] = file_record(destination)
-            write_json(manifest_path, manifest)
-        return destination, manifest
-    if offline:
-        raise FileNotFoundError(
-            f"No verified ProtVar pocket cache for {url}; rerun online"
+    frame = frame.loc[frame["From"].ne("") & frame["To"].ne("")]
+    if frame.empty:
+        raise ValueError("ID mapping contains no usable UniProt/Ensembl pairs")
+    return frame.reset_index(drop=True)
+
+
+def _resolve_path(record: dict[str, Any], source: str, manifest: Path) -> None:
+    relative = record.get("path")
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ValueError(
+            f"Source manifest entry {source} requires a relative file path: {manifest}"
         )
-    for attempt in range(retries + 1):
-        temporary: Path | None = None
-        try:
-            request = Request(
-                url, headers={"User-Agent": "PerturbationCatalogue-MaveDB"}
-            )
-            with urlopen(
-                request, timeout=timeout
-            ) as response, tempfile.NamedTemporaryFile(
-                dir=directory, suffix=".gz.part", delete=False
-            ) as target:
-                temporary = Path(target.name)
-                expected = response.headers.get("Content-Length")
-                size = 0
-                while block := response.read(1024 * 1024):
-                    target.write(block)
-                    size += len(block)
-            if expected is not None and size != int(expected):
-                raise OSError(f"Incomplete pocket download: {size}/{expected} bytes")
-            _unpack_pockets(temporary, destination)
-            os.replace(temporary, compressed)
-            manifest = {
-                "url": url,
-                "compressed": file_record(compressed),
-                "uncompressed": file_record(destination),
-            }
-            write_json(manifest_path, manifest)
-            return destination, manifest
-        except (URLError, OSError, TimeoutError, EOFError, HTTPException) as exc:
-            if attempt == retries:
-                raise
-            _pause(exc, attempt, url=url)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-    raise RuntimeError("Unreachable pocket download state")
+    root = manifest.resolve().parent
+    resolved = (root / relative).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(
+            f"Source manifest entry {source} escapes its bundle: {manifest}"
+        )
+    record["path"] = str(resolved)
+
+
+def _validate_file_identity(record: Any, source: str, manifest: Path) -> None:
+    if not isinstance(record, dict):
+        raise ValueError(
+            f"Source manifest entry {source} requires file identity: {manifest}"
+        )
+    size = record.get("bytes")
+    digest = record.get("sha256")
+    _resolve_path(record, source, manifest)
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        raise ValueError(
+            f"Source manifest entry {source} requires a nonnegative byte count: {manifest}"
+        )
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError(
+            f"Source manifest entry {source} requires a SHA-256 digest: {manifest}"
+        )
 
 
 def load_sources(path: Path) -> dict[str, Any]:
-    """Read a completed download manifest; local paths are stored absolutely."""
+    """Validate portable bundle descriptors and resolve paths for consumers."""
     value = json.loads(path.read_text())
-    if not isinstance(value, dict) or value.get("schema_version") != 1:
-        raise ValueError(f"Unsupported source manifest: {path}")
+    if (
+        not isinstance(value, dict)
+        or value.get("schema_version") != SOURCE_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            f"Unsupported source manifest: {path}; regenerate it with "
+            "scripts/download_reference_data.py (existing downloads can be reused offline)"
+        )
     if not isinstance(value.get("sources"), dict):
         raise ValueError(f"Source manifest is missing its sources: {path}")
     for name, record in value["sources"].items():
-        if (
-            not isinstance(record, dict)
-            or not isinstance(record.get("path"), str)
-            or not Path(record["path"]).is_absolute()
-        ):
-            raise ValueError(
-                f"Source manifest entry {name} requires an absolute path: {path}"
-            )
+        if not isinstance(record, dict):
+            raise ValueError(f"Source manifest entry {name} must be an object: {path}")
+        if name in SOURCE_URLS:
+            files = record.get("files")
+            _resolve_path(record, name, path)
+            if not isinstance(files, list) or not files:
+                raise ValueError(
+                    f"Source manifest entry {name} requires nonempty file descriptors: {path}"
+                )
+            seen: set[str] = set()
+            for index, descriptor in enumerate(files):
+                _validate_file_identity(descriptor, f"{name}[{index}]", path)
+                file_path = descriptor["path"]
+                if not Path(file_path).is_relative_to(Path(record["path"])):
+                    raise ValueError(
+                        f"Source {name} file is outside its dataset: {path}"
+                    )
+                if file_path in seen:
+                    raise ValueError(
+                        f"Source manifest entry {name} contains duplicate file paths: {path}"
+                    )
+                seen.add(file_path)
+            if "download_manifest" in record:
+                raise ValueError(
+                    f"Source manifest entry {name} cannot reference a child manifest: {path}"
+                )
+        else:
+            _validate_file_identity(record, name, path)
     return value

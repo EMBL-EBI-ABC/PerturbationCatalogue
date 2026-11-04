@@ -160,351 +160,162 @@ and [implementation plan](../../development_docs/mavedb-gmm-python-implementatio
 for parity evidence, measured local resources and the remaining production
 gate.
 
-## Homology comparisons and ClinVar evaluation
+## External reference data
 
-The Python replacement for
-`ot_perturbation_catalog_mave_experiments/analysis/mave_homology.R` is
-`analysis/mave_homology.py`. It compares standardized variant effects between
-score sets for the same protein and for aligned orthologs/paralogs. It also
-evaluates how homolog measurements distinguish pathogenic/likely pathogenic
-from benign/likely benign ClinVar variants. It consumes completed GMM fits;
-it does not fit models or download reference data.
-
-### Download all external inputs with one command
+All external inputs are acquired by one command:
 
 ```bash
-.venv/bin/python data_sources/mavedb/scripts/download_reference_data.py
+.venv/bin/python data_sources/mavedb/scripts/download_reference_data.py --allow-missing-homology
 ```
 
-This downloads all five Open Targets Parquet datasets (coding variants, ClinVar
-evidence, GWAS credible sets, pharmacogenomics and drug molecules), downloads and
-unpacks the exact ProtVar `2024.05.28_pockets.tsv.gz`, and retrieves the Ensembl
-aligned protein homologies. It uses the existing shared download/API cache under
-`tmp/homology_references/` and writes a completed input manifest to
-`output/reference_data/downloads.json`. Homology tables and their manifest remain
-under `output/homology_references/`. Existing successful downloads are reused;
-`--refresh` redownloads every source, including Ensembl responses. `--offline`
-requires complete cached inputs and performs no network requests.
+It downloads Open Targets coding variants, ClinVar evidence, credible sets,
+pharmacogenomics and drug molecules; downloads and unpacks the ProtVar
+`2024.05.28_pockets.tsv.gz`; and retrieves aligned Ensembl protein homologies.
+Open Targets is pinned to `25.12/output/`, except for the original coding-variant
+source at `25.06/view/coding_variant_table/`. Ensembl uses the live REST endpoint.
 
-The Open Targets sources are pinned to `25.12/output/`, except for the coding
-variant table, which retains the original `25.06/view/` source. Ensembl uses the
-live REST endpoint. All source URLs can be overridden with the corresponding
-`--*-url` arguments. `--metadata` and `--id-map` select the inputs used to decide
-which Ensembl genes/species to query. `--workers`, `--request-interval`,
-`--timeout` and `--retries` retain the homology downloader's controls.
+All inputs needed for downstream processing live together under `references/`
+(paths in this section are relative to `data_sources/mavedb/`):
 
-Unavailable Ensembl HTTP 400/404 entries stop the run by default. Use
-`--allow-missing-homology` to explicitly skip and record those entries;
-`--allow-incomplete-homology` separately permits exhausted transient failures.
-`--skip-homology` fetches only Open Targets and ProtVar, without requiring
-processed metadata or querying Ensembl. A failed run preserves the previous
-completed download manifest; successfully downloaded source files remain cached
-for the next attempt.
-
-Then generate every variant reference TSV from those raw inputs:
-
-```bash
-.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py --offline
+```text
+references/
+├── manifest.json
+├── opentargets/
+│   ├── 25.06/coding_variants/
+│   └── 25.12/{evidence_eva,credible_sets,pharmacogenomics,drugs}/
+├── protvar/2024.05.28/
+├── ensembl/{homology.tsv,metadata.tsv,retrieval_report.json}
+└── mappings/mavedb_uniprot_to_ensembl.tsv
 ```
 
-The processor detects the default download manifest automatically. ClinVar is
-rebuilt from raw evidence and coding-variant Parquet files, rather than reading
-an existing generated ClinVar TSV. If the downloader used a custom `--out`, pass
-`--sources /path/to/downloads.json` to the processor. Explicit local input paths
-override manifest entries. The processor's `--out` still selects its generated
-table destination (`output/variant_data/` by default).
+The version-3 manifest records source URLs, exact partition lists, file sizes and
+SHA-256 identities. Every file path is relative to the manifest, so the entire
+directory can be moved or copied and passed to either processor using `--sources`.
+The metadata and normalized ID mapping are snapshots of the inputs used to build
+the homology table. The retrieval report records skipped and failed Ensembl queries.
+Open Targets and ProtVar directories retain `download.json` transfer records for
+verified reuse and offline operation. Custom source URLs without a release/date
+use a `custom-<URL digest>` directory beneath their provider.
 
-ProtVar download validation checks the gzip stream, required TSV columns, sizes
-and checksums. Missing or damaged unpacked TSVs are rebuilt from a verified
-compressed cache. The unified downloader needs only the existing Python
-dependencies in `requirements.txt`; no shell downloader is required.
+Only disposable Ensembl response caches live under `tmp/reference_data/`.
+Downstream processing does not read that directory. The downloader reuses verified
+local files by default; `--refresh` fetches them again, and `--offline` prohibits
+network access. Offline homology regeneration requires the Ensembl response cache;
+processing an already published bundle does not. Processing verifies the exact
+files in the manifest, so obsolete partitions cannot enter an analysis. Source
+bytes may be updated in place during a refresh; a failed refresh retains the old
+manifest but changed inputs are rejected until a complete bundle is published.
 
-### Generate homology and ClinVar references separately
+`--out` selects the complete reference directory. `--cache-dir` selects only the
+disposable Ensembl cache. `--metadata` defaults to `output/processed/metadata.tsv`;
+`--id-map` defaults to the checked-in mapping under `analysis/data/`. These
+determine the unique Ensembl gene/species requests.
+Each source URL can be changed with its `--*-url` flag. Ensembl requests default
+to four workers, a global 0.2-second request interval, a 60-second timeout and
+three retries. The corresponding flags are `--workers`, `--request-interval`,
+`--timeout` and `--retries`.
 
-The companion command fetches Ensembl aligned protein homologies and builds the
-ClinVar reference from Open Targets Parquet inputs. R is unnecessary:
+Unavailable Ensembl HTTP 400/404 responses stop the run unless
+`--allow-missing-homology` is explicitly supplied. Skips are recorded in the
+bundle's homology report. `--allow-incomplete-homology` separately permits
+exhausted transient failures. `--skip-homology` downloads only Open Targets and
+ProtVar, without requiring processed metadata or querying Ensembl. A failed run
+keeps the previously published manifest and homology tables; completed transfers
+remain available for the next attempt.
 
-```bash
-.venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
-.venv/bin/python data_sources/mavedb/scripts/prepare_homology_references.py
-
-# Use completed fits from multiple comparable studies (see below).
-.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
-  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes
-```
-
-The `gmm-study` validation directory contains a single fitted UBE2I score set.
-It cannot produce between-study correlations. Metadata coverage is separate from
-fitted-score coverage; the CLI reports both and records them in `manifest.json`.
-Two or more fitted score sets must have overlapping substitutions on the same
-protein or aligned homologs to produce correlations. ClinVar evaluation additionally
-requires annotated substitutions on homologs of the fitted proteins; fitting more
-studies of UBE2I alone does not supply those annotations.
-
-To fit every eligible study using the production sampler settings, then analyze
-the results (this is a substantial fitting run):
-
-```bash
-.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
-  --profile production --model modes --index 0 \
-  --out data_sources/mavedb/output/gmm-production
-
-.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
-  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes
-```
-
-For a smaller correlation check, repeat `--study-id` to select comparable studies,
-for example `--study-id urn:mavedb:00000001-a-1 --study-id urn:mavedb:00000001-a-3`.
-Both measure UBE2I; this checks same-protein comparisons but will not produce
-ClinVar transfer results with the current reference bundle. Use a separate output
-directory for a subset run so it is distinguishable from the full production fit.
-
-The generator uses canonical `output/processed/metadata.tsv` by default and
-writes these files under `data_sources/mavedb/output/homology_references/`:
-
-- `homology.tsv`, with the ten alignment/homology fields consumed by the analysis.
-- `mave_clinvar_variants.tsv`, with the original ClinVar selection and joined
-  protein coordinates. Nested ancillary fields are serialized as JSON.
-- `mavedb_uniprot_to_ensembl.tsv`, the normalized mapping used for this run.
-- `references.json`, recording source paths/hashes, URLs, row counts and any
-  explicitly skipped Ensembl genes.
-
-The analysis uses this directory automatically. Pass `--reference-dir PATH` to
-analyze a different generated bundle; `--out PATH` changes the generator's
-destination. Explicit `--homology`, `--id-map` and `--clinvar` paths still work,
-and `--reference-root` retains support for the original R layout.
-
-The bundled 538-row mapping snapshot comes from the R project; see its
-[provenance](analysis/data/README.md). It does not cover all proteins in newer
-MaveDB releases. Missing mappings are reported; use `--id-map PATH` with an
-updated `From`/`To` or `uniprot_id`/`ensembl_id` table for broader coverage.
-`--metadata PATH` accepts either canonical metadata or a legacy `meta.tsv`.
-Multi-target/ambiguous identifiers are omitted from Ensembl requests.
-
-By default the generator downloads all Parquet partitions in
-`25.12/output/evidence_eva/` and `25.06/view/coding_variant_table/` from the
-Open Targets FTP HTTPS service, matching the original README's pinned inputs.
-These releases are intentionally different to reproduce that recipe; newer
-ClinVar records without coding annotations remain unmatched, as in the R join.
-The initial download can be large. Override the sources with `--evidence-url`
-and `--coding-url`, or use existing local files/directories:
-
-```bash
-.venv/bin/python data_sources/mavedb/scripts/prepare_homology_references.py \
-  --evidence /path/to/evidence_eva \
-  --coding-variants /path/to/coding_variant_table
-```
-
-Raw files and per-gene API responses are cached below
-`data_sources/mavedb/tmp/homology_references/`. Completed Parquet downloads are
-reused after checking their size and footer; interrupted downloads resume at
-file boundaries. `--cache-dir` changes the cache location, `--refresh` refetches
-inputs, and `--offline` forbids network access and requires complete cached or
-explicit local inputs. Ensembl requests use up to four workers and a shared
-global interval of 0.2 seconds between uncached HTTP attempts by default (five
-requests per second, below Ensembl's documented limit). `--workers` controls
-the concurrency bound; `--request-interval`, `--timeout` and `--retries`
-control request pacing and retry behavior. Cached responses and offline reads
-do not use request slots. `Retry-After` responses pause all workers for the
-server-specified duration.
-
-Completed query results are buffered on disk and merged in input order, so a
-slow earlier gene does not stop other workers from fetching later genes. Only
-active requests hold response payloads in memory. Rate limits and explicit
-`Retry-After` instructions pause all workers; ordinary server errors use
-per-request backoff. Retry messages include the request URL.
-
-If a gene still encounters a transient HTTP error (408/429/500/502/503/504),
-timeout or connection failure after retries, other genes continue. The run
-records failed genes, URLs and errors in
-`tmp/homology_references/homology_failures.json` (below `--cache-dir` when
-overridden). By default it exits nonzero after the remaining requests finish
-and preserves previously published references. Rerunning the same command
-reuses successful cached responses and retries the unresolved genes.
-
-To explicitly export available results despite those failures, add
-`--allow-incomplete-homology`. Every failed gene remains listed in the failure
-report and in `references.json`; the homology manifest entry has
-`complete: false`. This flag never permits malformed alignments or a run where
-every query failed. The default requires complete successful fetching, except
-for missing/retired genes explicitly permitted with `--allow-missing-homology`.
-
-Use `--only homology` or `--only clinvar` to generate one table. ClinVar-only mode
-does not require metadata or Ensembl access. Other previously generated tables
-are retained; `references.json` describes the components generated by the
-current invocation. Use one consistent ID mapping when generating components
-separately. Homology requests fail on missing/retired genes by default;
-`--allow-missing-homology` explicitly permits HTTP 400/404 skips, records them in
-the manifest and logs each skip. Skipped records include the gene, species,
-URL and provider error; new negative-cache entries retain the response body
-for offline diagnostics. Older cached errors still identify their request URL.
-This flag does not permit skipping malformed alignment data. Successful
-responses with no homologs produce
-no rows. Missing/ambiguous metadata is reported rather than guessed.
-
-ClinVar processing projects and filters Parquet batches by mapped Ensembl gene
-IDs, expands clinical labels and UniProt accessions, and joins by both
-`targetId` and `variantId` using a temporary SQLite index. Duplicate observations
-and unmatched evidence are retained to match the R left join. `--batch-size`
-controls Arrow read batches. Generated tables are staged before publication;
-fetch/schema failures preserve previous outputs, and publication errors trigger
-rollback. No GWAS, pharmacogenomics, drug or pocket datasets are required.
-
-Use the repository environment and the existing plotting/numerical dependencies
-in `requirements.txt`. Native fitter outputs need matching `score<N>.tsv` and
-`fitted_params<N>.tsv` files; other GMM tables are unnecessary:
-
-```bash
-.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
-  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes \
-  --metadata data_sources/mavedb/output/processed/metadata.tsv \
-  --homology /path/to/intermediates/ensembl/homology.tsv \
-  --id-map /path/to/meta/mavedb_uniprot_to_ensembl.tsv \
-  --clinvar /path/to/intermediates/ot_variant_data/mave_clinvar_variants.tsv
-```
-
-The original R project layout is also supported:
-
-```bash
-.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
-  --reference-root /path/to/ot_perturbation_catalog_mave_experiments
-```
-
-`--reference-root` supplies `data/maves/meta.tsv`, the `scores.tsv`, `singles.tsv`
-and `params.tsv` tables under `data/maves/gmm_modes/`, and the three reference
-paths shown above. Alternatively, set `--data-root /path/to/data` and supply
-reference paths individually. `--metadata` overrides the metadata path;
-`--model flexible` selects the corresponding legacy GMM directory. Native mode
-uses the batches in the explicitly supplied directory. Only selected
-`top_model` rows are analyzed; overlapping native batches and multiple selected
-parameter rows for a score set are errors.
-
-Reference schemas:
-
-- Homology: `taxonomy_level`, `target_species`, `source_species`, `type`,
-  `target_id`, `source_id`, `target_align_seq`, `source_align_seq`,
-  `target_perc_pos`, `target_perc_id`. Aligned sequences use `-` for gaps.
-- ID mapping: `From`/`To`, or `uniprot_id`/`ensembl_id`. Ensembl version suffixes
-  are removed before matching.
-- ClinVar: `uniprotAccessions`, `clinicalSignificances`, `aminoAcidPosition`,
-  `referenceAminoAcid`, `alternateAminoAcid`. Clinical labels are the original
-  lowercase strings; amino acids are single-letter codes.
-
-The default destination is `data_sources/mavedb/output/homology/`, resolved from
-the repository regardless of working directory. Explicit relative paths resolve
-from the calling directory. `--out` changes the destination. Outputs include
-`correlations.tsv`, `combined_clinvar.tsv`, `clinvar_homologs.tsv`,
-`clinvar_counts.tsv`, `clinvar_roc.tsv`, `clinvar_summary.tsv`, `manifest.json`,
-and nine named figures under `figures/`, each in PNG and PDF by default.
-`clinvar_homologs.tsv` retains additional alignment and identifier columns for
-tracing matches beyond the smaller table selected in the R script.
-Use `--formats png` or `--formats pdf`, `--dpi`, or `--no-plots` as needed.
-`--skip-clinvar` explicitly runs only the between-study analysis. Correlations
-are reused only when SHA-256 hashes of their inputs and implementation match;
-`--refresh-cache` forces recalculation. ClinVar results are recalculated each run.
-Results are staged before publication; replacements are atomic per file, so
-downstream readers should wait for a successful exit. Publication attempts to
-restore the previous files on I/O errors. Obsolete tables and figures owned by
-this analysis are removed when run options change; unrelated files are
-preserved. The manifest lists the current tables and output files.
-
-The port retains the R analysis's directed pairs: A-to-B and B-to-A are separate
-rows when both are available, and FDR is calculated over those rows. Same-gene
-comparisons average repeated HGVS scores. Homolog comparisons match aligned
-single substitutions with the same alternate amino acid, allowing different
-wild-type residues. Native HGVS positions receive unambiguous UniProt offsets;
-missing offsets retain source positions, so reference alignment coordinates
-must be compatible. Multi-target or ambiguous identifiers are omitted from
-target-specific matching. Meta-study datasets and nonfinite scores are excluded.
-Pairs need at least three matches and variation on both sides.
-
-Pearson confidence intervals, asymptotic Spearman tests, fixed-category Cohen's
-kappa, and Benjamini–Hochberg corrections follow the R definitions. ClinVar
-curves retain the R helper's **left-step** ROC/PR area integration, which can
-differ from trapezoidal ROC AUC or average precision, especially for tied scores.
-The four predictors are `w`, `abs(w - 1)`, `w / sigma_neut`, and
-`abs(w - 1) / sigma_neut`; lower `w`/scaled `w`, or larger absolute deviation,
-predicts pathogenicity. Counts retain the R scope before uncertain/conflicting
-labels are excluded and are counts of matched observations rather than unique
-human variants. Undefined ROC/PR values are missing. The figures correct
-the original Spearman axis label and use recall versus precision for the PR
-panel. Matplotlib layout differs from ggplot.
-
-Run the focused tests with:
-
-```bash
-.venv/bin/python -m pytest data_sources/mavedb/tests/test_*homology*.py
-```
+Acquisition is implemented through three library modules:
+`_reference_sources.py` defines sources and reads the bundle manifest;
+`_reference_downloads.py` owns HTTP, retry, cache and gzip/Parquet validation;
+`_ensembl_homology.py` plans, retrieves and flattens Ensembl homologies. The
+downloader validates the homology plan before starting the other network transfers.
+`_reference_io.py` shares streaming provenance hashes and transactional output
+publication. The downloader calls these libraries directly.
 
 ## Variant, drug and pocket reference tables
 
-`scripts/process_variant_data.py` ports the original `process_variant_data.R`.
-It generates all five reference tables under `output/variant_data/`:
-`mave_clinvar_variants.tsv`, `mave_gwas_variants.tsv`,
-`mave_pharmacogenomics.tsv`, `mave_drugs.tsv`, and `mave_pockets.tsv`.
-`variant_data_manifest.json` records selected stages, source paths/URLs,
-Parquet file sizes, ID-map/pocket hashes and row counts. These references are
-separate from the GMM score exports and the homology reference bundle.
-
-For GWAS alone, supply the Open Targets credible-set and coding-variant
-Parquet directories (or individual Parquet files):
+After downloading, generate all five reference tables with:
 
 ```bash
-.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py \
-  --only gwas \
-  --credible-sets /path/to/credible_set \
-  --coding-variants /path/to/coding_variant_table \
-  --offline
+.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py
 ```
 
-To process every table from the original Open Targets directory layout:
+The processor reads `references/manifest.json` by default and performs
+only local processing. It has no download, refresh or network fallback modes.
+Use `--sources /path/to/references/manifest.json` for a different bundle, `--out` for a
+different output directory, and `--batch-size` to control source scanning.
+`--only` selects `clinvar`, `gwas`, `pharmacogenomics`, `drugs`, or `pockets`;
+the default is `all`.
+
+The default destination `output/variant_data/` contains:
+
+- `mave_clinvar_variants.tsv`
+- `mave_gwas_variants.tsv`
+- `mave_pharmacogenomics.tsv`
+- `mave_drugs.tsv`
+- `mave_pockets.tsv`
+- `variant_data_manifest.json`
+
+ClinVar is rebuilt from raw evidence and coding-variant Parquet files on every
+run. The processor constructs one temporary SQLite coding index for all selected
+coding-dependent stages, rather than rescanning the source separately for
+ClinVar, GWAS and pharmacogenomics. Parquet is scanned in bounded batches.
+GWAS retains global coding-variant matches; pharmacogenomics matches target and
+variant before filtering mapped UniProt accessions. Duplicate joins and nested
+list expansions retain the original biological row semantics. Pocket confidence
+uses the strict `score > 800` threshold. Missing values use `NA`, booleans use
+`TRUE/FALSE`, and remaining nested cells use compact JSON.
+
+Selected outputs are staged before publication, with rollback on I/O failure.
+Unrelated files are preserved. Default paths resolve from the repository;
+explicit relative paths resolve from the calling directory.
+
+## Homology comparisons and ClinVar evaluation
+
+`analysis/mave_homology.py` consumes native fitted GMM batches, canonical
+processed metadata and the downloaded source bundle. It compares standardized
+variant effects between score sets for the same protein and aligned homologs,
+and evaluates ClinVar labels transferred across those alignments.
 
 ```bash
-.venv/bin/python data_sources/mavedb/scripts/process_variant_data.py \
-  --input-root /path/to/ot_variant_data \
-  --pockets /path/to/2024.05.28_pockets.tsv \
-  --offline
+.venv/bin/python data_sources/mavedb/analysis/mave_homology.py \
+  --gmm-dir data_sources/mavedb/output/gmm-production/maves/modes
 ```
 
-The root must contain `coding_variant_table/`, `evidence_eva/`, `credible_set/`,
-`pharmacogenomics/` and `drug_molecule/`. Individual overrides are
-`--coding-variants`, `--evidence`, `--credible-sets`, `--pharmacogenomics`,
-and `--drugs`. `--only` also accepts `clinvar`, `pharmacogenomics`, `drugs`,
-or `pockets`; unselected sources are unnecessary. GWAS alone needs no ID map.
-Other stages default to the bundled UniProt/Ensembl mapping; use `--id-map`
-to change its coverage. Canonical `metadata.tsv` and fitted GMM tables are
-not inputs to this reference-generation step.
+The analysis reads `references/manifest.json` and the generated
+`output/variant_data/mave_clinvar_variants.tsv` by default. It requires completed
+native `score<N>.tsv` / `fitted_params<N>.tsv` pairs and canonical metadata;
+original-R reference roots and consolidated R tables are not input formats.
+`--sources` selects another bundle and `--clinvar` selects another generated
+ClinVar table. `--skip-clinvar` explicitly runs only the between-study analysis.
 
-After the unified download command, no source arguments are needed: the processor
-uses `output/reference_data/downloads.json`. Without a source manifest or local
-inputs, all five Open Targets datasets have default release URLs; the coding
-variant source uses `25.06/view/`, and the other four use `25.12/output/`.
-The existing homology download cache is reused. Use `--offline` to require local
-inputs, and run the unified downloader with `--refresh` to refresh those inputs.
-`--coding-variants-url`, `--evidence-url`, `--credible-sets-url`,
-`--pharmacogenomics-url` and `--drugs-url` allow explicit alternate sources.
-The unified downloader also supplies the ProtVar pocket TSV. When processing
-without its manifest, provide that file with `--pockets`. All selected local
-input paths are checked before processing starts.
+Metadata coverage and fitted-score coverage are distinct. One fitted study
+cannot produce between-study correlations. Two studies require at least three
+overlapping substitutions with variation on both sides. The two UBE2I studies
+`urn:mavedb:00000001-a-1` and `urn:mavedb:00000001-a-3` provide a small
+same-protein comparison example; the current ClinVar reference has no direct
+UBE2I annotations. Use completed fits from a broader protein set for ClinVar
+evaluation.
 
-The port reuses the homology ClinVar generator. To use its new ClinVar output
-with the homology analysis, pass
-`--clinvar data_sources/mavedb/output/variant_data/mave_clinvar_variants.tsv`.
-GWAS selection follows the original global coding-variant join and is not
-restricted to the ID-map genes. Joins retain duplicate matches, list fields are
-expanded as in the original workflow, and remaining nested values use JSON in
-TSV cells. Pocket confidence uses the strict `score > 800` boundary.
-Parquet inputs are scanned in batches and coding joins use temporary SQLite
-indexes. Completed selected tables are staged before publication, with rollback
-on publication errors; unrelated and unselected output files are preserved.
-The manifest describes the current invocation. `--out` changes the destination;
-defaults resolve from the repository and explicit relative paths resolve from
-the calling directory. `--batch-size` controls source scanning.
+Outputs under `output/homology/` include `correlations.tsv`,
+`combined_clinvar.tsv`, `clinvar_homologs.tsv`, counts, ROC curves, summary tables,
+a manifest and figures. Pearson confidence intervals, asymptotic Spearman tests,
+fixed-category Cohen's kappa and Benjamini-Hochberg corrections follow the R
+definitions. ROC/PR areas retain left-step integration, which can differ from
+trapezoidal AUC or average precision. Undefined metrics are missing.
+
+The four ClinVar predictors are `w`, `abs(w - 1)`, `w / sigma_neut` and
+`abs(w - 1) / sigma_neut`. Lower signed scores or larger absolute deviations
+predict pathogenicity. Counts refer to matched observations and retain
+uncertain/conflicting labels until binary classification is calculated.
+Plot layout uses Matplotlib.
+
+Run the reference and homology checks with:
 
 ```bash
-.venv/bin/python -m pytest data_sources/mavedb/tests/test_variant_*.py \
+.venv/bin/python -m pytest data_sources/mavedb/tests/test_reference_*.py \
+  data_sources/mavedb/tests/test_variant_*.py \
   data_sources/mavedb/tests/test_process_variant_data.py \
-  data_sources/mavedb/tests/test_reference_downloads.py
+  data_sources/mavedb/tests/test_*homology*.py
 ```
 
 ## Inspect the dump schema
