@@ -1,0 +1,16 @@
+[
+  {
+    "urn": "urn:mavedb:synthetic",
+    "experiments": [
+      {
+        "urn": "urn:mavedb:synthetic-a",
+        "scoreSets": [
+          {
+            "urn": "urn:mavedb:synthetic-a-1",
+            "title": "Synthetic raw-ingest fixture; not experimental data"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -11,6 +11,15 @@ The ZIP archive contains:
   - `*.scores.csv` — always present
   - `*.counts.csv` — sometimes present
 
+## Nextflow workflow
+
+The [Nextflow pipeline](pipeline/README.md) currently implements raw-data ingest:
+download the pinned Zenodo ZIP (or supply a local ZIP), validate and unpack it,
+and publish a checksum-addressed raw dump with a provenance manifest. Its named
+workflow exposes channels for later processing, GMM fitting, validation and QC.
+Local setup, offline development, resume behavior and commands are documented
+there. This implementation has not been executed or tested yet.
+
 ## GMM fitting
 
 ### Run the bounded smoke workflow

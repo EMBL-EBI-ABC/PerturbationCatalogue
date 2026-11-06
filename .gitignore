@@ -29,6 +29,9 @@ dwh/bq_dbt/.user.yml
 data_sources/mavedb/tmp/
 data_sources/mavedb/output/
 data_sources/mavedb/references/
+# Nextflow launch metadata; task work and published outputs are ignored above.
+.nextflow/
+.nextflow.log*
 data_sources/mavedb/tests/
 data_sources/mavedb/tests/*
 

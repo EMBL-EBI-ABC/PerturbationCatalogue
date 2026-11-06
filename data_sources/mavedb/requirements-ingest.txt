@@ -1,0 +1,2 @@
+# Only the network downloader needs this dependency; archive ingest is stdlib-only.
+tqdm>=4.66,<5
