@@ -13,12 +13,13 @@ The ZIP archive contains:
 
 ## Nextflow workflow
 
-The [Nextflow pipeline](pipeline/README.md) currently implements raw-data ingest:
-download the pinned Zenodo ZIP (or supply a local ZIP), validate and unpack it,
-and publish a checksum-addressed raw dump with a provenance manifest. Its named
-workflow exposes channels for later processing, GMM fitting, validation and QC.
-Local setup, offline development, resume behavior and commands are documented
-there. This implementation has not been executed or tested yet.
+The [Nextflow pipeline](pipeline/README.md) implements raw-data ingest followed
+by canonical metadata/score processing. It accepts a pinned Zenodo download or
+local ZIP, validates and unpacks it, and processes it using an explicit taxonomy
+snapshot. Outputs include raw/processed provenance manifests and a dataset
+selection audit. Use `--ingest_only` to stop after ingest. Local setup, offline
+fixtures, resume behavior and validation status are documented there. GMM
+fitting, downstream validation and QC are future pipeline stages.
 
 ## GMM fitting
 
@@ -468,6 +469,12 @@ The default output contains only these two tables, joined by **`dataset_id`**:
 | --- | --- | --- |
 | `scores.tsv` | One original variant record | Dataset ID, original variant number, source row number, nucleotide/protein/splice HGVS, simple-protein-variant parsing, amino-acid codes, `wt_mut` and score |
 | `metadata.tsv` | One dataset | Source and unpacked target metadata, analysis types, variant counts and derived statistics including coverage/completeness |
+
+Pass `--audit` to also write `dataset_processing.tsv`, containing one record per
+input score file with inclusion/exclusion status and reason, and validate the
+canonical outputs before publication. Nextflow calls this processor directly
+with `--ingest-manifest PATH`, enabling the audit, output checks and provenance
+manifest together. That mode requires an explicit `--taxonomy` input.
 
 ### Dataset selection and complete scores
 

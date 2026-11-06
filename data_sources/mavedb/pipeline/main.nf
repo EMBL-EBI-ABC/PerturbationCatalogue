@@ -3,6 +3,33 @@
 nextflow.enable.dsl = 2
 
 include { DOWNLOAD_MAVEDB; INGEST_MAVEDB_ARCHIVE } from './modules/ingest'
+include { MAVEDB_TAXONOMY } from './modules/taxonomy'
+include { PROCESS_MAVEDB } from './modules/process'
+
+workflow MAVEDB_PROCESS {
+    take:
+    raw_bundle
+    taxonomy
+    taxonomy_source
+
+    main:
+    processor = file("${projectDir}/../scripts/process_mavedb.py")
+    PROCESS_MAVEDB(
+        raw_bundle, taxonomy, taxonomy_source, processor, params.python
+    )
+    processed_ch = PROCESS_MAVEDB.out.bundle
+    scores_ch = processed_ch.map { it.resolve('scores.tsv') }
+    metadata_ch = processed_ch.map { it.resolve('metadata.tsv') }
+    audit_ch = processed_ch.map { it.resolve('dataset_processing.tsv') }
+    manifest_ch = processed_ch.map { it.resolve('processing_manifest.json') }
+
+    emit:
+    bundle = processed_ch
+    scores = scores_ch
+    metadata = metadata_ch
+    audit = audit_ch
+    manifest = manifest_ch
+}
 
 workflow MAVEDB_INGEST {
     main:
@@ -56,7 +83,7 @@ workflow MAVEDB_INGEST {
 workflow {
     if (params.help) {
         log.info '''
-MaveDB raw-data ingest
+MaveDB ingest and canonical processing
 
 nextflow run data_sources/mavedb/pipeline -profile local [options]
 
@@ -66,11 +93,22 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --outdir PATH           Published results (default: output/nextflow)
   --download_dir PATH     Persistent ZIP cache (default: <outdir>/downloads)
   --python PATH           Python executable (default: repository .venv/bin/python)
+  --taxonomy PATH         Use an existing NCBI categories.dmp (otherwise fetched)
+  --taxonomy_url URL      Override the NCBI taxonomy archive source
+  --ingest_only           Stop after raw-data ingest; no taxonomy acquisition
   -resume                 Reuse successful tasks and their work directories
 
-Only raw-data ingest is implemented. See pipeline/README.md for setup and outputs.
+See pipeline/README.md for setup, offline smoke testing, and outputs.
 '''
     } else {
         MAVEDB_INGEST()
+        if (!params.ingest_only) {
+            MAVEDB_TAXONOMY()
+            MAVEDB_PROCESS(
+                MAVEDB_INGEST.out.bundle,
+                MAVEDB_TAXONOMY.out.taxonomy,
+                MAVEDB_TAXONOMY.out.source
+            )
+        }
     }
 }

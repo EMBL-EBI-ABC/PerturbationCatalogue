@@ -1,17 +1,26 @@
 # MaveDB Nextflow workflow
 
-This DSL2 workflow currently implements **raw-data ingest only**:
+This DSL2 workflow implements **raw-data ingest and canonical processing**:
 
 ```text
 pinned Zenodo ZIP -> DOWNLOAD_MAVEDB -> INGEST_MAVEDB_ARCHIVE -> raw dump + manifest
 local ZIP --------------------------> INGEST_MAVEDB_ARCHIVE -> raw dump + manifest
+                                                              |
+local taxonomy / FETCH_MAVEDB_TAXONOMY --------------------> PROCESS_MAVEDB
+                                                              |
+                                    scores.tsv + metadata.tsv + audit + manifest
 ```
 
-Metadata/score processing, reference acquisition, GMM fitting, validation, QC,
-and loading into cloud storage or Elasticsearch are future stages. The named
-`MAVEDB_INGEST` workflow emits `bundle`, `dump`, and `manifest` channels for those
-stages. Future processes should consume these channels, rather than read files
-from the publication directory.
+Taxonomy is an independent `MAVEDB_TAXONOMY` workflow in `modules/taxonomy.nf`,
+with its own download process and standard-library-only `scripts/download_taxonomy.py`
+entry point. It runs alongside raw ingest and supplies an explicit input to
+processing. It has no dependency on processor code.
+
+Other reference acquisition, GMM fitting, scientific validation/QC, and loading
+into cloud storage or Elasticsearch are future stages. `MAVEDB_INGEST` emits
+`bundle`, `dump`, and `manifest`; `MAVEDB_PROCESS` emits `bundle`, `scores`,
+`metadata`, `audit`, and `manifest`. Downstream processes should consume these
+channels rather than read files from the publication directory.
 
 ## Local setup
 
@@ -31,8 +40,8 @@ mkdir -p "$HOME/.local/bin"
 mv nextflow "$HOME/.local/bin/nextflow"
 export PATH="$HOME/.local/bin:$PATH"
 
-# Run from the repository root; only downloads need this Python dependency.
-.venv/bin/python -m pip install -r data_sources/mavedb/requirements-ingest.txt
+# Run from the repository root; includes the processor's Python dependencies.
+.venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
 ```
 
 The workflow defaults to the repository's `.venv/bin/python`, resolved from the
@@ -43,12 +52,16 @@ when beginning validation.
 
 ## Running later
 
-From the repository root, download the fixed release currently used by
-`scripts/download_zenodo.py`:
+From the repository root, ingest and process the fixed release currently used
+by `scripts/download_zenodo.py`:
 
 ```bash
 nextflow run data_sources/mavedb/pipeline -profile local
 ```
+
+This now runs canonical processing by default. Add `--ingest_only` to stop at
+the raw bundle without taxonomy acquisition or processing. Add `-resume` to
+reuse prior successful tasks when their inputs and scripts still match.
 
 The default URL is the February 2026 dump in versioned Zenodo record `18511521`;
 there is no automatic switch to a newer record version. Override it with
@@ -70,6 +83,7 @@ For offline development, use a local ZIP:
 ```bash
 nextflow run data_sources/mavedb/pipeline -profile local \
   --archive /absolute/path/to/small-mavedb-dump.zip \
+  --taxonomy /absolute/path/to/taxcat.dmp \
   --outdir /absolute/path/to/development-results
 ```
 
@@ -91,6 +105,7 @@ zip -r /tmp/mavedb-ingest-smoke.zip main.json csv
 cd "$repo"
 nextflow run data_sources/mavedb/pipeline -profile local \
   --archive /tmp/mavedb-ingest-smoke.zip \
+  --ingest_only \
   --outdir data_sources/mavedb/output/ingest-smoke
 ```
 
@@ -111,6 +126,84 @@ The default work location is `data_sources/mavedb/tmp/nextflow/work`; override i
 with Nextflow's `-work-dir /absolute/path` option. Local archive caching uses
 Nextflow's default file identity (path, size, modification time); changing the
 expected checksum also invalidates the ingest task cache.
+
+## Canonical processing
+
+`MAVEDB_PROCESS` wraps the existing `scripts/process_mavedb.py`, preserving its
+dataset selection and score-export rules. For every included dataset, all
+original variant records remain in `scores.tsv`, including duplicate HGVS
+observations, missing scores, and invalid scores retained in `score_raw`.
+Nonqualifying datasets remain excluded from both canonical tables.
+
+Taxonomy is an explicit task input. Supply `--taxonomy /path/to/taxcat.dmp` to
+use a local snapshot. Otherwise `FETCH_MAVEDB_TAXONOMY` downloads NCBI's live
+taxcat archive in its own task, extracts `categories.dmp`, and publishes it as
+`references/taxonomy/taxcat.dmp` with a checksum manifest. Processing always
+passes this file explicitly to the processor, and never uses its implicit
+repository cache or downloads inside the processing task. For repeatable runs,
+reuse the acquired snapshot with `--taxonomy`; a new acquisition without resume
+can fetch updated NCBI content. Override the source with `--taxonomy_url URL`;
+this is ignored when `--taxonomy` supplies an existing file. No other references
+are downloaded yet.
+
+The downloader can also be run independently of Nextflow and processing:
+
+```bash
+.venv/bin/python data_sources/mavedb/scripts/download_taxonomy.py \
+  --output /absolute/path/to/new-taxonomy-bundle
+```
+
+Its manifest records both the downloaded archive identity and the extracted
+taxonomy identity. Nextflow calls `process_mavedb.py` directly with the resulting
+taxonomy file; there is no separate processing adapter.
+
+Processing writes `<outdir>/processed/` containing:
+
+| File | Contents |
+| --- | --- |
+| `scores.tsv` | Canonical variant records, keyed by `(dataset_id, source_row)` |
+| `metadata.tsv` | One row per included dataset |
+| `dataset_processing.tsv` | One row per input score file, inclusion/exclusion reason and available row counts |
+| `processing_manifest.json` | Input identities, taxonomy source/hash, code hashes, runtime versions, output hashes and reconciled totals |
+
+Audit reasons are `explicitly_excluded`, `missing_metadata`, `missing_targets`,
+and `no_eligible_analysis_rows`. `source_rows` is blank for files excluded before
+reading their variants; `exported_rows` is zero for every exclusion. Ingest's
+metadata/file reconciliation is not implied by the audit: metadata records with
+no corresponding CSV are outside the processor's file-based selection.
+
+Before publishing, the processor verifies canonical score columns, unique
+metadata IDs, score-to-metadata joins, sequential `source_row` values from 1 to
+N per dataset, metadata row-count agreement, and audit coverage of every input
+score file. A failed check prevents the processed directory from being emitted.
+The raw ingest bundle is read-only. Legacy compatibility tables are not generated.
+
+The processor's `--ingest-manifest PATH` option links the raw provenance and
+automatically enables the dataset audit, validation, and processing manifest.
+It requires an explicit `--taxonomy` file; `--taxonomy-source URI` records its
+original source. These checks run on staged outputs before publication. A new
+output directory is published by rename; updating an existing directory uses
+separate file replacements. Existing standalone processing arguments remain
+available, and `--audit` also validates the canonical tables without requiring
+an ingest manifest.
+
+For an entirely offline processing smoke run, package the supplied four-dataset
+synthetic fixture (from the repository root):
+
+```bash
+repo="$PWD"
+cd data_sources/mavedb/pipeline/assets/processing-smoke
+zip -r /tmp/mavedb-processing-smoke.zip main.json csv
+cd "$repo"
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --archive /tmp/mavedb-processing-smoke.zip \
+  --taxonomy "$repo/data_sources/mavedb/pipeline/assets/processing-smoke/taxcat.dmp" \
+  --outdir data_sources/mavedb/output/processing-smoke
+```
+
+Expect one included dataset with four score rows, plus three exclusions:
+explicit exclusion, absent targets, and absent analysis-eligible rows. This
+synthetic fixture is only for software checks, not scientific validation.
 
 ## Outputs and checks
 
@@ -149,8 +242,9 @@ All source files in the detected dump tree are retained byte-for-byte. These
 checks establish a readable raw dump, not scientific eligibility or complete
 metadata-to-file reconciliation; those belong to subsequent processing/QC.
 
-Processes request one CPU and 2 GB RAM, with a 12-hour time request as initial
-configuration values, not measured requirements. The local profile allows one
+Processes request one CPU and 2 GB RAM (4 GB for processing), with a 12-hour time
+request as initial configuration values, not measured requirements. The local
+profile allows one
 task at a time. Site-specific executor/resource settings can later be supplied
 with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 
@@ -159,17 +253,25 @@ with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 The pinned 1.8 GB Zenodo archive completed an ingest run on 2026-11-06 before
 this checksum integration. Its SHA-256 matched the published raw-bundle
 manifest, and all 3,381 extracted files matched the ZIP sizes and CRCs. The new
-Zenodo API lookup, MD5-verified cache path, and metadata handoff have **not yet
-been executed**. No tests were run for this update.
+Zenodo API lookup and MD5-verified network cache have not been exercised here.
+The local-archive ingest-to-processing workflow was exercised on the synthetic
+processing fixture, including output checks and resume. The full-dump processing
+run, live taxonomy acquisition, and HPC execution have not been performed.
+The independent taxonomy task was exercised with a tiny local tar archive,
+including its handoff to processing and cached resume. Downloader contract tests
+also cover ambiguous and corrupt archives without making external requests.
+The direct processor integration produced byte-identical canonical tables and
+selection audit to the previous adapter on this fixture. Its tests also check
+that validation failures preserve an existing publication.
 
-When execution is authorized, first run the archive contract tests:
+Run the offline archive and processing tests with:
 
 ```bash
 .venv/bin/python -m unittest discover \
   -s data_sources/mavedb/pipeline/tests -p 'test_*.py'
 ```
 
-Then run the local-archive workflow against a small fixture, check the published
-manifest and original bytes, repeat with `-resume`, and check checksum-failure
-behavior before using the full Zenodo archive. Python tests do not validate
-Nextflow syntax or channel wiring; that requires the workflow exercise.
+The existing processor regression suite is
+`data_sources/mavedb/tests/process_mavedb_test.py`. The offline processing smoke
+run above exercises Nextflow syntax and channel wiring; repeat with `-resume`
+to check task reuse before moving to the full dump.

@@ -1,0 +1,54 @@
+[
+  {
+    "urn": "urn:mavedb:synthetic",
+    "experiments": [
+      {
+        "urn": "urn:mavedb:synthetic-a",
+        "scoreSets": [
+          {
+            "urn": "urn:mavedb:synthetic-a-1",
+            "title": "Synthetic processing fixture; not experimental data",
+            "numVariants": 4,
+            "targetGenes": [
+              {
+                "name": "SYNTHETIC",
+                "category": "protein_coding",
+                "targetSequence": {
+                  "sequenceType": "dna",
+                  "sequence": "ATGGCTTAA",
+                  "label": "Synthetic sequence",
+                  "taxonomy": {"code": 9606, "organismName": "Homo sapiens"}
+                }
+              }
+            ]
+          },
+          {
+            "urn": "urn:mavedb:synthetic-a-2",
+            "title": "Synthetic fixture with no target metadata",
+            "targetGenes": []
+          },
+          {
+            "urn": "urn:mavedb:synthetic-a-3",
+            "title": "Synthetic fixture with no protein or splice HGVS",
+            "targetGenes": [
+              {
+                "name": "SYNTHETIC",
+                "category": "protein_coding",
+                "targetSequence": {
+                  "sequenceType": "dna",
+                  "sequence": "ATGGCTTAA",
+                  "taxonomy": {"code": 9606, "organismName": "Homo sapiens"}
+                }
+              }
+            ]
+          },
+          {
+            "urn": "urn:mavedb:00001237-a-1",
+            "title": "Synthetic record exercising the explicit exclusion rule",
+            "targetGenes": []
+          }
+        ]
+      }
+    ]
+  }
+]

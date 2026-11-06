@@ -1,0 +1,5 @@
+accession,hgvs_nt,hgvs_pro,score
+urn:mavedb:synthetic-a-1#1,n.1A>T,p.Ala1Val,0.5
+urn:mavedb:synthetic-a-1#2,n.2A>T,p.Ala1Val,1.0
+urn:mavedb:synthetic-a-1#3,,p.Ala1Ter,NA
+urn:mavedb:synthetic-a-1#4,,p.Ala1Gly,invalid

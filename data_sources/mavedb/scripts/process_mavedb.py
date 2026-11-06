@@ -12,13 +12,18 @@ tables retain the original R singles/doubles/wide layout. No FASTA files are mad
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from contextlib import ExitStack
 import csv
+from datetime import datetime, timezone
 from functools import lru_cache
+import hashlib
+from importlib.metadata import version
 import json
 import logging
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import tarfile
@@ -988,6 +993,9 @@ def process_mavedb(
     scores_path: Path | None = None,
     taxonomy_path: Path | None = None,
     compatibility_tables: bool = False,
+    audit: bool = False,
+    ingest_manifest_path: Path | None = None,
+    taxonomy_source: str | None = None,
 ) -> dict[str, int]:
     """Publish two canonical tables, with the same dataset selection for both."""
     metadata_path = resolve_metadata_path(input_path)
@@ -997,16 +1005,29 @@ def process_mavedb(
     score_files = sorted(scores_path.glob("*.scores.csv"))
     if not score_files:
         raise FileNotFoundError(f"No *.scores.csv files found in {scores_path}")
+    ingest_manifest = None
+    if ingest_manifest_path is not None:
+        if taxonomy_path is None:
+            raise ValueError("--ingest-manifest requires an explicit --taxonomy input")
+        ingest_manifest = json.loads(ingest_manifest_path.read_text(encoding="utf-8"))
+        if len(score_files) != ingest_manifest["counts"]["score_files"]:
+            raise ValueError(
+                "Ingest manifest score-file count differs from staged input"
+            )
+        audit = True
     datasets = load_datasets(metadata_path)
     target_metadata = {key: value["targets"] for key, value in datasets.items()}
-    add_kingdoms(target_metadata, resolve_taxonomy(taxonomy_path))
-    output_path.mkdir(parents=True, exist_ok=True)
+    taxonomy_path = resolve_taxonomy(taxonomy_path)
+    add_kingdoms(target_metadata, taxonomy_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
+    audit_rows = []
     score_count = 0
     with tempfile.TemporaryDirectory(
-        prefix=".processing-", dir=output_path
+        prefix=".processing-", dir=output_path.parent
     ) as temporary:
-        stage = Path(temporary)
+        stage = Path(temporary) / "processed"
+        stage.mkdir()
         with ExitStack() as stack:
             score_handle = stack.enter_context(
                 (stage / "scores.tsv").open("w", encoding="utf-8", newline="")
@@ -1032,15 +1053,31 @@ def process_mavedb(
                 dataset_id = score_file.name.removesuffix(".scores.csv").replace(
                     "urn-mavedb-", "urn:mavedb:", 1
                 )
+                audit_row = {
+                    "dataset_id": dataset_id,
+                    "source_file": score_file.name,
+                    "status": "excluded",
+                    "reason": "",
+                    "source_rows": None,
+                    "exported_rows": 0,
+                }
+                if audit:
+                    audit_rows.append(audit_row)
                 if dataset_id in EXCLUDED_URNS:
+                    audit_row["reason"] = "explicitly_excluded"
                     continue
                 dataset = datasets.get(dataset_id)
                 if dataset is None or not dataset["targets"]:
+                    audit_row["reason"] = (
+                        "missing_metadata" if dataset is None else "missing_targets"
+                    )
                     LOGGER.warning("%s: no target metadata; skipping", dataset_id)
                     continue
                 scores = read_scores(score_file)
+                audit_row["source_rows"] = len(scores)
                 categories = category_scores(scores, dataset["targets"])
                 if not categories:
+                    audit_row["reason"] = "no_eligible_analysis_rows"
                     continue
                 scores["dataset_id"] = dataset_id
                 # The legacy name is internal to the optional R compatibility functions.
@@ -1062,6 +1099,7 @@ def process_mavedb(
                 )
                 rows.append(row)
                 score_count += len(scores)
+                audit_row.update(status="included", exported_rows=len(scores))
                 if index % 100 == 0:
                     LOGGER.info("Processed %d/%d score files", index, len(score_files))
         write_tsv(
@@ -1071,8 +1109,49 @@ def process_mavedb(
             single_line=True,
             max_cell_chars=32767,
         )
-        for name in ("scores.tsv", "metadata.tsv"):
+        output_names = ["scores.tsv", "metadata.tsv"]
+        if audit:
+            with (stage / "dataset_processing.tsv").open(
+                "w", encoding="utf-8", newline=""
+            ) as audit_handle:
+                writer = csv.DictWriter(
+                    audit_handle,
+                    fieldnames=list(audit_rows[0]),
+                    delimiter="\t",
+                    lineterminator="\n",
+                )
+                writer.writeheader()
+                writer.writerows(audit_rows)
+            output_names.append("dataset_processing.tsv")
+            counts = validate_tables(stage)
+            if counts["input_score_files"] != len(score_files):
+                raise ValueError("Not every source score file appears in the audit")
+            if (
+                counts["included_datasets"] != len(rows)
+                or counts["score_rows"] != score_count
+            ):
+                raise ValueError("Processor totals differ from validated output counts")
+        if ingest_manifest is not None:
+            write_processing_manifest(
+                stage,
+                ingest_manifest_path,
+                ingest_manifest,
+                metadata_path,
+                taxonomy_path,
+                taxonomy_source or taxonomy_path.resolve().as_uri(),
+                counts,
+                compatibility_tables,
+            )
+            output_names.append("processing_manifest.json")
+        if not output_path.exists():
+            stage.rename(output_path)
+            return {"datasets": len(rows), "scores": score_count}
+        for name in output_names:
             os.replace(stage / name, output_path / name)
+        if not audit:
+            (output_path / "dataset_processing.tsv").unlink(missing_ok=True)
+        if ingest_manifest is None:
+            (output_path / "processing_manifest.json").unlink(missing_ok=True)
         # Remove only files managed by the previous version of this processor.
         # Other files in the output directory are never touched.
         for category in ANALYSIS_TYPES:
@@ -1090,6 +1169,119 @@ def process_mavedb(
             if directory.is_dir() and not any(directory.iterdir()):
                 directory.rmdir()
     return {"datasets": len(rows), "scores": score_count}
+
+
+def file_identity(path: Path) -> dict[str, int | str]:
+    """Describe exact bytes without loading a table into memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return {"bytes": path.stat().st_size, "sha256": digest.hexdigest()}
+
+
+def validate_tables(output: Path) -> dict[str, int]:
+    """Check joins, complete row identities, counts and the selection audit."""
+    with (output / "metadata.tsv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if not {"dataset_id", "n_variants"}.issubset(reader.fieldnames or []):
+            raise ValueError("Canonical metadata is missing required columns")
+        expected = {}
+        for row in reader:
+            dataset_id = row["dataset_id"]
+            if not dataset_id or dataset_id in expected:
+                raise ValueError(
+                    f"Missing or duplicate metadata dataset_id: {dataset_id}"
+                )
+            expected[dataset_id] = int(row["n_variants"])
+    counts: Counter[str] = Counter()
+    with (output / "scores.tsv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if reader.fieldnames != SCORE_COLUMNS:
+            raise ValueError("Canonical score columns differ from the processor schema")
+        for row in reader:
+            dataset_id = row["dataset_id"]
+            if dataset_id not in expected:
+                raise ValueError(f"Score dataset is absent from metadata: {dataset_id}")
+            counts[dataset_id] += 1
+            # Retaining every source record means identities must run from 1..N.
+            if int(row["source_row"]) != counts[dataset_id]:
+                raise ValueError(f"Duplicate or nonsequential source_row: {dataset_id}")
+    if dict(counts) != expected:
+        raise ValueError("Score row counts do not match metadata n_variants")
+    with (output / "dataset_processing.tsv").open(
+        newline="", encoding="utf-8"
+    ) as handle:
+        audit = list(csv.DictReader(handle, delimiter="\t"))
+    included = {}
+    reasons: Counter[str] = Counter()
+    source_files = set()
+    for row in audit:
+        if row["source_file"] in source_files:
+            raise ValueError("Duplicate source file in dataset processing audit")
+        source_files.add(row["source_file"])
+        if row["status"] == "included":
+            dataset_id = row["dataset_id"]
+            if dataset_id in included:
+                raise ValueError("Duplicate included dataset in processing audit")
+            included[dataset_id] = int(row["exported_rows"])
+            if int(row["source_rows"]) != included[dataset_id]:
+                raise ValueError("Included dataset did not retain every source row")
+        elif row["status"] == "excluded" and row["reason"]:
+            reasons[row["reason"]] += 1
+        else:
+            raise ValueError("Invalid status or reason in dataset processing audit")
+    if included != expected:
+        raise ValueError("Processing audit does not match canonical tables")
+    return {
+        "input_score_files": len(audit),
+        "included_datasets": len(expected),
+        "excluded_datasets": sum(reasons.values()),
+        "score_rows": sum(counts.values()),
+        **{f"excluded_{reason}": count for reason, count in sorted(reasons.items())},
+    }
+
+
+def write_processing_manifest(
+    output: Path,
+    ingest_manifest_path: Path,
+    ingest_manifest: dict,
+    metadata_path: Path,
+    taxonomy_path: Path,
+    taxonomy_source: str,
+    counts: dict[str, int],
+    compatibility_tables: bool,
+) -> None:
+    """Record source, code, environment and output identities before publication."""
+    files = ["scores.tsv", "metadata.tsv", "dataset_processing.tsv"]
+    if compatibility_tables:
+        files.extend(f"maves/{name}.tsv" for name in ("singles", "doubles", "wide"))
+    manifest = {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ingest": {
+            "archive_sha256": ingest_manifest["archive_sha256"],
+            "source": ingest_manifest["source"],
+            "manifest": file_identity(ingest_manifest_path),
+            "metadata": file_identity(metadata_path),
+        },
+        "taxonomy": {"source": taxonomy_source, **file_identity(taxonomy_path)},
+        "implementation": {
+            "processor_sha256": file_identity(Path(__file__))["sha256"],
+            "python": platform.python_version(),
+            "packages": {
+                name: version(name) for name in ("biopython", "numpy", "pandas")
+            },
+        },
+        "settings": {"audit": True, "compatibility_tables": compatibility_tables},
+        "counts": counts,
+        "outputs": {
+            name: {"path": name, **file_identity(output / name)} for name in files
+        },
+    }
+    with (output / "processing_manifest.json").open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
 
 
 def main() -> None:
@@ -1115,6 +1307,20 @@ def main() -> None:
         help="Use this existing NCBI taxcat.dmp instead of the cached/downloaded file.",
     )
     parser.add_argument(
+        "--ingest-manifest",
+        type=Path,
+        help="Link an ingest manifest and enable audited, validated provenance outputs.",
+    )
+    parser.add_argument(
+        "--taxonomy-source",
+        help="Original taxonomy source URI for provenance (defaults to the file URI).",
+    )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help="Also write dataset_processing.tsv with dataset selection reasons.",
+    )
+    parser.add_argument(
         "--compatibility-tables",
         action="store_true",
         help="Also generate maves/singles.tsv, doubles.tsv and wide.tsv in the R layout.",
@@ -1128,6 +1334,9 @@ def main() -> None:
             scores_path=args.scores,
             taxonomy_path=args.taxonomy,
             compatibility_tables=args.compatibility_tables,
+            audit=args.audit,
+            ingest_manifest_path=args.ingest_manifest,
+            taxonomy_source=args.taxonomy_source,
         )
     except (OSError, ValueError, KeyError, pd.errors.ParserError) as error:
         parser.error(str(error))
