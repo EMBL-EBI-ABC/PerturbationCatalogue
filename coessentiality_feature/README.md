@@ -14,7 +14,7 @@ gene co-essentiality networks from DepMap CRISPR screen data.
 5. [Directory Layout](#directory-layout)
 6. [Data I/O Schema](#data-io-schema)
 7. [Pipeline](#pipeline)
-   - [Step 1 — Fetch DepMap data](#step-1--fetch-depmap-data)
+   - [Step 1 — Import DepMap data](#step-1--import-depmap-data)
    - [Step 2 — GLS co-essentiality](#step-2--gls-co-essentiality)
    - [Step 3 — FDR filtering & network CSV](#step-3--fdr-filtering--network-csv)
 8. [Running Locally (end-to-end)](#running-locally-end-to-end)
@@ -63,8 +63,7 @@ modules assigns function to uncharacterized genes*. Nature Genetics.
 ## Differences from Wainberg et al. (2021)
 
 This pipeline follows Wainberg et al.'s GLS co-essentiality method closely,
-but deliberately diverges from it in a few specific places. Documented here
-so the reasoning survives independently of any single PR discussion.
+but deliberately diverges from it in a few specific places:
 
 - **No olfactory-receptor (OR) PCA bias correction.** Wainberg's PCA step
   patched residual screen-quality noise that CERES (the 2021 DepMap model)
@@ -101,10 +100,10 @@ so the reasoning survives independently of any single PR discussion.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        BATCH PIPELINE (monthly)                         │
+│                 BATCH PIPELINE (once per DepMap release)                │
 │                                                                         │
-│  DepMap Portal API                                                      │
-│        │                                                                │
+│  DepMap Portal (manual browser download — API is CAPTCHA-blocked)       │
+│        │  CRISPRGeneEffect.csv                                          │
 │        ▼                                                                │
 │  step1_fetch_depmap.py ──► CRISPRGeneEffect_<version>.csv               │
 │                    ──► depmap_version.txt                               │
@@ -133,7 +132,9 @@ so the reasoning survives independently of any single PR discussion.
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The pipeline runs once per DepMap release (approximately quarterly).  
+The pipeline runs once per DepMap release (approximately quarterly). Step 1
+needs a person to download `CRISPRGeneEffect.csv` from the DepMap portal first
+(see [Step 1](#step-1--import-depmap-data)); steps 2 and 3 run unattended.  
 The app reads the network CSV from GCS once at startup and holds it in memory
 for all subsequent requests — there are no per-request file reads.
 
@@ -146,7 +147,7 @@ coessentiality_feature/
 ├── README.md                              this file
 ├── requirements.txt                       Python dependencies for pipeline + app
 ├── pipeline/
-│   ├── step1_fetch_depmap.py              downloads CRISPR data from DepMap API
+│   ├── step1_fetch_depmap.py              imports the CRISPRGeneEffect.csv saved in required_data/
 │   ├── step2_gls_coessentiality.py        computes GLS p-values and sign matrix
 │   └── step3_fdr_coessentiality.py        applies BH FDR correction, writes network CSV
 ├── app/
@@ -154,13 +155,13 @@ coessentiality_feature/
 ├── documentation/
 │   ├── single_gene_workflow.md            callback flow for the single-gene explorer tab
 │   └── gene_list_workflow.md              callback flow for the gene-list network tab
-├── example_data/
-│   └── 594_DoenchJG_A375.txt             example gene list for testing the app
 ├── pipeline_validation_corum/              standalone maintainer tool — NOT part of the pipeline or app, see "Validation"
 │   ├── corum_validation.ipynb
 │   ├── RESULTS.md
+│   ├── corum_enrichment.png
 │   └── CORUM.gmt
 └── required_data/                         local data directory (not committed to git)
+    ├── CRISPRGeneEffect.csv                   manual download from the DepMap portal (renamed by step 1)
     ├── depmap_version.txt
     ├── CRISPRGeneEffect_<version>.csv
     ├── <prefix>_genes.txt
@@ -204,7 +205,7 @@ Use it as the contract when modifying any script or when setting up GCS.
 | Index column | `ModelID` (first unnamed column) |
 | Values | CRISPR gene effect score (float, typically −3 to +1) |
 | Size | ~436 MB |
-| Produced by | `step1_fetch_depmap.py` (downloaded from DepMap API) |
+| Produced by | `step1_fetch_depmap.py` (renamed from the manually downloaded `required_data/CRISPRGeneEffect.csv`) |
 | Consumed by | `step2_gls_coessentiality.py` |
 
 > **Pipeline note:** `step2_gls_coessentiality.py` strips the Entrez IDs from
@@ -233,9 +234,6 @@ Use it as the contract when modifying any script or when setting up GCS.
 | Keys | `n_cell_lines` (row count of the input CRISPR matrix), `n_genes_profiled` (gene count after NA filtering) |
 | Produced by | `step2_gls_coessentiality.py` |
 | Consumed by | `coessentiality_feature_pc.py` (app stat chips) |
-
-> Avoids the app having to scan the ~440 MB `CRISPRGeneEffect_<version>.csv` or
-> count lines in `<prefix>_genes.txt` just to display two numbers at startup.
 
 ---
 
@@ -303,12 +301,9 @@ Use it as the contract when modifying any script or when setting up GCS.
 | Produced by | One-time manual download (see below) — **not** part of the regular pipeline |
 | Consumed by | `coessentiality_feature_pc.py` (`_GO_LIBRARY`, loaded once at startup) for local GO:BP enrichment |
 
-**Why this exists:** GO:BP enrichment used to call the live Enrichr API per module
-on every "Find modules & annotate" click — slow (~1-2s/module), and a hard
-external dependency (rate limits, outages) once deployed to GCP with multiple
-concurrent users sharing one outbound IP. This file lets enrichment run **fully
-offline** via `gp.enrich()` (gseapy's local hypergeometric test), which is also
-noticeably faster in practice than the old per-click Enrichr round trip.
+**Why this exists:** it lets GO:BP enrichment run **fully offline** via
+`gp.enrich()` (gseapy's local hypergeometric test), so the app makes no Enrichr
+API calls at runtime and isn't affected by their rate limits or outages.
 
 **⚠️ Maintenance — this is a pinned snapshot, not auto-updated:**
 
@@ -327,46 +322,68 @@ gp.get_library(name='GO_Biological_Process_2026', organism='Human',
 ```
 Then update `GO_GENE_SET_PATH` in `coessentiality_feature_pc.py` to point at the
 new filename. Do this as a deliberate, reviewed decision (e.g. an annual check),
-not as part of the routine monthly pipeline run.
+not as part of the routine per-release pipeline run.
 
 **Production note:** `required_data/` is gitignored, so this file must be
 uploaded to GCS once (alongside the network CSV / metadata.json — see Cloud
-Deployment below). It does **not** need re-uploading on every monthly pipeline
+Deployment below). It does **not** need re-uploading on every per-release pipeline
 run — only when you deliberately bump the version.
 
 ---
 
 ## Pipeline
 
-### Step 1 — Fetch DepMap data
+### Step 1 — Import DepMap data
 
-**Purpose:** Queries the DepMap portal files API, identifies the latest
-`CRISPRGeneEffect.csv` release, and downloads it with MD5 verification.
+**Purpose:** Checks that the `CRISPRGeneEffect.csv` you downloaded into
+`required_data/` really is the gene effect matrix, renames it to
+`CRISPRGeneEffect_<version>.csv`, and records the release in
+`depmap_version.txt`.
+
+> **Why manual:** the DepMap portal now puts a Cloudflare Turnstile ("verify
+> you're a person") check in front of its download API
+> (`https://depmap.org/portal/api/download/files`). A script gets the
+> verification page instead of the file listing, so the latest release can no
+> longer be fetched automatically. DepMap's Figshare mirror does not help
+> either: its newest DepMap Public release is 24Q4 (December 2024).
+
+**Download (once per release, in a browser):**
+
+1. Open the DepMap portal's [All Data downloads](https://depmap.org/portal/data_page/?tab=allData).
+2. Select the release, e.g. **DepMap Public 26Q2**.
+3. Download **`CRISPRGeneEffect.csv`** (~436 MB) and save it as
+   `required_data/CRISPRGeneEffect.csv`.
 
 **Usage:**
 ```bash
-python step1_fetch_depmap.py [--output-dir DIR]
+python step1_fetch_depmap.py --release "DepMap Public 26Q2"
 ```
 
 | Argument | Default | Description |
 |---|---|---|
+| `--release` | (required) | Release name exactly as the portal shows it, e.g. `DepMap Public 26Q2`. Needed because the download is always called `CRISPRGeneEffect.csv`, so the version can't be read from the filename. Must contain a `<YY>Q<N>` tag |
+| `--input-file` | `<output-dir>/CRISPRGeneEffect.csv` | Only needed if you saved the download somewhere else; it is then copied into `<output-dir>` instead of renamed |
 | `--output-dir` | `./required_data` | Directory to write all output files |
+| `--from-api` | off | Old automatic mode: fetch the latest release from the download API with MD5 verification. **Currently fails** with a clear CAPTCHA error; kept in case DepMap reopens scripted access. Use instead of `--release` / `--input-file` |
+
+**Checks before renaming:** the script stops with an error if the file is an
+HTML page (e.g. the browser saved the verification page), is not a readable
+CSV, does not have ~17,000 gene columns named `SYMBOL (EntrezID)`, or does not
+have `ACH-` cell-line IDs in its first column. This catches a wrong file now,
+not hours into step 2.
 
 **Outputs:**
 
 | File | Description |
 |---|---|
 | `CRISPRGeneEffect_<version>.csv` | CRISPR gene effect matrix |
-| `depmap_version.txt` | Release name, e.g. `DepMap Public 26Q1` |
+| `depmap_version.txt` | Release name, e.g. `DepMap Public 26Q2` |
 
-**Runtime:** ~5–10 minutes (depends on download speed; file is ~436 MB).
+The script also prints the file's MD5. DepMap's published checksum came from
+the blocked API, so there is nothing to compare it against automatically;
+keep the printed value as a record of exactly which file was used.
 
-**API endpoint used:** `https://depmap.org/portal/api/download/files`
-
-> **Idempotency note:** The script currently re-downloads data on every run
-> regardless of version. Before using in a monthly batch job, add a version
-> check to skip the download when `depmap_version.txt` already records the
-> latest release.
+**Runtime:** under a minute (validation + checksum of a ~436 MB file).
 
 ---
 
@@ -416,7 +433,7 @@ each consume ~2.4 GB. Cloud Run Jobs should be configured with `--memory 16Gi`.
 **Purpose:** Loads the p-value matrix, sign matrix, and gene list. Extracts the
 upper-triangle gene pairs, applies Benjamini-Hochberg FDR correction **globally**
 across all ~146 million pairs at once (an intentional departure from Wainberg et
-al.'s per-gene FDR — see Key Concepts above), filters at the specified FDR
+al.'s per-gene FDR — see [Differences from Wainberg et al. (2021)](#differences-from-wainberg-et-al-2021)), filters at the specified FDR
 threshold, and writes the significant network to a CSV file.
 
 **Usage:**
@@ -469,8 +486,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Step 1: download the latest DepMap data
-python pipeline/step1_fetch_depmap.py --output-dir required_data/
+# Step 1: import DepMap data. First download CRISPRGeneEffect.csv for the
+# release from https://depmap.org/portal/data_page/?tab=allData in a browser
+# and save it as required_data/CRISPRGeneEffect.csv (the download API is
+# CAPTCHA-blocked — see Pipeline → Step 1)
+python pipeline/step1_fetch_depmap.py \
+    --release "DepMap Public 26Q1" \
+    --output-dir required_data/
 
 # Step 2: compute GLS (takes several hours, needs ~16 GB RAM)
 python pipeline/step2_gls_coessentiality.py \
@@ -550,7 +572,10 @@ For the full callback-by-callback breakdown of each tab, see
 ### Data flow on GCP
 
 ```
-Cloud Run Job (monthly)             Cloud Run Service (always-on)
+Manual download of CRISPRGeneEffect.csv
+        │  (staged in GCS)
+        ▼
+Cloud Run Job (per release)         Cloud Run Service (always-on)
   pipeline/ scripts                   app/ Dash app
         │                                    │
         │  writes CSV                        │  reads CSV at startup
@@ -570,7 +595,9 @@ instead of the local `_DATA_DIR` path. See [Integration Guide](#integration-guid
 
 ### What is already built
 
-- [x] `step1_fetch_depmap.py` — fetches from DepMap API with MD5 check
+- [x] `step1_fetch_depmap.py` — validates and imports a manually downloaded
+  `CRISPRGeneEffect.csv` (`--from-api` mode is kept but blocked by the
+  portal's CAPTCHA)
 - [x] `step2_gls_coessentiality.py` — GLS computation
 - [x] `step3_fdr_coessentiality.py` — FDR filtering and network CSV
 
@@ -579,8 +606,17 @@ instead of the local `_DATA_DIR` path. See [Integration Guide](#integration-guid
 - [ ] **GCS upload** — add to `step3_fdr_coessentiality.py` (or an orchestrator
   script): upload the network CSV and `depmap_version.txt` to the GCS bucket
   after writing them locally
-- [ ] **Orchestrator** — a `run_pipeline.sh` or `main.py` that chains
-  `step1 → step2 → step3` with correct arguments and exits non-zero on any failure
+> **Step 1 can't run unattended.** The DepMap download API is behind a CAPTCHA,
+> so a scheduled job cannot fetch new releases itself. A person downloads
+> `CRISPRGeneEffect.csv` and stages it (e.g. in the GCS bucket); the job then
+> places it in the job's `required_data/` and runs step 1 with `--release`,
+> followed by steps 2 and 3.
+> If DepMap later offers token-based access for pipelines, `--from-api` is the
+> place to add it.
+
+- [ ] **Orchestrator** — a `run_pipeline.sh` or `main.py` that takes the staged
+  `CRISPRGeneEffect.csv` and release name, chains `step1 → step2 → step3` with
+  correct arguments, and exits non-zero on any failure
 - [ ] **Separate `requirements.txt` for the pipeline container** — the repo-level
   `requirements.txt` includes app dependencies that are not needed in the pipeline
   container. Create a minimal `pipeline/requirements.txt` with only:
@@ -595,8 +631,10 @@ instead of the local `_DATA_DIR` path. See [Integration Guide](#integration-guid
   CMD ["python", "pipeline/main.py"]
   ```
 - [ ] **Cloud Run Job** — deploy with `--memory 16Gi` for the GLS step
-- [ ] **Cloud Scheduler** — monthly trigger, e.g. `0 6 1 * *` (1st of each
-  month, 06:00 UTC)
+- [ ] **Trigger** — run the job when a new `CRISPRGeneEffect.csv` is staged
+  (e.g. a GCS object-finalize trigger, or start it by hand). A Cloud Scheduler
+  cron is no longer useful on its own, since nothing new appears without the
+  manual download
 - [ ] **IAM** — Cloud Run Job service account needs
   `roles/storage.objectAdmin` on the GCS bucket
 
@@ -675,15 +713,7 @@ GCS read (both are tiny, fine to fetch on every startup).
 > the cell-line stat chip in the cloud version — `_load_dataset_stats()`
 > already returns `None` gracefully (chip shows `—`) if the file is missing.
 
-**e. The gene-list Textarea fires on blur** (`n_blur`) rather than on every keystroke.
-This is already implemented in the standalone app. No change needed — confirm the
-callback uses `Input("multi-gene-input", "n_blur")` with `State("multi-gene-input", "value")`.
-
-> **Note:** `dcc.Textarea` in Dash 4.x does not support a `debounce` property.
-> The blur-based trigger (`n_blur`) is the correct equivalent — it fires when
-> the user clicks outside the textarea.
-
-**f. Add `server = app.server`** (for gunicorn) and **set `debug=False`** —
+**e. Add `server = app.server`** (for gunicorn) and **set `debug=False`** —
 these are handled by the main website's `app.py`; confirm they are present there.
 
 ### 2. Add to the main website
@@ -721,10 +751,11 @@ gcloud run services update <SERVICE_NAME> \
 
 | Constraint | Detail |
 |---|---|
+| DepMap download is manual | The DepMap portal's download API (`/portal/api/download/files`) returns a Cloudflare Turnstile verification page to scripts, so step 1 imports a file downloaded in a browser and saved as `required_data/CRISPRGeneEffect.csv` (run with `--release`). DepMap's Figshare mirror stops at 24Q4 and can't replace it. |
 | Full gene matrix required | `step2_gls_coessentiality.py` must receive the complete DepMap matrix (~17,087 genes after NA filtering). Running on a gene subset causes a `LinAlgError` in the Cholesky step — this is expected, not a bug. |
 | Memory: pipeline | `step2_gls_coessentiality.py` and `step3_fdr_coessentiality.py` each peak at ~16 GB RAM. Set `--memory 16Gi` on the Cloud Run Job. |
 | Memory: app | The network CSV is ~1.7 MB and expands to ~10 MB as a DataFrame. Negligible; no concern for the app container. |
-| Runtime: step 2 | ~4–8 hours on a single CPU core. Acceptable for a monthly batch job; configure Cloud Run Job `--task-timeout` accordingly (max 24h). |
+| Runtime: step 2 | ~4–8 hours on a single CPU core. Acceptable for a once-per-release batch job; configure Cloud Run Job `--task-timeout` accordingly (max 24h). |
 | `debug=True` | The app file currently runs with `debug=True` in standalone mode. This enables Werkzeug's interactive debugger — a remote code execution vector on a public URL. Always set `debug=False` in the main website's `app.py`. |
 | No per-request file I/O | The network CSV is loaded once at startup. Restarting the Cloud Run service is the mechanism for picking up newly uploaded data; there is no hot-reload. |
 | FDR file must be 10% | The app expects the FDR 10% superset file. If only a 5% file is available, the 10% dropdown option will produce incorrect results (showing fewer pairs than expected). |
@@ -735,18 +766,17 @@ gcloud run services update <SERVICE_NAME> \
 ## Validation (not part of the pipeline or app)
 
 `pipeline_validation_corum/` is a **standalone maintainer tool**, not a
-pipeline step and not run automatically by anything in this repo. It exists
-so that whoever maintains this feature in the future can manually re-check
-that the GLS pipeline's output is still biologically sensible — the same
-kind of sanity check Wainberg et al. performed in the original paper, using
+pipeline step and not run automatically. Run it by hand to check that the
+GLS pipeline's output is still biologically sensible, the same kind of check
+Wainberg et al. performed in the original paper, using
 [CORUM](https://mips.helmholtz-muenchen.de/corum/) (curated,
-experimentally-verified protein complexes) as a gold standard external to
-DepMap/GLS entirely.
+experimentally-verified protein complexes) as an external gold standard.
 
 | File | Purpose |
 |---|---|
 | `corum_validation.ipynb` | Run top to bottom against the current `required_data/` pipeline output — head samples of both raw inputs, the CORUM→pairwise processing step, the per-gene ranking, results table, a line plot, and a Fisher's exact significance test per N |
-| `RESULTS.md` | Write-up: a mermaid flowchart of the validation concept, results table, definitions of N/observed hit rate/enrichment, and a side-by-side comparison against Wainberg et al.'s own published CORUM enrichment number |
+| `RESULTS.md` | Write-up: method, results for 26Q1 and 18Q3, comparison with Wainberg et al.'s published CORUM enrichment, and conclusion |
+| `corum_enrichment.png` | Enrichment-vs-N line plot produced by the notebook |
 | `CORUM.gmt` | Cached gold-standard data (pinned snapshot, fetched via `gseapy.get_library()` — same not-auto-updated philosophy as `GO_Biological_Process_2025.gmt`) |
 
 ---
@@ -761,7 +791,7 @@ DepMap/GLS entirely.
 | `pandas` | CSV I/O, DataFrame operations |
 | `scipy` | `stdtr` for p-value computation |
 | `statsmodels` | Benjamini-Hochberg FDR correction |
-| `requests` | DepMap API HTTP calls |
+| `requests` | DepMap API HTTP calls (step 1 `--from-api` only) |
 | `google-cloud-storage` | GCS upload (cloud deployment) — **optional**, commented out in `requirements.txt` until cloud upload is implemented (see Cloud Deployment) |
 
 ### App
