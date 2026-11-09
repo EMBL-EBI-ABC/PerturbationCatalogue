@@ -5,6 +5,7 @@ nextflow.enable.dsl = 2
 include { DOWNLOAD_MAVEDB; INGEST_MAVEDB_ARCHIVE } from './modules/ingest'
 include { MAVEDB_TAXONOMY } from './modules/taxonomy'
 include { PROCESS_MAVEDB } from './modules/process'
+include { MAVEDB_GMM } from './modules/gmm'
 
 workflow MAVEDB_PROCESS {
     take:
@@ -96,19 +97,33 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --taxonomy PATH         Use an existing NCBI categories.dmp (otherwise fetched)
   --taxonomy_url URL      Override the NCBI taxonomy archive source
   --ingest_only           Stop after raw-data ingest; no taxonomy acquisition
+  --run_gmm               Fit GMMs after processing (opt-in)
+  --processed_dir PATH    Start GMM fitting from existing canonical tables
+  --gmm_profile NAME      production (default) or bounded smoke settings
+  --gmm_model NAME        modes (default) or flexible
+  --gmm_study_ids IDS     Comma-separated score-set IDs, or a params-file list
   -resume                 Reuse successful tasks and their work directories
 
 See pipeline/README.md for setup, offline smoke testing, and outputs.
 '''
     } else {
-        MAVEDB_INGEST()
-        if (!params.ingest_only) {
-            MAVEDB_TAXONOMY()
-            MAVEDB_PROCESS(
-                MAVEDB_INGEST.out.bundle,
-                MAVEDB_TAXONOMY.out.taxonomy,
-                MAVEDB_TAXONOMY.out.source
-            )
+        if (params.ingest_only && params.run_gmm) {
+            error '--ingest_only cannot be combined with --run_gmm'
+        }
+        if (params.processed_dir) {
+            if (!params.run_gmm) error '--processed_dir requires --run_gmm'
+            MAVEDB_GMM(Channel.value(file(params.processed_dir, checkIfExists: true)))
+        } else {
+            MAVEDB_INGEST()
+            if (!params.ingest_only) {
+                MAVEDB_TAXONOMY()
+                MAVEDB_PROCESS(
+                    MAVEDB_INGEST.out.bundle,
+                    MAVEDB_TAXONOMY.out.taxonomy,
+                    MAVEDB_TAXONOMY.out.source
+                )
+                if (params.run_gmm) MAVEDB_GMM(MAVEDB_PROCESS.out.bundle)
+            }
         }
     }
 }

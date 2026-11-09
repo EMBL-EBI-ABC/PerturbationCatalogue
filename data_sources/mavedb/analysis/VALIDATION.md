@@ -137,6 +137,8 @@ not alter the fixed-draw outputs.
   seed integers do not imply the same random samples or draws; compare a shared
   explicit row subset and assess posterior differences against Monte Carlo
   uncertainty before changing production commands.
-- No production workflow cutover or Nextflow/Slurm integration has been made.
+- Nextflow batch integration now has bounded local real-sampler checks; the
+  Slurm profile has not been exercised on HPC, and no production cutover has
+  been made. See [pipeline execution](../pipeline/README.md#gmm-batch-fitting).
 
 Keep the R workflow as the production reference until these gates are met.

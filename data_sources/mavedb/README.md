@@ -19,7 +19,8 @@ local ZIP, validates and unpacks it, and processes it using an explicit taxonomy
 snapshot. Outputs include raw/processed provenance manifests and a dataset
 selection audit. Use `--ingest_only` to stop after ingest. Local setup, offline
 fixtures, resume behavior and validation status are documented there. GMM
-fitting, downstream validation and QC are future pipeline stages.
+fitting is available with `--run_gmm`, including frozen batch plans, per-batch
+tasks and verified collection. Downstream validation and QC are future stages.
 
 ## GMM fitting
 

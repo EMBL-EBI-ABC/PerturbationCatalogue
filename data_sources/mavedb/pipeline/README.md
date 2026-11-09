@@ -1,6 +1,6 @@
 # MaveDB Nextflow workflow
 
-This DSL2 workflow implements **raw-data ingest and canonical processing**:
+This DSL2 workflow implements **raw-data ingest, canonical processing and optional GMM fitting**:
 
 ```text
 pinned Zenodo ZIP -> DOWNLOAD_MAVEDB -> INGEST_MAVEDB_ARCHIVE -> raw dump + manifest
@@ -9,6 +9,8 @@ local ZIP --------------------------> INGEST_MAVEDB_ARCHIVE -> raw dump + manife
 local taxonomy / FETCH_MAVEDB_TAXONOMY --------------------> PROCESS_MAVEDB
                                                               |
                                     scores.tsv + metadata.tsv + audit + manifest
+                                                              |
+                         --run_gmm: plan -> parallel batch fits -> checked collection
 ```
 
 Taxonomy is an independent `MAVEDB_TAXONOMY` workflow in `modules/taxonomy.nf`,
@@ -16,7 +18,7 @@ with its own download process and standard-library-only `scripts/download_taxono
 entry point. It runs alongside raw ingest and supplies an explicit input to
 processing. It has no dependency on processor code.
 
-Other reference acquisition, GMM fitting, scientific validation/QC, and loading
+Other reference acquisition, scientific validation/QC, and loading
 into cloud storage or Elasticsearch are future stages. `MAVEDB_INGEST` emits
 `bundle`, `dump`, and `manifest`; `MAVEDB_PROCESS` emits `bundle`, `scores`,
 `metadata`, `audit`, and `manifest`. Downstream processes should consume these
@@ -205,6 +207,92 @@ Expect one included dataset with four score rows, plus three exclusions:
 explicit exclusion, absent targets, and absent analysis-eligible rows. This
 synthetic fixture is only for software checks, not scientific validation.
 
+## GMM batch fitting
+
+Fitting is opt-in. Add `--run_gmm` to the ingest/processing command to continue
+into GMMs, or use an existing canonical input directory directly:
+
+```bash
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --processed_dir /absolute/path/to/processed --run_gmm \
+  --gmm_study_ids urn:mavedb:00000001-a-1 --outdir /absolute/path/to/results
+```
+
+`--processed_dir` must contain `scores.tsv` and `metadata.tsv`; it bypasses raw
+ingest, taxonomy and processing. It is useful when transferring processed data
+to HPC. `--ingest_only` cannot be combined with fitting. Omitting `--run_gmm`
+keeps the previous ingest/processing behavior.
+
+The named `MAVEDB_GMM` workflow uses the existing `fit_gmm_batch.py` entry point:
+
+1. `PLAN_GMM_BATCHES` snapshots the five GMM library modules, CLI and Stan
+   sources, and writes a deterministic plan. It records input/code SHA-256
+   identities, model/settings, selected studies and their whole-study batch
+   assignments. Planning does not import CmdStan or fit models.
+2. `FIT_GMM_BATCH` runs one positive batch index per task, with identical
+   selection/settings. It verifies the frozen input/code/settings identities
+   before fitting and checks the resulting assignment. Each task retains its
+   native six tables, QC, and a portable result summary in its work directory.
+3. `COLLECT_GMM_BATCHES` verifies every planned batch arrived exactly once,
+   every assigned study succeeded, and all required tables/QC match their
+   recorded hashes. It stages and publishes one complete native result tree.
+
+Study failures make the Nextflow fit task exit nonzero, even though the legacy
+standalone fitter normally returns zero with failed-study placeholders. Failure
+summaries and QC remain in the failed task work directory. Successful partial
+batches remain in work for resume; the final GMM bundle is emitted only after
+all batches succeed. Sampler/convergence/Pareto-k warnings remain in QC and do
+not become scientific acceptance gates or change model selection.
+
+Defaults are the `production` profile, `modes` model, 50,000 eligible variants
+per batch, and seed 123. Control selection with `--gmm_study_ids` (a comma list
+or a list in a params file) and `--gmm_max_studies`. Configure bounded runs with
+`--gmm_max_study_rows`, `--gmm_max_fit_rows`, `--gmm_chains`,
+`--gmm_parallel_chains`, `--gmm_iter_warmup`, `--gmm_iter_sampling`, and
+`--gmm_memory_budget_mb`. Unspecified sampler settings retain the existing
+profile defaults. Whole studies stay together; large studies occupy a batch
+alone, and row count is only an approximate cost measure.
+
+Provision the pinned `requirements-gmm.txt`, CmdStan 2.37.0, and a compatible
+C++ toolchain on the execution host before fitting (see the main MaveDB README).
+The pipeline does not install or download toolchains. Compiled models use the
+existing locked cache, configurable with `--gmm_cache_dir`. Batch processes
+limit BLAS/OpenMP threads to one and request CPUs matching parallel chains.
+Memory requests are the configured fitter budget plus 1,024 MiB headroom;
+production defaults therefore request 17 GiB, which may exceed laptop capacity.
+These are initial requests, not measured full-study requirements. Each task
+still scans the canonical inputs; concurrency can increase shared-filesystem I/O.
+
+For a bounded real-sampler check, use the included 500-row processed fixture:
+
+```bash
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --processed_dir data_sources/mavedb/pipeline/assets/gmm-smoke --run_gmm \
+  --gmm_profile smoke --gmm_model flexible \
+  --outdir data_sources/mavedb/output/gmm-nextflow-smoke
+```
+
+This fits one study using two sequential chains, 200 warmup/200 retained draws
+per chain, a 500-row cap, and a 2,048 MiB fitter budget. It uses the supplied
+inputs explicitly; the `smoke` profile does not substitute different data.
+
+For Slurm use `-profile slurm -c /absolute/path/to/site.config`. Downloads stay
+on the launch host; other stages use Slurm. Supply account/partition/time and
+storage settings in the site config. Source inputs, work, output, Python,
+CmdStan and compiled cache must be accessible on execution nodes. Use
+`--gmm_max_parallel` to bound fitting concurrency (default 2), and
+`--gmm_scratch true` to use Nextflow task scratch when available. Sampling and
+likelihood temporaries live under that task's working directory. Allow ample
+temporary disk space, retain work for resume, and benchmark full-size studies
+before increasing concurrency. Slurm execution has not been exercised here.
+
+Outputs are published beneath `<outdir>/gmm/`: `batch_plan.json`,
+`completion.json`, per-batch receipts in `batches/`, and native tables/QC under
+`maves/<model>/` (`smoke/maves/<model>/` for smoke). A separate planning copy is
+published to `<outdir>/gmm-plan/`. Consumers should use the emitted bundle and
+its manifest, rather than globbing a reused publication directory that could
+contain files from older runs. Changing model/cohort should use a new outdir.
+
 ## Outputs and checks
 
 The default output root is `data_sources/mavedb/output/nextflow`:
@@ -263,6 +351,13 @@ also cover ambiguous and corrupt archives without making external requests.
 The direct processor integration produced byte-identical canonical tables and
 selection audit to the previous adapter on this fixture. Its tests also check
 that validation failures preserve an existing publication.
+
+GMM integration was exercised locally with a real 500-row flexible smoke fit
+and a separate two-batch run using two 100-row inputs (one a synthetic clone
+for orchestration testing). Both produced complete checked result bundles.
+Plan/result contract tests cover changed settings/inputs, missing/duplicate
+batches, corrupted outputs and study failures. These bounded software checks
+do not close the full-size benchmarking or independent R/Python sampling gates.
 
 Run the offline archive and processing tests with:
 

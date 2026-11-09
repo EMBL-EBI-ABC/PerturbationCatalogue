@@ -58,6 +58,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--iter-warmup", type=int)
     parser.add_argument("--iter-sampling", type=int)
     parser.add_argument("--memory-budget-mb", type=int)
+    parser.add_argument(
+        "--summary-json", type=Path, help="Write a portable plan or batch result JSON."
+    )
+    parser.add_argument(
+        "--expected-plan",
+        type=Path,
+        help="Verify inputs, code and settings against this plan before fitting.",
+    )
+    parser.add_argument("--fail-on-study-error", action="store_true")
+    parser.add_argument(
+        "--collect-plan",
+        type=Path,
+        help="Collect successful batch bundles for this plan, without fitting.",
+    )
+    parser.add_argument("--batch-results", type=Path, nargs="+")
     return parser
 
 
@@ -258,7 +273,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--max-study-rows must be positive")
 
     try:
+        if args.collect_plan is not None:
+            from data_sources.mavedb.analysis._gmm_pipeline import collect_batches
+
+            if args.out is None or not args.batch_results:
+                raise ValueError("--collect-plan requires --out and --batch-results")
+            collect_batches(args.collect_plan, args.batch_results, args.out)
+            return 0
+        if (
+            args.summary_json is not None
+            and not args.list_batches
+            and args.expected_plan is None
+        ):
+            raise ValueError("A batch --summary-json requires --expected-plan")
         config = _build_config(parser, args, raw_argv)
+        if args.expected_plan is not None:
+            from data_sources.mavedb.analysis._gmm_pipeline import verify_plan
+
+            if args.list_batches:
+                raise ValueError(
+                    "--expected-plan cannot be combined with --list-batches"
+                )
+            verify_plan(config, args.expected_plan)
         print(
             json.dumps(
                 {"event": "effective_config", **_effective_config(config)},
@@ -269,6 +305,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         from data_sources.mavedb.analysis._gmm_batch import run_batch
 
         summary = run_batch(config)
+        if args.summary_json is not None:
+            from data_sources.mavedb.analysis._gmm_pipeline import (
+                batch_record,
+                make_plan,
+                write_json,
+            )
+
+            record = (
+                make_plan(config, summary)
+                if args.list_batches
+                else batch_record(config, summary, args.expected_plan)
+            )
+            write_json(args.summary_json, record)
         print(
             json.dumps(
                 _summary_dict(summary, args.list_batches),
@@ -282,7 +331,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{summary.successful_study_count} succeeded, "
                 f"{summary.failed_study_count} failed."
             )
-        return 0
+        return 3 if args.fail_on_study_error and summary.failed_study_count else 0
     except (ImportError, OSError, RuntimeError, ValueError) as error:
         print(f"fit_gmm_batch: error: {error}", file=sys.stderr)
         return 2
