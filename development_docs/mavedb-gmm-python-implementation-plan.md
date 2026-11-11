@@ -127,7 +127,7 @@ These are compatibility requirements for this port, not endorsements that each b
 | `neut` | `frac_neut=0.9`, `beta=1.01`, `delta=0`; `sigma_neut` is fixed in Stan |
 | `pos` | `sigma_neut=0.1`, `beta=1.25`, `delta=0`, `frac_neut=0.75` |
 
-Keep the R production default of an unspecified seed when `--seed` is absent; smoke defaults to seed `123`. When supplied, seed both subsampling and Stan, using reproducible study/candidate seeds independent of batch membership and Python's randomized `hash()`. Matching R and NumPy seed integers does not reproduce their sampled rows: parity fixtures must supply the actual chosen row indices.
+Keep the R production default of an unspecified seed when `--seed` is absent; smoke defaults to seed `123`. When supplied, pass that exact integer unchanged to Stan for every study and candidate, matching the R helpers. Seed row subsampling separately with reproducible study-specific seeds independent of batch membership and Python's randomized `hash()`. Matching R and NumPy seed integers does not reproduce their sampled rows: parity fixtures must supply the actual chosen row indices.
 
 ### Transforms, density and classifications
 

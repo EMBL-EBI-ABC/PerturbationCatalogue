@@ -47,7 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input-format", choices=("catalogue", "legacy"), default="catalogue"
     )
-    parser.add_argument("--seed", type=int)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Pass this exact seed to every Stan fit; also seed row subsampling.",
+    )
     parser.add_argument("--list-batches", action="store_true")
     parser.add_argument("--study-id", action="append", dest="study_ids")
     parser.add_argument("--max-studies", type=int)

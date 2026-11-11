@@ -782,10 +782,9 @@ def fit_study(
         active_runner = runner if runner is not None else _default_runner()
         candidate_fits: dict[str, CandidateResult] = {}
         for candidate in candidate_names:
-            seed = _stable_seed(settings.seed, study_id, candidate)
             try:
                 result = active_runner(
-                    sample_scores.copy(), candidate, settings, seed=seed
+                    sample_scores.copy(), candidate, settings, seed=settings.seed
                 )
             except (
                 StudyFitError,
@@ -1204,6 +1203,8 @@ def _scaled_mad(scores: np.ndarray) -> float:
 
 
 def _stable_seed(base_seed: int | None, study_id: str, name: str) -> int | None:
+    """Derive a reproducible seed for row subsampling, not Stan sampling."""
+
     if base_seed is None:
         return None
     payload = f"mavedb-gmm\0{base_seed}\0{study_id}\0{name}".encode("utf-8")

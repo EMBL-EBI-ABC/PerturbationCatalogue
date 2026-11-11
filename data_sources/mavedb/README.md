@@ -152,6 +152,11 @@ parallel chains, 1,000 warmup and 2,000 retained draws, `adapt_delta=0.9`,
 `--max-study-rows` only when intentionally limiting both fitting and
 post-processing. `--variants_per_batch` controls batch size, not memory.
 
+`--seed 28` passes the exact integer `28` to Stan for every study and candidate,
+matching the R helpers. No study- or candidate-specific Stan seed is derived.
+Row subsampling still uses separate deterministic study-specific seeds, so
+matching R's selected rows requires sharing the actual fitting subset.
+
 The default input format is `catalogue`. For the legacy score/meta tables,
 provide both files explicitly and select `--input-format legacy`:
 
