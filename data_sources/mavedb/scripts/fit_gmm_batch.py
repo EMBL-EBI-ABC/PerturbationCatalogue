@@ -50,7 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--seed",
         type=int,
-        help="Pass this exact seed to every Stan fit; also seed row subsampling.",
+        help=(
+            "Override the default dataset-derived seed and pass this exact "
+            "seed to every Stan fit; also seed row subsampling."
+        ),
     )
     parser.add_argument("--list-batches", action="store_true")
     parser.add_argument("--study-id", action="append", dest="study_ids")
@@ -130,7 +133,7 @@ def _build_config(
             "max_treedepth": 10,
             "refresh": 4000,
             "memory_budget_mb": 2048,
-            "seed": 123,
+            "seed": None,
             "max_fit_rows": 500,
         }
         max_studies = 1

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Protocol, runtime_checkable
@@ -770,10 +771,13 @@ def fit_study(
     try:
         if eligible.empty:
             raise StudyFitError("no rows have both finite scores and protein HGVS")
+        effective_seed = (
+            settings.seed if settings.seed is not None else study_seed(study_id)
+        )
         sample_positions, sample_scores = _sample_fit_rows(
             eligible,
             settings.max_fit_rows,
-            _stable_seed(settings.seed, study_id, "__sample__"),
+            _stable_seed(effective_seed, study_id, "__sample__"),
         )
         scaled_mad = _scaled_mad(sample_scores)
         if not math.isfinite(scaled_mad) or scaled_mad == 0.0:
@@ -784,7 +788,7 @@ def fit_study(
         for candidate in candidate_names:
             try:
                 result = active_runner(
-                    sample_scores.copy(), candidate, settings, seed=settings.seed
+                    sample_scores.copy(), candidate, settings, seed=effective_seed
                 )
             except (
                 StudyFitError,
@@ -1202,14 +1206,54 @@ def _scaled_mad(scores: np.ndarray) -> float:
     return float(np.median(np.abs(scores - median)) * 1.4826)
 
 
+_MAVEDB_URN_RE = re.compile(
+    r"^urn[-:]mavedb[-:](\d+)-([a-z0-9]+)-(\d+)$", re.IGNORECASE
+)
+_MAX_STAN_SEED = 2**31 - 1
+
+
+def study_seed(study_id: str) -> int:
+    """Derive a deterministic Stan seed from a MaveDB dataset ID.
+
+    Canonical MaveDB URNs ``urn:mavedb:<exp_set>-<exp_code>-<score_set>`` map to
+    ``exp_set * 10000 + exp_num * 100 + score_set`` (two-digit zero-padded
+    1-based letter index and score-set index), e.g.:
+    - ``urn:mavedb:00000984-a-1`` -> ``9840101``
+    - ``urn:mavedb:00000223-c-2`` -> ``2230302``
+
+    Non-canonical study identifiers fall back to a deterministic SHA-256 seed.
+    """
+
+    match = _MAVEDB_URN_RE.match(study_id.strip())
+    if match is not None:
+        exp_set = int(match.group(1))
+        exp_code = match.group(2).lower()
+        score_set = int(match.group(3))
+        if exp_code.isdigit():
+            exp_num = int(exp_code)
+        elif exp_code.isalpha():
+            exp_num = 0
+            for char in exp_code:
+                exp_num = exp_num * 26 + (ord(char) - ord("a") + 1)
+        else:
+            exp_num = -1
+        if 0 <= exp_num <= 99 and 0 <= score_set <= 99:
+            derived = exp_set * 10_000 + exp_num * 100 + score_set
+            if 1 <= derived <= _MAX_STAN_SEED:
+                return derived
+    fallback = _stable_seed(0, study_id, "stan")
+    assert fallback is not None
+    return fallback
+
+
 def _stable_seed(base_seed: int | None, study_id: str, name: str) -> int | None:
-    """Derive a reproducible seed for row subsampling, not Stan sampling."""
+    """Derive a reproducible seed for row subsampling or non-URN fallback."""
 
     if base_seed is None:
         return None
     payload = f"mavedb-gmm\0{base_seed}\0{study_id}\0{name}".encode("utf-8")
     digest = hashlib.sha256(payload).digest()
-    return int.from_bytes(digest[:4], "big") % (2**32 - 1) + 1
+    return int.from_bytes(digest[:4], "big") % _MAX_STAN_SEED + 1
 
 
 def _default_runner() -> Runner:

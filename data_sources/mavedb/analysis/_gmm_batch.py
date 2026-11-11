@@ -774,7 +774,7 @@ def _smoke_sampler_settings() -> SamplerSettings:
         parallel_chains=1,
         iter_warmup=200,
         iter_sampling=200,
-        seed=123,
+        seed=None,
         memory_budget_mb=2048,
         max_fit_rows=500,
     )

@@ -245,7 +245,8 @@ all batches succeed. Sampler/convergence/Pareto-k warnings remain in QC and do
 not become scientific acceptance gates or change model selection.
 
 Defaults are the `production` profile, `modes` model, 50,000 eligible variants
-per batch, and seed 123. Control selection with `--gmm_study_ids` (a comma list
+per batch, and deterministic dataset-derived per-study seeds, e.g., `10101` for `urn:mavedb:00000001-a-1` (override with
+`--gmm_seed`). Control selection with `--gmm_study_ids` (a comma list
 or a list in a params file) and `--gmm_max_studies`. Configure bounded runs with
 `--gmm_max_study_rows`, `--gmm_max_fit_rows`, `--gmm_chains`,
 `--gmm_parallel_chains`, `--gmm_iter_warmup`, `--gmm_iter_sampling`, and

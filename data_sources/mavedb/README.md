@@ -47,7 +47,8 @@ catalogue.
 
 The smoke profile selects at most one study and 500 rows for fitting and
 post-processing. It uses two chains sequentially, 200 warmup and 200 retained
-draws per chain, seed `123`, and a 2,048 MiB memory budget. Outputs are isolated
+draws per chain, a dataset-derived seed (`10101` for `urn:mavedb:00000001-a-1`),
+and a 2,048 MiB memory budget. Outputs are isolated
 under `data_sources/mavedb/output/gmm-smoke/smoke/maves/<model>/`; QC records
 effective settings, source identities, exclusions and sampler/PSIS warnings.
 The fixture is a fixed, source-row-preserving reservoir sample of 500 from the
@@ -147,15 +148,20 @@ all selected studies in one run. Oversized studies occupy their own batch.
 
 Production defaults retain the R sampler settings: four chains and four
 parallel chains, 1,000 warmup and 2,000 retained draws, `adapt_delta=0.9`,
-`max_treedepth=10`, and no seed unless one is supplied. Fitting is capped at
-256,000 rows per study; `--max-fit-rows` can lower that cap. Use
-`--max-study-rows` only when intentionally limiting both fitting and
-post-processing. `--variants_per_batch` controls batch size, not memory.
+`max_treedepth=10`, and a deterministic dataset-derived seed unless `--seed` is
+supplied. Fitting is capped at 256,000 rows per study; `--max-fit-rows` can
+lower that cap. Use `--max-study-rows` only when intentionally limiting both
+fitting and post-processing. `--variants_per_batch` controls batch size, not
+memory.
 
-`--seed 28` passes the exact integer `28` to Stan for every study and candidate,
-matching the R helpers. No study- or candidate-specific Stan seed is derived.
-Row subsampling still uses separate deterministic study-specific seeds, so
-matching R's selected rows requires sharing the actual fitting subset.
+When `--seed` is omitted, each study derives its Stan seed from its MaveDB URN
+(`urn:mavedb:<exp_set>-<exp_letter>-<score_set>` ->
+`exp_set * 10000 + letter_idx * 100 + score_set`, e.g. `urn:mavedb:00000984-a-1`
+-> `9840101`, `urn:mavedb:00000223-c-2` -> `2230302`). Passing `--seed 28`
+overrides this and passes the exact integer `28` to Stan for every study and
+candidate, matching the R helpers. Row subsampling uses separate deterministic
+study-specific seeds, so matching R's selected rows requires sharing the actual
+fitting subset.
 
 The default input format is `catalogue`. For the legacy score/meta tables,
 provide both files explicitly and select `--input-format legacy`:

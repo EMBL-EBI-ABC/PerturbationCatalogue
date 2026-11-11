@@ -127,7 +127,7 @@ These are compatibility requirements for this port, not endorsements that each b
 | `neut` | `frac_neut=0.9`, `beta=1.01`, `delta=0`; `sigma_neut` is fixed in Stan |
 | `pos` | `sigma_neut=0.1`, `beta=1.25`, `delta=0`, `frac_neut=0.75` |
 
-Keep the R production default of an unspecified seed when `--seed` is absent; smoke defaults to seed `123`. When supplied, pass that exact integer unchanged to Stan for every study and candidate, matching the R helpers. Seed row subsampling separately with reproducible study-specific seeds independent of batch membership and Python's randomized `hash()`. Matching R and NumPy seed integers does not reproduce their sampled rows: parity fixtures must supply the actual chosen row indices.
+When `--seed` is absent, derive a deterministic zero-padded seed per study from its MaveDB URN (`exp_set * 10000 + letter_idx * 100 + score_set`, e.g. `urn:mavedb:00000984-a-1` -> `9840101`, `urn:mavedb:00000223-c-2` -> `2230302`). When `--seed` is explicitly supplied, pass that exact integer unchanged to Stan for every study and candidate, matching the R helpers. Seed row subsampling separately with reproducible study-specific seeds independent of batch membership and Python's randomized `hash()`. Matching R and NumPy seed integers does not reproduce their sampled rows: parity fixtures must supply the actual chosen row indices.
 
 ### Transforms, density and classifications
 
