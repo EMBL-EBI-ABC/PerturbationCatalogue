@@ -285,7 +285,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             if args.out is None or not args.batch_results:
                 raise ValueError("--collect-plan requires --out and --batch-results")
-            collect_batches(args.collect_plan, args.batch_results, args.out)
+            collect_batches(
+                args.collect_plan,
+                args.batch_results,
+                args.out,
+                fail_on_study_error=args.fail_on_study_error,
+            )
             return 0
         if (
             args.summary_json is not None

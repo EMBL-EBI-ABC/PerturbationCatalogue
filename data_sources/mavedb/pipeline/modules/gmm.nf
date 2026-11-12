@@ -39,6 +39,7 @@ process FIT_GMM_BATCH {
     tuple val(index), path(plan, stageAs: 'batch_plan.json'),
           path(code, stageAs: 'code'), path(processed, stageAs: 'processed')
     val arguments
+    val fail_flag
     env 'python_executable'
     env 'MAVEDB_GMM_CACHE_DIR'
 
@@ -54,7 +55,7 @@ process FIT_GMM_BATCH {
     "\$python_executable" code/data_sources/mavedb/scripts/fit_gmm_batch.py \
         --scores processed/scores.tsv --meta processed/metadata.tsv \
         --index ${index} --out batch-${index} --expected-plan batch_plan.json \
-        --summary-json batch-${index}/summary.json --fail-on-study-error ${arguments}
+        --summary-json batch-${index}/summary.json ${fail_flag}${arguments}
     """
 }
 
@@ -66,6 +67,7 @@ process COLLECT_GMM_BATCHES {
     path plan, stageAs: 'batch_plan.json'
     path batches
     path code, stageAs: 'code'
+    val fail_flag
     env 'python_executable'
 
     output:
@@ -76,7 +78,7 @@ process COLLECT_GMM_BATCHES {
     """
     export PYTHONDONTWRITEBYTECODE=1
     "\$python_executable" code/data_sources/mavedb/scripts/fit_gmm_batch.py \
-        --collect-plan batch_plan.json --batch-results ${batchArguments} --out gmm
+        --collect-plan batch_plan.json --batch-results ${batchArguments} ${fail_flag}--out gmm
     """
 }
 
@@ -100,6 +102,7 @@ workflow MAVEDB_GMM {
     studies = params.gmm_study_ids instanceof List ? params.gmm_study_ids : params.gmm_study_ids.toString().tokenize(',')
     studies.each { study -> argv.addAll(['--study-id', study]) }
     arguments = argv.collect { quoteGmmArgument(it) }.join(' ')
+    failFlag = params.gmm_fail_on_study_error ? '--fail-on-study-error ' : ''
     sourceFiles = ['gmm.py', '_gmm_batch.py', '_gmm_inputs.py', '_gmm_stan.py', '_gmm_pipeline.py'].collect {
         file("${projectDir}/../analysis/${it}", checkIfExists: true)
     }
@@ -114,9 +117,9 @@ workflow MAVEDB_GMM {
         def indices = parsed.assignments.collect { it[0] }.unique().sort()
         indices.collect { index -> [index, plan, code, inputs] }
     }
-    FIT_GMM_BATCH(jobs, arguments, params.python, file(params.gmm_cache_dir).toAbsolutePath().toString())
+    FIT_GMM_BATCH(jobs, arguments, failFlag, params.python, file(params.gmm_cache_dir).toAbsolutePath().toString())
     COLLECT_GMM_BATCHES(
-        PLAN_GMM_BATCHES.out.plan, FIT_GMM_BATCH.out.bundle.collect(), PLAN_GMM_BATCHES.out.code, params.python
+        PLAN_GMM_BATCHES.out.plan, FIT_GMM_BATCH.out.bundle.collect(), PLAN_GMM_BATCHES.out.code, failFlag, params.python
     )
 
     emit:

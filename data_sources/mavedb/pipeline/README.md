@@ -234,14 +234,16 @@ The named `MAVEDB_GMM` workflow uses the existing `fit_gmm_batch.py` entry point
    before fitting and checks the resulting assignment. Each task retains its
    native six tables, QC, and a portable result summary in its work directory.
 3. `COLLECT_GMM_BATCHES` verifies every planned batch arrived exactly once,
-   every assigned study succeeded, and all required tables/QC match their
+   every assigned study was processed, and all required tables/QC match their
    recorded hashes. It stages and publishes one complete native result tree.
 
-Study failures make the Nextflow fit task exit nonzero, even though the legacy
-standalone fitter normally returns zero with failed-study placeholders. Failure
-summaries and QC remain in the failed task work directory. Successful partial
-batches remain in work for resume; the final GMM bundle is emitted only after
-all batches succeed. Sampler/convergence/Pareto-k warnings remain in QC and do
+Expected study-level numerical failures (such as zero MAD or degenerate scores)
+retain placeholder rows, failure summaries and QC in the published batch
+outputs, matching the standalone fitter. Pass `--gmm_fail_on_study_error` to
+make study-level failures exit nonzero and block collection. Successful partial
+batches remain in work for resume (`errorStrategy = 'finish'`); the final GMM
+bundle is emitted only after all batches complete. Sampler/convergence/Pareto-k
+warnings remain in QC and do
 not become scientific acceptance gates or change model selection.
 
 Defaults are the `production` profile, `modes` model, 50,000 eligible variants

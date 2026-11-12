@@ -147,8 +147,14 @@ def batch_record(config: Any, summary: Any, plan_path: Path) -> dict[str, Any]:
     }
 
 
-def collect_batches(plan_path: Path, batches: list[Path], output: Path) -> None:
-    """Publish only a complete, checksum-verified set of successful native batches."""
+def collect_batches(
+    plan_path: Path,
+    batches: list[Path],
+    output: Path,
+    *,
+    fail_on_study_error: bool = False,
+) -> None:
+    """Publish a complete, checksum-verified set of native batches."""
     plan = read_plan(plan_path)
     if not plan["batch_count"]:
         raise ValueError("GMM plan contains no eligible studies")
@@ -173,11 +179,23 @@ def collect_batches(plan_path: Path, batches: list[Path], output: Path) -> None:
                 raise ValueError("Unexpected or duplicate GMM batch result")
             if record["plan"] != plan_identity:
                 raise ValueError("GMM batch belongs to a different plan")
+            failed_count = record.get("failed_study_count", -1)
+            successful_count = record.get("successful_study_count", -1)
+            processed_count = record.get("processed_study_count", -1)
+            expected_status = "completed" if failed_count == 0 else "study_failures"
             if (
-                record["status"] != "completed"
-                or record["failed_study_count"] != 0
-                or record["processed_study_count"] != len(expected)
-                or record["successful_study_count"] != len(expected)
+                not isinstance(failed_count, int)
+                or isinstance(failed_count, bool)
+                or not isinstance(successful_count, int)
+                or isinstance(successful_count, bool)
+                or not isinstance(processed_count, int)
+                or isinstance(processed_count, bool)
+                or failed_count < 0
+                or successful_count < 0
+                or record.get("status") != expected_status
+                or (fail_on_study_error and failed_count != 0)
+                or processed_count != len(expected)
+                or successful_count + failed_count != len(expected)
                 or len(record["study_ids"]) != len(expected)
                 or set(record["study_ids"]) != expected
             ):
@@ -218,17 +236,27 @@ def collect_batches(plan_path: Path, batches: list[Path], output: Path) -> None:
         if seen != set(range(1, plan["batch_count"] + 1)):
             raise ValueError("Missing GMM batch results")
         shutil.copyfile(plan_path, staged / "batch_plan.json")
+        total_failed = sum(row["failed_study_count"] for row in records)
+        failures = [
+            failure
+            for row in sorted(records, key=lambda item: item["batch_index"])
+            for failure in row.get("failures", [])
+        ]
         write_json(
             staged / "completion.json",
             {
                 "schema_version": 1,
-                "status": "completed",
+                "status": "completed" if total_failed == 0 else "study_failures",
                 "plan": plan_identity,
                 "batch_count": len(seen),
+                "processed_study_count": sum(
+                    row["processed_study_count"] for row in records
+                ),
                 "successful_study_count": sum(
                     row["successful_study_count"] for row in records
                 ),
-                "failed_study_count": 0,
+                "failed_study_count": total_failed,
+                "failures": failures,
                 "score_rows_written": sum(row["score_rows_written"] for row in records),
             },
         )
