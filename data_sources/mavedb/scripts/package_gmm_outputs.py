@@ -91,12 +91,18 @@ def collection_paths(
     raise ValueError(f"Unsupported GMM output {name!r}: {relative}")
 
 
-def merge_tsv_files(source_paths: list[Path], destination: Path) -> int:
+def merge_tsv_files(
+    source_paths: list[Path],
+    destination: Path,
+    *,
+    drop_columns: set[str] | None = None,
+) -> int:
     if not source_paths:
         raise ValueError(f"No TSV inputs supplied for {destination}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     expected_header = None
+    kept_indexes = None
     rows_written = 0
     with destination.open("w", encoding="utf-8", newline="") as output_handle:
         writer = csv.writer(output_handle, delimiter="\t", lineterminator="\n")
@@ -108,7 +114,17 @@ def merge_tsv_files(source_paths: list[Path], destination: Path) -> int:
                     raise ValueError(f"GMM TSV is empty: {source}")
                 if expected_header is None:
                     expected_header = header
-                    writer.writerow(header)
+                    excluded = drop_columns or set()
+                    kept_indexes = [
+                        index
+                        for index, column in enumerate(header)
+                        if column not in excluded
+                    ]
+                    if not kept_indexes:
+                        raise ValueError(
+                            f"Removing columns leaves no fields in {destination}"
+                        )
+                    writer.writerow([header[index] for index in kept_indexes])
                 elif header != expected_header:
                     raise ValueError(
                         f"GMM TSV headers differ while merging {destination}: "
@@ -121,7 +137,7 @@ def merge_tsv_files(source_paths: list[Path], destination: Path) -> int:
                             f"GMM TSV row {row_number} in {source} has "
                             f"{len(row)} fields; expected {len(expected_header)}"
                         )
-                    writer.writerow(row)
+                    writer.writerow([row[index] for index in kept_indexes])
                     rows_written += 1
     return rows_written
 
@@ -214,7 +230,14 @@ def package_outputs(bundle: Path, output: Path) -> None:
                 for _, relative in sorted(sources, key=lambda item: item[0])
             ]
             destination = staged / merged_relative
-            row_count = merge_tsv_files(ordered_sources, destination)
+            drop_columns = (
+                {"dataset_id"}
+                if merged_relative == model_root / "merged" / "score.tsv"
+                else None
+            )
+            row_count = merge_tsv_files(
+                ordered_sources, destination, drop_columns=drop_columns
+            )
             merged_outputs[merged_relative.as_posix()] = {
                 "path": merged_relative.as_posix(),
                 "rows": row_count,

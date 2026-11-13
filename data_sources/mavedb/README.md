@@ -107,8 +107,10 @@ identities for smoke runs).
 
 The Nextflow packaging step places these under
 `maves/<model>/batches/batch<N>/` using the unnumbered table names, and writes
-the concatenated tables under `maves/<model>/merged/`. Standalone batch runs
-retain the indexed filenames described above.
+the concatenated tables under `maves/<model>/merged/`. Batch-level
+`score.tsv` files retain both `dataset_id` and `source_row`; the merged
+`score.tsv` omits the redundant `dataset_id` column. Standalone batch runs
+retain the indexed filenames and columns described above.
 
 Expected study-level numerical failures yield one raw-score placeholder per
 eligible input row and identifier-preserving sentinel rows in the other five

@@ -322,8 +322,10 @@ maves/<model>/
 
 Each batch folder contains its own six native tables and QC files. `merged/`
 contains the corresponding tables concatenated in batch-index order, with one
-header per file. `completion.json` records each merged table's row count, size,
-and SHA-256. A separate planning copy is published to `<outdir>/gmm-plan/`.
+header per file. The batch `score.tsv` files retain `dataset_id`; the merged
+`score.tsv` omits that redundant column. `completion.json` records each merged
+table's row count, size, and SHA-256. A separate planning copy is published to
+`<outdir>/gmm-plan/`.
 The top-level `gmm/batches/batch<N>.json` files are receipts; the
 `maves/<model>/batches/batch<N>/` directories contain the batch data. The
 packaging process is separate from model fitting, so a packaging change can be
