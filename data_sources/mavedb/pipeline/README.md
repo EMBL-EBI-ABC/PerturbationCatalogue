@@ -235,7 +235,11 @@ The named `MAVEDB_GMM` workflow uses the existing `fit_gmm_batch.py` entry point
    native six tables, QC, and a portable result summary in its work directory.
 3. `COLLECT_GMM_BATCHES` verifies every planned batch arrived exactly once,
    every assigned study was processed, and all required tables/QC match their
-   recorded hashes. It stages and publishes one complete native result tree.
+   recorded hashes.
+4. `PACKAGE_GMM_OUTPUTS` puts each batch's outputs under
+   `maves/<model>/batches/batch<N>/`, merges each TSV family with one header in
+   batch-index order under `maves/<model>/merged/`, and publishes the complete
+   result tree.
 
 Expected study-level numerical failures (such as zero MAD or degenerate scores)
 retain placeholder rows, failure summaries and QC in the published batch
@@ -290,11 +294,43 @@ temporary disk space, retain work for resume, and benchmark full-size studies
 before increasing concurrency. Slurm execution has not been exercised here.
 
 Outputs are published beneath `<outdir>/gmm/`: `batch_plan.json`,
-`completion.json`, per-batch receipts in `batches/`, and native tables/QC under
-`maves/<model>/` (`smoke/maves/<model>/` for smoke). A separate planning copy is
-published to `<outdir>/gmm-plan/`. Consumers should use the emitted bundle and
-its manifest, rather than globbing a reused publication directory that could
-contain files from older runs. Changing model/cohort should use a new outdir.
+`completion.json`, and per-batch receipts in `batches/`. Native tables and QC
+are under `maves/<model>/` (or `smoke/maves/<model>/` for smoke):
+
+```text
+maves/<model>/
+├── batches/
+│   ├── batch1/
+│   │   ├── score.tsv
+│   │   ├── density.tsv
+│   │   ├── fitted_params.tsv
+│   │   ├── posterior.tsv
+│   │   ├── fit_summary.tsv
+│   │   ├── loo.tsv
+│   │   └── qc/
+│   └── batch2/
+│       └── ...
+└── merged/
+    ├── score.tsv
+    ├── density.tsv
+    ├── fitted_params.tsv
+    ├── posterior.tsv
+    ├── fit_summary.tsv
+    ├── loo.tsv
+    └── qc/
+```
+
+Each batch folder contains its own six native tables and QC files. `merged/`
+contains the corresponding tables concatenated in batch-index order, with one
+header per file. `completion.json` records each merged table's row count, size,
+and SHA-256. A separate planning copy is published to `<outdir>/gmm-plan/`.
+The top-level `gmm/batches/batch<N>.json` files are receipts; the
+`maves/<model>/batches/batch<N>/` directories contain the batch data. The
+packaging process is separate from model fitting, so a packaging change can be
+resumed without rerunning successful fit tasks.
+Consumers should use the emitted bundle and its manifest, rather than globbing
+a reused publication directory that could contain files from older runs.
+Changing model/cohort should use a new outdir.
 
 ## Outputs and checks
 

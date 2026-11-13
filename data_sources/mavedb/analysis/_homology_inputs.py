@@ -67,7 +67,51 @@ def read_metadata(path: Path) -> pd.DataFrame:
 
 
 def _native_paths(gmm_dir: Path) -> tuple[list[Path], list[Path]]:
+    if not gmm_dir.is_dir():
+        raise FileNotFoundError(f"GMM output directory not found: {gmm_dir}")
+
     tables: dict[str, dict[int, Path]] = {"score": {}, "fitted_params": {}}
+    batch_root = gmm_dir / "batches"
+    if not batch_root.is_dir() and any(
+        child.is_dir() and re.fullmatch(r"batch\d+", child.name)
+        for child in gmm_dir.iterdir()
+    ):
+        batch_root = gmm_dir
+
+    if batch_root.is_dir():
+        batch_directories = []
+        for child in batch_root.iterdir():
+            match = re.fullmatch(r"batch(\d+)", child.name)
+            if match and child.is_dir():
+                batch_directories.append((int(match.group(1)), child))
+        for index, batch_directory in batch_directories:
+            for prefix in tables:
+                path = batch_directory / f"{prefix}.tsv"
+                if path.is_file():
+                    if index in tables[prefix]:
+                        raise ValueError(f"Duplicate {prefix} batch index {index}")
+                    tables[prefix][index] = path
+        if tables["score"] or tables["fitted_params"]:
+            if (
+                not tables["score"]
+                or tables["score"].keys() != tables["fitted_params"].keys()
+            ):
+                raise ValueError(
+                    f"{gmm_dir}: require matching score.tsv and "
+                    "fitted_params.tsv files in every batch directory"
+                )
+            indices = sorted(tables["score"])
+            return tuple([tables[prefix][i] for i in indices] for prefix in tables)
+
+    for merged_root in (gmm_dir, gmm_dir / "merged"):
+        merged_paths = {prefix: merged_root / f"{prefix}.tsv" for prefix in tables}
+        if all(path.is_file() for path in merged_paths.values()):
+            return [merged_paths["score"]], [merged_paths["fitted_params"]]
+        if any(path.is_file() for path in merged_paths.values()):
+            raise ValueError(
+                f"{merged_root}: require both score.tsv and fitted_params.tsv"
+            )
+
     for prefix in tables:
         for path in gmm_dir.glob(f"{prefix}*.tsv"):
             match = re.fullmatch(rf"{prefix}(\d+)\.tsv", path.name)

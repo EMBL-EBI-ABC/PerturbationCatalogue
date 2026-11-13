@@ -64,7 +64,10 @@ def _parser() -> argparse.ArgumentParser:
         "--gmm-dir",
         type=Path,
         required=True,
-        help="Native modes score<N>.tsv / fitted_params<N>.tsv batch directory",
+        help=(
+            "Collected GMM model directory, its merged/ subdirectory, or a "
+            "legacy indexed batch directory"
+        ),
     )
     parser.add_argument(
         "--metadata",

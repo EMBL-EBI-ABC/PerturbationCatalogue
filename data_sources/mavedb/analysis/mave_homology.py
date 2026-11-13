@@ -78,7 +78,10 @@ def _parser() -> argparse.ArgumentParser:
         "--gmm-dir",
         type=Path,
         required=True,
-        help="Native score<N>/fitted_params<N> batch directory",
+        help=(
+            "Collected GMM model directory, its merged/ subdirectory, or a "
+            "legacy indexed batch directory"
+        ),
     )
     parser.add_argument(
         "--sources",

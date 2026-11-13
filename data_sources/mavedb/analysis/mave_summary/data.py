@@ -339,7 +339,65 @@ def _native_file_paths(gmm_dir: Path) -> tuple[list[int], dict[str, dict[int, Pa
     if not gmm_dir.is_dir():
         raise FileNotFoundError(f"GMM output directory not found: {gmm_dir}")
 
+    def validate_paths(
+        paths: dict[str, dict[int, Path]], indexes: list[int]
+    ) -> tuple[list[int], dict[str, dict[int, Path]]]:
+        expected = set(indexes)
+        for table_name, table_paths in paths.items():
+            actual = set(table_paths)
+            if actual != expected:
+                missing = sorted(expected - actual)
+                extra = sorted(actual - expected)
+                details = []
+                if missing:
+                    details.append(f"missing indices {missing}")
+                if extra:
+                    details.append(f"unexpected indices {extra}")
+                raise TableDataError(
+                    f"Indexed GMM table family {table_name!r} in {gmm_dir} has "
+                    + "; ".join(details)
+                )
+        return indexes, paths
+
     paths: dict[str, dict[int, Path]] = {name: {} for name in _NATIVE_PREFIXES}
+    batch_root = gmm_dir / "batches"
+    if not batch_root.is_dir() and any(
+        child.is_dir() and re.fullmatch(r"batch\d+", child.name)
+        for child in gmm_dir.iterdir()
+    ):
+        batch_root = gmm_dir
+
+    if batch_root.is_dir():
+        batch_directories = []
+        for child in batch_root.iterdir():
+            match = re.fullmatch(r"batch(\d+)", child.name)
+            if match and child.is_dir():
+                batch_directories.append((int(match.group(1)), child))
+        for index, batch_directory in batch_directories:
+            for table_name, prefix in _NATIVE_PREFIXES.items():
+                path = batch_directory / f"{prefix}.tsv"
+                if path.is_file():
+                    paths[table_name][index] = path
+        indexes = sorted(paths["scores"])
+        if indexes:
+            return validate_paths(paths, indexes)
+
+    for merged_root in (gmm_dir, gmm_dir / "merged"):
+        merged_paths = {
+            name: merged_root / f"{prefix}.tsv"
+            for name, prefix in _NATIVE_PREFIXES.items()
+        }
+        if all(path.is_file() for path in merged_paths.values()):
+            return [1], {name: {1: path} for name, path in merged_paths.items()}
+        if any(path.is_file() for path in merged_paths.values()):
+            missing = sorted(
+                path.name for path in merged_paths.values() if not path.is_file()
+            )
+            raise TableDataError(
+                f"Merged GMM table family in {merged_root} is missing: "
+                f"{', '.join(missing)}"
+            )
+
     for table_name, prefix in _NATIVE_PREFIXES.items():
         pattern = re.compile(rf"^{re.escape(prefix)}(\d+)\.tsv$")
         for path in gmm_dir.glob(f"{prefix}*.tsv"):
@@ -350,24 +408,10 @@ def _native_file_paths(gmm_dir: Path) -> tuple[list[int], dict[str, dict[int, Pa
     indexes = sorted(paths["scores"])
     if not indexes:
         raise FileNotFoundError(
-            f"No indexed score<N>.tsv GMM exports found in {gmm_dir}"
+            f"No GMM batches, merged tables, or indexed score<N>.tsv exports "
+            f"found in {gmm_dir}"
         )
-    expected = set(indexes)
-    for table_name, table_paths in paths.items():
-        actual = set(table_paths)
-        if actual != expected:
-            missing = sorted(expected - actual)
-            extra = sorted(actual - expected)
-            details = []
-            if missing:
-                details.append(f"missing indices {missing}")
-            if extra:
-                details.append(f"unexpected indices {extra}")
-            raise TableDataError(
-                f"Indexed GMM table family {table_name!r} in {gmm_dir} has "
-                + "; ".join(details)
-            )
-    return indexes, paths
+    return validate_paths(paths, indexes)
 
 
 def _load_canonical_meta(meta_path: Path) -> pd.DataFrame:
@@ -591,10 +635,12 @@ def load_native_tables(
     index: int = 0,
     batch_size: int = 100,
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
-    """Load native indexed GMM outputs for one report batch.
+    """Load native GMM outputs for one report batch.
 
     ``index`` selects a non-overlapping report batch of unique studies across
     every fitter export in ``gmm_dir``. It does not select one fitter batch file.
+    The directory may contain collected batch folders, merged tables, or legacy
+    indexed fitter outputs.
     """
     if model not in {"modes", "flexible"}:
         raise ValueError("model must be one of: modes, flexible")

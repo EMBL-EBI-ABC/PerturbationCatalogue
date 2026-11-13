@@ -61,7 +61,6 @@ process FIT_GMM_BATCH {
 
 process COLLECT_GMM_BATCHES {
     tag 'Verify all planned GMM batches'
-    publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
     input:
     path plan, stageAs: 'batch_plan.json'
@@ -80,6 +79,26 @@ process COLLECT_GMM_BATCHES {
     "\$python_executable" code/data_sources/mavedb/scripts/fit_gmm_batch.py \
         --collect-plan batch_plan.json --batch-results ${batchArguments} ${fail_flag}--out gmm
     """
+}
+
+process PACKAGE_GMM_OUTPUTS {
+    tag 'Package and merge GMM outputs'
+    publishDir "${params.outdir}", mode: 'copy', overwrite: true
+
+    input:
+    path collected, stageAs: 'collected'
+    path packager, stageAs: 'package_gmm_outputs.py'
+    env 'python_executable'
+
+    output:
+    path 'gmm', emit: bundle
+
+    script:
+    '''
+    export PYTHONDONTWRITEBYTECODE=1
+    "$python_executable" package_gmm_outputs.py \
+        --bundle collected --out gmm
+    '''
 }
 
 workflow MAVEDB_GMM {
@@ -121,8 +140,13 @@ workflow MAVEDB_GMM {
     COLLECT_GMM_BATCHES(
         PLAN_GMM_BATCHES.out.plan, FIT_GMM_BATCH.out.bundle.collect(), PLAN_GMM_BATCHES.out.code, failFlag, params.python
     )
+    PACKAGE_GMM_OUTPUTS(
+        COLLECT_GMM_BATCHES.out.bundle,
+        file("${projectDir}/../scripts/package_gmm_outputs.py", checkIfExists: true),
+        params.python
+    )
 
     emit:
-    bundle = COLLECT_GMM_BATCHES.out.bundle
+    bundle = PACKAGE_GMM_OUTPUTS.out.bundle
     plan = PLAN_GMM_BATCHES.out.plan
 }

@@ -54,7 +54,10 @@ def _build_parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--gmm-dir",
         type=Path,
-        help="Directory containing indexed native score<N>.tsv and related outputs.",
+        help=(
+            "Collected GMM model directory, its merged/ subdirectory, or a "
+            "legacy directory of indexed native TSVs."
+        ),
     )
     source.add_argument(
         "--data-root",

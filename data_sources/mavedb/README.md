@@ -105,6 +105,11 @@ is written to `qc/batch{index}/`, including `study_diagnostics.tsv`,
 `run_metadata.json`, `eligibility.tsv` and `exclusions.tsv` (and the selected
 identities for smoke runs).
 
+The Nextflow packaging step places these under
+`maves/<model>/batches/batch<N>/` using the unnumbered table names, and writes
+the concatenated tables under `maves/<model>/merged/`. Standalone batch runs
+retain the indexed filenames described above.
+
 Expected study-level numerical failures yield one raw-score placeholder per
 eligible input row and identifier-preserving sentinel rows in the other five
 tables; all required candidates must succeed for a study to be successful.
@@ -314,12 +319,13 @@ The defaults are `output/processed/metadata.tsv`,
 and `output/variant_data/mave_gwas_variants.tsv`, all below this MaveDB directory.
 Override them with `--metadata`, `--source-scores`, `--clinvar` and `--gwas`.
 Default paths resolve from the repository; explicit relative paths resolve from
-the calling directory. `--gmm-dir` requires matching `score<N>.tsv` and
-`fitted_params<N>.tsv` batches. The adapter selects top models, retains each
-original observation and recovers WT flags by `dataset_id` and `source_row`
-from canonical source scores. Synonymous/nonsense flags and UniProt positions
-are derived from protein HGVS, including the metadata offset. It does not use
-the homology analysis's averaged single-substitution table.
+the calling directory. `--gmm-dir` accepts the collected model directory
+(`maves/<model>/`), its `merged/` directory, or a legacy directory with matching
+indexed `score<N>.tsv` and related files. The adapter selects top models,
+retains each original observation and recovers WT flags by `dataset_id` and
+`source_row` from canonical source scores. Synonymous/nonsense flags and
+UniProt positions are derived from protein HGVS, including the metadata offset.
+It does not use the homology analysis's averaged single-substitution table.
 
 The three benchmarks compare nonsense controls against WT/synonymous controls,
 pathogenic/likely pathogenic ClinVar variants against benign/likely benign
@@ -397,10 +403,13 @@ and evaluates ClinVar labels transferred across those alignments.
 
 The analysis reads `references/manifest.json` and the generated
 `output/variant_data/mave_clinvar_variants.tsv` by default. It requires completed
-native `score<N>.tsv` / `fitted_params<N>.tsv` pairs and canonical metadata;
-original-R reference roots and consolidated R tables are not input formats.
-`--sources` selects another bundle and `--clinvar` selects another generated
-ClinVar table. `--skip-clinvar` explicitly runs only the between-study analysis.
+native score and fitted-parameter tables and canonical metadata. Pass the
+collected model directory (`maves/<model>/`), its `merged/` directory, or a
+legacy directory containing matching `score<N>.tsv` /
+`fitted_params<N>.tsv` pairs. Original-R reference roots and consolidated R
+tables are not input formats. `--sources` selects another bundle and
+`--clinvar` selects another generated ClinVar table. `--skip-clinvar`
+explicitly runs only the between-study analysis.
 
 Metadata coverage and fitted-score coverage are distinct. One fitted study
 cannot produce between-study correlations. Two studies require at least three
@@ -621,7 +630,8 @@ completed fits. From the repository root:
 ```
 
 One of `--gmm-dir` or `--data-root` is required. For native outputs, pass the
-directory containing the fitter's completed `score<N>.tsv`,
+collected model directory (`maves/<model>/`), its `merged/` directory, or a
+legacy directory containing the fitter's indexed `score<N>.tsv`,
 `density<N>.tsv`, `fitted_params<N>.tsv`, `posterior<N>.tsv`,
 `fit_summary<N>.tsv`, and `loo<N>.tsv` files. The loader selects the best
 candidate for each study while retaining all candidates for the LOO panel.
