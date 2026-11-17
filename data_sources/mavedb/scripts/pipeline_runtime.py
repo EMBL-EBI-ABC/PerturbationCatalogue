@@ -26,6 +26,9 @@ from data_sources.mavedb.scripts._pipeline_cache import (
     ResultStore,
     file_identity,
 )
+from data_sources.mavedb.scripts.download_taxonomy import (
+    DEFAULT_URL as DEFAULT_TAXONOMY_URL,
+)
 
 LOGGER = logging.getLogger(__name__)
 SCRIPTS = Path(__file__).resolve().parent
@@ -302,7 +305,10 @@ def adopt(
                     "Requested taxonomy differs from the saved snapshot; use --rerun taxonomy"
                 )
             source_inputs["source"] = actual
-        elif manifest.get("source") != p["taxonomy_url"]:
+        elif (
+            p["taxonomy_url"] != DEFAULT_TAXONOMY_URL
+            and manifest.get("source") != p["taxonomy_url"]
+        ):
             raise CacheError(
                 "Requested taxonomy source differs from the saved snapshot; supply the original --taxonomy or use --rerun taxonomy"
             )
@@ -393,6 +399,22 @@ def resolve(
     store = ResultStore(Path(p["outdir"]))
     public = PUBLIC.get(stage, stage)
     key = stage_key(stage, p, index)
+    if (
+        stage == "taxonomy"
+        and not p.get("taxonomy")
+        and p["taxonomy_url"] == DEFAULT_TAXONOMY_URL
+        and stage not in p["selected"]
+        and store.record(stage) is not None
+    ):
+        # An omitted override means continue the saved analysis. The default
+        # acquisition URL must not replace an explicitly imported snapshot or
+        # require its original task work directory to remain available.
+        try:
+            cached = store.get(stage)
+        except CacheError as error:
+            raise stage_error(stage, store, error) from error
+        LOGGER.info("REUSE saved taxonomy snapshot")
+        return {"path": str(cached), "stage": stage}
     if stage == "process" and p.get("processed_dir"):
         external = Path(p["processed_dir"])
         config = {"external": True}

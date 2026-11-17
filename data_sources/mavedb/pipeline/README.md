@@ -546,6 +546,11 @@ with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 
 When migrating pre-registry results, the saved taxonomy bundle under
 `references/taxonomy` is verified and adopted before considering a new download.
+After a snapshot has been imported, omitting `--taxonomy` reuses the verified
+durable copy. The original supplied file or task work directory can be removed;
+no manual move or persistent `--taxonomy` setting is needed. An explicit
+`--rerun taxonomy` still regenerates the reference, and an explicitly different
+taxonomy URL is checked against the saved source.
 If an earlier failed migration has already registered a newer taxonomy, restore
 the original snapshot with `--taxonomy` and `--rerun taxonomy`; this imports that
 reference and allows matching processed results to be reused. Processing should
