@@ -544,6 +544,14 @@ with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 
 ## Validation status
 
+When migrating pre-registry results, the saved taxonomy bundle under
+`references/taxonomy` is verified and adopted before considering a new download.
+If an earlier failed migration has already registered a newer taxonomy, restore
+the original snapshot with `--taxonomy` and `--rerun taxonomy`; this imports that
+reference and allows matching processed results to be reused. Processing should
+only be regenerated when an input update is intended. Policy failures include
+the underlying Python diagnostic in the Nextflow exception and log.
+
 On 2026-11-17, the durable-reuse implementation passed 97 local pipeline
 contract tests and four offline Nextflow 26.10.5 integration tests. The latter
 exercise automatic reuse after deleting native work/cache, selective and all-stage

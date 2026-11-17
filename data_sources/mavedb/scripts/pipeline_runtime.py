@@ -285,6 +285,28 @@ def adopt(
     root = Path(p["outdir"])
     if stage in p["selected"] or store.record(stage) is not None:
         return
+    if stage == "taxonomy" and (root / "references/taxonomy").exists():
+        # Pre-registry runs already published the snapshot used for processing.
+        # Adopt it before scheduling a fetch from NCBI's moving reference URL.
+        legacy = root / "references/taxonomy"
+        manifest = read_json(legacy / "manifest.json")
+        actual = file_identity(legacy / "taxcat.dmp")
+        if actual != {key: manifest.get(key) for key in ("bytes", "sha256")}:
+            raise CacheError(
+                "Saved taxonomy differs from its manifest; restore it or explicitly use --rerun taxonomy"
+            )
+        source_inputs = {}
+        if p.get("taxonomy"):
+            if file_identity(Path(p["taxonomy"])) != actual:
+                raise CacheError(
+                    "Requested taxonomy differs from the saved snapshot; use --rerun taxonomy"
+                )
+            source_inputs["source"] = actual
+        elif manifest.get("source") != p["taxonomy_url"]:
+            raise CacheError(
+                "Requested taxonomy source differs from the saved snapshot; supply the original --taxonomy or use --rerun taxonomy"
+            )
+        store.commit(stage, legacy, settings(stage, p), source_inputs)
     if (
         stage == "process"
         and not p.get("processed_dir")
@@ -305,7 +327,7 @@ def adopt(
             k: manifest["taxonomy"][k] for k in ("bytes", "sha256")
         }:
             raise CacheError(
-                "Existing processing used a different taxonomy; use --rerun process"
+                "Existing processing used a different taxonomy; restore its matching snapshot with --taxonomy PATH --rerun taxonomy. Use --rerun process only when deliberately updating the processed data"
             )
         store.commit(stage, root / "processed", settings(stage, p), deps)
     if stage == "gmm" and (root / "gmm").exists():
