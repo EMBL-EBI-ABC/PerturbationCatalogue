@@ -18,9 +18,22 @@ by canonical metadata/score processing. It accepts a pinned Zenodo download or
 local ZIP, validates and unpacks it, and processes it using an explicit taxonomy
 snapshot. Outputs include raw/processed provenance manifests and a dataset
 selection audit. Use `--ingest_only` to stop after ingest. Local setup, offline
-fixtures, resume behavior and validation status are documented there. GMM
+fixtures, reuse behavior and validation status are documented there. GMM
 fitting is available with `--run_gmm`, including frozen batch plans, per-batch
-tasks and verified collection. Downstream validation and QC are future stages.
+tasks and verified collection. Completed results are reused by default from
+durable storage under `<outdir>/.pipeline/`, independently of Nextflow work
+directories and `-resume`. Use `--rerun merge` to repackage fits,
+`--rerun gmm,merge` to refit and merge, or `--run_gmm --rerun all` to regenerate
+all enabled stages. Changed inputs/settings or damaged saved outputs stop and
+require explicit reruns rather than silently refitting. Preserve the entire
+output directory, including its `.pipeline/` directory and publication symlinks.
+
+Optional `--compatibility_tables`, `--run_qc`, and `--run_reports` add source
+aggregate tables, basic QC figures and per-study GMM reports without repeating
+compatible completed fits. `--run_qc` also generates its required singles table;
+`--run_reports` enables GMM products if they do not yet exist. An interrupted
+GMM attempt reuses completed batches when continued without a new `--rerun gmm`.
+Biological validation benchmarks and homology remain separate commands.
 
 ## GMM fitting
 
@@ -593,7 +606,7 @@ source columns, alongside the existing derived statistics.
 
 ### Optional development compatibility tables
 
-Add `--compatibility-tables` to also generate:
+For standalone processing, add `--compatibility-tables` to also generate:
 
 ```text
 maves/singles.tsv
@@ -608,6 +621,12 @@ score sets containing multiple mutants, including single mutants and WT
 controls. Wide columns list the 20 amino acids, then `del` and `stop`, within
 each score/count/standard-deviation block. Synonymous scores are selected by
 reference amino-acid column name and do not depend on column order.
+
+In Nextflow, add `--compatibility_tables` to generate these outputs separately
+under `<outdir>/compatibility/maves/`, using the matching raw source, taxonomy
+and canonical selection. It reuses the same aggregation helpers and does not
+rewrite canonical tables or invalidate existing GMM fits. Use `--rerun tables`
+to regenerate this stage explicitly.
 
 ### Per-study GMM summary reports
 
@@ -685,9 +704,11 @@ Run the focused regression tests with:
 ### MAVE summary and QC figures
 
 The Python port of `ot_perturbation_catalog_mave_experiments/analysis/mave_qc.R`
-reads the canonical `scores.tsv` and `metadata.tsv`, plus the optional
-`maves/singles.tsv` compatibility table. Generate the latter with
-`process_mavedb.py --compatibility-tables` when processing the dump.
+reads the canonical `scores.tsv` and `metadata.tsv`, plus the required
+`maves/singles.tsv` compatibility table. Generate the latter with the standalone
+`process_mavedb.py --compatibility-tables` option, or use Nextflow's `--run_qc`
+to generate missing compatibility tables and QC independently of GMM fitting.
+The Nextflow figures are published under `<outdir>/qc/`.
 
 ```bash
 .venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt

@@ -1,42 +1,69 @@
 process FETCH_MAVEDB_TAXONOMY {
     tag 'NCBI taxonomy categories'
     label 'reference_download'
-    publishDir "${params.outdir}/references", mode: 'copy', overwrite: true
+    cache false
 
     input:
-    path downloader, stageAs: 'download_taxonomy.py'
-    env 'taxonomy_url'
-    env 'python_executable'
+    val job
 
     output:
     path 'taxonomy', emit: bundle
+    path 'result.json', emit: result
 
     script:
-    '''
-    "$python_executable" download_taxonomy.py \
-        --url "$taxonomy_url" \
-        --output taxonomy
-    '''
+    def p = MavedbCache.request(job)
+    """
+    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.scripts + '/download_taxonomy.py')} \
+        --url ${MavedbCache.quote(p.taxonomy_url)} --output taxonomy
+    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
+        --spec ${MavedbCache.quote(job.spec)} --output taxonomy --require manifest.json --require taxcat.dmp > result.json
+    """
+}
+
+process IMPORT_MAVEDB_TAXONOMY {
+    tag 'Supplied taxonomy snapshot'
+    label 'reference_download'
+    cache false
+
+    input:
+    tuple val(job), path(taxonomy, stageAs: 'taxcat.dmp')
+
+    output:
+    path 'taxonomy', emit: bundle
+    path 'result.json', emit: result
+
+    script:
+    def p = MavedbCache.request(job)
+    def manifest = groovy.json.JsonOutput.toJson(
+        [schema_version: 1, source: p.taxonomy, path: 'taxcat.dmp'] + MavedbCache.specification(job).identities.source
+    )
+    """
+    mkdir taxonomy
+    cp taxcat.dmp taxonomy/taxcat.dmp
+    printf '%s\\n' ${MavedbCache.quote(manifest)} > taxonomy/manifest.json
+    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
+        --spec ${MavedbCache.quote(job.spec)} --output taxonomy --require manifest.json --require taxcat.dmp > result.json
+    """
 }
 
 workflow MAVEDB_TAXONOMY {
+    take:
+    engine
+
     main:
-    taxonomy_ch = null
-    taxonomy_source = null
-    if (params.taxonomy) {
-        taxonomy_ch = Channel.value(file(params.taxonomy, checkIfExists: true))
-        taxonomy_source = file(params.taxonomy).toUri().toString()
-    } else {
-        FETCH_MAVEDB_TAXONOMY(
-            file("${projectDir}/../scripts/download_taxonomy.py"),
-            params.taxonomy_url,
-            params.python
-        )
-        taxonomy_ch = FETCH_MAVEDB_TAXONOMY.out.bundle.map { it.resolve('taxcat.dmp') }
-        taxonomy_source = params.taxonomy_url
-    }
+    decisions = Channel.of([engine: engine, stage: 'taxonomy', inputs: [:]]).map { MavedbCache.resolve(it) }
+    missing = decisions.filter { it.spec != null }
+    FETCH_MAVEDB_TAXONOMY(missing.filter { MavedbCache.request(it).taxonomy == null })
+    IMPORT_MAVEDB_TAXONOMY(missing.filter { MavedbCache.request(it).taxonomy != null }.map { job ->
+        [job, file(MavedbCache.request(job).taxonomy)]
+    })
+    ready = decisions.filter { it.path != null }.mix(
+        FETCH_MAVEDB_TAXONOMY.out.result.map { MavedbCache.result(it) },
+        IMPORT_MAVEDB_TAXONOMY.out.result.map { MavedbCache.result(it) }
+    )
 
     emit:
-    taxonomy = taxonomy_ch
-    source = taxonomy_source
+    result = ready
+    taxonomy = ready.map { file(it.path).resolve('taxcat.dmp') }
+    source = ready.map { MavedbCache.request([engine: engine]).with { it.taxonomy ?: it.taxonomy_url } }
 }

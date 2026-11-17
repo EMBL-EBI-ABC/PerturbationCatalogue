@@ -33,5 +33,4 @@ data_sources/mavedb/references/
 .nextflow/
 .nextflow.log*
 data_sources/mavedb/tests/
-data_sources/mavedb/tests/*
-
+data_sources/mavedb/pipeline/tests/

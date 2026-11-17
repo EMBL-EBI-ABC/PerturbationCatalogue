@@ -2,128 +2,102 @@
 
 nextflow.enable.dsl = 2
 
-include { DOWNLOAD_MAVEDB; INGEST_MAVEDB_ARCHIVE } from './modules/ingest'
+include { MAVEDB_INGEST } from './modules/ingest'
 include { MAVEDB_TAXONOMY } from './modules/taxonomy'
-include { PROCESS_MAVEDB } from './modules/process'
+include { MAVEDB_PROCESS } from './modules/process'
+include { MAVEDB_TABLES } from './modules/tables'
 include { MAVEDB_GMM } from './modules/gmm'
-
-workflow MAVEDB_PROCESS {
-    take:
-    raw_bundle
-    taxonomy
-    taxonomy_source
-
-    main:
-    processor = file("${projectDir}/../scripts/process_mavedb.py")
-    PROCESS_MAVEDB(
-        raw_bundle, taxonomy, taxonomy_source, processor, params.python
-    )
-    processed_ch = PROCESS_MAVEDB.out.bundle
-    scores_ch = processed_ch.map { it.resolve('scores.tsv') }
-    metadata_ch = processed_ch.map { it.resolve('metadata.tsv') }
-    audit_ch = processed_ch.map { it.resolve('dataset_processing.tsv') }
-    manifest_ch = processed_ch.map { it.resolve('processing_manifest.json') }
-
-    emit:
-    bundle = processed_ch
-    scores = scores_ch
-    metadata = metadata_ch
-    audit = audit_ch
-    manifest = manifest_ch
-}
-
-workflow MAVEDB_INGEST {
-    main:
-        if (params.archive_sha256 && !(params.archive_sha256 ==~ /[a-fA-F0-9]{64}/)) {
-            error '--archive_sha256 must contain exactly 64 hexadecimal characters'
-        }
-        archive_ch = null
-        source = null
-        if (params.archive) {
-            archive_ch = Channel.value([
-                file(params.archive, checkIfExists: true),
-                file("${projectDir}/assets/no_zenodo_metadata.json", checkIfExists: true)
-            ])
-            source = file(params.archive).toUri().toString()
-        } else {
-            if (!params.zenodo_url || !params.zenodo_url.startsWith('https://')) {
-                error 'Provide an HTTPS --zenodo_url or a local ZIP with --archive'
-            }
-            download_dir = file(
-                params.download_dir ?: "${params.outdir}/downloads"
-            ).toAbsolutePath().toString()
-            DOWNLOAD_MAVEDB(
-                params.zenodo_url,
-                file("${projectDir}/../scripts/download_zenodo.py"),
-                params.python,
-                download_dir
-            )
-            archive_ch = DOWNLOAD_MAVEDB.out.archive.combine(
-                DOWNLOAD_MAVEDB.out.zenodo_metadata
-            )
-            source = params.zenodo_url
-        }
-
-        INGEST_MAVEDB_ARCHIVE(
-            archive_ch,
-            source,
-            params.archive_sha256 ?: '',
-            file("${projectDir}/../scripts/ingest_mavedb_archive.py"),
-            params.python
-        )
-        bundle_ch = INGEST_MAVEDB_ARCHIVE.out.bundle
-        dump_ch = bundle_ch.map { it.resolve('mavedb_dump') }
-        manifest_ch = bundle_ch.map { it.resolve('manifest.json') }
-
-        emit:
-        bundle = bundle_ch
-        dump = dump_ch
-        manifest = manifest_ch
-}
+include { MAVEDB_MERGE } from './modules/merge'
+include { MAVEDB_QC } from './modules/qc'
+include { MAVEDB_REPORTS } from './modules/reports'
 
 workflow {
     if (params.help) {
         log.info '''
-MaveDB ingest and canonical processing
+MaveDB pipeline: reuse completed outputs by default.
 
 nextflow run data_sources/mavedb/pipeline -profile local [options]
 
-  --archive PATH          Use an existing ZIP instead of downloading
-  --zenodo_url URL        Override the pinned HTTPS Zenodo archive URL
-  --archive_sha256 HEX    Require an expected SHA-256 before extraction
-  --outdir PATH           Published results (default: output/nextflow)
-  --download_dir PATH     Persistent ZIP cache (default: <outdir>/downloads)
-  --python PATH           Python executable (default: repository .venv/bin/python)
-  --taxonomy PATH         Use an existing NCBI categories.dmp (otherwise fetched)
-  --taxonomy_url URL      Override the NCBI taxonomy archive source
-  --ingest_only           Stop after raw-data ingest; no taxonomy acquisition
-  --run_gmm               Fit GMMs after processing (opt-in)
-  --processed_dir PATH    Start GMM fitting from existing canonical tables
-  --gmm_profile NAME      production (default) or bounded smoke settings
-  --gmm_model NAME        modes (default) or flexible
-  --gmm_study_ids IDS     Comma-separated score-set IDs, or a params-file list
-  -resume                 Reuse successful tasks and their work directories
+  --outdir PATH            Saved analysis and durable result cache
+  --archive PATH           Local ZIP instead of the pinned Zenodo URL
+  --taxonomy PATH          Local categories.dmp instead of NCBI acquisition
+  --processed_dir PATH     Existing scores.tsv/metadata.tsv for GMM/reports
+  --ingest_only            Stop after ingest
+  --run_gmm                Enable GMM fitting and merging
+  --compatibility_tables   Enable raw-score singles/doubles/wide tables
+  --run_qc                 Enable basic QC and required compatibility tables
+  --run_reports            Enable per-study reports and GMM dependencies
+  --rerun STAGES           Comma-separated stage names, or all enabled stages
+                          ingest,taxonomy,process,tables,gmm,merge,qc,reports
+  --gmm_profile NAME       production (default) or bounded smoke
+  --gmm_model NAME         modes (default) or flexible
+  --gmm_study_ids IDS      Comma-separated study IDs or params-file list
+  -resume                  Optional native task resume; --rerun still forces work
 
-See pipeline/README.md for setup, offline smoke testing, and outputs.
+See pipeline/README.md for all fitting/resource settings and migration.
 '''
     } else {
-        if (params.ingest_only && params.run_gmm) {
-            error '--ingest_only cannot be combined with --run_gmm'
-        }
+        def root = file(params.outdir).toAbsolutePath()
+        java.nio.file.Files.createDirectories(root.resolve('.pipeline'))
+        def engine = [python: file(params.python).toAbsolutePath().toString(),
+                      runtime: "${projectDir}/../scripts/pipeline_runtime.py",
+                      scripts: "${projectDir}/../scripts"]
+        def writerLock = MavedbCache.acquire(engine, root)
+        workflow.onComplete { writerLock.outputStream.close(); writerLock.waitFor() }
+        def prepared = MavedbCache.call(engine, ['prepare'], params as Map)
+        engine.request = prepared.request
+        def request = new groovy.json.JsonSlurper().parseText(file(prepared.request).text)
+        def enabled = request.enabled as Set
+        def results = Channel.empty()
+        def processed
+        def raw
+        def taxonomy
         if (params.processed_dir) {
-            if (!params.run_gmm) error '--processed_dir requires --run_gmm'
-            MAVEDB_GMM(Channel.value(file(params.processed_dir, checkIfExists: true)))
+            def resolved = MavedbCache.resolve([engine: engine, stage: 'process', inputs: [:]])
+            processed = Channel.value(resolved)
+        } else if (request.saved_processing) {
+            processed = Channel.value([path: request.saved_processing, stage: 'process'])
         } else {
-            MAVEDB_INGEST()
+            MAVEDB_INGEST(engine)
+            raw = MAVEDB_INGEST.out.result
+            results = results.mix(raw.map { [ingest: it.path] })
             if (!params.ingest_only) {
-                MAVEDB_TAXONOMY()
-                MAVEDB_PROCESS(
-                    MAVEDB_INGEST.out.bundle,
-                    MAVEDB_TAXONOMY.out.taxonomy,
-                    MAVEDB_TAXONOMY.out.source
-                )
-                if (params.run_gmm) MAVEDB_GMM(MAVEDB_PROCESS.out.bundle)
+                MAVEDB_TAXONOMY(engine)
+                taxonomy = MAVEDB_TAXONOMY.out.result
+                results = results.mix(taxonomy.map { [taxonomy: it.path] })
+                MAVEDB_PROCESS(engine, raw, taxonomy)
+                processed = MAVEDB_PROCESS.out.result
             }
         }
+        if (!params.ingest_only) {
+            results = results.mix(processed.map { [process: it.path] })
+            def tables
+            if (enabled.contains('tables')) {
+                MAVEDB_TABLES(engine, raw, taxonomy, processed)
+                tables = MAVEDB_TABLES.out.result
+                results = results.mix(tables.map { [tables: it.path] })
+            }
+            if (enabled.contains('gmm')) {
+                MAVEDB_GMM(engine, processed)
+                def fitted = MAVEDB_GMM.out.result
+                results = results.mix(fitted.map { [gmm: it.path] })
+                MAVEDB_MERGE(engine, fitted)
+                def merged = MAVEDB_MERGE.out.result
+                results = results.mix(merged.map { [merge: it.path] })
+                if (enabled.contains('reports')) {
+                    MAVEDB_REPORTS(engine, processed, merged)
+                    results = results.mix(MAVEDB_REPORTS.out.result.map { [reports: it.path] })
+                }
+            }
+            if (enabled.contains('qc')) {
+                MAVEDB_QC(engine, processed, tables)
+                results = results.mix(MAVEDB_QC.out.result.map { [qc: it.path] })
+            }
+        }
+        results.collect().map { values ->
+            def paths = [:]
+            values.each { paths.putAll(it) }
+            MavedbCache.call(engine, ['finish', '--request', engine.request], paths)
+        }.view { 'MaveDB results verified and published.' }
     }
 }
