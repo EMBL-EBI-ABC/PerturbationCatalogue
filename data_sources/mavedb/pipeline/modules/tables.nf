@@ -1,5 +1,5 @@
-process GENERATE_COMPATIBILITY_TABLES {
-    tag 'Raw-score compatibility tables'
+process GENERATE_MAVEDB_TABLES {
+    tag 'Derived MAVE tables'
     label 'mavedb_processing'
     cache false
 
@@ -14,7 +14,7 @@ process GENERATE_COMPATIBILITY_TABLES {
     script:
     """
     export PYTHONDONTWRITEBYTECODE=1
-    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote("${job.engine.scripts}/generate_compatibility_tables.py")} \
+    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote("${job.engine.scripts}/generate_tables.py")} \
         --input raw_bundle/mavedb_dump --processed processed \
         --taxonomy taxcat.dmp --output tables
     ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
@@ -42,8 +42,8 @@ workflow MAVEDB_TABLES {
          file("${job.inputs.taxonomy}/taxcat.dmp", checkIfExists: true),
          file(job.inputs.process, checkIfExists: true)]
     }
-    GENERATE_COMPATIBILITY_TABLES(jobs)
-    computed = GENERATE_COMPATIBILITY_TABLES.out.result.map { MavedbCache.result(it) }
+    GENERATE_MAVEDB_TABLES(jobs)
+    computed = GENERATE_MAVEDB_TABLES.out.result.map { MavedbCache.result(it) }
     ready = reused.mix(computed)
 
     emit:

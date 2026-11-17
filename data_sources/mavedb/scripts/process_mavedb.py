@@ -5,8 +5,8 @@ Read a Zenodo dump (main.json and csv/*.scores.csv), processing one score set at
 a time. Scores are not normalized. Standard deviations use the sample formula
 (n - 1), and missing output values are written as NA. If the local taxonomy
 cache is absent, the NCBI category dump is downloaded to data_sources/mavedb/tmp.
-Write scores.tsv and metadata.tsv, joined by dataset_id. Optional compatibility
-tables retain the original R singles/doubles/wide layout. No FASTA files are made.
+Write scores.tsv and metadata.tsv, joined by dataset_id. Derived MAVE
+tables include singles, doubles and wide summaries. No FASTA files are made.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ SOURCE_COLUMNS = (
     ]
 )
 TSV_TEXT_ESCAPES = str.maketrans({"\\": "\\\\", "\t": "\\t", "\r": "\\r", "\n": "\\n"})
-# Keep the combined R token for compatibility and match its components too.
+# Keep the combined R token for table_outputs and match its components too.
 WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=", "n.(=)", "n.=, n.(=)"}
 MAVE_WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=, n.(=)"}
 AA_3_TO_1 = dict(
@@ -847,7 +847,7 @@ def dataset_analysis(
     dataset: dict[str, object],
     scores: pd.DataFrame,
     categories: dict[str, list[tuple[int, pd.DataFrame]]],
-    compatibility: dict[str, TextIO],
+    table_outputs: dict[str, TextIO],
 ) -> dict[str, object]:
     """One dataset row with primary-analysis metrics and source target metadata."""
     row = dict(dataset["metadata"])
@@ -891,13 +891,13 @@ def dataset_analysis(
             target = targets[index]
             if category == "maves":
                 metrics, singles, wide = mave_analysis(subset, target)
-                if compatibility:
-                    write_tsv(singles, compatibility["singles"], header=False)
-                    write_tsv(wide, compatibility["wide"], header=False)
+                if table_outputs:
+                    write_tsv(singles, table_outputs["singles"], header=False)
+                    write_tsv(wide, table_outputs["wide"], header=False)
                     if metrics["multiple_mutations"]:
                         write_tsv(
                             make_doubles(subset, target),
-                            compatibility["doubles"],
+                            table_outputs["doubles"],
                             header=False,
                         )
             else:
@@ -992,12 +992,15 @@ def process_mavedb(
     *,
     scores_path: Path | None = None,
     taxonomy_path: Path | None = None,
-    compatibility_tables: bool = False,
+    tables: bool = True,
+    compatibility_tables: bool | None = None,
     audit: bool = False,
     ingest_manifest_path: Path | None = None,
     taxonomy_source: str | None = None,
 ) -> dict[str, int]:
-    """Publish two canonical tables, with the same dataset selection for both."""
+    """Publish canonical scores, metadata and derived MAVE tables."""
+    if compatibility_tables is not None:
+        tables = compatibility_tables  # Legacy Python keyword alias.
     metadata_path = resolve_metadata_path(input_path)
     scores_path = (
         scores_path if scores_path is not None else metadata_path.parent / "csv"
@@ -1033,8 +1036,8 @@ def process_mavedb(
                 (stage / "scores.tsv").open("w", encoding="utf-8", newline="")
             )
             write_tsv(pd.DataFrame(columns=SCORE_COLUMNS), score_handle)
-            compatibility = {}
-            if compatibility_tables:
+            table_outputs = {}
+            if tables:
                 directory = stage / "maves"
                 directory.mkdir()
                 for name, columns in [
@@ -1047,7 +1050,7 @@ def process_mavedb(
                             "w", encoding="utf-8", newline=""
                         )
                     )
-                    compatibility[name] = handle
+                    table_outputs[name] = handle
                     write_tsv(pd.DataFrame(columns=columns), handle)
             for index, score_file in enumerate(score_files, start=1):
                 dataset_id = score_file.name.removesuffix(".scores.csv").replace(
@@ -1080,9 +1083,9 @@ def process_mavedb(
                     audit_row["reason"] = "no_eligible_analysis_rows"
                     continue
                 scores["dataset_id"] = dataset_id
-                # The legacy name is internal to the optional R compatibility functions.
+                # Preserve the score_urn column used by the derived-table layout.
                 scores["score_urn"] = dataset_id
-                row = dataset_analysis(dataset, scores, categories, compatibility)
+                row = dataset_analysis(dataset, scores, categories, table_outputs)
                 prefixes = scores["source_prefix"].dropna().unique().tolist()
                 aliases = [prefix for prefix in prefixes if prefix != dataset_id]
                 if len(prefixes) == 1 and aliases:
@@ -1140,7 +1143,7 @@ def process_mavedb(
                 taxonomy_path,
                 taxonomy_source or taxonomy_path.resolve().as_uri(),
                 counts,
-                compatibility_tables,
+                tables,
             )
             output_names.append("processing_manifest.json")
         if not output_path.exists():
@@ -1161,7 +1164,7 @@ def process_mavedb(
             if category == "maves":
                 for name in ("singles.tsv", "doubles.tsv", "wide.tsv"):
                     destination = directory / name
-                    if compatibility_tables:
+                    if tables:
                         directory.mkdir(exist_ok=True)
                         os.replace(stage / "maves" / name, destination)
                     else:
@@ -1250,11 +1253,11 @@ def write_processing_manifest(
     taxonomy_path: Path,
     taxonomy_source: str,
     counts: dict[str, int],
-    compatibility_tables: bool,
+    tables: bool,
 ) -> None:
     """Record source, code, environment and output identities before publication."""
     files = ["scores.tsv", "metadata.tsv", "dataset_processing.tsv"]
-    if compatibility_tables:
+    if tables:
         files.extend(f"maves/{name}.tsv" for name in ("singles", "doubles", "wide"))
     manifest = {
         "schema_version": 1,
@@ -1273,7 +1276,7 @@ def write_processing_manifest(
                 name: version(name) for name in ("biopython", "numpy", "pandas")
             },
         },
-        "settings": {"audit": True, "compatibility_tables": compatibility_tables},
+        "settings": {"audit": True, "tables": tables},
         "counts": counts,
         "outputs": {
             name: {"path": name, **file_identity(output / name)} for name in files
@@ -1296,7 +1299,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help="Directory for scores.tsv, metadata.tsv and optional compatibility tables.",
+        help="Directory for scores.tsv, metadata.tsv and derived MAVE tables.",
     )
     parser.add_argument(
         "--scores", type=Path, help="Override the dump's csv/ directory."
@@ -1321,9 +1324,17 @@ def main() -> None:
         help="Also write dataset_processing.tsv with dataset selection reasons.",
     )
     parser.add_argument(
+        "--no-tables",
+        dest="tables",
+        action="store_false",
+        default=True,
+        help="Write canonical tables only; the pipeline generates derived tables in its separate tables stage.",
+    )
+    parser.add_argument(
         "--compatibility-tables",
+        dest="tables",
         action="store_true",
-        help="Also generate maves/singles.tsv, doubles.tsv and wide.tsv in the R layout.",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -1333,7 +1344,7 @@ def main() -> None:
             args.output,
             scores_path=args.scores,
             taxonomy_path=args.taxonomy,
-            compatibility_tables=args.compatibility_tables,
+            tables=args.tables,
             audit=args.audit,
             ingest_manifest_path=args.ingest_manifest,
             taxonomy_source=args.taxonomy_source,

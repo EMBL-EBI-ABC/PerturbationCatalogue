@@ -204,7 +204,15 @@ def prepare(p: dict[str, Any]) -> Path:
                 "--archive_sha256 must contain exactly 64 hexadecimal characters"
             )
         p["archive_sha256"] = p["archive_sha256"].lower()
-    enabled = {"ingest"} if p["ingest_only"] else {"ingest", "taxonomy", "process"}
+    enabled = (
+        {"ingest"}
+        if p["ingest_only"]
+        else (
+            {"process"}
+            if p.get("processed_dir")
+            else {"ingest", "taxonomy", "process", "tables"}
+        )
+    )
     for flag, names in (
         ("run_gmm", {"gmm", "merge"}),
         ("compatibility_tables", {"tables"}),
@@ -230,7 +238,7 @@ def prepare(p: dict[str, Any]) -> Path:
             raise CacheError("--processed_dir cannot be combined with --ingest_only")
         if selected & {"ingest", "taxonomy", "tables"} or "tables" in enabled:
             raise CacheError(
-                "--processed_dir cannot regenerate source stages or compatibility tables; supply the original archive instead"
+                "--processed_dir cannot regenerate source stages or derived tables; supply the original archive instead"
             )
         enabled -= {"ingest", "taxonomy"}
     p["enabled"] = sorted(enabled)
@@ -329,7 +337,10 @@ def adopt(
         canonical = Path(paths["process"])
         manifest_path = canonical / "processing_manifest.json"
         if manifest_path.is_file() and read_json(manifest_path).get("settings", {}).get(
-            "compatibility_tables"
+            "tables",
+            read_json(manifest_path)
+            .get("settings", {})
+            .get("compatibility_tables", False),
         ):
             manifest = adopt_processing(canonical)
             with tempfile.TemporaryDirectory(prefix="mavedb-adopt-tables-") as temp:
@@ -562,7 +573,7 @@ def finish(request: Path, paths: dict[str, str]) -> None:
     publications = {
         "ingest": "ingest/current",
         "process": "processed",
-        "tables": "compatibility",
+        "tables": "tables",
         "merge": "gmm",
         "qc": "qc",
         "reports": "reports",

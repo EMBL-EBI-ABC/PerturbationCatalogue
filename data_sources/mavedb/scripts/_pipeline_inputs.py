@@ -185,7 +185,7 @@ def validate_registered_sources(
 def reusable_processing(p: dict[str, Any], store: ResultStore) -> str | None:
     """Resolve completed canonical results before scheduling upstream stages.
 
-    Optional compatibility tables still require their matching raw snapshot.
+    Derived tables require their matching raw snapshot.
     Explicit source regeneration also goes through the ordinary stage workflow.
     """
     if (

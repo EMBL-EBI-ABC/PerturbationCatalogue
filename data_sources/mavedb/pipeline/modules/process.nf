@@ -16,7 +16,7 @@ process PROCESS_MAVEDB {
     ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.scripts + '/process_mavedb.py')} \
         --input raw_bundle/mavedb_dump --ingest-manifest raw_bundle/manifest.json \
         --taxonomy taxcat.dmp --taxonomy-source ${MavedbCache.quote(p.taxonomy ?: p.taxonomy_url)} \
-        --output processed
+        --no-tables --output processed
     ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
         --spec ${MavedbCache.quote(job.spec)} --output processed --require processing_manifest.json --require scores.tsv --require metadata.tsv --require dataset_processing.tsv > result.json
     """

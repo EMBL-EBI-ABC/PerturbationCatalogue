@@ -1,15 +1,16 @@
 # MaveDB Nextflow workflow
 
-This DSL2 workflow implements raw-data ingest, canonical processing, optional
-GMM fitting, compatibility tables, basic QC and per-study reports. Verified
-completed outputs are reused by default; regeneration requires `--rerun`.
+This DSL2 workflow implements raw-data ingest, canonical processing and
+singles/doubles/wide tables, plus optional GMM fitting, basic QC and per-study
+reports. Verified completed outputs are reused by default; regeneration requires
+`--rerun`.
 
 ```text
 pinned Zenodo ZIP / local ZIP -> ingest -> raw dump + manifest
                                              |
 local / downloaded taxonomy ---------> process -> scores + metadata + audit
                                              |                  |
-                        --compatibility_tables: tables          |
+                              tables (default)                  |
                                              |                  |
                                   --run_qc: basic QC             |
                                                                 |
@@ -34,7 +35,7 @@ staged file inputs, native outputs, resource labels, and reuse-or-execute routin
 | `modules/ingest.nf` | Download, validate and unpack the source archive |
 | `modules/taxonomy.nf` | Fetch or import the taxonomy snapshot |
 | `modules/process.nf` | Produce canonical scores, metadata and audit |
-| `modules/tables.nf` | Generate optional compatibility tables |
+| `modules/tables.nf` | Generate the default singles, doubles and wide tables |
 | `modules/gmm.nf` | Plan, fit and collect GMM batches |
 | `modules/merge.nf` | Package and merge completed fits |
 | `modules/qc.nf` | Generate basic QC |
@@ -85,8 +86,9 @@ by `scripts/download_zenodo.py`:
 nextflow run data_sources/mavedb/pipeline -profile local
 ```
 
-This runs canonical processing by default. Add `--ingest_only` to stop at the
-raw bundle without taxonomy acquisition or processing. Repeat the command to
+This runs canonical processing and the table stage by default. Add
+`--ingest_only` to stop at the raw bundle without taxonomy acquisition or
+processing. Repeat the command to
 reuse completed results; `-resume` is optional and does not control the durable
 result policy described below.
 
@@ -96,8 +98,9 @@ Keep the same `--outdir` to continue one saved analysis. Each stage validates
 its saved output hashes and the identities of the files it actually consumes.
 An unchanged invocation reuses completed outputs without fitting again, even
 after Nextflow's disposable work and task-cache directories have been removed.
-Missing requested stages are generated. Adding compatibility tables, QC or
-reports does not by itself invalidate completed fits.
+Missing default tables are generated, including when adopting older canonical
+results that did not contain them. Generating these tables, QC or reports does
+not by itself invalidate completed fits.
 
 ```bash
 # Reuse completed results and generate any missing requested GMM products.
@@ -108,7 +111,7 @@ nextflow run data_sources/mavedb/pipeline -profile local \
 nextflow run data_sources/mavedb/pipeline -profile local \
   --outdir /absolute/path/to/results --rerun merge
 
-# Add source compatibility tables and basic QC, reusing canonical data and fits.
+# Add basic QC, reusing the default tables, canonical data and fits.
 nextflow run data_sources/mavedb/pipeline -profile local \
   --outdir /absolute/path/to/results --run_qc
 
@@ -133,10 +136,10 @@ execution.
 | `ingest` | Verified, unpacked source archive | Default, or `--ingest_only` |
 | `taxonomy` | Taxonomy snapshot | Default except ingest-only/external processed input |
 | `process` | Canonical scores, metadata and audit | Default |
-| `tables` | Raw-score singles, doubles and wide compatibility tables | `--compatibility_tables` |
+| `tables` | Raw-score singles, doubles and wide tables | Default for raw-source runs except `--ingest_only` |
 | `gmm` | Frozen plan, complete batch fits and checked collection | `--run_gmm` |
 | `merge` | Packaged batches and merged GMM tables | `--run_gmm` |
-| `qc` | Basic source-score and dataset QC figures | `--run_qc` (also enables `tables`) |
+| `qc` | Basic source-score and dataset QC figures | `--run_qc` |
 | `reports` | Per-study GMM reports | `--run_reports` (also enables GMM products) |
 
 Fitting includes its existing model diagnostics. The separate `qc` stage is
@@ -163,7 +166,7 @@ available until a consistent replacement is ready. Concurrent writers to one
 output directory are rejected.
 
 The durable registry and immutable result generations live under
-`<outdir>/.pipeline/`. Published `ingest/current`, `processed`, `compatibility`,
+`<outdir>/.pipeline/`. Published `ingest/current`, `processed`, `tables`,
 `gmm`, `qc`, `reports`, and `references/taxonomy` paths are relative symlinks
 through `.pipeline/current` to an immutable publication view. Switching that
 single link makes a verified replacement result set visible atomically.
@@ -179,6 +182,10 @@ not require the old work directories or invoke the sampler. Pre-migration
 publication directories are preserved under `.pipeline/legacy/` when replaced
 with publication links. Unverifiable existing results require an explicit
 rerun; arbitrary file existence does not count as completion.
+
+Older processing manifests that recorded table generation under
+`settings.compatibility_tables` remain readable during checked adoption. A
+naming change alone does not require regeneration.
 
 The default URL is the February 2026 dump in versioned Zenodo record `18511521`;
 there is no automatic switch to a newer record version. Override it with
@@ -295,13 +302,15 @@ Before publishing, the processor verifies canonical score columns, unique
 metadata IDs, score-to-metadata joins, sequential `source_row` values from 1 to
 N per dataset, metadata row-count agreement, and audit coverage of every input
 score file. A failed check prevents the processed directory from being emitted.
-The raw ingest bundle is read-only. Compatibility tables are not generated by
-the canonical stage. Add `--compatibility_tables` to generate
-`<outdir>/compatibility/maves/{singles,doubles,wide}.tsv` independently. These
+The raw ingest bundle is read-only. The separate `tables` stage generates
+`<outdir>/tables/maves/{singles,doubles,wide}.tsv` by default. These
 tables aggregate raw source scores and are distinct from GMM-derived summaries.
-The stage reuses the processor's target selection, positional offsets and
-aggregation helpers, records its own completion manifest, and leaves canonical
-scores, metadata and their processing manifest unchanged.
+The stage invokes `scripts/generate_tables.py`, reuses the processor's target
+selection, positional offsets and aggregation helpers, records its own
+completion manifest, and leaves canonical
+scores, metadata and their processing manifest unchanged. The canonical stage
+passes `--no-tables` to `process_mavedb.py` so each product is generated only by
+its owning stage. Standalone processing generates these tables by default.
 
 The processor's `--ingest-manifest PATH` option links the raw provenance and
 automatically enables the dataset audit, validation, and processing manifest.
@@ -351,11 +360,13 @@ files change, explicitly refresh their snapshot with `--rerun process` (or
 running source processing. Include downstream selectors such as
 `--rerun process,gmm,merge` when their consumed data change.
 
-External processed input also supports GMM reports with `--run_reports`. Generating source
-compatibility tables or basic QC requires the matching raw archive and taxonomy;
-`--processed_dir` cannot be combined with `--compatibility_tables`, `--run_qc`
-or `ingest`, `taxonomy`, or `tables` reruns. `--ingest_only` cannot be combined with fitting or other
-analyses. Omitting optional analysis flags keeps ingest/processing behavior.
+External processed input also supports GMM reports with `--run_reports`. This
+downstream-only mode does not generate the normal source tables. Generating
+singles/doubles/wide tables or basic QC requires a raw-source run with the
+matching archive and taxonomy; `--processed_dir` cannot be combined with
+`--run_qc` or `ingest`, `taxonomy`, or `tables` reruns. `--ingest_only` cannot be
+combined with fitting or other analyses. Omitting optional analysis flags keeps
+the default ingest, canonical processing and table-generation behavior.
 
 The GMM stages use the existing `fit_gmm_batch.py` entry point:
 
@@ -472,9 +483,9 @@ separate saved analysis, or explicitly rerun the affected stages.
 
 ## Optional QC and reports
 
-Add `--run_qc` to generate basic source-score and dataset figures. This enables
-the separate compatibility-table stage because `analysis/mave_qc.py` requires
-`singles.tsv`; doubles and wide tables are not inputs to QC. Figures are
+Add `--run_qc` to generate basic source-score and dataset figures using the
+default table-stage outputs. `analysis/mave_qc.py` requires `singles.tsv`;
+doubles and wide tables are not inputs to QC. Figures are
 published at `<outdir>/qc/`. GMM fitting is not a dependency of basic QC.
 
 Add `--run_reports` to generate per-study reports from the packaged GMM model

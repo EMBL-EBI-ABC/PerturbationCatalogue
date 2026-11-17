@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate optional raw-score tables without replacing canonical processing."""
+"""Generate derived MAVE tables without replacing canonical processing."""
 
 from __future__ import annotations
 
@@ -88,10 +88,10 @@ def generate_tables(
         Path, (input_path, processed, taxonomy, output)
     )
     if output.exists():
-        raise FileExistsError(f"Compatibility-table output already exists: {output}")
+        raise FileExistsError(f"Derived-table output already exists: {output}")
     manifest_path = processed / "processing_manifest.json"
     if not manifest_path.is_file():
-        raise ValueError("Compatibility tables require processing_manifest.json")
+        raise ValueError("Derived tables require processing_manifest.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema_version") != 1:
         raise ValueError("Unsupported canonical processing manifest")
@@ -110,7 +110,7 @@ def generate_tables(
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix=".compatibility-tables-", dir=output.parent
+        prefix=".mavedb-tables-", dir=output.parent
     ) as temporary:
         staged = Path(temporary) / "tables"
         (staged / "maves").mkdir(parents=True)
@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         generate_tables(args.input, args.processed, args.taxonomy, args.output)
     except (OSError, ValueError, KeyError, pd.errors.ParserError) as error:
         parser.error(str(error))
-    LOGGER.info("Wrote compatibility tables to %s", args.output)
+    LOGGER.info("Wrote derived tables to %s", args.output)
     return 0
 
 

@@ -16,9 +16,10 @@ The ZIP archive contains:
 The [Nextflow pipeline](pipeline/README.md) implements raw-data ingest followed
 by canonical metadata/score processing. It accepts a pinned Zenodo download or
 local ZIP, validates and unpacks it, and processes it using an explicit taxonomy
-snapshot. Outputs include raw/processed provenance manifests and a dataset
-selection audit. Use `--ingest_only` to stop after ingest. Local setup, offline
-fixtures, reuse behavior and validation status are documented there. GMM
+snapshot. Default raw-source runs also generate singles, doubles and wide
+tables under `<outdir>/tables/maves/`. Outputs include raw/processed provenance
+manifests and a dataset selection audit. Use `--ingest_only` to stop after ingest.
+Local setup, offline fixtures, reuse behavior and validation status are documented there. GMM
 fitting is available with `--run_gmm`, including frozen batch plans, per-batch
 tasks and verified collection. Completed results are reused by default from
 durable storage under `<outdir>/.pipeline/`, independently of Nextflow work
@@ -28,11 +29,14 @@ all enabled stages. Changed inputs/settings or damaged saved outputs stop and
 require explicit reruns rather than silently refitting. Preserve the entire
 output directory, including its `.pipeline/` directory and publication symlinks.
 
-Optional `--compatibility_tables`, `--run_qc`, and `--run_reports` add source
-aggregate tables, basic QC figures and per-study GMM reports without repeating
-compatible completed fits. `--run_qc` also generates its required singles table;
-`--run_reports` enables GMM products if they do not yet exist. An interrupted
-GMM attempt reuses completed batches when continued without a new `--rerun gmm`.
+The default `tables` stage has its own cache, so generating missing tables or
+using `--rerun tables` does not repeat compatible completed fits. Optional
+`--run_qc` and `--run_reports` add basic QC figures and per-study GMM reports.
+QC uses the normal singles output; `--run_reports` enables GMM products if they
+do not yet exist. The downstream-only `--processed_dir` mode imports canonical
+scores and metadata for GMM/report work and does not generate source tables.
+An interrupted GMM attempt reuses completed batches when continued without a
+new `--rerun gmm`.
 Biological validation benchmarks and homology remain separate commands.
 
 ## GMM fitting
@@ -499,7 +503,8 @@ directory. `--input` accepts the dump directory, its `csv/` directory, the paren
 containing `mavedb_dump/`, or `main.json` directly. `--scores` can override the CSV
 directory.
 
-The default output contains only these two tables, joined by **`dataset_id`**:
+The default output contains these two canonical tables, joined by **`dataset_id`**,
+and the singles, doubles and wide tables described below:
 
 | File | Grain | Contents |
 | --- | --- | --- |
@@ -510,7 +515,10 @@ Pass `--audit` to also write `dataset_processing.tsv`, containing one record per
 input score file with inclusion/exclusion status and reason, and validate the
 canonical outputs before publication. Nextflow calls this processor directly
 with `--ingest-manifest PATH`, enabling the audit, output checks and provenance
-manifest together. That mode requires an explicit `--taxonomy` input.
+manifest together. That mode requires an explicit `--taxonomy` input. Its
+canonical stage passes `--no-tables` because the separate default `tables` stage
+owns those products; standalone processing writes them unless `--no-tables` is
+requested.
 
 ### Dataset selection and complete scores
 
@@ -604,9 +612,9 @@ counts and general score summary count each original variant once.
 UniProt offset or source coordinates. All derived target fields follow the
 source columns, alongside the existing derived statistics.
 
-### Optional development compatibility tables
+### Singles, doubles and wide tables
 
-For standalone processing, add `--compatibility-tables` to also generate:
+Standalone processing generates these standard outputs by default:
 
 ```text
 maves/singles.tsv
@@ -614,19 +622,25 @@ maves/doubles.tsv
 maves/wide.tsv
 ```
 
-These retain the R layout, including its legacy `score_urn` column. The canonical
-tables use only `dataset_id`. Singles are averaged by mutation after applying
+These tables identify datasets with `score_urn`; the canonical tables use
+`dataset_id`. Singles are averaged by mutation after applying
 known UniProt offsets. Doubles include calls with at most two mutations from
 score sets containing multiple mutants, including single mutants and WT
 controls. Wide columns list the 20 amino acids, then `del` and `stop`, within
 each score/count/standard-deviation block. Synonymous scores are selected by
 reference amino-acid column name and do not depend on column order.
 
-In Nextflow, add `--compatibility_tables` to generate these outputs separately
-under `<outdir>/compatibility/maves/`, using the matching raw source, taxonomy
-and canonical selection. It reuses the same aggregation helpers and does not
-rewrite canonical tables or invalidate existing GMM fits. Use `--rerun tables`
-to regenerate this stage explicitly.
+Pass `--no-tables` for canonical-only standalone processing. The former
+`--compatibility-tables` flag remains accepted as a historical alias; it is no
+longer needed to request these outputs.
+
+In Nextflow, the separate default `tables` stage generates these outputs under
+`<outdir>/tables/maves/`, using the matching raw source, taxonomy and canonical
+selection through `scripts/generate_tables.py`. It reuses the same aggregation
+helpers and does not rewrite canonical tables or invalidate existing GMM fits.
+Use `--rerun tables` to regenerate this stage explicitly. Raw-source runs adopt
+or generate missing tables automatically. External `--processed_dir` runs
+bypass this stage because they do not supply its raw-source inputs.
 
 ### Per-study GMM summary reports
 
@@ -705,10 +719,10 @@ Run the focused regression tests with:
 
 The Python port of `ot_perturbation_catalog_mave_experiments/analysis/mave_qc.R`
 reads the canonical `scores.tsv` and `metadata.tsv`, plus the required
-`maves/singles.tsv` compatibility table. Generate the latter with the standalone
-`process_mavedb.py --compatibility-tables` option, or use Nextflow's `--run_qc`
-to generate missing compatibility tables and QC independently of GMM fitting.
-The Nextflow figures are published under `<outdir>/qc/`.
+`maves/singles.tsv` table. Standalone processing writes this table by default;
+Nextflow's raw-source runs publish it at `<outdir>/tables/maves/singles.tsv`.
+Use `--run_qc` to add QC independently of GMM fitting. The Nextflow figures are
+published under `<outdir>/qc/`.
 
 ```bash
 .venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
@@ -748,10 +762,11 @@ from target-specific comparisons rather than duplicating their score rows.
 
 The new tables are staged before replacing existing outputs. A successful run
 removes the processor's obsolete category-specific `full.tsv`, `meta.tsv` and
-`meta_columns.tsv` files, plus compatibility files when the flag is absent.
+`meta_columns.tsv` files. When `--no-tables` is requested, old singles, doubles
+and wide outputs are removed to match the requested product set.
 Unrelated files in the output directory are preserved. The old `extract_*.py`
-commands are deprecated aliases to this processor: they now write both tables
-and accept an output **directory**, not an individual CSV filename.
+commands are deprecated aliases to this processor: they now write the canonical
+tables and accept an output **directory**, not an individual CSV filename.
 
 The script caches NCBI's `categories.dmp` as `tmp/taxcat.dmp`, downloading it from
 `https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxcat.tar.gz` when absent. Use

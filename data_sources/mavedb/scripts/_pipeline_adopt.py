@@ -160,7 +160,9 @@ def adopt_processing(path: Path) -> dict[str, Any]:
         raise ValueError("Unsupported processing manifest")
     outputs = manifest.get("outputs")
     required = {"scores.tsv", "metadata.tsv", "dataset_processing.tsv"}
-    if manifest.get("settings", {}).get("compatibility_tables"):
+    if manifest.get("settings", {}).get(
+        "tables", manifest.get("settings", {}).get("compatibility_tables", False)
+    ):
         required.update(f"maves/{name}.tsv" for name in ("singles", "doubles", "wide"))
     if not isinstance(outputs, dict) or not required.issubset(outputs):
         raise ValueError("Processing manifest is missing required outputs")

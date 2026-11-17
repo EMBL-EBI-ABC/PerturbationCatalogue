@@ -14,7 +14,7 @@ include { MAVEDB_REPORTS } from './modules/reports'
 workflow {
     if (params.help) {
         log.info '''
-MaveDB pipeline: reuse completed outputs by default.
+MaveDB pipeline: generate normal output tables; reuse completed results by default.
 
 nextflow run data_sources/mavedb/pipeline -profile local [options]
 
@@ -24,8 +24,7 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --processed_dir PATH     Existing scores.tsv/metadata.tsv for GMM/reports
   --ingest_only            Stop after ingest
   --run_gmm                Enable GMM fitting and merging
-  --compatibility_tables   Enable raw-score singles/doubles/wide tables
-  --run_qc                 Enable basic QC and required compatibility tables
+  --run_qc                 Enable basic QC
   --run_reports            Enable per-study reports and GMM dependencies
   --rerun STAGES           Comma-separated stage names, or all enabled stages
                           ingest,taxonomy,process,tables,gmm,merge,qc,reports

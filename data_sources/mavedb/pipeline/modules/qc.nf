@@ -29,10 +29,10 @@ workflow MAVEDB_QC {
     tables
 
     main:
-    decisions = processed.combine(tables).map { canonical, compatibility ->
+    decisions = processed.combine(tables).map { canonical, derived ->
         MavedbCache.resolve([
             engine: engine, stage: 'qc',
-            inputs: [process: canonical.path, tables: compatibility.path]
+            inputs: [process: canonical.path, tables: derived.path]
         ])
     }
     reused = decisions.filter { it.path != null }
