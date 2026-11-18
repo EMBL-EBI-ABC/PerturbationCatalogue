@@ -22,12 +22,16 @@ manifests and a dataset selection audit. Use `--ingest_only` to stop after inges
 Local setup, offline fixtures, reuse behavior and validation status are documented there. GMM
 fitting is available with `--run_gmm`, including frozen batch plans, per-batch
 tasks and verified collection. Completed results are reused by default from
-durable storage under `<outdir>/.pipeline/`, independently of Nextflow work
+ordinary stage directories under `<outdir>/`, independently of Nextflow work
 directories and `-resume`. Use `--rerun merge` to repackage fits,
 `--rerun gmm,merge` to refit and merge, or `--run_gmm --rerun all` to regenerate
 all enabled stages. Changed inputs/settings or damaged saved outputs stop and
 require explicit reruns rather than silently refitting. Preserve the entire
-output directory, including its `.pipeline/` directory and publication symlinks.
+output directory, including each stage's `pipeline_manifest.json` and the small
+root-level `pipeline_state.json`. Fitted collections are in `gmm-fit/`; packaged
+batch and merged results are in `gmm/`. There is no hidden data store or symlink
+publication layer. Existing `.pipeline/` outputs require the verified migration
+described in the pipeline README before the old directory is removed.
 
 The default `tables` stage has its own cache, so generating missing tables or
 using `--rerun tables` does not repeat compatible completed fits. Optional

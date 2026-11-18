@@ -20,8 +20,8 @@ local / downloaded taxonomy ---------> process -> scores + metadata + audit
 ```
 
 Taxonomy acquisition remains independent of ingest and processor code. The
-workflow passes exact durable result paths between stages; published paths are
-convenient views of a consistent result set. Biological validation benchmarks,
+workflow passes exact stage-output paths between stages. Each stage writes its
+current result directly below the output root. Biological validation benchmarks,
 homology analysis, other reference acquisition, and cloud/database loading
 remain separate commands or future pipeline stages.
 
@@ -43,9 +43,9 @@ staged file inputs, native outputs, resource labels, and reuse-or-execute routin
 
 `lib/MavedbCache.groovy` provides the shared interface to the Python cache policy.
 `pipeline_runtime.py` resolves reusable results, registers successful producer
-outputs, and publishes a consistent result set. It does not execute scientific
+outputs, and checks consistency across the saved result set. It does not execute scientific
 commands. Producer scripts validate their own data contracts; registration
-checks the module's required files and records the immutable output inventory.
+checks the module's required files and records the output inventory and hashes.
 Add or change a scientific command in its `.nf` module, keeping shared cache
 policy independent of how the command runs.
 
@@ -159,29 +159,74 @@ outputs. A registered result with missing or corrupt files is an error requiring
 an explicit rerun; it is not treated as a cache miss that authorizes fitting.
 
 When regenerated upstream files change downstream inputs, the pipeline stops
-before publishing an inconsistent combination and lists affected selectors,
+before declaring the result set consistent and lists affected selectors,
 such as `--rerun gmm,merge,reports`. Completed regeneration work remains
-checkpointed for the next invocation. The preceding published result set stays
-available until a consistent replacement is ready. Concurrent writers to one
-output directory are rejected.
+checkpointed for the next invocation. Each successful stage replaces its own
+previous result; downstream directories may still contain results from earlier
+inputs until their explicit reruns finish. There is no global atomic replacement
+of multiple stages. Concurrent writers to one output directory are rejected.
 
-The durable registry and immutable result generations live under
-`<outdir>/.pipeline/`. Published `ingest/current`, `processed`, `tables`,
-`gmm`, `qc`, `reports`, and `references/taxonomy` paths are relative symlinks
-through `.pipeline/current` to an immutable publication view. Switching that
-single link makes a verified replacement result set visible atomically.
-Preserve or transfer the **whole output directory**, including
-`.pipeline` and symlinks. Deleting `.pipeline` removes the durable cache;
-deleting Nextflow work/cache does not. Older generations are retained, so allow
-space for explicit reruns. There is no automatic garbage collection.
+Results live in ordinary directories: `ingest/current/`, `references/taxonomy/`,
+`processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, and `reports/`.
+`gmm-plan/` holds the current frozen plan and code; `gmm-batches/batch<N>/`
+holds completed checkpoints for that attempt. Each stage directory contains
+`pipeline_manifest.json`, identifying its inputs, settings, required outputs and
+hashes. Root-level `pipeline_state.json` records current stage registrations and
+unfinished attempts, `pipeline_requests/` holds small execution specifications,
+and `pipeline_publication.json` summarizes the last consistent result set.
+There is no `.pipeline/` data directory or symlink publication layer.
+
+```text
+<outdir>/
+├── ingest/current/            # raw dump and ingest provenance
+├── references/taxonomy/       # saved taxonomy snapshot
+├── processed/                # canonical scores, metadata and audit
+├── tables/                   # raw-score singles, doubles and wide tables
+├── gmm-plan/                 # current frozen plan and fitting code
+├── gmm-batches/batch<N>/      # completed batches of the current attempt
+├── gmm-fit/                  # verified collected fitting outputs
+├── gmm/                      # packaged batches and merged tables
+├── qc/                       # when requested
+├── reports/                  # when requested
+├── pipeline_state.json
+├── pipeline_requests/
+└── pipeline_publication.json
+```
+
+Stage replacement uses a temporary staging directory and a rollback copy during
+promotion. A failed replacement restores the previous stage. After a successful
+replacement, the previous result is removed; automatic version history is not
+retained. Preserve or transfer the **whole output directory**, including the
+manifests and root bookkeeping. Deleting Nextflow work/cache does not remove
+the reusable stage results. Use another `--outdir` or an external backup to keep
+an older analysis.
 
 Existing canonical processing outputs and packaged GMM results in the output
 directory can be adopted after their manifests, receipts, hashes and coverage
 checks pass. GMM adoption verifies retained batches and merged tables and does
-not require the old work directories or invoke the sampler. Pre-migration
-publication directories are preserved under `.pipeline/legacy/` when replaced
-with publication links. Unverifiable existing results require an explicit
+not require the old work directories or invoke the sampler. Unverifiable existing results require an explicit
 rerun; arbitrary file existence does not count as completion.
+
+For an output directory made by the earlier hidden-registry implementation, use
+the explicit migration command before continuing:
+
+```bash
+# Inspect the changes; dry-run is the default.
+.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
+  --outdir /absolute/path/to/results
+
+# Materialize direct stage directories and verify their contents.
+.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
+  --outdir /absolute/path/to/results --apply --verify
+
+# After verification, remove the superseded hidden-registry data.
+.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
+  --outdir /absolute/path/to/results --apply --verify --remove-legacy
+```
+
+Migration verifies saved hashes and preserves source identities; it does not run
+processing or fitting. The legacy directory remains until removal is explicitly
+requested. It is a migration backup, not ongoing version history.
 
 Older processing manifests that recorded table generation under
 `settings.compatibility_tables` remain readable during checked adoption. A
@@ -436,12 +481,12 @@ CmdStan and compiled cache must be accessible on execution nodes. Use
 `--gmm_max_parallel` to bound fitting concurrency (default 2), and
 `--gmm_scratch true` to use Nextflow task scratch when available. Sampling and
 likelihood temporaries live under that task's working directory. Allow ample
-temporary disk space, preserve `.pipeline/` for continuation, and benchmark full-size studies
+temporary disk space, preserve the stage directories and root bookkeeping for continuation, and benchmark full-size studies
 before increasing concurrency. Slurm execution has not been exercised here.
 
 Outputs are published beneath `<outdir>/gmm/`: `batch_plan.json`,
-`completion.json`, and per-batch receipts in `batches/`. This published directory
-is a relative link to a durable generation. Native tables and QC
+`completion.json`, and per-batch receipts in `batches/`. This is an ordinary
+directory containing the current packaged result. Native tables and QC
 are under `maves/<model>/` (or `smoke/maves/<model>/` for smoke):
 
 ```text
@@ -472,13 +517,15 @@ contains the corresponding tables concatenated in batch-index order, with one
 header per file. The batch `score.tsv` files retain `dataset_id`; the merged
 `score.tsv` omits that redundant column. `completion.json` records each merged
 table's row count, size, and SHA-256. The frozen planning checkpoint and code
-snapshot are retained separately in the durable registry.
+snapshot live at `<outdir>/gmm-plan/`; current completed fitting checkpoints are
+at `<outdir>/gmm-batches/batch<N>/`. The verified collected fitting bundle lives
+at `<outdir>/gmm-fit/` and can regenerate `gmm/` without fitting again.
 The top-level `gmm/batches/batch<N>.json` files are receipts; the
 `maves/<model>/batches/batch<N>/` directories contain the batch data. The
 packaging process is separate from model fitting. Use `--rerun merge` after a
 packaging change to rebuild it from verified retained fits. Consumers should use
-the emitted bundle and its manifest rather than combine files from different
-result generations. Use a new `--outdir` to retain another model/cohort as a
+the emitted bundle and its manifest rather than combine stages whose input
+identities differ. Use a new `--outdir` to retain another model/cohort as a
 separate saved analysis, or explicitly rerun the affected stages.
 
 ## Optional QC and reports
@@ -497,12 +544,12 @@ compatible saved inputs.
 
 ## Outputs and checks
 
-The default output root is `data_sources/mavedb/output/nextflow`. The registry
-under `.pipeline/` tracks the durable raw bundle, published through
-`<outdir>/ingest/current/`:
+The default output root is `data_sources/mavedb/output/nextflow`. The raw bundle
+is stored directly in the ordinary directory `<outdir>/ingest/current/`:
 
 ```text
 <outdir>/ingest/current/
+├── pipeline_manifest.json
 ├── manifest.json
 └── mavedb_dump/
     ├── main.json
@@ -521,12 +568,13 @@ ingestion time in UTC, relative dump paths, and metadata/score/count-file totals
 The download task separately checks the Zenodo MD5 and advertised byte size
 before extraction.
 Archive identities remain recorded in the raw manifest. One `--outdir`
-represents a saved analysis; explicit regeneration creates new retained result
-generations rather than overwriting the old stage files.
+represents a saved analysis; explicit regeneration replaces the selected stage
+after its new result passes validation.
 The downloaded ZIP remains in the persistent download cache; a task-local copy
 is also kept in Nextflow's work directory. Local input archives remain at their
 original location. Allow disk space for the ZIP, the extracted work copy, durable
-results and retained generations. Do not edit durable or published bundles.
+results and temporary staging/rollback copies during stage replacement. Do not
+edit completed stage outputs or their manifests.
 
 The ingest task rejects unsafe/duplicate ZIP paths, links and special files,
 corrupt archives, ambiguous or invalid metadata, duplicate metadata score-set
@@ -557,7 +605,7 @@ reference and allows matching processed results to be reused. Processing should
 only be regenerated when an input update is intended. Policy failures include
 the underlying Python diagnostic in the Nextflow exception and log.
 
-On 2026-11-17, the durable-reuse implementation passed 97 local pipeline
+On 2026-11-17, the earlier durable-reuse implementation passed 97 local pipeline
 contract tests and four offline Nextflow 26.10.5 integration tests. The latter
 exercise automatic reuse after deleting native work/cache, selective and all-stage
 reruns with `-resume`, QC, packaged-GMM adoption, and interrupted batch continuation.
@@ -565,8 +613,11 @@ A bounded real flexible GMM smoke fit, explicit refit with `-resume`, report-onl
 generation, and subsequent no-task reuse also completed. The stage-module
 refactor passed the four integration cases and a fresh bounded GMM-to-report
 run. Slurm and full-size
-production runs remain untested for this implementation. Old result generations
-are retained; there is no automatic garbage collection.
+production runs remain untested for this implementation. On 2026-11-18, the
+direct-directory layout passed eight offline Nextflow integration cases covering
+reuse, explicit reruns, basic QC, GMM adoption and interrupted batch continuation,
+policy diagnostics, and saved taxonomy reuse without the original work files.
+It retains only the current result for each stage.
 
 The pinned 1.8 GB Zenodo archive completed an ingest run on 2026-11-06 before
 this checksum integration. Its SHA-256 matched the published raw-bundle

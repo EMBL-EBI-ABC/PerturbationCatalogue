@@ -1,7 +1,7 @@
 """Durable, checked stage results independent of Nextflow task work directories.
 
 Callers decide stage dependencies and whether execution is authorized. This module
-only stores immutable completed results, rejects incompatible reuse, and tracks
+stores completed results in ordinary output folders, rejects incompatible reuse, and tracks
 unfinished attempts. A missing result is different from a damaged saved result.
 """
 
@@ -20,8 +20,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-MANIFEST_NAME = ".pipeline-result.json"
-SCHEMA_VERSION = 1
+MANIFEST_NAME = "pipeline_manifest.json"
+SCHEMA_VERSION = 2
+PUBLIC_STAGE_PATHS = {
+    "ingest": "ingest/current",
+    "taxonomy": "references/taxonomy",
+    "process": "processed",
+    "tables": "tables",
+    "gmm": "gmm-fit",
+    "merge": "gmm",
+    "qc": "qc",
+    "reports": "reports",
+}
 
 
 class CacheError(ValueError):
@@ -85,23 +95,36 @@ def _safe_relative(value: Any) -> Path:
     return path
 
 
-class ResultStore:
-    """Completed stage generations below an analysis output directory.
+def stage_path(stage: str) -> Path:
+    """Return a stage's ordinary output folder, independent of attempt IDs."""
+    _stage_name(stage)
+    if stage in PUBLIC_STAGE_PATHS:
+        return Path(PUBLIC_STAGE_PATHS[stage])
+    if re.fullmatch(r"gmm-plan-[a-f0-9]{32}", stage):
+        return Path("gmm-plan")
+    batch = re.fullmatch(r"gmm-batch-[a-f0-9]{32}-([1-9][0-9]*)", stage)
+    if batch:
+        return Path("gmm-batches") / f"batch{batch[1]}"
+    raise CacheError(f"Unknown pipeline stage: {stage!r}")
 
-    ``lock`` is a nonblocking whole-run writer lock. Individual state operations
-    use a different blocking lock, allowing independent worker processes to
-    register completed batches without losing each other's updates.
+
+class ResultStore:
+    """Checked stage outputs in real directories below an analysis output root.
+
+    The small root-level index records completion and pending attempts. Each
+    stage owns one stable directory with a completion manifest. ``lock`` guards
+    a complete run; individual state operations use a separate worker lock.
     """
 
     def __init__(self, root: Path):
         self.root = Path(root).resolve()
-        self.directory = self.root / ".pipeline"
-        self.state_path = self.directory / "state.json"
+        self.directory = self.root
+        self.state_path = self.root / "pipeline_state.json"
 
     @contextmanager
     def lock(self) -> Iterator[None]:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with (self.directory / "run.lock").open("a+") as handle:
+        self.root.mkdir(parents=True, exist_ok=True)
+        with (self.root / ".pipeline-run.lock").open("a+") as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
@@ -115,17 +138,30 @@ class ResultStore:
 
     @contextmanager
     def _state_lock(self) -> Iterator[None]:
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with (self.directory / "state.lock").open("a+") as handle:
+        self.root.mkdir(parents=True, exist_ok=True)
+        with (self.root / ".pipeline-state.lock").open("a+") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
             try:
                 yield
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
+    def _migration_error(self) -> CacheError:
+        return CacheError(
+            f"Legacy pipeline links or .pipeline storage found in {self.root}. "
+            "Migrate these outputs before running the pipeline: "
+            ".venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py "
+            f"--outdir {str(self.root)!r}"
+        )
+
     def _state(self) -> dict[str, Any]:
+        legacy = self.root / ".pipeline"
         if not self.state_path.exists():
+            if legacy.exists() or legacy.is_symlink():
+                raise self._migration_error()
             return {"schema_version": SCHEMA_VERSION, "results": {}, "pending": {}}
+        if self.state_path.is_symlink():
+            raise self._migration_error()
         state = _read_json(self.state_path)
         if (
             state.get("schema_version") != SCHEMA_VERSION
@@ -137,13 +173,24 @@ class ResultStore:
             )
         return state
 
+    def _destination(self, stage: str) -> Path:
+        relative = stage_path(stage)
+        destination = self.root / relative
+        current = destination
+        while current != self.root:
+            if current.is_symlink():
+                raise self._migration_error()
+            current = current.parent
+        return destination
+
     def begin(self, stage: str, rerun: bool = False) -> str:
-        """Return an unfinished attempt ID, creating a fresh one for reruns."""
-        _stage_name(stage)
+        """Return a persisted unfinished attempt ID; rerun starts a fresh one."""
+        stage_path(stage)
         with self._state_lock():
             state = self._state()
+            self._destination(stage)
             attempt = state["pending"].get(stage)
-            if attempt is not None and (
+            if stage in state["pending"] and (
                 not isinstance(attempt, str)
                 or not re.fullmatch(r"[a-f0-9]{32}", attempt)
             ):
@@ -155,40 +202,61 @@ class ResultStore:
             return attempt
 
     def pending(self, stage: str) -> str | None:
-        """Read an unfinished attempt without starting one."""
-        _stage_name(stage)
+        stage_path(stage)
         with self._state_lock():
-            attempt = self._state()["pending"].get(stage)
-        if attempt is not None and (
-            not isinstance(attempt, str) or not re.fullmatch(r"[a-f0-9]{32}", attempt)
-        ):
-            raise CacheError(f"Invalid unfinished attempt for {stage}")
+            pending = self._state()["pending"]
+            attempt = pending.get(stage)
+            if stage in pending and (
+                not isinstance(attempt, str)
+                or not re.fullmatch(r"[a-f0-9]{32}", attempt)
+            ):
+                raise CacheError(f"Invalid unfinished attempt for {stage}")
         return attempt
 
-    def record(self, stage: str) -> dict[str, Any] | None:
-        """Read completion metadata cheaply; use get to verify output content."""
-        _stage_name(stage)
-        with self._state_lock():
-            results = self._state()["results"]
-            if stage not in results:
-                return None
-            entry = results[stage]
+    def _record(self, stage: str, state: dict[str, Any]) -> dict[str, Any] | None:
+        destination = self._destination(stage)
+        results = state["results"]
+        if stage not in results:
+            return None
+        entry = results[stage]
+        advice = f"Restore the saved result or explicitly use --rerun {stage}"
         if not isinstance(entry, dict):
-            raise CacheError(f"Damaged saved {stage} record; use --rerun {stage}")
-        relative = _safe_relative(entry.get("path"))
-        if relative.parent != Path(".pipeline") / "results" / stage:
-            raise CacheError(f"Invalid saved {stage} result location")
-        manifest_path = self.root / relative / MANIFEST_NAME
+            raise CacheError(f"Damaged saved {stage} record. {advice}")
+        if not isinstance(entry.get("generation"), str) or not re.fullmatch(
+            r"[a-f0-9]{32}", entry["generation"]
+        ):
+            raise CacheError(f"Invalid saved {stage} attempt identity. {advice}")
+        if _safe_relative(entry.get("path")) != stage_path(stage):
+            raise CacheError(f"Invalid saved {stage} result location. {advice}")
+        if not destination.is_dir():
+            raise CacheError(f"Saved {stage} result directory is missing. {advice}")
+        manifest_path = destination / MANIFEST_NAME
         try:
             if file_identity(manifest_path) != entry.get("manifest"):
-                raise CacheError(
-                    f"Saved {stage} completion record differs; use --rerun {stage}"
-                )
+                raise CacheError(f"Saved {stage} completion record differs. {advice}")
         except OSError as error:
             raise CacheError(
-                f"Cannot read saved {stage} completion record; use --rerun {stage}"
+                f"Cannot read saved {stage} completion record. {advice}"
             ) from error
-        return _read_json(manifest_path)
+        manifest = _read_json(manifest_path)
+        if (
+            manifest.get("schema_version") != SCHEMA_VERSION
+            or manifest.get("stage") != stage
+            or manifest.get("generation") != entry.get("generation")
+            or manifest.get("result_path") != stage_path(stage).as_posix()
+            or manifest.get("status") != "completed"
+            or not isinstance(manifest.get("settings"), dict)
+            or not isinstance(manifest.get("inputs"), dict)
+            or not isinstance(manifest.get("outputs"), dict)
+        ):
+            raise CacheError(f"Invalid saved {stage} completion record. {advice}")
+        return manifest
+
+    def record(self, stage: str) -> dict[str, Any] | None:
+        """Read completion metadata cheaply; use get to verify all outputs."""
+        stage_path(stage)
+        with self._state_lock():
+            return self._record(stage, self._state())
 
     def get(
         self,
@@ -196,66 +264,46 @@ class ResultStore:
         settings: dict[str, Any] | None = None,
         inputs: dict[str, Any] | None = None,
     ) -> Path | None:
-        """Return checked output paths or None only when never registered."""
-        _stage_name(stage)
+        """Return checked outputs or None only when this stage was never saved."""
+        stage_path(stage)
         with self._state_lock():
-            results = self._state()["results"]
-            if stage not in results:
+            manifest = self._record(stage, self._state())
+            if manifest is None:
                 return None
-            entry = results[stage]
-        advice = f"Restore the saved result or explicitly use --rerun {stage}"
-        if not isinstance(entry, dict):
-            raise CacheError(f"Damaged saved {stage} record. {advice}")
-        relative = _safe_relative(entry.get("path"))
-        expected_parent = Path(".pipeline") / "results" / stage
-        if relative.parent != expected_parent:
-            raise CacheError(f"Invalid saved {stage} result location. {advice}")
-        result = self.root / relative
-        manifest_path = result / MANIFEST_NAME
-        try:
-            if not result.is_dir() or result.is_symlink():
-                raise CacheError(f"Saved {stage} result directory is missing. {advice}")
-            if file_identity(manifest_path) != entry.get("manifest"):
-                raise CacheError(f"Saved {stage} completion record differs. {advice}")
-            manifest = _read_json(manifest_path)
-            if (
-                manifest.get("schema_version") != SCHEMA_VERSION
-                or manifest.get("stage") != stage
-                or manifest.get("generation") != relative.name
-                or manifest.get("status") != "completed"
-                or not isinstance(manifest.get("settings"), dict)
-                or not isinstance(manifest.get("inputs"), dict)
-                or not isinstance(manifest.get("outputs"), dict)
-            ):
-                raise CacheError(f"Invalid saved {stage} completion record. {advice}")
-            if any(path.is_symlink() for path in result.rglob("*")):
+            result = self._destination(stage)
+            advice = f"Restore the saved result or explicitly use --rerun {stage}"
+            try:
+                if any(path.is_symlink() for path in result.rglob("*")):
+                    raise CacheError(
+                        f"Saved {stage} result contains a symbolic link. {advice}"
+                    )
+                actual = {
+                    path.relative_to(result).as_posix()
+                    for path in result.rglob("*")
+                    if path.is_file() and path != result / MANIFEST_NAME
+                }
+                if actual != set(manifest["outputs"]):
+                    raise CacheError(
+                        f"Saved {stage} output inventory differs. {advice}"
+                    )
+                for name, identity in manifest["outputs"].items():
+                    if file_identity(result / _safe_relative(name)) != identity:
+                        raise CacheError(
+                            f"Saved {stage} output differs: {name}. {advice}"
+                        )
+            except OSError as error:
                 raise CacheError(
-                    f"Saved {stage} result contains a symbolic link. {advice}"
+                    f"Cannot validate saved {stage} outputs: {error}. {advice}"
+                ) from error
+            if settings is not None and manifest["settings"] != settings:
+                raise CacheError(
+                    f"Settings differ from saved {stage} result; use --rerun {stage} or a new --outdir"
                 )
-            actual = {
-                path.relative_to(result).as_posix()
-                for path in result.rglob("*")
-                if path.is_file() and path != manifest_path
-            }
-            if actual != set(manifest["outputs"]):
-                raise CacheError(f"Saved {stage} output inventory differs. {advice}")
-            for name, identity in manifest["outputs"].items():
-                output = result / _safe_relative(name)
-                if output.is_symlink() or file_identity(output) != identity:
-                    raise CacheError(f"Saved {stage} output differs: {name}. {advice}")
-        except OSError as error:
-            raise CacheError(
-                f"Cannot validate saved {stage} outputs: {error}. {advice}"
-            ) from error
-        if settings is not None and manifest["settings"] != settings:
-            raise CacheError(
-                f"Settings differ from saved {stage} result; use --rerun {stage} or a new --outdir"
-            )
-        if inputs is not None and manifest["inputs"] != inputs:
-            raise CacheError(
-                f"Inputs differ from saved {stage} result; use --rerun {stage}"
-            )
-        return result
+            if inputs is not None and manifest["inputs"] != inputs:
+                raise CacheError(
+                    f"Inputs differ from saved {stage} result; use --rerun {stage}"
+                )
+            return result
 
     def commit(
         self,
@@ -264,41 +312,50 @@ class ResultStore:
         settings: dict[str, Any],
         inputs: dict[str, Any],
     ) -> Path:
-        """Copy a verified producer output and promote it only after completion.
+        """Replace one real output directory and its index, with rollback.
 
-        Callers validate the stage's scientific/file contract before committing.
-        Source symlinks are dereferenced so results survive removal of task work.
-        Previous generations are retained if copying or state promotion fails.
+        Stage producers validate their own contracts before registration. The
+        temporary backup is removed after success; no historical output copies
+        or versioned directories are retained.
         """
-        _stage_name(stage)
+        relative = stage_path(stage)
         source = Path(source)
         if not source.is_dir():
             raise CacheError(f"Stage {stage} output directory does not exist: {source}")
-        # Check serializability before expensive copying or any persistent mutation.
-        json.dumps({"settings": settings, "inputs": inputs}, allow_nan=False)
         if not isinstance(settings, dict) or not isinstance(inputs, dict):
             raise CacheError("Stage settings and input identities must be objects")
+        json.dumps({"settings": settings, "inputs": inputs}, allow_nan=False)
         with self._state_lock():
             state = self._state()
-            generation = state["pending"].get(stage) or uuid.uuid4().hex
+            destination = self._destination(stage)
+            if destination.exists() and not destination.is_dir():
+                raise CacheError(f"Stage output path is not a directory: {destination}")
+            if destination.parent.resolve().is_relative_to(source.resolve()):
+                raise CacheError(
+                    "Stage output source cannot contain its destination parent"
+                )
+            generation = state["pending"].get(stage, uuid.uuid4().hex)
             if not isinstance(generation, str) or not re.fullmatch(
                 r"[a-f0-9]{32}", generation
             ):
                 raise CacheError(f"Invalid unfinished attempt for {stage}")
-            parent = self.directory / "results" / stage
-            parent.mkdir(parents=True, exist_ok=True)
-            destination = parent / generation
-            # A checkpoint may have survived a failed state promotion. Never
-            # overwrite it; another immutable generation is cheap and unambiguous.
-            if destination.exists():
-                generation = uuid.uuid4().hex
-                destination = parent / generation
-            with tempfile.TemporaryDirectory(
-                prefix=".staging-", dir=parent
-            ) as temporary:
-                staged = Path(temporary) / "result"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            workspace = Path(
+                tempfile.mkdtemp(
+                    prefix=f".{destination.name}-staging-", dir=destination.parent
+                )
+            )
+            cleanup_workspace = True
+            try:
+                staged = workspace / "result"
+                backup = workspace / "previous"
+                previous_state = workspace / "pipeline_state.previous.json"
+                had_state = self.state_path.exists()
+                if had_state:
+                    shutil.copyfile(self.state_path, previous_state)
                 shutil.copytree(source, staged)
-                (staged / MANIFEST_NAME).unlink(missing_ok=True)
+                for name in (MANIFEST_NAME, ".pipeline-result.json"):
+                    (staged / name).unlink(missing_ok=True)
                 outputs = {
                     path.relative_to(staged).as_posix(): file_identity(path)
                     for path in sorted(staged.rglob("*"))
@@ -311,6 +368,7 @@ class ResultStore:
                     "status": "completed",
                     "stage": stage,
                     "generation": generation,
+                    "result_path": relative.as_posix(),
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "settings": settings,
                     "inputs": inputs,
@@ -318,11 +376,55 @@ class ResultStore:
                     "outputs": outputs,
                 }
                 _write_json(staged / MANIFEST_NAME, manifest)
-                staged.rename(destination)
-            state["results"][stage] = {
-                "path": destination.relative_to(self.root).as_posix(),
-                "manifest": file_identity(destination / MANIFEST_NAME),
-            }
-            state["pending"].pop(stage, None)
-            _write_json(self.state_path, state)
-        return destination
+                promoted = False
+                try:
+                    if destination.exists():
+                        destination.rename(backup)
+                    staged.rename(destination)
+                    promoted = True
+                    # Attempt-specific fitting keys share stable output slots.
+                    # Remove superseded keys so no index entry points at another
+                    # attempt's completion manifest.
+                    state["results"] = {
+                        name: entry
+                        for name, entry in state["results"].items()
+                        if name == stage
+                        or not isinstance(entry, dict)
+                        or entry.get("path") != relative.as_posix()
+                    }
+                    state["results"][stage] = {
+                        "path": relative.as_posix(),
+                        "generation": generation,
+                        "manifest": file_identity(destination / MANIFEST_NAME),
+                    }
+                    state["pending"].pop(stage, None)
+                    _write_json(self.state_path, state)
+                except (OSError, ValueError, KeyboardInterrupt, SystemExit) as error:
+                    try:
+                        if promoted:
+                            shutil.rmtree(destination)
+                        if backup.exists():
+                            backup.rename(destination)
+                        if had_state:
+                            os.replace(previous_state, self.state_path)
+                        else:
+                            self.state_path.unlink(missing_ok=True)
+                    except (
+                        OSError,
+                        ValueError,
+                        KeyboardInterrupt,
+                        SystemExit,
+                    ) as rollback_error:
+                        cleanup_workspace = False
+                        raise CacheError(
+                            f"Could not register {stage} or restore its previous output: {rollback_error}. "
+                            f"Recovery files are preserved at {workspace}. "
+                            f"Restore any 'previous' directory to {destination} and any "
+                            f"'pipeline_state.previous.json' file to {self.state_path} before retrying. "
+                            f"Original registration failure: {error}"
+                        ) from rollback_error
+                    raise
+            finally:
+                if cleanup_workspace:
+                    shutil.rmtree(workspace)
+            return destination

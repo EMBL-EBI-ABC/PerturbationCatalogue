@@ -154,12 +154,7 @@ def validate_registered_sources(
         else:
             # Legacy processing knows the archive hash, rather than a complete
             # per-file raw inventory. Verify the small registered source receipt.
-            receipt = (
-                store.directory
-                / "results/ingest"
-                / ingest["generation"]
-                / "manifest.json"
-            )
+            receipt = store.root / ingest["result_path"] / "manifest.json"
             try:
                 if file_identity(receipt) != ingest["outputs"].get("manifest.json"):
                     raise CacheError(

@@ -37,7 +37,7 @@ See pipeline/README.md for all fitting/resource settings and migration.
 '''
     } else {
         def root = file(params.outdir).toAbsolutePath()
-        java.nio.file.Files.createDirectories(root.resolve('.pipeline'))
+        java.nio.file.Files.createDirectories(root)
         def engine = [python: file(params.python).toAbsolutePath().toString(),
                       runtime: "${projectDir}/../scripts/pipeline_runtime.py",
                       scripts: "${projectDir}/../scripts"]

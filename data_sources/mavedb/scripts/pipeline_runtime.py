@@ -90,7 +90,8 @@ def identity(path: Path) -> dict[str, Any]:
     return {
         p.relative_to(path).as_posix(): file_identity(p)
         for p in sorted(path.rglob("*"))
-        if p.is_file() and p.name != ".pipeline-result.json"
+        if p.is_file()
+        and p.name not in {".pipeline-result.json", "pipeline_manifest.json"}
     }
 
 
@@ -267,7 +268,7 @@ def prepare(p: dict[str, Any]) -> Path:
             p["gmm_attempt"] = store.begin("gmm", rerun="gmm" in p["selected"])
         else:
             p["gmm_attempt"] = store.record("gmm")["settings"].get("attempt", "adopted")
-    path = Path(p["outdir"]) / ".pipeline/requests" / f"{p['run_id']}.json"
+    path = Path(p["outdir"]) / "pipeline_requests" / f"{p['run_id']}.json"
     write_json(path, p)
     return path
 
@@ -283,6 +284,8 @@ def stage_key(stage: str, p: dict[str, Any], index: int | None = None) -> str:
 def adopt(
     stage: str, p: dict[str, Any], store: ResultStore, paths: dict[str, str]
 ) -> None:
+    if stage not in {"taxonomy", "process", "gmm", "tables"}:
+        return
     from data_sources.mavedb.scripts._pipeline_adopt import adopt_processing, unpack_gmm
 
     root = Path(p["outdir"])
@@ -511,7 +514,7 @@ def resolve(
         "settings": config,
         "index": index,
     }
-    spec_path = Path(p["outdir"]) / ".pipeline/requests" / p["run_id"] / f"{key}.json"
+    spec_path = Path(p["outdir"]) / "pipeline_requests" / p["run_id"] / f"{key}.json"
     write_json(spec_path, spec)
     return {"spec": str(spec_path), "stage": stage}
 
@@ -611,63 +614,25 @@ def finish(request: Path, paths: dict[str, str]) -> None:
             + ". Continue with --rerun "
             + ",".join(stale)
         )
-    # Stable published paths point into immutable durable generations. A failed run
-    # leaves these previous views intact; checkpointed stages remain available.
+    # Stages already own their ordinary output directories. Completion of the
+    # workflow validates their lineage; no data-copying publication layer exists.
     root = Path(p["outdir"])
-    publications = {
-        "ingest": "ingest/current",
-        "process": "processed",
-        "tables": "tables",
-        "merge": "gmm",
-        "qc": "qc",
-        "reports": "reports",
-        "taxonomy": "references/taxonomy",
-    }
-    view = root / ".pipeline/views" / p["run_id"]
-    view.mkdir(parents=True)
-    for stage in publications:
-        if stage in current:
-            (view / stage).symlink_to(
-                os.path.relpath(current[stage], view), target_is_directory=True
-            )
     write_json(
-        view / "publication.json",
+        root / "pipeline_publication.json",
         {
+            "schema_version": 2,
             "run_id": p["run_id"],
-            "results": {k: os.path.relpath(v, root) for k, v in current.items()},
+            "status": "completed",
+            "results": {
+                name: os.path.relpath(path, root) for name, path in current.items()
+            },
+            "manifests": {
+                name: file_identity(Path(path) / "pipeline_manifest.json")
+                for name, path in current.items()
+                if (Path(path) / "pipeline_manifest.json").is_file()
+            },
         },
     )
-    publications["publication"] = ".pipeline/publication.json"
-    for stage, relative in publications.items():
-        if stage not in current and stage != "publication":
-            continue
-        destination = root / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists() and not destination.is_symlink():
-            # Preserve pre-migration directories rather than overwriting their files.
-            backup = root / ".pipeline/legacy" / relative
-            backup.parent.mkdir(parents=True, exist_ok=True)
-            if backup.exists():
-                raise CacheError(
-                    f"Cannot preserve existing publication twice: {destination}"
-                )
-            destination.rename(backup)
-        temporary = destination.with_name(f".{destination.name}-{p['run_id']}")
-        target = (
-            root
-            / ".pipeline/current"
-            / ("publication.json" if stage == "publication" else stage)
-        )
-        temporary.symlink_to(
-            os.path.relpath(target, destination.parent),
-            target_is_directory=stage != "publication",
-        )
-        temporary.replace(destination)
-    temporary = root / ".pipeline" / f'.current-{p["run_id"]}'
-    temporary.symlink_to(
-        os.path.relpath(view, temporary.parent), target_is_directory=True
-    )
-    temporary.replace(root / ".pipeline/current")
 
 
 def main() -> None:
