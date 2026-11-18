@@ -29,6 +29,7 @@ PUBLIC_STAGE_PATHS = {
     "tables": "tables",
     "gmm": "gmm-fit",
     "merge": "gmm",
+    "validation": "validation",
     "qc": "qc",
     "reports": "reports",
 }

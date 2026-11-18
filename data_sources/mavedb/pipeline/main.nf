@@ -10,6 +10,7 @@ include { MAVEDB_GMM } from './modules/gmm'
 include { MAVEDB_MERGE } from './modules/merge'
 include { MAVEDB_QC } from './modules/qc'
 include { MAVEDB_REPORTS } from './modules/reports'
+include { MAVEDB_VALIDATION } from './modules/validation'
 
 workflow {
     if (params.help) {
@@ -26,10 +27,17 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --run_gmm                Enable GMM fitting and merging
   --run_qc                 Enable basic QC
   --run_reports            Enable per-study reports and GMM dependencies
+  --run_validation         Validate GMM fits against local ClinVar/GWAS TSVs
+  --validation_clinvar PATH ClinVar reference TSV (required with validation)
+  --validation_gwas PATH   GWAS reference TSV (required with validation)
   --rerun STAGES           Comma-separated stage names, or all enabled stages
-                          ingest,taxonomy,process,tables,gmm,merge,qc,reports
+                          ingest,taxonomy,process,tables,gmm,merge,qc,reports,validation
   --gmm_profile NAME       production (default) or bounded smoke
   --gmm_model NAME         modes (default) or flexible
+  --validation_formats FORMATS
+                           Comma-separated plot formats: png,pdf (default)
+  --validation_dpi N       Raster plot resolution (default 150)
+  --validation_no_plots    Write validation tables without figures
   --gmm_study_ids IDS      Comma-separated study IDs or params-file list
   -resume                  Optional native task resume; --rerun still forces work
 
@@ -86,6 +94,10 @@ See pipeline/README.md for all fitting/resource settings and migration.
                 if (enabled.contains('reports')) {
                     MAVEDB_REPORTS(engine, processed, merged)
                     results = results.mix(MAVEDB_REPORTS.out.result.map { [reports: it.path] })
+                }
+                if (enabled.contains('validation')) {
+                    MAVEDB_VALIDATION(engine, processed, merged)
+                    results = results.mix(MAVEDB_VALIDATION.out.result.map { [validation: it.path] })
                 }
             }
             if (enabled.contains('qc')) {

@@ -412,6 +412,26 @@ packages are available. R is not required to run the Python workflow. As with
 the existing MaveDB suite, these tests live in the repository's ignored local
 `tests/` directory.
 
+### Nextflow validation stage
+
+The Nextflow pipeline can run the same validation as an optional `validation`
+stage. Enable it with `--run_validation`; this also enables GMM fitting and
+merge, reusing compatible saved products. Supply explicit local files with
+`--validation_clinvar` and `--validation_gwas`. These are the two variant TSVs
+described above (`mave_clinvar_variants.tsv` and `mave_gwas_variants.tsv`). The
+pipeline stages the supplied files into its task workspace and records their
+content identities for reuse. It does not download or prepare either validation
+reference; preparation remains a separate step using the existing
+`scripts/process_variant_data.py` workflow.
+
+The stage publishes its eight TSV tables and `manifest.json` under
+`<outdir>/validation/`. Plots are written under `validation/figures/` by
+default. `--validation_formats` accepts comma-separated `png`, `pdf`, or both
+(default `png,pdf`); `--validation_dpi` sets raster resolution (default `150`),
+and `--validation_no_plots` skips figures. Unchanged inputs, options and
+implementation reuse the completed stage. Changes to references, options or
+implementation require `--rerun validation` to recompute it.
+
 ## Homology comparisons and ClinVar evaluation
 
 `analysis/mave_homology.py` consumes native fitted GMM batches, canonical

@@ -1,9 +1,9 @@
 # MaveDB Nextflow workflow
 
 This DSL2 workflow implements raw-data ingest, canonical processing and
-singles/doubles/wide tables, plus optional GMM fitting, basic QC and per-study
-reports. Verified completed outputs are reused by default; regeneration requires
-`--rerun`.
+singles/doubles/wide tables, plus optional GMM fitting, basic QC, per-study
+reports and GMM validation. Verified completed outputs are reused by default;
+regeneration requires `--rerun`.
 
 ```text
 pinned Zenodo ZIP / local ZIP -> ingest -> raw dump + manifest
@@ -15,15 +15,19 @@ local / downloaded taxonomy ---------> process -> scores + metadata + audit
                                   --run_qc: basic QC             |
                                                                 |
                   --run_gmm: frozen plan -> batch fits -> collection -> merge
+                                                              |          |
+                                              --run_reports: reports     |
                                                                          |
-                                                     --run_reports: reports
+                 --run_validation + local references: validation
 ```
 
 Taxonomy acquisition remains independent of ingest and processor code. The
 workflow passes exact stage-output paths between stages. Each stage writes its
-current result directly below the output root. Biological validation benchmarks,
-homology analysis, other reference acquisition, and cloud/database loading
-remain separate commands or future pipeline stages.
+current result directly below the output root. Validation consumes explicit
+local ClinVar and GWAS TSVs; preparation and acquisition of these validation
+references remain separate from this workflow. Taxonomy acquisition is a
+pipeline stage. Homology analysis and cloud/database loading remain separate
+commands.
 
 ## Module layout
 
@@ -40,6 +44,7 @@ staged file inputs, native outputs, resource labels, and reuse-or-execute routin
 | `modules/merge.nf` | Package and merge completed fits |
 | `modules/qc.nf` | Generate basic QC |
 | `modules/reports.nf` | Generate per-study reports |
+| `modules/validation.nf` | Compare fitted scores with controls, ClinVar and GWAS |
 
 `lib/MavedbCache.groovy` provides the shared interface to the Python cache policy.
 `pipeline_runtime.py` resolves reusable results, registers successful producer
@@ -141,6 +146,7 @@ execution.
 | `merge` | Packaged batches and merged GMM tables | `--run_gmm` |
 | `qc` | Basic source-score and dataset QC figures | `--run_qc` |
 | `reports` | Per-study GMM reports | `--run_reports` (also enables GMM products) |
+| `validation` | Control, ClinVar and GWAS validation tables and optional plots | `--run_validation` (also enables GMM and merge) |
 
 Fitting includes its existing model diagnostics. The separate `qc` stage is
 basic source-data QC, rather than a rerun of those diagnostics.
@@ -160,14 +166,14 @@ an explicit rerun; it is not treated as a cache miss that authorizes fitting.
 
 When regenerated upstream files change downstream inputs, the pipeline stops
 before declaring the result set consistent and lists affected selectors,
-such as `--rerun gmm,merge,reports`. Completed regeneration work remains
+such as `--rerun gmm,merge,reports,validation`. Completed regeneration work remains
 checkpointed for the next invocation. Each successful stage replaces its own
 previous result; downstream directories may still contain results from earlier
 inputs until their explicit reruns finish. There is no global atomic replacement
 of multiple stages. Concurrent writers to one output directory are rejected.
 
 Results live in ordinary directories: `ingest/current/`, `references/taxonomy/`,
-`processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, and `reports/`.
+`processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, `reports/` and `validation/`.
 `gmm-plan/` holds the current frozen plan and code; `gmm-batches/batch<N>/`
 holds completed checkpoints for that attempt. Each stage directory contains
 `pipeline_manifest.json`, identifying its inputs, settings, required outputs and
@@ -188,6 +194,7 @@ There is no `.pipeline/` data directory or symlink publication layer.
 ├── gmm/                      # packaged batches and merged tables
 ├── qc/                       # when requested
 ├── reports/                  # when requested
+├── validation/               # when requested
 ├── pipeline_state.json
 ├── pipeline_requests/
 └── pipeline_publication.json
@@ -541,6 +548,28 @@ products, reusing completed fits and merged tables where available. If those
 products have never been generated, fitting is required to create them. Use
 `--rerun qc` or `--rerun reports` to regenerate only the selected figures using
 compatible saved inputs.
+
+Add `--run_validation` to compare fitted scores with internal controls and
+local ClinVar/GWAS references. This enables GMM fitting and merge when their
+compatible saved outputs are unavailable. Supply both `--validation_clinvar`
+and `--validation_gwas` with local TSV paths; reference acquisition and
+preparation are outside this workflow. The current reference preparation is
+documented in the MaveDB guide. Nextflow stages these files into the task and
+publishes results at `<outdir>/validation/`.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `--validation_formats` | `png,pdf` | Figure formats; comma-separated `png`, `pdf`, or both |
+| `--validation_dpi` | `150` | Raster figure resolution |
+| `--validation_no_plots` | `false` | Write the eight TSV tables and manifest without figures |
+
+Validation reuses its saved result when the reference contents, canonical
+scores/metadata, merged GMM model, options and implementation are unchanged.
+Changes to any of these require `--rerun validation`; use it to recompute
+against the selected local references. The stage registers `controls.tsv`,
+`clinvar_matches.tsv`, `gwas_matches.tsv`,
+`ctrl_roc.tsv`, `clinvar_roc.tsv`, `gwas_roc.tsv`, `auc_summary.tsv`,
+`counts.tsv` and `manifest.json`.
 
 ## Outputs and checks
 

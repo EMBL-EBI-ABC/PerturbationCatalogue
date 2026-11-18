@@ -8,6 +8,7 @@ checkpoints each successful task, and publishes only a consistent result set.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -32,18 +33,79 @@ from data_sources.mavedb.scripts.download_taxonomy import (
 
 LOGGER = logging.getLogger(__name__)
 SCRIPTS = Path(__file__).resolve().parent
-STAGES = {"ingest", "taxonomy", "process", "tables", "gmm", "merge", "qc", "reports"}
+STAGES = {
+    "ingest",
+    "taxonomy",
+    "process",
+    "tables",
+    "gmm",
+    "merge",
+    "validation",
+    "qc",
+    "reports",
+}
 PUBLIC = {"gmm-plan": "gmm", "gmm-batch": "gmm"}
+
+# Keep these headers aligned with _validation_inputs.py. The policy checks the
+# small headers with the standard library before Nextflow can schedule fitting.
+VALIDATION_CLINVAR_REQUIRED = {
+    "uniprotAccessions",
+    "clinicalSignificances",
+    "aminoAcidPosition",
+    "referenceAminoAcid",
+    "alternateAminoAcid",
+}
+VALIDATION_GWAS_REQUIRED = {
+    "studyId",
+    "beta",
+    "pValueMantissa",
+    "pValueExponent",
+    "uniprotAccessions",
+    "aminoAcidPosition",
+    "referenceAminoAcid",
+    "alternateAminoAcid",
+}
+VALIDATION_IMPLEMENTATION = (
+    Path(__file__).resolve(),
+    Path(__file__).resolve().parent / "_pipeline_cache.py",
+    REPO / "data_sources/mavedb/pipeline/modules/validation.nf",
+    REPO / "data_sources/mavedb/analysis/mave_gmm_validation.py",
+    REPO / "data_sources/mavedb/analysis/_validation_inputs.py",
+    REPO / "data_sources/mavedb/analysis/_validation_core.py",
+    REPO / "data_sources/mavedb/analysis/_validation_plots.py",
+    REPO / "data_sources/mavedb/analysis/_homology_inputs.py",
+    REPO / "data_sources/mavedb/analysis/_homology_clinvar.py",
+    REPO / "data_sources/mavedb/analysis/_reference_io.py",
+    REPO / "data_sources/mavedb/analysis/mave_summary/data.py",
+    REPO / "data_sources/mavedb/analysis/_mave_qc.py",
+    REPO / "data_sources/mavedb/scripts/process_mavedb.py",
+)
 
 
 def stage_error(stage: str, store: ResultStore, error: Exception) -> CacheError:
     descendants = {
-        "ingest": ["process", "tables", "gmm", "merge", "qc", "reports"],
-        "taxonomy": ["process", "tables", "gmm", "merge", "qc", "reports"],
-        "process": ["tables", "gmm", "merge", "qc", "reports"],
+        "ingest": [
+            "process",
+            "tables",
+            "gmm",
+            "merge",
+            "validation",
+            "qc",
+            "reports",
+        ],
+        "taxonomy": [
+            "process",
+            "tables",
+            "gmm",
+            "merge",
+            "validation",
+            "qc",
+            "reports",
+        ],
+        "process": ["tables", "gmm", "merge", "validation", "qc", "reports"],
         "tables": ["qc"],
-        "gmm": ["merge", "reports"],
-        "merge": ["reports"],
+        "gmm": ["merge", "validation", "reports"],
+        "merge": ["validation", "reports"],
     }
     affected = [stage]
     for name in descendants.get(stage, []):
@@ -145,6 +207,17 @@ def settings(stage: str, p: dict[str, Any]) -> dict[str, Any]:
         return gmm_configuration(p) | {
             "fail_on_study_error": p["gmm_fail_on_study_error"]
         }
+    if stage == "validation":
+        no_plots = bool(p.get("validation_no_plots", False))
+        formats = p.get("validation_formats", ["png", "pdf"])
+        return {
+            "reference_paths": {
+                name: p[f"validation_{name}"] for name in ("clinvar", "gwas")
+            },
+            "formats": [] if no_plots else list(dict.fromkeys(formats)),
+            "dpi": int(p.get("validation_dpi", 150)),
+            "no_plots": no_plots,
+        }
     return {}
 
 
@@ -170,10 +243,111 @@ def dependencies(stage: str, paths: dict[str, str]) -> dict[str, Any]:
     if stage == "reports":
         # Report metadata is separate from fitting inputs; record both explicitly.
         add("merged", Path(paths["merge"]))
+    if stage == "validation":
+        for name in ("scores.tsv", "metadata.tsv"):
+            add(name, Path(paths["process"]) / name)
+        add("merge", Path(paths["merge"]))
+        for name, required in (
+            ("clinvar", VALIDATION_CLINVAR_REQUIRED),
+            ("gwas", VALIDATION_GWAS_REQUIRED),
+        ):
+            reference = _validate_validation_reference(
+                Path(paths[name]), name, required
+            )
+            found[name] = file_identity(reference)
+        found["implementation"] = {
+            path.relative_to(REPO).as_posix(): file_identity(path)
+            for path in VALIDATION_IMPLEMENTATION
+        }
     return found
 
 
+def _validate_validation_reference(path: Path, name: str, required: set[str]) -> Path:
+    """Check a local reference TSV's header and return its resolved file path."""
+    path = Path(path).expanduser()
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise CacheError(f"--validation_{name} file does not exist: {path}") from error
+    if not resolved.is_file():
+        raise CacheError(f"--validation_{name} must be a regular TSV file: {resolved}")
+    try:
+        if resolved.stat().st_size == 0:
+            raise CacheError(f"--validation_{name} is empty: {resolved}")
+        with resolved.open("r", encoding="utf-8-sig", newline="") as handle:
+            header = next(csv.reader(handle, delimiter="\t"), None)
+    except (OSError, UnicodeError, csv.Error) as error:
+        raise CacheError(
+            f"Cannot read --validation_{name} TSV header at {resolved}: {error}"
+        ) from error
+    if not header:
+        raise CacheError(f"--validation_{name} has no TSV header: {resolved}")
+    if len(header) != len(set(header)):
+        raise CacheError(f"--validation_{name} has duplicate TSV column names")
+    missing = required - set(header)
+    if missing:
+        raise CacheError(
+            f"--validation_{name} is missing required TSV columns: "
+            + ", ".join(sorted(missing))
+        )
+    return resolved
+
+
+def _prepare_validation(p: dict[str, Any]) -> None:
+    """Normalize validation options and reject missing or malformed references."""
+    for name, required in (
+        ("clinvar", VALIDATION_CLINVAR_REQUIRED),
+        ("gwas", VALIDATION_GWAS_REQUIRED),
+    ):
+        value = p.get(f"validation_{name}")
+        if not isinstance(value, (str, os.PathLike)) or not str(value).strip():
+            raise CacheError(f"--run_validation requires --validation_{name} local TSV")
+        p[f"validation_{name}"] = str(
+            _validate_validation_reference(Path(value), name, required)
+        )
+
+    raw_formats = p.get("validation_formats", ["png", "pdf"])
+    if isinstance(raw_formats, str):
+        formats = [item.strip() for item in raw_formats.split(",") if item.strip()]
+    elif isinstance(raw_formats, (list, tuple)):
+        formats = [str(item).strip() for item in raw_formats if str(item).strip()]
+    else:
+        raise CacheError("--validation_formats must be a list of png and/or pdf")
+    if not formats or set(formats) - {"png", "pdf"}:
+        raise CacheError("--validation_formats must contain png and/or pdf")
+    p["validation_formats"] = list(dict.fromkeys(formats))
+    try:
+        dpi = int(p.get("validation_dpi", 150))
+    except (TypeError, ValueError) as error:
+        raise CacheError("--validation_dpi must be a positive integer") from error
+    if dpi < 1:
+        raise CacheError("--validation_dpi must be a positive integer")
+    p["validation_dpi"] = dpi
+    p["validation_no_plots"] = _boolean_option(
+        p.get("validation_no_plots", False), "--validation_no_plots"
+    )
+
+
+def _boolean_option(value: Any, option: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no", ""}:
+            return False
+    raise CacheError(f"{option} must be a boolean value")
+
+
 def prepare(p: dict[str, Any]) -> Path:
+    p["run_validation"] = _boolean_option(
+        p.get("run_validation", False), "--run_validation"
+    )
     rerun = p.get("rerun") or ""
     if not isinstance(rerun, (str, list)):
         raise CacheError("--rerun requires a stage name, comma-separated names, or all")
@@ -219,6 +393,7 @@ def prepare(p: dict[str, Any]) -> Path:
     )
     for flag, names in (
         ("run_gmm", {"gmm", "merge"}),
+        ("run_validation", {"gmm", "merge", "validation"}),
         ("compatibility_tables", {"tables"}),
         ("run_qc", {"tables", "qc"}),
         ("run_reports", {"gmm", "merge", "reports"}),
@@ -227,7 +402,7 @@ def prepare(p: dict[str, Any]) -> Path:
             enabled |= names
     if selected != {"all"}:
         enabled |= selected
-    if enabled & {"gmm", "merge", "reports"}:
+    if enabled & {"gmm", "merge", "reports", "validation"}:
         enabled |= {"gmm", "merge"}
     if "reports" in enabled:
         enabled.add("process")
@@ -245,6 +420,8 @@ def prepare(p: dict[str, Any]) -> Path:
                 "--processed_dir cannot regenerate source stages or derived tables; supply the original archive instead"
             )
         enabled -= {"ingest", "taxonomy"}
+    if "validation" in enabled:
+        _prepare_validation(p)
     p["enabled"] = sorted(enabled)
     p["selected"] = sorted(enabled if selected == {"all"} else selected)
     p["run_id"] = uuid.uuid4().hex
@@ -568,7 +745,15 @@ def finish(request: Path, paths: dict[str, str]) -> None:
         if stage not in current and store.record(stage) is not None:
             current[stage] = str(store.get(stage))
     stale = []
-    for stage in ("process", "tables", "gmm", "merge", "qc", "reports"):
+    for stage in (
+        "process",
+        "tables",
+        "gmm",
+        "merge",
+        "validation",
+        "qc",
+        "reports",
+    ):
         record = store.record(stage)
         if record is None:
             continue
@@ -590,6 +775,18 @@ def finish(request: Path, paths: dict[str, str]) -> None:
                     name: file_identity(Path(current["process"]) / name)
                     for name in ("scores.tsv", "metadata.tsv")
                 }
+            elif stage == "validation":
+                validation_paths = dict(current)
+                if "validation" in p.get("enabled", []):
+                    for name in ("clinvar", "gwas"):
+                        if p.get(f"validation_{name}"):
+                            validation_paths[name] = p[f"validation_{name}"]
+                else:
+                    reference_paths = record["settings"].get("reference_paths", {})
+                    for name in ("clinvar", "gwas"):
+                        if name not in validation_paths and reference_paths.get(name):
+                            validation_paths[name] = reference_paths[name]
+                actual = dependencies(stage, validation_paths)
             else:
                 actual = dependencies(stage, current)
             # The plan is an internal fitting checkpoint, not a dependency of a completed collection.
@@ -601,10 +798,10 @@ def finish(request: Path, paths: dict[str, str]) -> None:
     if stale:
         # Include transitive descendants so the diagnostic gives a complete next command.
         for parent, children in (
-            ("process", ["tables", "gmm", "qc", "reports"]),
+            ("process", ["tables", "gmm", "qc", "reports", "validation"]),
             ("tables", ["qc"]),
-            ("gmm", ["merge", "reports"]),
-            ("merge", ["reports"]),
+            ("gmm", ["merge", "reports", "validation"]),
+            ("merge", ["reports", "validation"]),
         ):
             if parent in stale:
                 stale.extend(s for s in children if store.record(s) and s not in stale)
