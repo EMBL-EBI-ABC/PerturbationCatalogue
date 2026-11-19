@@ -1,11 +1,13 @@
 # DWH Pipeline — Cloud Build Configuration
 #
-# Runs the data pipeline stages sequentially:
+# Runs the data pipeline with independent BigQuery release preparation fanned
+# out after dbt; Postgres and Elasticsearch publication remain ordered:
 #   1. reference load   (Open Targets target parquet → BQ reference table)
 #   2. dbt run          (BQ source → BQ final tables)
 #   3. bq_to_postgres   (BQ final tables → Postgres)
-#   4. bq_to_es         (BQ summary tables → Elasticsearch)
-#   5. release artifacts (clustered BQ staging → parallel Cloud Run tasks)
+#   4. bq_to_es         (BQ summary tables → Elasticsearch, after Postgres)
+#   5. release-stage    (clustered BQ staging, alongside Postgres)
+#   6. release artifacts (private run-scoped artifacts, alongside Postgres/ES)
 #
 # Triggered via: ./trigger_pipeline.sh [--suppress-datasets id1,id2,...]
 #
@@ -103,7 +105,6 @@ steps:
           --bq-location "$_BQ_LOCATION"
           --pg-conn "$_PG_CONN_INTERNAL"
           --gcs-bucket "$_GCLOUD_TMP_BUCKET"
-          --drop-and-recreate-indexes
         )
         if [ -n "$_FORCE_DATASET_IDS" ]; then
           pg_args+=(--force-dataset-ids "$_FORCE_DATASET_IDS")
@@ -132,6 +133,7 @@ steps:
   # Step 5: Create clustered staging tables and the task manifest.
   - name: ${_GCLOUD_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-images/dwh-pipeline:$BUILD_ID
     id: release-stage
+    waitFor: [dbt-run]
     dir: /app/release
     entrypoint: bash
     args:
@@ -149,9 +151,16 @@ steps:
         if [ -n "$_RELEASE_DATASET_IDS" ]; then
           stage_args+=(--dataset-ids "$_RELEASE_DATASET_IDS")
         fi
-        python3 "${stage_args[@]}" > /workspace/release-tasks
+        if ! python3 "${stage_args[@]}" > /workspace/release-tasks; then
+          python3 release_stage.py cleanup \
+            --project "$_GCLOUD_PROJECT" \
+            --dataset "$_BQ_DATASET" \
+            --location "$_BQ_LOCATION" \
+            --bucket "$_CLOUD_TMP_BUCKET" \
+            --run-id "$BUILD_ID" || echo "WARNING: release staging cleanup failed for $BUILD_ID" >&2
+          exit 1
+        fi
         touch /workspace/release-ready
-    allowFailure: true
     env:
       - GCLOUD_PROJECT=$_GCLOUD_PROJECT
       - BQ_DATASET=$_BQ_DATASET
@@ -160,6 +169,7 @@ steps:
   # Step 6: Deploy and wait for the parallel Cloud Run release tasks.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: release-artifacts
+    waitFor: [release-stage]
     entrypoint: bash
     args:
       - -ceu
