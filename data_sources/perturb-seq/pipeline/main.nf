@@ -2,6 +2,8 @@
 
 nextflow.enable.dsl=2
 
+include { UPLOAD_H5ADS } from './modules/upload_h5ads'
+
 // =============================================================================
 // PIPELINE PARAMETERS
 // =============================================================================
@@ -24,6 +26,7 @@ params.tie_correct = false
 params.sra_bin = ""
 params.sample_sheet = null
 params.outdir = "results"
+params.h5ad_release_uri = null
 params.chemistry = "10xv3"
 params.limit = 0
 params.concat_max_loaded_elems = 100000000
@@ -665,6 +668,8 @@ process MERGE_RESULTS {
 // =============================================================================
 
 workflow {
+    if (params.h5ad_release_uri && !(params.h5ad_release_uri ==~ /gs:\/\/[a-z0-9][a-z0-9._-]*\/(?:[A-Za-z0-9._-]+\/)*perturb-seq\/?/))
+        error "--h5ad_release_uri must be gs://BUCKET/[VERSION/]perturb-seq"
     if (params.assay_mode == "standard" && (!params.dataset_id || !(params.dataset_id ==~ /[A-Za-z0-9_-]+/)))
         error "Please provide a valid --dataset_id"
     if (!params.gmt || !params.gtf)
@@ -917,5 +922,7 @@ workflow {
     merged_inputs = analyzed.results.groupTuple()
         .map { id, dea, gsea, metrics -> [id, dea.flatten(), gsea.flatten(), metrics.flatten()] }
         .join(prep.manifest)
-    MERGE_RESULTS(merged_inputs)
+    merged = MERGE_RESULTS(merged_inputs)
+    if (params.h5ad_release_uri)
+        UPLOAD_H5ADS(raw_counts.h5ad.join(filtered.h5ad).join(merged.summary))
 }

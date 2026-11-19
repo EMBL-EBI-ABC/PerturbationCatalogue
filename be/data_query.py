@@ -35,6 +35,8 @@ RELEASE_FORMATS = {
     "metadata": "metadata.json",
     "parquet": "parquet",
     "csv.gz": "csv.gz",
+    "h5ad": "h5ad",
+    "filtered.h5ad": "filtered.h5ad",
 }
 GSEA_RELEASE_FORMATS = {"parquet": "gsea.parquet", "csv.gz": "gsea.csv.gz"}
 
@@ -1731,9 +1733,11 @@ async def download_dataset_data(
         limit = None
     if not isinstance(offset, int):
         offset = 0
-    if download_format not in RELEASE_FORMATS:
+    if download_format not in RELEASE_FORMATS or (
+        download_format in {"h5ad", "filtered.h5ad"} and modality != "perturb-seq"
+    ):
         raise HTTPException(
-            status_code=400, detail="format must be metadata, parquet or csv.gz"
+            status_code=400, detail="Unsupported download format for this modality"
         )
     if set(request.query_params).issubset({"format"}) and limit is None and offset == 0:
         signed_url = _release_signed_url(modality, dataset_id, download_format)
@@ -1741,7 +1745,7 @@ async def download_dataset_data(
     if download_format != "csv.gz":
         raise HTTPException(
             status_code=400,
-            detail="Only full datasets have Parquet and metadata artifacts",
+            detail="Only CSV downloads support row filters and pagination",
         )
 
     params = dict(request.query_params, limit=limit, offset=offset)

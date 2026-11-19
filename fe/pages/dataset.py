@@ -370,19 +370,21 @@ def _dataset_download_link(
 
 
 def _dataset_download_controls(dataset_id: str, modality: str) -> html.Div:
+    label = "DEA" if modality == "perturb-seq" else "full data"
+    links = [
+        _dataset_download_link(
+            f"Download {label} (Parquet)",
+            _dataset_download_url(dataset_id, modality, "parquet"),
+            DATASET_PARQUET_DOWNLOAD_LINK,
+        ),
+        _dataset_download_link(
+            f"Download {label} (CSV.gz)",
+            _dataset_download_url(dataset_id, modality),
+            DATASET_DOWNLOAD_LINK,
+        ),
+    ]
     return html.Div(
-        [
-            _dataset_download_link(
-                "Download full data (Parquet)",
-                _dataset_download_url(dataset_id, modality, "parquet"),
-                DATASET_PARQUET_DOWNLOAD_LINK,
-            ),
-            _dataset_download_link(
-                "Download full data (CSV.gz)",
-                _dataset_download_url(dataset_id, modality),
-                DATASET_DOWNLOAD_LINK,
-            ),
-        ],
+        links,
         className="d-flex align-items-center justify-content-center flex-wrap gap-2 mb-3",
     )
 
@@ -647,13 +649,28 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         className="mt-4",
         style={"maxWidth": "900px", "margin": "0 auto"},
     )
-    metadata_download_control = html.Div(
+    metadata_download_links = [
         _dataset_download_link(
             "Download metadata (JSON)",
             _dataset_download_url(dataset_id, modality, "metadata"),
             DATASET_METADATA_DOWNLOAD_LINK,
         ),
-        className="mt-3 d-flex justify-content-center",
+    ]
+    if modality == "perturb-seq" and dataset_data.get("perturb_seq_reprocessed"):
+        metadata_download_links.extend(
+            _dataset_download_link(
+                f"Download {label} (H5AD)",
+                _dataset_download_url(dataset_id, modality, download_format),
+                f"dataset-{download_format}-download-link",
+            )
+            for label, download_format in (
+                ("unfiltered", "h5ad"),
+                ("filtered", "filtered.h5ad"),
+            )
+        )
+    metadata_download_control = html.Div(
+        metadata_download_links,
+        className="mt-3 d-flex justify-content-center flex-wrap gap-2",
         style={"maxWidth": "900px", "margin": "0 auto"},
     )
 
@@ -774,7 +791,7 @@ def render_dataset(data: Optional[Dict[str, Any]]):
         [
             html.Hr(className="my-4"),
             html.H2(
-                "Data",
+                "Differential Expression (DEA)" if is_perturb_seq else "Data",
                 className="fw-bold mb-3 text-center",
                 style={"color": COLORS["primary"]},
             ),

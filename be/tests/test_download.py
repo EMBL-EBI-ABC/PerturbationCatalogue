@@ -166,3 +166,71 @@ def test_release_signing_falls_back_to_project_compute_service_account(monkeypat
     assert blob.generate_signed_url.call_args.kwargs["service_account_email"] == (
         "123456-compute@developer.gserviceaccount.com"
     )
+
+
+@pytest.mark.parametrize("download_format", ["h5ad", "filtered.h5ad"])
+def test_h5ad_downloads_redirect_and_reject_filters_and_other_modalities(
+    monkeypatch, download_format
+):
+    signer = Mock(return_value="https://storage.example/signed")
+    monkeypatch.setattr(data_query, "_release_signed_url", signer)
+
+    def download(modality="perturb-seq", query=""):
+        return asyncio.run(
+            data_query.download_dataset_data(
+                modality,
+                DATASET_ID,
+                Request({"type": "http", "query_string": query.encode()}),
+                download_format=download_format,
+            )
+        )
+
+    response = download()
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://storage.example/signed"
+    signer.assert_called_once_with("perturb-seq", DATASET_ID, download_format)
+
+    for modality, query in [
+        ("mave", ""),
+        ("crispr-screen", ""),
+        ("perturb-seq", "effect_padj=0.05"),
+        ("perturb-seq", "limit=10"),
+    ]:
+        with pytest.raises(data_query.HTTPException) as error:
+            download(modality, query)
+        assert error.value.status_code == 400
+    signer.assert_called_once()
+
+
+@pytest.mark.parametrize("download_format", ["h5ad", "filtered.h5ad"])
+def test_h5ad_signing_uses_versioned_path_and_missing_files_return_404(
+    monkeypatch, download_format
+):
+    import google.auth
+    from google.cloud import storage
+
+    credentials = Mock(valid=True, token="token", service_account_email="service")
+    blob = Mock(exists=Mock(return_value=True))
+    blob.generate_signed_url.return_value = "https://storage.example/signed"
+    client = Mock()
+    client.bucket.return_value.blob.return_value = blob
+    monkeypatch.setenv("RELEASE_BUCKET", "release-bucket")
+    monkeypatch.setenv("RELEASE_VERSION_PREFIX", "2026.10/")
+    monkeypatch.setattr(google.auth, "default", lambda: (credentials, "project"))
+    monkeypatch.setattr(storage, "Client", lambda **_: client)
+
+    assert (
+        data_query._release_signed_url("perturb-seq", DATASET_ID, download_format)
+        == "https://storage.example/signed"
+    )
+    client.bucket.return_value.blob.assert_called_once_with(
+        f"2026.10/perturb-seq/{DATASET_ID}.{download_format}"
+    )
+    assert blob.generate_signed_url.call_args.kwargs["response_disposition"] == (
+        f'attachment; filename="perturb-seq_{DATASET_ID}.{download_format}"'
+    )
+
+    blob.exists.return_value = False
+    with pytest.raises(data_query.HTTPException) as error:
+        data_query._release_signed_url("perturb-seq", DATASET_ID, download_format)
+    assert error.value.status_code == 404
