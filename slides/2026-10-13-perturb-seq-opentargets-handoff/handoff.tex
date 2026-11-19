@@ -1,0 +1,244 @@
+\documentclass[handout,aspectratio=169]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{xcolor}
+
+\title{Development data inventory}
+\subtitle{Open Targets handoff across CRISPR screen, MAVE and Perturb-seq}
+\date{2026-10-13}
+\author{Perturbation Catalogue}
+\institute{Development inventory}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.5ex,dp=1.5ex,leftskip=15pt,rightskip=15pt]{}
+    \usebeamerfont{author in head/foot}Perturbation Catalogue | development
+    \hfill
+    \usebeamerfont{date in head/foot}\insertframenumber{} / \inserttotalframenumber
+  \end{beamercolorbox}%
+}
+\setlength{\tabcolsep}{4pt}
+\urlstyle{tt}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{gray!35}
+}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Development coverage and Perturb-seq reprocessing}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.32\textwidth}
+      \begin{block}{CRISPR screen}
+        \centering\large\textbf{\textasciitilde1.2k} datasets
+      \end{block}
+    \column{0.32\textwidth}
+      \begin{block}{MAVE}
+        \centering\large\textbf{\textasciitilde800} datasets
+      \end{block}
+    \column{0.32\textwidth}
+      \begin{block}{Perturb-seq}
+        \centering\large\textbf{30} datasets
+      \end{block}
+  \end{columns}
+  \vspace{-0.1em}
+  \footnotesize \textbf{20 of 30 Perturb-seq datasets} were reprocessed from raw reads across Adamson, Norman, Nadig, Replogle and Zhu.\\[-0.1em]
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}Xr r r@{}}
+    \toprule
+    \textbf{Study set} & \textbf{Datasets} & \textbf{DEA rows} & \textbf{GSEA rows} \\
+    \midrule
+    Adamson & 2 & 1.1M & 4.3K \\
+    Norman & 1 & 1.3M & 5.1K \\
+    Nadig & 2 & 60M & 0.23M \\
+    Replogle & 3 & 170M & 0.67M \\
+    Zhu & 12 & 1.4B & 6.4M \\
+    \midrule
+    Total & 20 & 1.7B & 7.3M \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \scriptsize Modality coverage is the current dev Elasticsearch inventory; Perturb-seq row totals are from the 20-dataset dev BigQuery snapshot queried 2026-10-13. Coverage and row counts are rounded to at most two significant digits.
+\end{frame}
+
+\begin{frame}[fragile]{Dataset metadata: study and experimental context}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.38\textwidth}
+      \begin{block}{Common fields}
+        \footnotesize
+        \begin{itemize}
+          \item Identity: \texttt{dataset\_id}, study title, year and authors
+          \item Context: modalities, perturbation, tissue, cell type and cell line
+          \item Scale: target and sample counts
+          \item Full JSON also has assay, ontology, license and processing fields
+        \end{itemize}
+      \end{block}
+      \footnotesize Repeated annotations and counts are JSON arrays.
+    \column{0.60\textwidth}
+      \begin{block}{Example record excerpt}
+        \tiny
+        \begin{lstlisting}
+{
+  "dataset_id": "adamson_2016_pilot",
+  "study_title": "A Multiplexed Single-Cell CRISPR Screening Platform Enables Systematic Dissection of the Unfolded Protein Response",
+  "study_year": "2016",
+  "first_author": "Britt Adamson",
+  "data_modalities": ["Perturb-seq"],
+  "perturbation_type_labels": ["CRISPRi"],
+  "cell_type_labels": ["lymphoblast"],
+  "cell_line_labels": ["K 562 cell"],
+  "number_of_perturbed_targets": ["8"],
+  "number_of_perturbed_samples": ["5752"]
+}
+        \end{lstlisting}
+      \end{block}
+  \end{columns}
+  \vfill
+  \footnotesize Repeated annotations and counts retain their JSON array form. \texttt{dataset\_id} joins results to metadata; \texttt{perturbed\_target\_ensg} links to the Open Targets gene.
+\end{frame}
+
+\begin{frame}{Perturb-seq DEA: target--effect-gene results}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Column} & \textbf{Type} & \textbf{Example value: adamson\_2016\_pilot} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & ENSG00000134107 \\
+    perturbed\_target\_name & STRING & BHLHE40 \\
+    effect\_gene\_ensg & STRING & ENSG00000094914 \\
+    effect\_gene\_name & STRING & AAAS \\
+    log2foldchange & FLOAT64 & 0.0722239017 \\
+    padj & FLOAT64 & 0.9998721657 \\
+    score\_name & STRING & Wilcoxon Score \\
+    score\_value & FLOAT64 & 0.4150409698 \\
+    cell\_type & STRING, nullable & null \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Record interpretation}
+    The perturbed target is the intervention; the effect gene is the measured transcript. Each row reports the estimated expression change and its statistical score.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Perturb-seq GSEA: enrichment by target and gene set}
+  \scriptsize
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Column} & \textbf{Type} & \textbf{Example value: adamson\_2016\_pilot} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & ENSG00000066336 \\
+    perturbed\_target\_symbol & STRING & SPI1 \\
+    term & STRING & HALLMARK\_ALLOGRAFT\_REJECTION \\
+    es & FLOAT64 & -0.3599006142 \\
+    nes & FLOAT64 & -1.1792592227 \\
+    pval & FLOAT64 & 0.1935483871 \\
+    sidak & FLOAT64 & 0.9999593387 \\
+    fdr & FLOAT64 & 0.3540276454 \\
+    geneset\_size & INT64 & 81 \\
+    leading\_edge & ARRAY<STRING> & [SPI1, NPM1, RPS9, CTSS, RPS19, \ldots] \\
+    cell\_type & STRING, nullable & null \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Record interpretation}
+    \texttt{leading\_edge} is a typed string array in Parquet. In the CSV.GZ companion it is represented as a semicolon-separated list.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Per-dataset release file names}
+  \small
+  \footnotesize Paths are relative to the release bucket; an optional version prefix may precede \texttt{perturb-seq/}.
+  \vspace{0.3em}
+  \begin{tabularx}{\textwidth}{@{}l@{\hspace{1em}}X@{}}
+    \toprule
+    \textbf{File} & \textbf{Object name pattern} \\
+    \midrule
+    Metadata & \texttt{perturb-seq/<dataset\_id>.metadata.json} \\
+    DEA data & \texttt{perturb-seq/<dataset\_id>.parquet} \\
+    DEA CSV mirror & \texttt{perturb-seq/<dataset\_id>.csv.gz} \\
+    GSEA data & \texttt{perturb-seq/<dataset\_id>.gsea.parquet} \\
+    GSEA CSV mirror & \texttt{perturb-seq/<dataset\_id>.gsea.csv.gz} \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{itemize}
+    \item One metadata JSON plus DEA and GSEA files for each dataset ID.
+    \item Parquet preserves typed columns; CSV.GZ uses the matching human-readable field labels.
+    \item The metadata object contains the join key; DEA and GSEA rows are scoped by their per-dataset file names.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{CRISPR screens: target-level score and interpretation}
+  \small
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Export field} & \textbf{Type} & \textbf{Meaning} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & Ensembl gene targeted by the screen \\
+    perturbed\_target\_name & STRING & Display symbol for the target \\
+    score\_name & STRING & Name of the assay's score \\
+    score\_value & STRING & Measured score for the target \\
+    significant & STRING & Source-provided significance call \\
+    significance\_criteria & STRING & Rule or threshold used for that call \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Example row: \texttt{biogrid\_1161}}
+    \scriptsize
+    \begin{tabularx}{\textwidth}{@{}p{3.4cm} p{4.5cm} p{1.8cm} X@{}}
+      \textbf{Target} & \textbf{Score} & \textbf{Value} & \textbf{Call / criterion} \\
+      \midrule
+      GAB3 (ENSG00000160219) & Rho (Log2e Treated vs. Untreated) & 0.055800993 & False / \texttt{-} \\
+    \end{tabularx}
+  \end{block}
+  \vfill
+  \begin{block}{Interpretation}
+    Scores are assay-specific. The significance flag travels with the source criterion so downstream users can interpret calls in the context of each screen.
+  \end{block}
+\end{frame}
+
+\begin{frame}{MAVE: variant-level functional scores}
+  \small
+  \begin{tabularx}{\textwidth}{@{}>{\ttfamily}l l X@{}}
+    \toprule
+    \textbf{Export field} & \textbf{Type} & \textbf{Meaning} \\
+    \midrule
+    perturbed\_target\_ensg & STRING & Ensembl gene associated with the variant \\
+    perturbed\_target\_name & STRING & Display symbol for the target \\
+    perturbation\_name & STRING & Variant notation supplied by MaveDB \\
+    perturbation\_position & INT64 & Protein position parsed from the variant notation \\
+    perturbation\_aa\_wt & STRING & Wild-type amino acid parsed from the notation \\
+    perturbation\_aa\_change & STRING & Amino-acid change parsed from the notation \\
+    score\_name & STRING & Name of the assay's score \\
+    score\_value & FLOAT64 & Measured functional score \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \begin{block}{Example row: \texttt{urn:mavedb:00000001-a-1}}
+    \scriptsize
+    \begin{tabularx}{\textwidth}{@{}X X@{}}
+      \textbf{Target:} UBE2I (ENSG00000103275) & \textbf{Variant:} p.Pro73Gln (position 73) \\
+      \textbf{Change:} Pro $\rightarrow$ Gln & \textbf{Score:} exp.score = -0.0275390812623933 \\
+    \end{tabularx}
+  \end{block}
+  \vfill
+  \begin{block}{Interpretation}
+    Variant identity and derived protein-change fields stay alongside the original assay score, making residue-level evidence searchable without replacing the source notation.
+  \end{block}
+\end{frame}
+
+\end{document}
