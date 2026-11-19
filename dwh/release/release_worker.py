@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import uuid
 from contextlib import ExitStack, contextmanager
 from itertools import chain
 
@@ -21,7 +22,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from release import DATASETS, GSEA_DATA, table
-
 
 BATCH_SIZE = 100_000
 CHUNK_SIZE = 8 * 1024 * 1024
@@ -98,18 +98,21 @@ def _query(
     safe_id = "".join(
         char if char.isalnum() or char == "_" else "_" for char in dataset_id
     )
-    destination = f"{project}.{dataset}.release_query_{safe_id}_{kind}"
+    # Parallel modality workers for the same dataset must not share a table.
+    destination = (
+        f"{project}.{dataset}.release_query_{safe_id}_{kind}_{uuid.uuid4().hex}"
+    )
     config.destination = destination
     config.write_disposition = bigquery.WriteDisposition.WRITE_TRUNCATE
-    job = client.query(
-        f"SELECT {'*' if include_dataset_id else '* EXCEPT(dataset_id)'} "
-        f"FROM `{relation}` "
-        "WHERE dataset_id = @dataset_id",
-        job_config=config,
-        location=location,
-    )
-    job.result(max_results=1)
     try:
+        job = client.query(
+            f"SELECT {'*' if include_dataset_id else '* EXCEPT(dataset_id)'} "
+            f"FROM `{relation}` "
+            "WHERE dataset_id = @dataset_id",
+            job_config=config,
+            location=location,
+        )
+        job.result(max_results=1)
         yield client.list_rows(destination)
     finally:
         client.delete_table(destination, not_found_ok=True)

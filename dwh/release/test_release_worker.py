@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from release_worker import generate
+from release_worker import _query, generate
 
 
 class Blob:
@@ -52,6 +52,7 @@ class Job:
 class Client:
     def __init__(self):
         self.destinations = []
+        self.deleted = []
 
     def query(self, query, **_):
         self.destinations.append(_.get("job_config").destination)
@@ -89,8 +90,8 @@ class Client:
     def list_rows(self, _):
         return Result(self.rows)
 
-    def delete_table(self, *_args, **_kwargs):
-        pass
+    def delete_table(self, destination, **_kwargs):
+        self.deleted.append(destination)
 
 
 class TestReleaseWorker(unittest.TestCase):
@@ -143,8 +144,25 @@ class TestReleaseWorker(unittest.TestCase):
             self.assertEqual(row[9], "A;B")
             data_destination, gsea_destination = client.destinations[:2]
             self.assertNotEqual(data_destination.table_id, gsea_destination.table_id)
-            self.assertTrue(data_destination.table_id.endswith("_data"))
-            self.assertTrue(gsea_destination.table_id.endswith("_gsea"))
+            self.assertTrue(
+                data_destination.table_id.startswith("release_query_demo_data_")
+            )
+            self.assertTrue(
+                gsea_destination.table_id.startswith("release_query_demo_gsea_")
+            )
+            self.assertEqual(
+                [destination.table_id for destination in client.destinations],
+                [destination.rsplit(".", 1)[-1] for destination in client.deleted],
+            )
+
+    def test_same_dataset_queries_get_unique_temporary_tables(self):
+        client = Client()
+        for _ in range(2):
+            with _query(client, "project.dataset.perturb_seq_dea", "demo", "test"):
+                pass
+
+        destinations = [table.table_id for table in client.destinations]
+        self.assertEqual(len(set(destinations)), 2)
 
 
 if __name__ == "__main__":
