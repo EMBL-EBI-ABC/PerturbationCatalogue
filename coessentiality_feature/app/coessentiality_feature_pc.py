@@ -1262,8 +1262,10 @@ def update_single(gene, fdr, sort_by):
     for p in top_partners:
         nodes.append({"data": {"id": p, "bg_color": direction_to_color(partner_direction.get(p, 0.0))}})
 
-    # Spoke edges: query → each partner (fixed mid-weight so they're visible)
-    edges = [{"data": {"source": gene, "target": p, "weight": 3.0}}
+    # Spoke edges: query → each partner, weighted by significance
+    partner_fdr = top.set_index("partner")["pvalue_adj"].to_dict()
+    edges = [{"data": {"source": gene, "target": p,
+                       "weight": min(-np.log10(max(partner_fdr[p], 1e-300)), 10)}}
              for p in top_partners]
 
     # Cross-edges among partners, weighted by significance
