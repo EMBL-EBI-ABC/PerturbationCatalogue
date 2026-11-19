@@ -36,6 +36,7 @@ RELEASE_FORMATS = {
     "parquet": "parquet",
     "csv.gz": "csv.gz",
 }
+GSEA_RELEASE_FORMATS = {"parquet": "gsea.parquet", "csv.gz": "gsea.csv.gz"}
 
 MODALITIES = Literal["perturb-seq", "crispr-screen", "mave"]
 
@@ -218,7 +219,7 @@ class PerturbSeqGseaEffect(EffectBase):
     sidak: float = Field(..., alias="effect_sidak")
     fdr: float = Field(..., alias="effect_fdr")
     geneset_size: int = Field(..., alias="effect_geneset_size")
-    leading_edge: Optional[str] = Field(None, alias="effect_leading_edge")
+    leading_edge: Optional[List[str]] = Field(None, alias="effect_leading_edge")
     cell_type: Optional[str] = Field(None, alias="effect_cell_type")
 
 
@@ -236,6 +237,11 @@ class Result(BaseModel):
 class GseaResult(BaseModel):
     perturbation: Dict
     effects: List[Dict]
+
+
+class DatasetGseaPage(BaseModel):
+    results: List[Dict[str, Any]]
+    total_rows_count: int
 
 
 # Dataset Models
@@ -831,6 +837,32 @@ async def _fetch_perturb_seq_gsea(
     return [dict(row) for row in rows]
 
 
+async def _fetch_dataset_perturb_seq_gsea_page(
+    conn: asyncpg.Connection, dataset_id: str, limit: int, offset: int
+) -> Dict[str, Any]:
+    total_rows_count = await conn.fetchval(
+        "SELECT COUNT(*) FROM perturb_seq_gsea WHERE dataset_id = $1", dataset_id
+    )
+    rows = await conn.fetch(
+        """
+        SELECT perturbed_target_ensg, term, es, nes, pval, sidak, fdr,
+               geneset_size, leading_edge, cell_type
+        FROM perturb_seq_gsea
+        WHERE dataset_id = $1
+        ORDER BY sidak ASC NULLS LAST, perturbed_target_ensg ASC, term ASC,
+                 cell_type ASC NULLS LAST, ctid ASC
+        LIMIT $2 OFFSET $3
+        """,
+        dataset_id,
+        limit,
+        offset,
+    )
+    return {
+        "results": [dict(row) for row in rows],
+        "total_rows_count": total_rows_count or 0,
+    }
+
+
 # --- Shared Implementation Functions ---
 
 
@@ -1376,6 +1408,41 @@ async def get_perturb_seq_gsea(
         return results
 
 
+@router.get(
+    "/v1/perturb-seq/{dataset_id}/gsea",
+    response_model=DatasetGseaPage,
+)
+async def get_dataset_perturb_seq_gsea(
+    dataset_id: str,
+    limit: int = Query(15, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """Retrieve one stable page of GSEA results for a Perturb-seq dataset."""
+    pg_pool = db_pools.get("pg")
+    if not pg_pool:
+        raise HTTPException(status_code=500, detail="Database pool not initialized")
+    async with pg_pool.acquire() as conn:
+        return await _fetch_dataset_perturb_seq_gsea_page(
+            conn, dataset_id, limit, offset
+        )
+
+
+@router.get("/v1/perturb-seq/{dataset_id}/gsea/download")
+async def download_dataset_perturb_seq_gsea(
+    dataset_id: str,
+    download_format: str = Query("parquet", alias="format"),
+):
+    """Redirect to a full dataset-level GSEA release artifact."""
+    if download_format not in GSEA_RELEASE_FORMATS:
+        raise HTTPException(status_code=400, detail="format must be parquet or csv.gz")
+    return RedirectResponse(
+        _release_signed_url(
+            "perturb-seq", dataset_id, download_format, artifact="gsea"
+        ),
+        status_code=307,
+    )
+
+
 # CSV column definitions for each modality
 CSV_COLUMNS = {
     "perturb-seq": [
@@ -1481,7 +1548,10 @@ async def _stream_dataset_csv(
 
 
 def _release_signed_url(
-    modality: MODALITIES, dataset_id: str, download_format: str
+    modality: MODALITIES,
+    dataset_id: str,
+    download_format: str,
+    artifact: Optional[str] = None,
 ) -> str:
     import google.auth
     from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -1515,17 +1585,18 @@ def _release_signed_url(
         raise HTTPException(status_code=503, detail="Release signing is not configured")
 
     bucket_name = release_bucket.removeprefix("gs://").rstrip("/")
+    file_format = (
+        GSEA_RELEASE_FORMATS[download_format]
+        if artifact == "gsea"
+        else RELEASE_FORMATS[download_format]
+    )
     try:
         blob = client.bucket(bucket_name).blob(
-            f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{RELEASE_FORMATS[download_format]}"
+            f"{RELEASE_MODALITIES[modality]}/{dataset_id}.{file_format}"
         )
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Release artifact not found")
-        filename = (
-            f"{modality}_{dataset_id}.{RELEASE_FORMATS[download_format]}".replace(
-                '"', ""
-            )
-        )
+        filename = f"{modality}_{dataset_id}.{file_format}".replace('"', "")
         return blob.generate_signed_url(
             version="v4",
             expiration=timedelta(days=7),

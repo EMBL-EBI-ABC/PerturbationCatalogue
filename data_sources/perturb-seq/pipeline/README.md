@@ -347,7 +347,9 @@ shared warehouse, API, search and release-artifact stages using the
    `--apply` is read-only.
 
 6. After the loader succeeds, run the common DWH pipeline from the linked guide
-   with `--force-dataset-ids` set to the comma-separated IDs in the manifest.
+   with both `--force-dataset-ids` and `--release-dataset-ids` set to the
+   comma-separated IDs in the manifest. The first refreshes the replaced
+   Postgres partitions; the second limits artifact generation to these datasets.
    Verify the development API, Elasticsearch metadata and release artifacts,
    then set the reprocessed markers as described in that guide.
 

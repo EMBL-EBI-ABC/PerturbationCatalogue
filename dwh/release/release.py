@@ -41,6 +41,23 @@ DATASETS = {
     },
 }
 
+GSEA_DATA = {
+    "data": "perturb_seq.pertpy_gsea",
+    "fields": [
+        ("perturbed_target_ensg", "Perturbed Target ENSG"),
+        ("perturbed_target_symbol", "Perturbed Target Symbol"),
+        ("term", "Term"),
+        ("es", "ES"),
+        ("nes", "NES"),
+        ("pval", "P-value"),
+        ("sidak", "Sidak"),
+        ("fdr", "FDR"),
+        ("geneset_size", "Geneset Size"),
+        ("leading_edge", "Leading Edge"),
+        ("cell_type", "Cell Type"),
+    ],
+}
+
 DATASET_METADATA = "dataset_summary"
 
 
@@ -74,3 +91,9 @@ def data_query(project, dataset, modality):
         else:
             fields.append(f"d.{field}")
     return f"SELECT d.dataset_id, {', '.join(fields)} FROM {source} AS d"
+
+
+def gsea_query(project, dataset):
+    source = table(project, dataset, GSEA_DATA["data"])
+    fields = ", ".join(f"d.{field}" for field, _ in GSEA_DATA["fields"])
+    return f"SELECT d.dataset_id, {fields} FROM {source} AS d"

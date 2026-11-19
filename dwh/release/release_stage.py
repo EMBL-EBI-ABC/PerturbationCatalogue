@@ -5,10 +5,11 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from google.cloud import bigquery, storage
 
-from release import DATASET_METADATA, DATASETS, data_query, table
+from release import DATASET_METADATA, DATASETS, data_query, gsea_query, table
 
 
 def _table_id(run_id, modality, kind):
@@ -16,11 +17,37 @@ def _table_id(run_id, modality, kind):
     return f"release_{safe_id}_{modality.replace('-', '_')}_{kind}"
 
 
-def _stage(client, project, dataset, location, name, query):
+def _validate_dataset_ids(dataset_ids):
+    if dataset_ids is None:
+        return None
+    dataset_ids = [dataset_id.strip() for dataset_id in dataset_ids]
+    if not dataset_ids or any(not dataset_id for dataset_id in dataset_ids):
+        raise ValueError("dataset IDs must be a nonempty comma-separated list")
+    if len(set(dataset_ids)) != len(dataset_ids):
+        raise ValueError("dataset IDs must be unique")
+    return dataset_ids
+
+
+def _parse_dataset_ids(value):
+    return _validate_dataset_ids(value.split(","))
+
+
+def _stage(client, project, dataset, location, name, query, dataset_ids=None):
     relation = table(project, dataset, name)
+    query_kwargs = {"location": location}
+    if dataset_ids is not None:
+        query = (
+            f"SELECT * FROM ({query}) AS release_rows "
+            "WHERE dataset_id IN UNNEST(@dataset_ids)"
+        )
+        query_kwargs["job_config"] = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ArrayQueryParameter("dataset_ids", "STRING", dataset_ids)
+            ]
+        )
     client.query(
         f"CREATE OR REPLACE TABLE {relation} CLUSTER BY dataset_id AS {query}",
-        location=location,
+        **query_kwargs,
     ).result()
     staged = client.get_table(f"{project}.{dataset}.{name}")
     staged.expires = datetime.now(timezone.utc) + timedelta(days=2)
@@ -28,7 +55,10 @@ def _stage(client, project, dataset, location, name, query):
     return f"{project}.{dataset}.{name}"
 
 
-def create_staging(project, dataset, location, bucket_name, run_id):
+def create_staging(
+    project, dataset, location, bucket_name, run_id, dataset_ids: Optional[list] = None
+):
+    dataset_ids = _validate_dataset_ids(dataset_ids)
     client = bigquery.Client(project=project)
     items = []
     metadata_name = _table_id(run_id, "dataset", "metadata")
@@ -39,6 +69,18 @@ def create_staging(project, dataset, location, bucket_name, run_id):
         location,
         metadata_name,
         f"SELECT * FROM {table(project, dataset, DATASET_METADATA)}",
+        dataset_ids,
+    )
+    # ponytail: cloudbuild's cleanup list only covers per-modality data tables;
+    # this extra stage expires after two days until that list is generalized.
+    gsea_table = _stage(
+        client,
+        project,
+        dataset,
+        location,
+        _table_id(run_id, "perturb-seq", "gsea"),
+        gsea_query(project, dataset),
+        dataset_ids,
     )
     for modality in DATASETS:
         data_name = _table_id(run_id, modality, "data")
@@ -49,23 +91,33 @@ def create_staging(project, dataset, location, bucket_name, run_id):
             location,
             data_name,
             data_query(project, dataset, modality),
+            dataset_ids,
         )
+        id_sources = [
+            f"SELECT DISTINCT dataset_id FROM {table(project, dataset, data_name)} "
+            "WHERE dataset_id IS NOT NULL",
+            f"SELECT dataset_id FROM {table(project, dataset, metadata_name)} "
+            "WHERE dataset_id IS NOT NULL",
+        ]
+        if modality == "perturb-seq":
+            id_sources.append(
+                f"SELECT dataset_id FROM {gsea_table} WHERE dataset_id IS NOT NULL"
+            )
+        dataset_id_query = " UNION DISTINCT ".join(id_sources)
         rows = client.query(
-            "SELECT dataset_id FROM "
-            f"{table(project, dataset, data_name)} WHERE dataset_id IS NOT NULL "
-            "UNION DISTINCT SELECT dataset_id FROM "
-            f"{table(project, dataset, metadata_name)} WHERE dataset_id IS NOT NULL",
+            dataset_id_query,
             location=location,
         ).result()
-        items.extend(
-            {
+        for row in rows:
+            item = {
                 "modality": modality,
                 "dataset_id": row.dataset_id,
                 "data_table": data_table,
                 "metadata_table": metadata_table,
             }
-            for row in rows
-        )
+            if modality == "perturb-seq":
+                item["gsea_table"] = gsea_table
+            items.append(item)
 
     manifest = {"run_id": run_id, "items": items}
     path = f"release-staging/{run_id}/manifest.json"
@@ -83,6 +135,10 @@ def cleanup(project, dataset, location, bucket_name, run_id):
             not_found_ok=True,
         )
     client.delete_table(
+        f"{project}.{dataset}.{_table_id(run_id, 'perturb-seq', 'gsea')}",
+        not_found_ok=True,
+    )
+    client.delete_table(
         f"{project}.{dataset}.{_table_id(run_id, 'dataset', 'metadata')}",
         not_found_ok=True,
     )
@@ -99,6 +155,7 @@ def main():
     parser.add_argument("--location", required=True)
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--dataset-ids", type=_parse_dataset_ids)
     args = parser.parse_args()
     if args.mode == "create":
         print(
@@ -108,6 +165,7 @@ def main():
                 args.location,
                 args.bucket,
                 args.run_id,
+                args.dataset_ids,
             )
         )
     else:
