@@ -16,6 +16,7 @@ import logging
 import datetime
 import re
 import argparse
+import uuid
 from typing import Any, Dict, Iterable, Tuple, List
 
 from google.cloud import bigquery
@@ -258,15 +259,18 @@ def actions_generator(
             pass
 
 
-def destination_index(base: str, date: str, index_set: str) -> str:
-    """Return dated index name including optional index_set suffix.
+def destination_index(base: str, date: str, index_set: str, run_id: str = "") -> str:
+    """Return a dated index name with an optional unique run ID and suffix.
 
     >>> destination_index("target-summary", "2026-07-13", "")
     '2026-07-13-target-summary'
     >>> destination_index("target-summary", "2026-07-13", "-ensg-dev")
     '2026-07-13-target-summary-ensg-dev'
+    >>> destination_index("target-summary", "2026-07-13", "", "123456789012-abcd1234")
+    '2026-07-13-123456789012-abcd1234-target-summary'
     """
-    return f"{date}-{base}{index_set}"
+    version = f"{date}-{run_id}" if run_id else date
+    return f"{version}-{base}{index_set}"
 
 
 def prune_old_indexes(es: Elasticsearch, index_set: str = "") -> None:
@@ -284,7 +288,11 @@ def prune_old_indexes(es: Elasticsearch, index_set: str = "") -> None:
             indices = es.indices.get(index=pattern).body
             all_names = sorted(indices.keys(), reverse=True)
             # Specifically match YYYY-MM-DD-index-name
-            regex = re.compile(r"^\d{4}-\d{2}-\d{2}-" + re.escape(alias_name) + r"$")
+            regex = re.compile(
+                r"^\d{4}-\d{2}-\d{2}(?:-\d{12}-[a-f0-9]{8})?-"
+                + re.escape(alias_name)
+                + r"$"
+            )
             index_names = [n for n in all_names if regex.match(n)]
         except ApiError:
             index_names = []
@@ -349,7 +357,9 @@ def main() -> int:
         logging.error("GCLOUD_PROJECT and BQ_DATASET must be set")
         return 2
 
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    now = datetime.datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    run_id = f"{now:%H%M%S%f}-{uuid.uuid4().hex[:8]}"
     es = make_es_client()
     bq_client = bigquery.Client(project=BQ_PROJECT)
     sync_results = {}  # index_base -> new_index
@@ -359,7 +369,7 @@ def main() -> int:
         prefix = cfg["prefix"]
         key_field = cfg["key_field"]
 
-        es_index = destination_index(base, date_str, ES_INDEX_SET)
+        es_index = destination_index(base, date_str, ES_INDEX_SET, run_id)
 
         logging.info("Starting sync for %s -> %s", table, es_index)
 
@@ -370,11 +380,8 @@ def main() -> int:
             # 2. Extract typed fields for transformation
             typed_fields = get_typed_fields(mapping)
 
-            # If current date index already exists, delete it first
-            if es.indices.exists(index=es_index):
-                logging.info("Index %s already exists. Deleting it first...", es_index)
-                es.indices.delete(index=es_index)
-
+            # Each run writes a fresh index so failed loads cannot damage the
+            # currently aliased index.
             ensure_index(es, es_index, mapping)
 
             # Use BigQuery client to get total row count for progress bar
@@ -415,6 +422,9 @@ def main() -> int:
                 logging.error(
                     "Bulk completed with item errors. Sample: %s",
                     json.dumps(sample, indent=2)[:1200],
+                )
+                raise RuntimeError(
+                    f"Bulk indexing for {table} returned item errors; refusing to move aliases"
                 )
 
             logging.info("Sync for %s done. Successful: %s", table, success)

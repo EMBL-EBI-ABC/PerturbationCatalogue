@@ -19,6 +19,7 @@ COPY bq_dbt/ bq_dbt/
 
 # Copy bq_to_postgres
 COPY bq_to_postgres/bq_to_postgres.py bq_to_postgres/bq_to_postgres.py
+COPY bq_to_postgres/sync_plan.py bq_to_postgres/sync_plan.py
 
 # Copy release artifact generation
 COPY release/release.py release/release.py

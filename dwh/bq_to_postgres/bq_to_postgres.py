@@ -13,6 +13,7 @@ from tqdm import tqdm
 import pyarrow as pa
 import pyarrow.csv as pa_csv
 import pyarrow.parquet as pq
+from sync_plan import parse_dataset_ids, plan_datasets, validate_force_dataset_ids
 
 # Set up logging
 logging.basicConfig(
@@ -797,13 +798,15 @@ class TableSynchronizer:
 
     def _load_tsv_to_pg(self, cursor, pg_table, ds_id, tsv_file):
         """Loads a prepared TSV file into the Postgres table (partition or standard table) for ds_id."""
-        if tsv_file is None:
+        if pg_table in PARTITIONED_TABLES:
+            delete_dataset_from_pg(cursor, pg_table, ds_id)
+            if tsv_file is None:
+                return
+            ensure_partition_exists(cursor, pg_table, ds_id)
+        elif tsv_file is None:
             return
 
         try:
-            if pg_table in PARTITIONED_TABLES:
-                delete_dataset_from_pg(cursor, pg_table, ds_id)
-                ensure_partition_exists(cursor, pg_table, ds_id)
 
             copy_sql = sql.SQL(
                 "COPY {} FROM STDIN WITH (FORMAT CSV, DELIMITER E'\\t', QUOTE '\"', NULL '')"
@@ -856,8 +859,15 @@ class TableSynchronizer:
                             table_name, ds_id, bq_schema
                         )
                         self._load_tsv_to_pg(cursor, table_name, ds_id, tsv_buf)
-                        bq_ts = plan["bq_info"][ds_id][0]
-                        update_sync_state(cursor, table_name, ds_id, bq_ts)
+                        if ds_id in plan["bq_info"]:
+                            update_sync_state(
+                                cursor, table_name, ds_id, plan["bq_info"][ds_id][0]
+                            )
+                        else:
+                            cursor.execute(
+                                "DELETE FROM sync_state WHERE table_name = %s AND dataset_id = %s",
+                                (table_name, ds_id),
+                            )
                     except Exception as e:
                         logging.error(f"Failed to process dataset {ds_id}: {e}")
                         raise e
@@ -899,6 +909,12 @@ def main():
         action="store_true",
         help="Drop indexes before ingestion and recreate them afterwards (in the same transaction).",
     )
+    parser.add_argument(
+        "--force-dataset-ids",
+        type=parse_dataset_ids,
+        default=set(),
+        help="Comma-separated dataset IDs to reload in partitioned Perturb-seq tables.",
+    )
     args = parser.parse_args()
 
     # Validate required arguments
@@ -923,6 +939,37 @@ def main():
         gcs_bucket=args.gcs_bucket,
     )
 
+    # Validate forced IDs against source metadata before opening Postgres or
+    # terminating any existing database sessions. Result tables may legitimately
+    # contain no rows for a dataset and still need stale Postgres rows removed.
+    forced_bq_info = {}
+    if args.force_dataset_ids:
+        for table_name in ("perturb_seq_dea", "perturb_seq_gsea"):
+            forced_bq_info[table_name] = get_bq_latest_timestamps_and_counts(
+                synchronizer.bq_client, args.bq_dataset, table_name, args.bq_location
+            )
+        try:
+            metadata_query = f"""
+                SELECT DISTINCT dataset_id
+                FROM `{synchronizer.bq_client.project}.perturb_seq.metadata`
+                WHERE dataset_id IN UNNEST(@dataset_ids)
+            """
+            metadata_job = synchronizer.bq_client.query(
+                metadata_query,
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[
+                        bigquery.ArrayQueryParameter(
+                            "dataset_ids", "STRING", sorted(args.force_dataset_ids)
+                        )
+                    ]
+                ),
+                location=args.bq_location,
+            )
+            metadata_ids = {row.dataset_id for row in metadata_job.result()}
+            validate_force_dataset_ids(args.force_dataset_ids, metadata_ids)
+        except ValueError as error:
+            parser.error(str(error))
+
     # Database connection for planning
     conn = psycopg2.connect(args.pg_conn)
     conn.autocommit = True
@@ -944,15 +991,18 @@ def main():
                 logging.info(f"Checking {table_name}...")
 
                 # 1. Get BQ state
-                try:
-                    bq_info = get_bq_latest_timestamps_and_counts(
-                        bq_client, args.bq_dataset, table_name, args.bq_location
-                    )
-                except Exception as e:
-                    logging.warning(
-                        f"Could not fetch BQ info for {table_name}: {e}. Skipping."
-                    )
-                    continue
+                if table_name in forced_bq_info:
+                    bq_info = forced_bq_info[table_name]
+                else:
+                    try:
+                        bq_info = get_bq_latest_timestamps_and_counts(
+                            bq_client, args.bq_dataset, table_name, args.bq_location
+                        )
+                    except Exception as e:
+                        logging.warning(
+                            f"Could not fetch BQ info for {table_name}: {e}. Skipping."
+                        )
+                        continue
 
                 # Schema and partition validations
                 bq_schema = synchronizer._get_bq_schema(table_name)
@@ -1008,15 +1058,12 @@ def main():
                     # Reimport all datasets
                     to_insert = list(bq_info.keys())
                 else:
-                    for ds_id, (bq_ts, bq_count) in bq_info.items():
-                        if ds_id not in pg_info:
-                            to_insert.append(ds_id)
-                        else:
-                            pg_ts = pg_info[ds_id]
-                            if pg_ts and pg_ts.tzinfo is None:
-                                pg_ts = pg_ts.replace(tzinfo=timezone.utc)
-                            if bq_ts > pg_ts:
-                                to_update.append(ds_id)
+                    to_insert, to_update = plan_datasets(
+                        bq_info,
+                        pg_info,
+                        args.force_dataset_ids,
+                        force_updates=table_name in PARTITIONED_TABLES,
+                    )
 
                 if not to_insert and not to_update:
                     logging.info(f"  {table_name} is up to date.")

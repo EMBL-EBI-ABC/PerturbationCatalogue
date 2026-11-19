@@ -243,6 +243,114 @@ batches. One `-resume` covers the entire workflow.
 - `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
+## Publish DEA/GSEA results to BigQuery
+
+Only the final DEA and GSEA Parquets are loaded into BigQuery. Keep the raw and
+filtered H5ADs with the cluster outputs. Continue from BigQuery through the
+shared warehouse, API, search and release-artifact stages using the
+[DWH publication guide](../../../dwh/README.md).
+
+1. Create a JSON manifest containing exactly one entry per dataset, with both
+   final Parquet paths. Paths may be absolute or relative to the manifest:
+
+   ```json
+   {
+     "datasets": [
+       {
+         "dataset_id": "example_2026",
+         "dea_parquet": "example_2026.dea.parquet",
+         "gsea_parquet": "example_2026.gsea.parquet"
+       }
+     ]
+   }
+   ```
+
+2. Set up the development environment with `pc_secrets dev`, then verify the
+   project, `BQ_LOCATION` and `DEV_API_URL`. Confirm the
+   manifest IDs exist in the development metadata table and Elasticsearch-backed
+   dataset API before transferring or replacing results:
+
+   ```bash
+   set -euo pipefail
+   MANIFEST=results/manifest.json
+   jq -e '(.datasets | map(.dataset_id)) as $ids | ($ids | length) > 0 and all($ids[]; type == "string" and test("^[A-Za-z0-9_-]+$"))' "$MANIFEST" >/dev/null
+   ids_json=$(jq -c '[.datasets[].dataset_id]' "$MANIFEST")
+   expected=$(jq -r '.datasets | length' "$MANIFEST")
+   found=$(bq query --project_id="$GCLOUD_PROJECT" --location="$BQ_LOCATION" \
+     --use_legacy_sql=false --format=csv \
+     "SELECT COUNT(DISTINCT dataset_id) FROM \`$GCLOUD_PROJECT.perturb_seq.metadata\` WHERE dataset_id IN UNNEST($ids_json)" | tail -n 1)
+   test "$found" -eq "$expected"
+   while IFS= read -r dataset_id; do
+     curl -fsS "$DEV_API_URL/dataset/$dataset_id" \
+       | jq -e --arg id "$dataset_id" '.dataset_id == $id' >/dev/null
+   done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+   ```
+
+   Do not precheck `perturb_seq.reprocessed_datasets`; add those markers only
+   after publication succeeds.
+
+3. Copy only the final DEA/GSEA Parquets from each dataset's processing output
+   directory to the loader machine. Set `CLUSTER_HOST` to the configured
+   cluster login host, `REMOTE_RESULTS_ROOT` to the parent of the per-dataset
+   `--outdir` paths, and `IMPORT_DIR` to a local directory with enough free
+   space. `rsync` can resume interrupted large-file copies:
+
+   ```bash
+   mkdir -p "$IMPORT_DIR"
+   while IFS= read -r dataset_id; do
+     for kind in dea gsea; do
+       rsync --partial --info=progress2 \
+         "$CLUSTER_HOST:$REMOTE_RESULTS_ROOT/$dataset_id/dea_gsea/$dataset_id.$kind.parquet" \
+         "$IMPORT_DIR/"
+     done
+   done < <(jq -r '.datasets[].dataset_id' "$MANIFEST")
+   ```
+
+   Set each local Parquet path in the manifest to the corresponding file under
+   `IMPORT_DIR`. Do not transfer H5ADs for this step.
+
+4. Create a Python environment with the loader dependencies and authenticate
+   Application Default Credentials as described in the [DWH guide](../../../dwh/README.md):
+
+   ```bash
+   python3 -m venv .venv-perturb-seq-publish
+   . .venv-perturb-seq-publish/bin/activate
+   python -m pip install pyarrow google-cloud-bigquery google-cloud-storage
+   ```
+
+   Set the development BigQuery project, location and co-located temporary GCS
+   bucket. Run the loader once without `--apply`; review every ID and row
+   count and stop if a file is missing, has the wrong schema or has an
+   unexpected row count:
+
+   ```bash
+   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
+     --manifest results/manifest.json --project "$GCLOUD_PROJECT"
+   ```
+
+5. After the dry-run output matches the intended manifest, confirm the active
+   project and bucket are for development, then apply with a new lowercase run
+   ID. The uploader removes its temporary GCS objects after staging, including
+   when validation or the replacement fails; review any cleanup warning and
+   remove only the named `perturb-seq-ingest/<run-key>/` objects:
+
+   ```bash
+   python3 data_sources/perturb-seq/pipeline/dea-gsea/load_results_to_bigquery.py \
+     --manifest results/manifest.json --project "$GCLOUD_PROJECT" \
+     --apply --run-id "ps_$(date -u +%Y%m%d_%H%M%S)"
+   ```
+
+   The loader validates schemas and dataset IDs, stages both tables, checks
+   staged row counts, then atomically replaces only the manifest IDs in
+   `perturb_seq.pertpy_dea` and `perturb_seq.pertpy_gsea`. It verifies final
+   counts and removes its temporary GCS objects after success. A run without
+   `--apply` is read-only.
+
+6. After the loader succeeds, run the common DWH pipeline from the linked guide
+   with `--force-dataset-ids` set to the comma-separated IDs in the manifest.
+   Verify the development API, Elasticsearch metadata and release artifacts,
+   then set the reprocessed markers as described in that guide.
+
 ## Benchmarks
 
 Clean full-run measurements are recorded for [Nadig Jurkat](benchmarks/nadig_2025_jurkat.md)
