@@ -243,6 +243,21 @@ batches. One `-resume` covers the entire workflow.
 - `dea_gsea/<dataset_id>.{dea.parquet,gsea.parquet,summary.json}`: merged analysis products.
 - Nextflow trace: task timing, resource use and completion status.
 
+### H5AD release uploads
+
+Add `--h5ad_release_uri gs://BUCKET/VERSION/perturb-seq` to upload each
+dataset's two H5ADs after its DEA/GSEA merge succeeds, including every sample
+in a Flex pool. The filenames are `<dataset_id>.h5ad` (unfiltered) and
+`<dataset_id>.filtered.h5ad`. Omitting the URI keeps processing local.
+
+The upload task runs outside Singularity and requires authenticated `gcloud`
+on the execution host with write access to that prefix. GCloud performs
+resumable, checksum-verified uploads directly from the processing filesystem;
+upload errors fail the workflow. Set the BE's `RELEASE_BUCKET` and
+`RELEASE_VERSION_PREFIX` to the same bucket/version. Reprocessed Perturb-seq
+pages expose both files through the existing signed-download endpoint using
+`format=h5ad` and `format=filtered.h5ad`.
+
 ## Publish DEA/GSEA results to BigQuery
 
 This is the Perturb-seq-specific publication step. After BigQuery, continue with

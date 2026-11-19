@@ -369,20 +369,35 @@ def _dataset_download_link(
     )
 
 
-def _dataset_download_controls(dataset_id: str, modality: str) -> html.Div:
+def _dataset_download_controls(
+    dataset_id: str, modality: str, reprocessed: bool = False
+) -> html.Div:
+    links = [
+        _dataset_download_link(
+            "Download full data (Parquet)",
+            _dataset_download_url(dataset_id, modality, "parquet"),
+            DATASET_PARQUET_DOWNLOAD_LINK,
+        ),
+        _dataset_download_link(
+            "Download full data (CSV.gz)",
+            _dataset_download_url(dataset_id, modality),
+            DATASET_DOWNLOAD_LINK,
+        ),
+    ]
+    if modality == "perturb-seq" and reprocessed:
+        links.extend(
+            _dataset_download_link(
+                f"Download {label} (H5AD)",
+                _dataset_download_url(dataset_id, modality, download_format),
+                f"dataset-{download_format}-download-link",
+            )
+            for label, download_format in (
+                ("unfiltered", "h5ad"),
+                ("filtered", "filtered.h5ad"),
+            )
+        )
     return html.Div(
-        [
-            _dataset_download_link(
-                "Download full data (Parquet)",
-                _dataset_download_url(dataset_id, modality, "parquet"),
-                DATASET_PARQUET_DOWNLOAD_LINK,
-            ),
-            _dataset_download_link(
-                "Download full data (CSV.gz)",
-                _dataset_download_url(dataset_id, modality),
-                DATASET_DOWNLOAD_LINK,
-            ),
-        ],
+        links,
         className="d-flex align-items-center justify-content-center flex-wrap gap-2 mb-3",
     )
 
@@ -661,7 +676,11 @@ def render_dataset(data: Optional[Dict[str, Any]]):
     is_perturb_seq = modality == "perturb-seq"
     is_crispr = modality == "crispr-screen"
     data_download_controls = (
-        _dataset_download_controls(dataset_id, modality) if modality else html.Div()
+        _dataset_download_controls(
+            dataset_id, modality, dataset_data.get("perturb_seq_reprocessed", False)
+        )
+        if modality
+        else html.Div()
     )
 
     if is_perturb_seq:

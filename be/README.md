@@ -39,6 +39,9 @@ service account.
 
 Unfiltered dataset downloads redirect to seven-day V4 signed URLs in that
 bucket; filtered CSV downloads continue to run through the API.
+Reprocessed Perturb-seq datasets also provide `format=h5ad` (unfiltered) and
+`format=filtered.h5ad` on `/v1/perturb-seq/{dataset_id}/download`, using the
+same bucket/version prefix. H5AD downloads do not accept row filters.
 
 If you are running locally and as such connecting to Postges externally, allow connections from your IP:
 * https://console.cloud.google.com/sql/instances
