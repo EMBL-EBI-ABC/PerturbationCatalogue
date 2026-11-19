@@ -6,7 +6,7 @@ Original raw-availability audit scope: the 23 rows then labelled `Conditions = S
 
 - `Raw data access`: `FASTQ` means direct FASTQ files; `BAM only` means submitted BAMs requiring reconstruction; `SRA (FASTQ extraction)` means use SRA archives to retain technical reads omitted from the ENA FASTQs; `FASTQ + SRA` means source GEX FASTQs plus guide SRA archives. `Unavailable` means no public raw reads were found in this audit, not proof of permanent absence. `Not checked` is outside the audit scope.
 - `Data health check`: `OK` means no unresolved data/metadata anomaly was found in this audit, not proof of integrity or current pipeline compatibility. `Issues` flags missing cell type (Norman and Replogle K562 essential), the inconsistent Adamson UPR catalogue accession, missing Zhu R2 guide libraries / conflicting stimulation labels, unavailable Orion reads, or Gasperini's confirmed shared-control workflow incompatibility. Details are below; missing cell types remain a minor deferred curation issue. `Not checked` must not be interpreted as `OK`.
-- BAM/SRA extraction and Flex/Ultima support are processing requirements, not by themselves data-health anomalies. Thus the four Zhu R1 output rows have `OK` health but still require demultiplexing and platform support before running; the other eight Zhu rows have `Issues`.
+- BAM/SRA extraction and Flex/Ultima support are processing requirements, not by themselves data-health anomalies. The four Zhu R1 output rows have `OK` health; the other eight Zhu rows retain `Issues` for missing guide lanes and the stimulation-label conflict. The read-level Flex path is now implemented; full production-lane validation remains a separate processing check.
 - `ENA project` is the BioProject accession shared by ENA/SRA. `ENA sample` contains the exact, semicolon-separated BioSample accessions for both gene-expression and guide libraries, including shared pooled samples where necessary.
 - `Data size TB` is the size of the selected compressed archive files in decimal TB (bytes / 10^12), rounded to three decimals. The format being counted is stated in each row. These are download sizes, not extracted FASTQ sizes or processing-space estimates. BAM indexes, processed count products and alternative representations of the same reads are excluded.
 - Blank accession/size means not found or unknown, not zero. An archive record alone is not evidence that the current pipeline can process it. BAM conversion, technical barcode reads, Flex probe demultiplexing and Ultima read layouts need attention where noted.
@@ -75,9 +75,48 @@ All 71 GEX runs are source-only in the checked ENA/SRA run reports. The NCBI loc
 Known limitations before reanalysis:
 
 - No matching R2 guide runs were found in either ENA or SRA RunInfo for L07–L14 or L25, L26, L29, L30, L32, L36, L39, L41, L47, L48. All eight output rows drawing from R2 therefore have incomplete archived guide-library coverage. Their listed sizes cover the available files, not a hypothetical complete deposition.
-- GEO titles for R2 L25–L48 say **24 hr**, whereas their probe mapping names and the authors' sample table say **Stim48hr**. The table follows the explicit donor/probe mapping to the existing Stim48hr datasets and flags the conflict for resolution before running.
-- These are Flex libraries sequenced on Ultima UG 100. Raw inputs pool conditions even though each intended output is a single condition. The current 10x 3-prime v3 workflow must not be assumed to support them; demultiplexing and platform-specific processing remain prerequisite work, outside this discovery task.
+- GEO titles for R2 L25–L48 say **24 hr**, whereas their probe mapping names and the authors' sample table say **Stim48hr**. The input table and current workflow follow the explicit author donor/probe mapping; the conflicting GEO label remains recorded for later resolution.
+- The author sample metadata identifies these as `GEMX_flex_v1` libraries sequenced on Ultima. Raw inputs pool conditions even though each intended output is a single condition. The read-level Flex route uses custom Kallisto/Bustools geometry, separate BC/CR barcode maps, and the pinned 10x Flex v1 probe panel.
 - Other experiments in this BioProject (Tact, Th1Th2, IL10IL21 and arrayed validation) are excluded.
+
+### Zhu read-level format and implementation, 2026-10-02
+
+The source manifests in `pipeline/datasets/zhu_2025/` pin 463 original GEX
+FASTQ pairs and 253 guide SRA archives by accession, size and MD5. The three
+physical pools contain about 60.056 TB of compressed source data in total. The
+workflow processes each original GEX pair sequentially with byte-range
+validation, removes it after counting, and handles one guide archive at a time;
+it does not stage a full pool or use author count matrices as an input.
+
+Bounded inspection of [guide run SRR36475051](https://www.ncbi.nlm.nih.gov/sra/SRR36475051)
+found the SRA `SEQUENCE` table encoded as two equal blocks rather than interleaved
+mates: 103,611,851 28-base cell-barcode/UMI reads followed by 103,611,851
+variable-length guide reads. Pair reconstruction checks the equal block sizes
+and every matched spot name. In a 998-pair sample, 926 guide reads contained an
+exact reverse-complement match to one of the 26,504 author guide sequences and
+893 contained the expected 30-base anchor. Read-level evidence therefore
+supports recovering the guide library from the available SRA archives; absent
+lane accessions remain genuinely unavailable and are not filled from author
+assignments.
+
+The workflow counts each physical lane once for all paired BC/CR aliases and
+produces every donor/state declared for one physical pool in a single invocation.
+It retains CBC16, canonical GEX BC8 and lane identity; guide CR8 is translated
+to its paired GEX BC8 before joining modalities. Kallisto 0.52.0 pseudoaligns
+included probe50 targets and anchored guide targets; Bustools 0.45.1 corrects
+barcode components independently and deduplicates UMIs per probe target across
+source chunks. Probe counts are summed to stable ENSG genes afterward.
+Native barcode prefiltering follows the standard branch's Bustools policy at
+lane × canonical BC alias scope, followed by common QC and DEA/GSEA.
+
+The native synthetic check validates barcode correction, ambiguous-barcode
+rejection, alias separation and probe-level UMI counting. Bounded read checks
+support the GEX/guide layouts, but do not replace full production validation.
+The first full pool is `CD4i_R2_L25-48`, producing
+`zhu_2025_D1_stim48hr_cl`, `zhu_2025_D2_stim48hr_cl`,
+`zhu_2025_D3_stim48hr_cl` and `zhu_2025_D4_stim48hr_cl` together. Missing guide
+lanes and the author-versus-GEO stimulation-time label conflict remain
+unresolved source limitations; available reads are processed as deposited.
 
 ### Orion: no public raw-read accession found
 
