@@ -2,6 +2,9 @@
 
 This package provides utilities for data curation in the PerturbationCatalogue project.
 
+For publication-based metadata extraction, LLM review, and MaveDB postprocessing,
+start with the [study curation workflow](study_curation/README.md).
+
 ## Installation
 
 You can install the package locally in editable mode using either `pip` or `uv`. This allows you to import `curation_tools` anywhere in your project without using relative imports.
@@ -30,7 +33,8 @@ uv pip install -e .
 After installation, you can import modules and classes from `curation_tools` in your scripts or notebooks:
 
 ```python
-from curation_tools.curation_tools import CuratedDataset, ObsSchema, VarSchema, Experiment
+from curation_tools.curation_tools import CuratedDataset
+from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
 ```
 
 Any changes to the source code will be reflected immediately thanks to the editable install.

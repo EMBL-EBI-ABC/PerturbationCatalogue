@@ -69,6 +69,23 @@ def make_gene_mapping_dict(entries_list: list) -> dict:
     return out_gene_mapping
 
 
+def _select_numeric_score_columns(score_df: pd.DataFrame) -> pd.DataFrame:
+    """Coerce score candidates to numeric values and drop non-score columns."""
+    numeric_scores = pd.DataFrame(index=score_df.index)
+    for column in score_df.columns:
+        if pd.api.types.is_bool_dtype(score_df[column]):
+            continue
+
+        coerced_column = pd.to_numeric(score_df[column], errors="coerce")
+        if coerced_column.notna().any():
+            numeric_scores[column] = coerced_column
+
+    if numeric_scores.empty:
+        raise ValueError("No numeric score columns found in MaveDB score data.")
+
+    return numeric_scores
+
+
 def edit_mavedb_metadata_df_columns(metadata_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Edit columns of the mavedb metadata dataframe to match the unified schema.
@@ -313,14 +330,86 @@ def process_mavedb_metadata(
     return final_df, processed_df
 
 
+def _metadata_for_score_rows(
+    metadata: pd.DataFrame,
+    score_data: pd.DataFrame,
+    sample_ids: pd.Index,
+    mavedb_id: str,
+) -> pd.DataFrame:
+    """Assign dataset metadata to each score row, including target-specific rows."""
+    dataset_metadata = metadata.loc[metadata["dataset_id"].eq(mavedb_id)].reset_index(
+        drop=True
+    )
+    if dataset_metadata.empty:
+        raise ValueError(f"No curated metadata found for MaveDB dataset {mavedb_id}")
+
+    if len(dataset_metadata) == 1:
+        record = dataset_metadata.iloc[0].to_dict()
+        return pd.DataFrame([record] * len(score_data), index=sample_ids)
+
+    target_column = "perturbed_target_symbol"
+    if target_column not in dataset_metadata.columns:
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows but no {target_column} column"
+        )
+
+    targets = (
+        dataset_metadata[target_column]
+        .astype("string")
+        .str.strip()
+        .str.casefold()
+    )
+    missing_targets = targets.isna() | targets.eq("").fillna(False)
+    if missing_targets.any():
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows with missing {target_column} values"
+        )
+    duplicate_targets = targets[targets.duplicated(keep=False)].unique().tolist()
+    if duplicate_targets:
+        raise ValueError(
+            f"{mavedb_id} has multiple metadata rows for the same target: "
+            f"{duplicate_targets[:10]}"
+        )
+    target_to_position = {target: position for position, target in enumerate(targets)}
+
+    metadata_records = []
+    unmatched_samples = []
+    for row_position, (_, score_row) in enumerate(score_data.iterrows()):
+        score_targets = set()
+        for field in ("hgvs_nt", "hgvs_splice", "hgvs_pro"):
+            value = score_row.get(field)
+            if isinstance(value, str) and ":" in value:
+                score_targets.add(value.split(":", 1)[0].strip().casefold())
+
+        matching_positions = {
+            target_to_position[target]
+            for target in score_targets
+            if target in target_to_position
+        }
+        if len(matching_positions) != 1:
+            unmatched_samples.append(str(sample_ids[row_position]))
+            continue
+        metadata_records.append(
+            dataset_metadata.iloc[matching_positions.pop()].to_dict()
+        )
+
+    if unmatched_samples:
+        raise ValueError(
+            f"Could not match {len(unmatched_samples)} score rows in {mavedb_id} "
+            f"to one {target_column} metadata row; examples: {unmatched_samples[:10]}"
+        )
+
+    return pd.DataFrame(metadata_records, index=sample_ids)
+
+
 def make_adata_mavedb(
     mavedb_id: str = None,
-    mavedb_csv_dir: str = "../Dump/mavedb-dump.20250612164404/csv",
+    mavedb_csv_dir: str = None,
     curated_metadata_df: pd.DataFrame = None,
-    save_h5ad_dir=None,
+    save_h5ad_dir: str | None = None,
 ):
     """
-    Create an AnnData object for a specific MaveDB experiment id.
+    Create AnnData object for a specific MaveDB experiment id.
 
     Parameters:
     ----------
@@ -330,13 +419,13 @@ def make_adata_mavedb(
         Path to the directory containing MaveDB CSV files.
     curated_metadata_df : pd.DataFrame
         Curated metadata dataframe for MaveDB experiments.
-    save_h5ad_dir : Path
+    save_h5ad_dir : str | None
         Directory to save the AnnData h5ad file. If None, the file is not saved.
 
     Returns:
     -------
-    anndata.AnnData
-        AnnData object containing the MaveDB data.
+    tuple[anndata.AnnData, Path | None]
+        AnnData object containing the MaveDB data and the path to the saved h5ad file (if applicable).
     """
     mavedb_data_path = f"{mavedb_csv_dir}/{mavedb_id.replace(':', '-')}.scores.csv"
     if not Path(mavedb_data_path).exists():
@@ -346,15 +435,15 @@ def make_adata_mavedb(
     X_df = mavedb_data.copy()
     X_df.index = X_df["accession"].str.replace("#", "-").str.replace(":", "-")
     X_df = X_df.drop(columns=["accession"])
-    X_df = X_df.iloc[
-        :, 3::
-    ]  # first three columns are always hgvs ids, take all columns from 4th onwards as these are the scores
+    X_df = X_df.iloc[:, 3:]  # first three columns are always hgvs ids
+    X_df = _select_numeric_score_columns(X_df)
 
-    metadata_subset_dict = curated_metadata_df[
-        curated_metadata_df["dataset_id"] == mavedb_id
-    ].to_dict(orient="records")[0]
-
-    OBS_df = pd.DataFrame(index=X_df.index, data=metadata_subset_dict)
+    OBS_df = _metadata_for_score_rows(
+        metadata=curated_metadata_df,
+        score_data=mavedb_data,
+        sample_ids=X_df.index,
+        mavedb_id=mavedb_id,
+    )
 
     OBS_df["sample_id"] = OBS_df.index
 
@@ -373,14 +462,14 @@ def make_adata_mavedb(
     OBS_df["perturbation_name"] = hgvs_str_list
 
     OBS_df["significant"] = None
-    OBS_df["significance_criteria"] = None
+    OBS_df["significance_criteria"] = OBS_df["significance_criteria"] if "significance_criteria" in OBS_df.columns else None
     OBS_df["guide_sequence"] = None
 
     VAR_df = pd.DataFrame(index=X_df.columns, data={"score_name": X_df.columns})
 
     # replace None with np.nan to avoid issues with AnnData writing
-    OBS_df = OBS_df.replace({None: np.nan})
-    VAR_df = VAR_df.replace({None: np.nan})
+    OBS_df = OBS_df.where(OBS_df.notna(), np.nan).infer_objects(copy=False)
+    VAR_df = VAR_df.where(VAR_df.notna(), np.nan).infer_objects(copy=False)
 
     # Create AnnData object
     adata = anndata.AnnData(X=X_df, obs=OBS_df, var=VAR_df)
@@ -388,6 +477,7 @@ def make_adata_mavedb(
     # save the anndata object as an h5ad file
     h5ad_path = None
     if save_h5ad_dir:
+        save_h5ad_dir = Path(save_h5ad_dir)
         save_h5ad_dir.mkdir(parents=True, exist_ok=True)
         h5ad_path = save_h5ad_dir / f"{mavedb_id.replace(':', '-')}.h5ad"
         adata.write_h5ad(h5ad_path)
@@ -401,6 +491,7 @@ def curate_mavedb(
     save_curated_h5ad: bool = True,
     save_curated_parquet: bool = True,
     split_parquet: bool = True,
+    overwrite: bool = False,
 ):
     """Curate DepMap AnnData object using curation tools.
 
@@ -414,6 +505,8 @@ def curate_mavedb(
             Whether to save the curated data as a parquet file. Defaults to True.
         split_parquet: bool
             Whether to save separate Parquet files for data and metadata. Defaults to True.
+        overwrite: bool
+            Whether to overwrite existing curated output files. Defaults to False.
 
     Returns:
     -------
@@ -438,8 +531,8 @@ def curate_mavedb(
     cur_data.standardize_genes(
         slot="obs",
         input_column="perturbed_target_symbol",
-        input_column_type="gene_symbol",
         multiple_entries=False,
+        keep_unmapped=True
     )
 
     # count number of perturbations in each sample
@@ -457,28 +550,30 @@ def curate_mavedb(
     cur_data.match_schema_columns(slot="obs")
 
     # validate the data against the schema
-    cur_data.validate_data(slot="obs", verbose=False)
+    cur_data.validate_data(slot="obs", verbose=False, collect_errors=False)
 
     if save_curated_h5ad:
         cur_data.save_curated_data_h5ad()
 
     # save the curated data as Parquet files
     if save_curated_parquet:
-        cur_data.save_curated_data_parquet(split_metadata=split_parquet)
+        cur_data.save_curated_data_parquet(
+            split_metadata=split_parquet, overwrite=overwrite
+        )
 
     return cur_data
 
 
 def process_mavedb(
     mavedb_dataset_id: str = None,
-    mavedb_csv_dir: str = "../Dump/mavedb-dump.20250612164404/csv",
+    mavedb_csv_dir: str = None,
     curated_metadata_df: pd.DataFrame = None,
-    non_curated_h5ad_dir: Path = Path("../non_curated/h5ad"),
+    non_curated_h5ad_dir: str = None,
     overwrite: bool = False,
 ):
     """
     Process and curate MaveDB dataset.
-    
+
     Parameters:
     ----------
     mavedb_dataset_id : str
@@ -487,11 +582,11 @@ def process_mavedb(
         Path to the directory containing MaveDB CSV files.
     curated_metadata_df : pd.DataFrame
         Curated metadata dataframe for MaveDB experiments.
-    non_curated_h5ad_dir : Path
+    non_curated_h5ad_dir : str
         Directory to save the non-curated AnnData h5ad file.
     overwrite : bool
         Whether to overwrite existing curated data. Defaults to False.
-        
+
     Returns:
     -------
     CuratedDataset
@@ -500,17 +595,17 @@ def process_mavedb(
 
     # check if the data has been processed already, if yes, skip processing
     curated_h5ad_path = (
-        Path(non_curated_h5ad_dir.as_posix().replace("non_curated", "curated"))
+        Path(non_curated_h5ad_dir.replace("non_curated", "curated"))
         / f"{mavedb_dataset_id}_curated.h5ad"
     )
     if curated_h5ad_path.exists():
         if overwrite:
             print(
-                f"♻️ Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Overwriting..."
+                f"Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Overwriting..."
             )
         else:
             print(
-                f"✅ Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Skipping processing."
+                f"Curated DepMap data for {mavedb_dataset_id} already exists at {curated_h5ad_path}. Skipping processing."
             )
             return
 
@@ -528,6 +623,7 @@ def process_mavedb(
         save_curated_h5ad=True,
         save_curated_parquet=True,
         split_parquet=True,
+        overwrite=overwrite,
     )
 
     return cur_data

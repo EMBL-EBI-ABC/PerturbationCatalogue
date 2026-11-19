@@ -1,11 +1,11 @@
 from pathlib import Path
+from typing import Literal
 
 from anndata import AnnData
 import numpy as np
 import pandas as pd
 
 from curation_tools.curation_tools import (
-    upload_parquet_to_bq,
     CuratedDataset,
     ObsSchema,
     VarSchema,
@@ -19,7 +19,8 @@ def process_biogrid_screen(
     curated_metadata_dict: dict = None,
     non_curated_h5ad_dir: str = None,
     upload_to_bq: bool = False,
-    bq_dataset_id: str = None,
+    project_id: str = None,
+    bq_dataset_id: Literal["perturb_seq", "crispr", "mavedb"] = "crispr",
     bq_metadata_table_name: str = "metadata",
     bq_data_table_name: str = "data",
 ):
@@ -40,6 +41,8 @@ def process_biogrid_screen(
         Directory to save non-curated h5ad files.
     - upload_to_bq: bool
         Boolean flag indicating whether to upload to BigQuery.
+    - project_id: str
+        BigQuery project ID for uploading data. Defaults to BQ_PROJECT.
     - bq_dataset_id: str
         BigQuery dataset ID for uploading data.
     - bq_metadata_table_name: str
@@ -50,9 +53,6 @@ def process_biogrid_screen(
     -------
     - CuratedDataset
     """
-
-    if upload_to_bq and bq_dataset_id is None:
-        raise ValueError("bq_dataset_id must be provided if upload_to_bq is True.")
 
     # Step 1: Create AnnData from BioGRID screen data
     _adata, h5ad_path = make_adata_biogrid(
@@ -76,8 +76,9 @@ def process_biogrid_screen(
         print(
             f"Uploading metadata Parquet to BigQuery: {cur_data.curated_parquet_metadata_path}"
         )
-        upload_parquet_to_bq(
-            parquet_path=cur_data.curated_parquet_metadata_path,
+        cur_data.upload_parquet_to_bq(
+            project_id=project_id,
+            parquet_kind="metadata",
             bq_dataset_id=bq_dataset_id,
             bq_table_name=bq_metadata_table_name,
             key_columns=["dataset_id", "sample_id"],
@@ -86,8 +87,9 @@ def process_biogrid_screen(
         print(
             f"Uploading data Parquet to BigQuery: {cur_data.curated_parquet_data_path}"
         )
-        upload_parquet_to_bq(
-            parquet_path=cur_data.curated_parquet_data_path,
+        cur_data.upload_parquet_to_bq(
+            project_id=project_id,
+            parquet_kind="data",
             bq_dataset_id=bq_dataset_id,
             bq_table_name=bq_data_table_name,
             key_columns=["dataset_id", "sample_id"],

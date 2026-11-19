@@ -1,49 +1,634 @@
 import pandas as pd
-from pandera.pandas import Field, DataFrameModel
+from pandera.pandas import Field, DataFrameModel, dataframe_check
 from pandera.typing import Series, Index, String, Int64, Float32
 from pathlib import Path
 
-# Get the absolute path to the current module file
-module_path = Path(__file__).resolve()
 
-# Navigate up to the project root and then to 'ontologies'
-ont_dir = module_path.parent / "ontologies"
-
-gene_ont = pd.read_parquet(ont_dir / "genes.parquet").drop_duplicates()
-ctype_ont = pd.read_parquet(ont_dir / "cell_types.parquet").drop_duplicates()
-cline_ont = pd.read_parquet(ont_dir / "cell_lines.parquet").drop_duplicates()
-tis_ont = pd.read_parquet(ont_dir / "tissues.parquet").drop_duplicates()
-dis_ont = pd.read_parquet(ont_dir / "diseases.parquet").drop_duplicates()
+def _labels_from_id_map(id_by_label: dict[str, str | None]) -> frozenset[str]:
+    return frozenset(id_by_label)
 
 
-# adata.obs schema
+def _ids_from_id_map(id_by_label: dict[str, str | None]) -> frozenset[str]:
+    return frozenset(term_id for term_id in id_by_label.values() if term_id is not None)
+
+
+_TREATMENT_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "untreated control": "NCIT:C184729",
+    "scrambled control oligonucleotide": "XCO:0001141",
+    "culture medium": "BAO:0000114",
+    "chemical entity": "CHEBI:24431",
+    "protein": "BAO:0000175",
+    "protein complex": "BAO:0002554",
+    "peptide": "BAO:0000325",
+    "antibody": "BAO:0000502",
+    "lipid": "BAO:0000171",
+    "PNA": "BAO:0000226",
+    "DNA": "BAO:0000269",
+    "RNA": "BAO:0000270",
+    "mRNA": "BAO:0000274",
+    "rRNA": "BAO:0000275",
+    "tRNA": "BAO:0000276",
+    "cDNA": "BAO:0000315",
+    "genomic DNA": "BAO:0000316",
+    "plasmid DNA": "BAO:0000317",
+    "miRNA": "BAO:0000322",
+    "shRNA": "BAO:0000323",
+    "siRNA": "BAO:0000324",
+    "LNA": "BAO:0000412",
+    "RNA aptamer": "BAO:0000496",
+    "riboswitch": "BAO:0000498",
+    "esiRNA": "BAO:0000544",
+    "temperature": "EFO:0001702",
+}
+
+_TREATMENT_TYPE_LABELS = _labels_from_id_map(_TREATMENT_TYPE_ID_BY_LABEL)
+_TREATMENT_TYPE_IDS = _ids_from_id_map(_TREATMENT_TYPE_ID_BY_LABEL)
+
+_DATA_MODALITY_ID_BY_LABEL: dict[str, str | None] = {
+    "Perturb-seq": None,
+    "CRISPR screen": None,
+    "MAVE": None,
+}
+_DATA_MODALITIES = _labels_from_id_map(_DATA_MODALITY_ID_BY_LABEL)
+_SIGNIFICANCE_VALUES = frozenset({"True", "False"})
+_CURATION_AGENT_TYPES = frozenset({"human", "LLM"})
+_PERTURBATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "CRISPRn": None,
+    "CRISPRi": None,
+    "CRISPRa": None,
+    "DMS": None,
+}
+_PERTURBATION_TYPE_LABELS = _labels_from_id_map(_PERTURBATION_TYPE_ID_BY_LABEL)
+
+_MODEL_SYSTEM_ID_BY_LABEL: dict[str, str | None] = {
+    "cell_line": "CLO:0000031",
+    "primary_cell": "BAO:0000239",
+    "organoid": "NCIT:C172259",
+    "yeast": "NCIT:C19617",
+    "bacteria": "NCIT:C19167",
+    "bacteriophage": "NCIT:C14188",
+    "animal_model": "NCIT:C71164",
+    "cell_free_system": "mesh:D002474",
+}
+_MODEL_SYSTEM_LABELS = _labels_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
+_MODEL_SYSTEM_IDS = _ids_from_id_map(_MODEL_SYSTEM_ID_BY_LABEL)
+
+_SPECIES_ID_BY_LABEL: dict[str, str | None] = {
+    "Homo sapiens": None,
+    "Mus musculus": None,
+    "Saccharomyces cerevisiae": None,
+    "Saccharomyces cerevisiae S288C": None,
+    "Aequorea victoria": None,
+    "Escherichia coli": None,
+    "Escherichia coli BL21(DE3)": None,
+    "Streptococcus pyogenes": None,
+    "Pseudomonas aeruginosa": None,
+    "Zika virus": None,
+    "Ruminiclostridium cellulolyticum": None,
+    "Acetivibrio thermocellus": None,
+    "Atropa belladonna": None,
+    "Bos taurus": None,
+    "Influenza A virus (A/Aichi/2/1968(H3N2))": None,
+    "Influenza A virus (A/Puerto Rico/8/1934(H1N1))": None,
+    "Rattus norvegicus": None,
+    "H1N1 subtype": None,
+    "Streptococcus sp. group G": None,
+    "Severe acute respiratory syndrome coronavirus 2": None,
+    "Escherichia coli K-12": None,
+}
+_SPECIES = _labels_from_id_map(_SPECIES_ID_BY_LABEL)
+
+_SEX_ID_BY_LABEL: dict[str, str | None] = {
+    "female": "PATO:0000383",
+    "male": "PATO:0000384",
+    "hermaphrodite": "PATO:0001340",
+    "unknown": None,
+}
+_SEX_LABELS = _labels_from_id_map(_SEX_ID_BY_LABEL)
+_SEX_IDS = _ids_from_id_map(_SEX_ID_BY_LABEL)
+
+_DEVELOPMENTAL_STAGE_ID_BY_LABEL: dict[str, str | None] = {
+    "embryonic": "HsapDv:0000002",
+    "fetal": "HsapDv:0000037",
+    "neonatal": "HsapDv:0000262",
+    "child": "HsapDv:0000265",
+    "juvenile": "HsapDv:0000271",
+    "adult": "HsapDv:0000258",
+    "elderly": "HsapDv:0000227",
+}
+_DEVELOPMENTAL_STAGE_LABELS = _labels_from_id_map(_DEVELOPMENTAL_STAGE_ID_BY_LABEL)
+_DEVELOPMENTAL_STAGE_IDS = _ids_from_id_map(_DEVELOPMENTAL_STAGE_ID_BY_LABEL)
+
+_LIBRARY_GENERATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "endogenous genetic perturbation method": "EFO:0022868",
+    "exogenous genetic perturbation method": "EFO:0022869",
+}
+_LIBRARY_GENERATION_TYPE_LABELS = _labels_from_id_map(
+    _LIBRARY_GENERATION_TYPE_ID_BY_LABEL
+)
+_LIBRARY_GENERATION_TYPE_IDS = _ids_from_id_map(_LIBRARY_GENERATION_TYPE_ID_BY_LABEL)
+
+_LIBRARY_GENERATION_METHOD_ID_BY_LABEL: dict[str, str | None] = {
+    "doped oligo synthesis": "EFO:0022900",
+    "error-prone PCR": "EFO:0022901",
+    "microarray synthesis": "EFO:0022902",
+    "silicon microarray synthesis": "EFO:0022902",
+    "nicking mutagenesis": "EFO:0022903",
+    "oligo-directed mutagenic PCR": "EFO:0022904",
+    "site-directed mutagenesis": "EFO:0022905",
+    "POPCode mutagenesis": "EFO:0022905",
+    "multiplexed site-directed mutagenesis": "EFO:0022905",
+    "insertional mutagenesis": "NCIT:C17377",
+    "solid-phase oligonucleotide synthesis": None,
+    "microchip-based massive parallel oligo synthesis": None,
+    "mutagenesis by integrated tiles": None,
+}
+_LIBRARY_GENERATION_METHOD_LABELS = _labels_from_id_map(
+    _LIBRARY_GENERATION_METHOD_ID_BY_LABEL
+)
+_LIBRARY_GENERATION_METHOD_IDS = _ids_from_id_map(
+    _LIBRARY_GENERATION_METHOD_ID_BY_LABEL
+)
+
+_DELIVERY_METHOD_ID_BY_LABEL: dict[str, str | None] = {
+    "lipofection": None,
+    "nucleofection": None,
+    "electroporation": None,
+    "adeno-associated virus transduction": None,
+    "adenovirus transduction": None,
+    "retrovirus transduction": None,
+    "lentivirus transduction": None,
+    "nanoparticle-mediated transfection": None,
+    "molecular cloning": None,
+    "transformation": None,
+    "chemical-mediated transfection": None,
+    "hydrodynamic injection": None,
+    "influenza A virus infection": None,
+}
+_ENZYME_DELIVERY_METHOD_LABELS = _labels_from_id_map(_DELIVERY_METHOD_ID_BY_LABEL)
+_LIBRARY_DELIVERY_METHOD_LABELS = _labels_from_id_map(_DELIVERY_METHOD_ID_BY_LABEL)
+
+_INTEGRATION_STATE_ID_BY_LABEL: dict[str, str | None] = {
+    "random locus integration": "EFO:0920082",
+    "targeted locus integration": "EFO:0920083",
+    "native locus replacement": "EFO:0920084",
+    "non-integrative transgene expression": "EFO:0920085",
+    "bacteriophage genome integration": None,
+}
+_INTEGRATION_STATE_LABELS = _labels_from_id_map(_INTEGRATION_STATE_ID_BY_LABEL)
+_INTEGRATION_STATE_IDS = _ids_from_id_map(_INTEGRATION_STATE_ID_BY_LABEL)
+
+_EXPRESSION_CONTROL_ID_BY_LABEL: dict[str, str | None] = {
+    "constitutive transgene expression": None,
+    "inducible transgene expression": None,
+    "native promoter-driven transgene expression": None,
+    "degradation domain-based transgene control": None,
+    "transient transgene expression": None,
+    "minimal promoter-driven transgene expression": None,
+}
+_ENZYME_EXPRESSION_CONTROL_LABELS = _labels_from_id_map(
+    _EXPRESSION_CONTROL_ID_BY_LABEL
+)
+_LIBRARY_EXPRESSION_CONTROL_LABELS = _labels_from_id_map(
+    _EXPRESSION_CONTROL_ID_BY_LABEL
+)
+
+_LIBRARY_FORMAT_ID_BY_LABEL: dict[str, str | None] = {
+    "pooled": None,
+    "arrayed": None,
+    "arrayed|pooled": None,
+    "in vivo": None,
+}
+_LIBRARY_FORMAT_LABELS = _labels_from_id_map(_LIBRARY_FORMAT_ID_BY_LABEL)
+
+_LIBRARY_SCOPE_ID_BY_LABEL: dict[str, str | None] = {
+    "focused": None,
+    "genome-wide": None,
+}
+_LIBRARY_SCOPE_LABELS = _labels_from_id_map(_LIBRARY_SCOPE_ID_BY_LABEL)
+
+_LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "knockout": "EFO:0000506",
+    "inhibition": "INO:0000085",
+    "activation": "INO:0000075",
+    "base editing": "EFO:0022873",
+    "prime editing": "EFO:0022872",
+    "mutagenesis": "NCIT:C17376",
+}
+_LIBRARY_PERTURBATION_TYPE_LABELS = _labels_from_id_map(
+    _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL
+)
+_LIBRARY_PERTURBATION_TYPE_IDS = _ids_from_id_map(
+    _LIBRARY_PERTURBATION_TYPE_ID_BY_LABEL
+)
+
+_READOUT_DIMENSIONALITY_ID_BY_LABEL: dict[str, str | None] = {
+    "single-dimensional assay": None,
+    "high-dimensional assay": None,
+}
+_READOUT_DIMENSIONALITY_LABELS = _labels_from_id_map(
+    _READOUT_DIMENSIONALITY_ID_BY_LABEL
+)
+
+_READOUT_TYPE_ID_BY_LABEL: dict[str, str | None] = {
+    "transcriptomic": "EFO:0001032",
+    "proteomic": "EFO:0000746",
+    "phenotypic": "EFO:0920062",
+}
+_READOUT_TYPE_LABELS = _labels_from_id_map(_READOUT_TYPE_ID_BY_LABEL)
+_READOUT_TYPE_IDS = _ids_from_id_map(_READOUT_TYPE_ID_BY_LABEL)
+
+_READOUT_TECHNOLOGY_ID_BY_LABEL: dict[str, str | None] = {
+    "single-cell rna-seq": "EFO:0008913",
+    "population growth assay": "EFO:0002907",
+    "flow cytometry": "BAO:0000005",
+    "high-throughput dna sequencing": "EFO:0002693",
+    "patch-clamp electrophysiology": "EFO:0022948",
+    "fluorometry": "mesh:D005470",
+}
+_READOUT_TECHNOLOGY_LABELS = _labels_from_id_map(_READOUT_TECHNOLOGY_ID_BY_LABEL)
+_READOUT_TECHNOLOGY_IDS = _ids_from_id_map(_READOUT_TECHNOLOGY_ID_BY_LABEL)
+
+_READOUT_MEASUREMENT_ID_BY_LABEL: dict[str, str | None] = {
+    "protein abundance": "BAO:0010252",
+    "protein stability": "BAO:0002804",
+    "protein activity": "APO:0000022",
+    "protein ubiquitination": "GO:0016567",
+    "cell viability": "PATO:0000169",
+    "cell proliferation": "BAO:0002805",
+    "gene expression": "BAO:0002785",
+    "RNA splicing": "BAO:0003000",
+    "DNA repair": "GO:0006281",
+    "ligand binding": "NCIT:C178030",
+    "ion channel activity": "BAO:0002997",
+    "fluorescence": "BAO:0000363",
+    "virus replication": "mesh:D014779",
+    "surface protein expression": None,
+}
+_READOUT_MEASUREMENT_LABELS = _labels_from_id_map(
+    _READOUT_MEASUREMENT_ID_BY_LABEL
+)
+_READOUT_MEASUREMENT_IDS = _ids_from_id_map(_READOUT_MEASUREMENT_ID_BY_LABEL)
+
+_METHOD_NAME_ID_BY_LABEL: dict[str, str | None] = {
+    "Perturb-seq": "EFO:0008860",
+    "scRNA-seq": "EFO:0008913",
+    "pooled growth competition assay": "EFO:0002907",
+    "massively parallel reporter assay": "EFO:0008822",
+    "yeast surface display": "MI:0115",
+    "bacterial two-hybrid assay": "OBI:0001682",
+    "mammalian two-hybrid assay": "BAO:0002493",
+    "yeast one-hybrid assay": "OBI:0001681",
+    "phage display": "MI:0084",
+    "mRNA display": "MI:0073",
+    "yeast two-hybrid assay": "BAO:0002494",
+    "patch-clamp electrophysiology": "EFO:0022948",
+    "abundance protein fragment complementation assay": "MI:0090",
+    "computational meta-analysis": "NCIT:C17886",
+    "Perturb-CITE-seq": None,
+    "proliferation CRISPR screen": None,
+    "DMS-TileSeq": None,
+    "DMS-BarSeq": None,
+    "Joined and refined DMS-BarSeq and DMS-TileSeq": None,
+    "Combined DMS-BarSeq and DMS-TileSeq": None,
+    "flow cytometry-based sequencing assay": None,
+    "CRISPR mutagenesis screen": None,
+    "Saturation-Selection-Sequencing assay": None,
+    "fluorescence-based homology-directed repair assay": None,
+    "gap repair assay": None,
+    "homology-directed repair assay": None,
+    "phage-assisted continuous selection": None,
+    "pooled deep mutational scanning": None,
+    "protein folding sensor assay": None,
+    "saturation genome editing": None,
+    "saturation prime editing": None,
+    "saturation base editing": None,
+    "MITE": None,
+    "VAMP-seq": None,
+    "polysome profiling": None,
+}
+_METHOD_NAME_LABELS = _labels_from_id_map(_METHOD_NAME_ID_BY_LABEL)
+_METHOD_NAME_IDS = _ids_from_id_map(_METHOD_NAME_ID_BY_LABEL)
+
+_SEQUENCING_LIBRARY_KIT_ID_BY_LABEL: dict[str, str | None] = {
+    "10x Genomics Single Cell 3-prime v1": "EFO:0009901",
+    "10x Genomics Single Cell 3-prime v2": "EFO:0009899",
+    "10x Genomics Single Cell 3-prime v3": "EFO:0009922",
+    "10x Genomics Single Cell 3-prime v3.1": "EFO:0022980",
+    "10x Genomics Chromium GEM-X Flex v1": "EFO:0920088",
+    "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3": None,
+    "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2": None,
+    "Nextera XT DNA Library Preparation Kit": None,
+    "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit": None,
+    "TruSeq Nano DNA Library Prep Kit": None,
+    "Ovation Ultralow Library System": None,
+    "custom PCR library preparation": None,
+    "Nextera DNA Library Preparation Kit": None,
+    "PacBio SMRTbell Template Prep Kit": None,
+    "PacBio SMRTbell Template Prep Kit v1": None,
+    "PacBio SMRTbell Template Prep Kit v2": None,
+    "PacBio SMRTbell Template Prep Kit v3": None,
+    "Beckman Coulter DTCS DNA sequencing kit": None,
+}
+_SEQUENCING_LIBRARY_KIT_LABELS = _labels_from_id_map(
+    _SEQUENCING_LIBRARY_KIT_ID_BY_LABEL
+)
+_SEQUENCING_LIBRARY_KIT_IDS = _ids_from_id_map(
+    _SEQUENCING_LIBRARY_KIT_ID_BY_LABEL
+)
+
+_SEQUENCING_PLATFORM_ID_BY_LABEL: dict[str, str | None] = {
+    "Illumina Genome Analyzer": "EFO:0004200",
+    "Illumina Genome Analyzer II": "EFO:0004201",
+    "Illumina Genome Analyzer IIx": "EFO:0004202",
+    "Illumina HiSeq 2000": "EFO:0004203",
+    "Illumina HiSeq 1000": "EFO:0004204",
+    "Illumina MiSeq": "EFO:0004205",
+    "454 GS 20 sequencer": "EFO:0004206",
+    "454 GS sequencer": "EFO:0004431",
+    "454 GS FLX sequencer": "EFO:0004432",
+    "454 GS FLX Titanium sequencer": "EFO:0004433",
+    "454 GS Junior sequencer": "EFO:0004434",
+    "AB SOLiD System": "EFO:0004435",
+    "AB SOLiD 5500xl": "EFO:0004436",
+    "AB SOLiD PI System": "EFO:0004437",
+    "AB SOLiD 4 System": "EFO:0004438",
+    "AB SOLiD System 3.0": "EFO:0004439",
+    "AB SOLiD 5500": "EFO:0004440",
+    "AB SOLiD 4hq System": "EFO:0004441",
+    "AB SOLiD System 2.0": "EFO:0004442",
+    "Illumina HiSeq 4000": "EFO:0008563",
+    "Illumina HiSeq 3000": "EFO:0008564",
+    "Illumina HiSeq 2500": "EFO:0008565",
+    "Illumina NextSeq 550": "EFO:0008566",
+    "Illumina HiSeq X": "EFO:0008567",
+    "PacBio Sequel system": "EFO:0008630",
+    "PacBio RS II": "EFO:0008631",
+    "ONT MinION": "EFO:0008632",
+    "ONT GridION X5": "EFO:0008633",
+    "ONT PromethION": "EFO:0008634",
+    "Illumina iSeq 100": "EFO:0008635",
+    "Illumina MiniSeq": "EFO:0008636",
+    "Illumina NovaSeq 6000": "EFO:0008637",
+    "Illumina NextSeq 500": "EFO:0009173",
+    "Illumina NextSeq 1000": "EFO:0010962",
+    "Illumina NextSeq 2000": "EFO:0010963",
+    "Illumina HiSeq 1500": "EFO:0011027",
+    "Illumina NovaSeq X": "EFO:0022840",
+    "Illumina NovaSeq X Plus": "EFO:0022841",
+    "Singular G4": "EFO:0022843",
+    "PacBio Sequel II system": "EFO:0700015",
+    "BGI MGISEQ-2000": "EFO:0700018",
+    "ONT PromethION 2 Solo": "EFO:0700019",
+    "Ultima UG100": "EFO:0920005",
+    "PacBio Revio": "EFO:0920006",
+    "PacBio Onso": "EFO:0920007",
+    "Element Aviti": "EFO:0920008",
+    "Illumina MiSeq i100": "EFO:0920010",
+    "MGI DNBSEQ-T7": "EFO:0920057",
+    "Roche 454 GS FLX": "EFO:0004432",
+    "Ion Torrent PGM": "GENEPIO:0100136",
+    "Ultima Genomics UG100": "EFO:0920005",
+    "Roche 454 GS FLX+": None,
+    "Illumina NextSeq (model unspecified)": None,
+    "Illumina sequencer (model unspecified)": None,
+    "Illumina HiSeq (model unspecified)": None,
+    "PacBio sequencer (model unspecified)": None,
+}
+_SEQUENCING_PLATFORM_LABELS = _labels_from_id_map(
+    _SEQUENCING_PLATFORM_ID_BY_LABEL
+)
+_SEQUENCING_PLATFORM_IDS = _ids_from_id_map(_SEQUENCING_PLATFORM_ID_BY_LABEL)
+
+_SEQUENCING_STRATEGY_ID_BY_LABEL: dict[str, str | None] = {
+    "barcode sequencing": None,
+    "direct sequencing": "NCIT:C116154",
+    "barcode sequencing|direct sequencing": None,
+}
+_SEQUENCING_STRATEGY_LABELS = _labels_from_id_map(
+    _SEQUENCING_STRATEGY_ID_BY_LABEL
+)
+_SEQUENCING_STRATEGY_IDS = _ids_from_id_map(_SEQUENCING_STRATEGY_ID_BY_LABEL)
+
+_SOFTWARE_COUNTS_ID_BY_LABEL: dict[str, str | None] = {
+    "custom": None,
+    "MaGeCK": None,
+    "CellRanger": None,
+    "Drop-seq Tools": None,
+    "Enrich2": None,
+    "Enrich": None,
+    "Novoalign": None,
+    "TileSEQ Analysis Package": None,
+    "DiMSum": None,
+    "dms_tools": None,
+    "dms_tools2": None,
+    "dms_variants": None,
+    "CRISPResso2": None,
+    "mapmuts": None,
+    "ORFcall": None,
+    "ABSSeq": None,
+    "satmut_utils": None,
+    "bcftools": None,
+    "TagDust2": None,
+    "Subassembly": None,
+    "pysamstats": None,
+    "Jellyfish": None,
+    "Tagdust2": None,
+}
+_SOFTWARE_COUNTS_LABELS = _labels_from_id_map(_SOFTWARE_COUNTS_ID_BY_LABEL)
+
+_SOFTWARE_ANALYSIS_ID_BY_LABEL: dict[str, str | None] = {
+    "custom": None,
+    "MAGeCK": None,
+    "Achilles": None,
+    "TRADE": None,
+    "Seurat": None,
+    "MAST": None,
+    "scanpy": None,
+    "Enrich2": None,
+    "DiMSum": None,
+    "DESeq2": None,
+    "dms_tools": None,
+    "dms_tools2": None,
+    "ALDEx2": None,
+    "multidms": None,
+    "dmsPipeline": None,
+    "phydms": None,
+    "Enrich": None,
+    "Rosetta": None,
+    "dms_variants": None,
+    "mapmuts": None,
+    "maveLLR": None,
+    "tileseq_package": None,
+    "tileseqMave": None,
+    "TileseqMave": None,
+    "ABSSeq": None,
+    "Cluster": None,
+    "ORFcall": None,
+    "samtools": None,
+}
+_SOFTWARE_ANALYSIS_LABELS = _labels_from_id_map(_SOFTWARE_ANALYSIS_ID_BY_LABEL)
+
+_REFERENCE_GENOME_ID_BY_LABEL: dict[str, str | None] = {
+    "GRCh38": None,
+    "GRCh37": None,
+    "cDNA reference sequence": None,
+    "mm9": None,
+    "S288c": None,
+    "hg19": None,
+    "Wuhan-Hu-1": None,
+    "non-standard reference sequence": None,
+}
+_REFERENCE_GENOME_LABELS = _labels_from_id_map(_REFERENCE_GENOME_ID_BY_LABEL)
+
+_LICENSE_ID_BY_LABEL: dict[str, str | None] = {
+    "CC0": "SWO:1000049",
+    "CC BY": "SWO:1000050",
+    "CC BY-SA": "SWO:1000052",
+    "CC BY-NC": "SWO:1000079",
+    "CC BY-ND": "SWO:1000077",
+    "CC0 1.0": "SWO:1000049",
+    "CC BY 2.0": "SWO:1000050",
+    "CC BY-SA 2.0": "SWO:1000052",
+    "CC BY 4.0": "SWO:1000065",
+    "CC BY 2.0 UK": "SWO:1000067",
+    "CC BY 2.1 JP": "SWO:1000072",
+    "CC BY 2.5": "SWO:1000073",
+    "CC BY 3.0 AU": "SWO:1000074",
+    "CC BY 3.0": "SWO:1000075",
+    "CC BY 3.0 US": "SWO:1000076",
+    "CC BY-ND 3.0": "SWO:1000077",
+    "CC BY-ND 4.0": "SWO:1000078",
+    "CC BY-NC 3.0": "SWO:1000079",
+    "CC BY-NC 4.0": "SWO:1000080",
+    "CC BY-NC-ND 3.0": "SWO:1000081",
+    "CC BY-NC-ND 2.5": "SWO:1000083",
+    "CC BY-NC-ND 2.5 CH": "SWO:1000084",
+    "CC BY-NC-ND 4.0": "SWO:1000085",
+    "CC BY-NC-SA 2.5": "SWO:1000086",
+    "CC BY-NC-SA 3.0": "SWO:1000087",
+    "CC BY-NC-SA 3.0 US": "SWO:1000088",
+    "CC BY-NC-SA 2.5 IN": "SWO:1000089",
+    "CC BY-NC-SA 4.0": "SWO:1000090",
+    "CC BY-SA 2.1 JP": "SWO:1000091",
+    "CC BY-SA 3.0": "SWO:1000092",
+    "CC BY-SA 3.0 US": "SWO:1000093",
+    "CC BY-SA 4.0": "SWO:1000094",
+}
+_LICENSE_LABELS = _labels_from_id_map(_LICENSE_ID_BY_LABEL)
+_LICENSE_IDS = _ids_from_id_map(_LICENSE_ID_BY_LABEL)
+
+_TREATMENT_UNITS = frozenset(
+    {
+        "pM",
+        "nM",
+        "uM",
+        "mM",
+        "M",
+        "pg/mL",
+        "ng/mL",
+        "ug/mL",
+        "mg/mL",
+        "g/mL",
+        "pg/kg",
+        "ug/kg",
+        "mg/kg",
+        "g/kg",
+        "cells/uL",
+        "cells/mL",
+        "MOI",
+        "uL",
+        "mL",
+        "%",
+        "IU/mL",
+        "degrees C",
+    }
+)
+
+_TREATMENT_FIELDS = (
+    "treatment_type_label",
+    "treatment_type_id",
+    "treatment_label",
+    "treatment_id",
+    "treatment_dose",
+    "treatment_unit",
+)
+
+
+def _split_pipe_value(value: object) -> list[str] | None:
+    if pd.isna(value):
+        return None
+    return [token.strip() for token in str(value).split("|")]
+
+
+def _value_has_allowed_tokens(value: object, allowed_values: frozenset[str]) -> bool:
+    tokens = _split_pipe_value(value)
+    return tokens is None or all(token in allowed_values for token in tokens)
+
+
+def _series_has_allowed_tokens(
+    values: pd.Series, allowed_values: frozenset[str]
+) -> pd.Series:
+    string_values = values.astype("string")
+    is_pipe_delimited = string_values.str.contains("|", regex=False, na=False)
+    result = values.isna() | (
+        ~is_pipe_delimited & string_values.isin(allowed_values)
+    )
+
+    if is_pipe_delimited.any():
+        result.loc[is_pipe_delimited] = string_values.loc[
+            is_pipe_delimited
+        ].map(lambda value: _value_has_allowed_tokens(value, allowed_values))
+
+    return result
+
+
+def _token_count(value: object) -> int | None:
+    tokens = _split_pipe_value(value)
+    return None if tokens is None else len(tokens)
+
+
+def _treatment_type_values_correspond(label_value: object, id_value: object) -> bool:
+    labels = _split_pipe_value(label_value)
+    ids = _split_pipe_value(id_value)
+
+    if labels is None or ids is None:
+        return labels is None and ids is None
+
+    return len(labels) == len(ids) and all(
+        _TREATMENT_TYPE_ID_BY_LABEL.get(label) == treatment_id
+        for label, treatment_id in zip(labels, ids)
+    )
+
+
 class ObsSchema(DataFrameModel):
     dataset_id: Series[String] = Field(
         nullable=False,
         description="Unique identifier for the dataset, follows the format <firstauthor_year>",
     )
     sample_id: Series[String] = Field(
-        nullable=False, 
-        coerce=True,
-        description="Unique identifier for the sample."
+        nullable=False, coerce=True, description="Unique identifier for the sample."
     )
     cell_barcode: Series[String] = Field(
-        nullable=False,
+        nullable=True,
         coerce=True,
         description="Unique cell barcode.",
     )
+
     data_modality: Series[String] = Field(
         nullable=False,
         description="Data modality of the dataset.",
-        isin=["Perturb-seq", "CRISPR screen", "MAVE"],
+        isin=_DATA_MODALITIES,
     )
     significant: Series[String] = Field(
-        nullable=True, description="Indicates whether the perturbation had a significant effect.",
+        nullable=True,
+        description="Indicates whether the perturbation had a significant effect.",
         coerce=True,
-        isin=["True", "False"]
+        isin=_SIGNIFICANCE_VALUES,
     )
     significance_criteria: Series[String] = Field(
-        nullable=True, description="Criteria used to determine significance, e.g., FDR < 0.05."
+        nullable=True,
+        description="Criteria used to determine significance, e.g., FDR < 0.05.",
     )
     perturbation_name: Series[String] = Field(
         nullable=False,
@@ -63,10 +648,10 @@ class ObsSchema(DataFrameModel):
         description="Numeric encoding of the chromosome of the perturbed target. Required for data partitioning in BigQuery.",
     )
     perturbed_target_number: Series[Int64] = Field(
-        nullable=False, 
-        ge=0, 
+        nullable=False,
+        ge=0,
         coerce=True,
-        description="Number of perturbed targets in the samples."
+        description="Number of perturbed targets in the samples.",
     )
     perturbed_target_ensg: Series[String] = Field(
         nullable=True, description="Ensembl gene ID(s) of the perturbed target."
@@ -86,17 +671,35 @@ class ObsSchema(DataFrameModel):
     perturbation_type_label: Series[String] = Field(
         nullable=False,
         description="Perturbation type ontology term label of the investigated sample.",
-        isin=["CRISPRn", "CRISPRi", "CRISPRa", "DMS"],
+        isin=_PERTURBATION_TYPE_LABELS,
     )
     perturbation_type_id: Series[String] = Field(
         nullable=True,
         str_contains=":",
         description="Perturbation type ontology term ID of the investigated sample.",
     )
-    timepoint: Series[String] = Field(
+    timepoint_post_transfection: Series[String] = Field(
         nullable=True,
         regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
-        description="Timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+        description="Timepoint of the investigated sample in ISO 8601 format, starting from the time of library transfection. Example: P1DT12H30M15S",
+    )
+    differentiation_timepoint: Series[String] = Field(
+        nullable=True,
+        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
+        description="Differentiation timepoint of the investigated sample in ISO 8601 format, starting from the moment the induction of differentiation began. Example: P1DT12H30M15S",
+    )
+    experimental_timepoint: Series[String] = Field(
+        nullable=True,
+        regex=r"^P\d+DT\d{1,2}H\d{1,2}M\d{1,2}S$",
+        description="Experimental timepoint of the investigated sample in ISO 8601 format. Example: P1DT12H30M15S",
+    )
+    treatment_type_label: Series[String] = Field(
+        nullable=True,
+        description="Ontology term label describing the treatment type.",
+    )
+    treatment_type_id: Series[String] = Field(
+        nullable=True,
+        description="Ontology term ID for the treatment type.",
     )
     treatment_label: Series[String] = Field(
         nullable=True,
@@ -104,8 +707,17 @@ class ObsSchema(DataFrameModel):
     )
     treatment_id: Series[String] = Field(
         nullable=True,
-        str_contains=":",
         description="Treatment/compound ontology term ID used to stimulate the investigated sample. ChEMBL compound ID.",
+    )
+    treatment_dose: Series[String] = Field(
+        nullable=True,
+        coerce=True,
+        ignore_na=True,
+        description="Treatment/compound dose used to stimulate the investigated sample.",
+    )
+    treatment_unit: Series[String] = Field(
+        nullable=True,
+        description="Treatment/compound unit used to stimulate the investigated sample. Use 'u' for micro (e.g., 'uM' instead of 'μM').",
     )
     technical_replicate: Series[String] = Field(
         nullable=True, description="Technical replicate id."
@@ -117,17 +729,20 @@ class ObsSchema(DataFrameModel):
     model_system_label: Series[String] = Field(
         nullable=False,
         description="Model system ontology term label of the investigated sample.",
-        isin=["cell_line", "primary_cell", "organoid", 'yeast'],
+        isin=_MODEL_SYSTEM_LABELS,
     )
+    
     model_system_id: Series[String] = Field(
         nullable=True,
         str_contains=":",
         description="Model system ontology term ID of the investigated sample.",
+        isin=_MODEL_SYSTEM_IDS,
     )
+    
     species: Series[String] = Field(
         nullable=False,
-        description="Species name of the investigated sample.",
-        isin=["Homo sapiens"],
+        description="Organism name as reported by the source, including strain or subtype qualifiers when present.",
+        isin=_SPECIES,
     )
     tissue_label: Series[String] = Field(
         nullable=True,
@@ -156,22 +771,24 @@ class ObsSchema(DataFrameModel):
     sex_label: Series[String] = Field(
         nullable=True,
         description="Sex ontology term label of the investigated sample.",
-        isin=["female", "male", "mixed", "unknown"]
+        isin=_SEX_LABELS,
     )
     sex_id: Series[String] = Field(
         nullable=True,
         str_contains=":",
         description="Sex ontology term ID of the investigated sample.",
+        isin=_SEX_IDS,
     )
     developmental_stage_label: Series[String] = Field(
         nullable=True,
-        description="Developmental stage ontology term label of the investigated sample. The age groups are defined as follows: embryonic (conception to 8 weeks), fetal (9 weeks to birth), child (0-12 years), adolescent (13-18 years), adult (19-59 years), senior adult (60 years and above).",
-        isin=["embryonic", "fetal", "neonatal", "child", "adolescent", "adult", "senior adult"],
+        description="Developmental stage ontology term label of the investigated sample.",
+        isin=_DEVELOPMENTAL_STAGE_LABELS,
     )
     developmental_stage_id: Series[String] = Field(
         nullable=True,
         str_contains=":",
         description="Developmental stage ontology term ID of the investigated sample.",
+        isin=_DEVELOPMENTAL_STAGE_IDS,
     )
     disease_label: Series[String] = Field(
         nullable=True,
@@ -190,6 +807,7 @@ class ObsSchema(DataFrameModel):
     )
     study_year: Series[Int64] = Field(
         nullable=False,
+        coerce=True,
         ge=1900,
         le=2100,
         description="Publication year of the study/publication.",
@@ -219,71 +837,77 @@ class ObsSchema(DataFrameModel):
         coerce=True,
         description="Total number of perturbed samples/cells in the experiment.",
     )  # perturbation details
-    library_generation_type_id: Series[String] = Field(
-        nullable=True,
-        description="Library generation type ontology term ID, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
-    )
     library_generation_type_label: Series[String] = Field(
         nullable=True,
         description="Library generation type ontology term label, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
+        isin=_LIBRARY_GENERATION_TYPE_LABELS,
     )
-    library_generation_method_id: Series[String] = Field(
+    library_generation_type_id: Series[String] = Field(
         nullable=True,
-        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        description="Library generation type ontology term ID, defined in EFO under parent term EFO:0022867 (genetic perturbation)",
+        isin=_LIBRARY_GENERATION_TYPE_IDS,
     )
     library_generation_method_label: Series[String] = Field(
         nullable=True,
         description="Library generation method ontology term label, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        isin=_LIBRARY_GENERATION_METHOD_LABELS,
+    )
+    library_generation_method_id: Series[String] = Field(
+        nullable=True,
+        description="Library generation method ontology term ID, defined in EFO under parent term EFO:0022868/EFO:0022869 (Endogenous/Exogenous genetic perturbation method)",
+        isin=_LIBRARY_GENERATION_METHOD_IDS,
+    )
+    enzyme_delivery_method_label: Series[String] = Field(
+        nullable=True,
+        description="Enzyme delivery method ontology term label.",
+        isin=_ENZYME_DELIVERY_METHOD_LABELS,
     )
     enzyme_delivery_method_id: Series[String] = Field(
         nullable=True,
         description="Enzyme delivery method ontology term ID.",
     )
-    enzyme_delivery_method_label: Series[String] = Field(
+    library_delivery_method_label: Series[String] = Field(
         nullable=True,
-        description="Enzyme delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
+        description="Library delivery method ontology term label.",
+        isin=_LIBRARY_DELIVERY_METHOD_LABELS,
     )
     library_delivery_method_id: Series[String] = Field(
         nullable=True, description="Library delivery method ontology term ID."
     )
-    library_delivery_method_label: Series[String] = Field(
-        nullable=True,
-        description="Library delivery method ontology term label.",
-        isin=["lipofection", "nucleofection", "retrovirus transduction", "lentivirus transduction", "transformation", "nanoparticle-mediated transfection"]
-    )
-    enzyme_integration_state_id: Series[String] = Field(
-        nullable=True, description="Enzyme integration state ontology term ID."
-    )
     enzyme_integration_state_label: Series[String] = Field(
         nullable=True,
         description="Enzyme integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
+        isin=_INTEGRATION_STATE_LABELS,
     )
-    library_integration_state_id: Series[String] = Field(
-        nullable=True, description="Library integration state ontology term ID."
+    enzyme_integration_state_id: Series[String] = Field(
+        nullable=True, description="Enzyme integration state ontology term ID.",
+        isin=_INTEGRATION_STATE_IDS,
     )
     library_integration_state_label: Series[String] = Field(
         nullable=True,
         description="Library integration state ontology term label.",
-        isin=["random locus integration", "targeted locus integration", "native locus replacement", "non-integrative transgene expression"]
+        isin=_INTEGRATION_STATE_LABELS,
     )
-    enzyme_expression_control_id: Series[String] = Field(
-        nullable=True, description="Enzyme expression control ontology term ID."
+    library_integration_state_id: Series[String] = Field(
+        nullable=True, description="Library integration state ontology term ID.",
+        isin=_INTEGRATION_STATE_IDS,
     )
     enzyme_expression_control_label: Series[String] = Field(
         nullable=True,
         description="Enzyme expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
+        isin=_ENZYME_EXPRESSION_CONTROL_LABELS,
+    )
+    enzyme_expression_control_id: Series[String] = Field(
+        nullable=True, description="Enzyme expression control ontology term ID."
     )
     # library details
-    library_expression_control_id: Series[String] = Field(
-        nullable=True, description="Library expression control ontology term ID."
-    )
     library_expression_control_label: Series[String] = Field(
         nullable=True,
         description="Library expression control ontology term label.",
-        isin=["constitutive transgene expression", "inducible transgene expression", "native promoter-driven transgene expression", "degradation domain-based transgene control"]
+        isin=_LIBRARY_EXPRESSION_CONTROL_LABELS,
+    )
+    library_expression_control_id: Series[String] = Field(
+        nullable=True, description="Library expression control ontology term ID."
     )
     library_name: Series[String] = Field(
         nullable=True,
@@ -292,29 +916,30 @@ class ObsSchema(DataFrameModel):
     library_uri: Series[String] = Field(
         nullable=True, description="URI/accession of the perturbation library."
     )
-    library_format_id: Series[String] = Field(
-        nullable=True, description="Perturbation library format ontology term ID."
-    )
     library_format_label: Series[String] = Field(
         nullable=True,
         description="Perturbation library format ontology term label.",
-        isin=["pooled", "arrayed", "arrayed|pooled", "in vivo"],
+        isin=_LIBRARY_FORMAT_LABELS,
     )
-    library_scope_id: Series[String] = Field(
-        nullable=True, description="Perturbation library scope ontology term ID."
+    library_format_id: Series[String] = Field(
+        nullable=True, description="Perturbation library format ontology term ID."
     )
     library_scope_label: Series[String] = Field(
         nullable=True,
         description="Perturbation library scope ontology term label.",
-        isin=["focused", "genome-wide"],
+        isin=_LIBRARY_SCOPE_LABELS,
     )
-    library_perturbation_type_id: Series[String] = Field(
-        nullable=True, description="Ontology term ID for the library perturbation type."
+    library_scope_id: Series[String] = Field(
+        nullable=True, description="Perturbation library scope ontology term ID."
     )
     library_perturbation_type_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the library perturbation type.",
-        isin=["knockout", "inhibition", "activation", "base editing", "prime editing", "mutagenesis"],
+        isin=_LIBRARY_PERTURBATION_TYPE_LABELS,
+    )
+    library_perturbation_type_id: Series[String] = Field(
+        nullable=True, description="Ontology term ID for the library perturbation type.",
+        isin=_LIBRARY_PERTURBATION_TYPE_IDS,
     )
     library_manufacturer: Series[String] = Field(
         nullable=True,
@@ -338,120 +963,117 @@ class ObsSchema(DataFrameModel):
         description="Only for MAVE studies; Total number of variants in the library. Example: 5,000",
     )
     # assay details
+    readout_dimensionality_label: Series[String] = Field(
+        nullable=True,
+        description="Ontology term label associated with the dimensionality of the readout assay.",
+        isin=_READOUT_DIMENSIONALITY_LABELS,
+    )
     readout_dimensionality_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID associated with the dimensionality of the readout assay.",
     )
-    readout_dimensionality_label: Series[String] = Field(
+    readout_type_label: Series[String] = Field(
         nullable=True,
-        description="Ontology term label associated with the dimensionality of the readout assay.",
-        isin=["single-dimensional assay", "high-dimensional assay"],
+        description="Ontology term label associated with the type of the readout assay.",
+        isin=_READOUT_TYPE_LABELS,
     )
     readout_type_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID associated with the type of the readout assay.",
-    )
-    readout_type_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label associated with the type of the readout assay.",
-        isin=["transcriptomic", "proteomic", "phenotypic"],
-    )
-    readout_technology_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the technology used in the readout assay.",
+        isin=_READOUT_TYPE_IDS,
     )
     readout_technology_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the technology used in the readout assay.",
-        isin=["single-cell rna-seq", "population growth assay", "flow cytometry"],
+        isin=_READOUT_TECHNOLOGY_LABELS,
     )
-    method_name_id: Series[String] = Field(
+    readout_technology_id: Series[String] = Field(
         nullable=True,
-        description="Ontology term ID associated with the method name used in the readout assay.",
+        description="Ontology term ID associated with the technology used in the readout assay.",
+        isin=_READOUT_TECHNOLOGY_IDS,
+    )
+    readout_measurement_label: Series[String] = Field(
+        nullable=True,
+        description="Ontology term label associated with the measurement type of the readout assay.",
+        isin=_READOUT_MEASUREMENT_LABELS,
+    )
+    readout_measurement_id: Series[String] = Field(
+        nullable=True,
+        description="Ontology term ID associated with the measurement type of the readout assay.",
+        isin=_READOUT_MEASUREMENT_IDS,
     )
     method_name_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the method name used in the readout assay.",
-        isin=["Perturb-seq", "Perturb-CITE-seq", "scRNA-seq", "proliferation CRISPR screen", "DMS-TileSeq", "DMS-BarSeq", "Joined and refined DMS-BarSeq and DMS-TileSeq", "Combined DMS-BarSeq and DMS-TileSeq"],
+        isin=_METHOD_NAME_LABELS,
+    )
+    method_name_id: Series[String] = Field(
+        nullable=True,
+        description="Ontology term ID associated with the method name used in the readout assay.",
+        isin=_METHOD_NAME_IDS,
     )
     method_uri: Series[String] = Field(
         nullable=True,
         description="URI associated with the method used in the readout assay.",
     )
-    sequencing_library_kit_id: Series[String] = Field(
-        nullable=True,
-        description="Ontology term ID associated with the sequencing library kit.",
-    )
     sequencing_library_kit_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing library kit.",
-        isin=[
-            "10x Genomics Chromium GEM-X Single Cell 5-prime kit v3",
-            "10x Genomics Chromium Next GEM Single Cell 5-prime HT Kit v2",
-            "10x Genomics Single Cell 3-prime",
-            "10x Genomics Single Cell 3-prime v2",
-            "10x Genomics Single Cell 3-prime v3",
-            "Nextera XT DNA Library Preparation Kit",
-            "GEM-X Flex Gene Expression Human n-plex kit",
-            "Parse Biosciences Evercode Whole Transcriptome Mega v1 kit"
-        ],
+        isin=_SEQUENCING_LIBRARY_KIT_LABELS,
     )
-    sequencing_platform_id: Series[String] = Field(
+    sequencing_library_kit_id: Series[String] = Field(
         nullable=True,
-        description="Ontology term ID associated with the sequencing platform.",
+        description="Ontology term ID associated with the sequencing library kit.",
+        isin=_SEQUENCING_LIBRARY_KIT_IDS,
     )
     sequencing_platform_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing platform.",
-        isin=[
-            "Illumina NovaSeq X",
-            "Illumina NovaSeq X Plus",
-            "Illumina HiSeq 4000",
-            "Illumina HiSeq 2500",
-            "Illumina HiSeq 2000",
-            "Illumina NovaSeq 6000",
-            "Illumina NextSeq 500",
-            "Ultima Genomics UG100",
-        ],
+        isin=_SEQUENCING_PLATFORM_LABELS,
     )
-    sequencing_strategy_id: Series[String] = Field(
+    sequencing_platform_id: Series[String] = Field(
         nullable=True,
-        description="Ontology term ID associated with the sequencing strategy.",
+        description="Ontology term ID associated with the sequencing platform.",
+        isin=_SEQUENCING_PLATFORM_IDS
     )
     sequencing_strategy_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label associated with the sequencing strategy.",
-        isin=["barcode sequencing", "direct sequencing", "barcode sequencing|direct sequencing"],
+        isin=_SEQUENCING_STRATEGY_LABELS,
+    )
+    sequencing_strategy_id: Series[String] = Field(
+        nullable=True,
+        description="Ontology term ID associated with the sequencing strategy.",
+        isin=_SEQUENCING_STRATEGY_IDS,
+    )
+    software_counts_label: Series[String] = Field(
+        nullable=True,
+        description="Ontology term label for the software used for generating counts.",
+        isin=_SOFTWARE_COUNTS_LABELS,
     )
     software_counts_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID for the software used for generating counts.",
     )
-    software_counts_label: Series[String] = Field(
+    software_analysis_label: Series[String] = Field(
         nullable=True,
-        description="Ontology term label for the software used for generating counts.",
-        isin=["custom", "MaGeCK", "CellRanger", "Drop-seq Tools"],
+        description="Ontology term label for the software used for analysis.",
+        isin=_SOFTWARE_ANALYSIS_LABELS,
     )
     software_analysis_id: Series[String] = Field(
         nullable=True,
         description="Ontology term ID for the software used for analysis.",
     )
-    software_analysis_label: Series[String] = Field(
-        nullable=True,
-        description="Ontology term label for the software used for analysis.",
-        isin=["custom", "MAGeCK", "Achilles", "TRADE", "Seurat", "MAST", "scanpy"],
-    )
     score_interpretation: Series[String] = Field(
-        nullable=True,
-        description="Interpretation of the perturbation effect score."
-    )
-    reference_genome_id: Series[String] = Field(
-        nullable=True, description="Ontology term ID for the reference genome."
+        nullable=True, description="Interpretation of the perturbation effect score."
     )
     reference_genome_label: Series[String] = Field(
         nullable=True,
         description="Ontology term label for the reference genome.",
-        isin=["GRCh38", "GRCh37"],
+        isin=_REFERENCE_GENOME_LABELS,
+    )
+    reference_genome_id: Series[String] = Field(
+        nullable=True, description="Ontology term ID for the reference genome."
     )
     # associated datasets
     associated_datasets: Series[String] = Field(
@@ -462,11 +1084,210 @@ class ObsSchema(DataFrameModel):
     license_label: Series[String] = Field(
         nullable=False,
         description="License type for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+        isin=_LICENSE_LABELS,
     )
     license_id: Series[String] = Field(
         nullable=True,
         description="License ontology term ID for data usage and distribution. Should be one of the terms from under SWO:0000002 (license).",
+        isin=_LICENSE_IDS
     )
+    curation_agent_type: Series[String] = Field(
+        nullable=False,
+        description="Type of agent that curated this dataset: 'human' for manual curation, 'LLM' for automated curation by a language model.",
+        isin=_CURATION_AGENT_TYPES,
+    )
+    curation_agent_name: Series[String] = Field(
+        nullable=False,
+        description="Name or identifier of the curator. For humans: full name (e.g., 'John Doe'). For LLMs: model identifier (e.g., 'google/gemini-3.5-flash').",
+    )
+
+    # Checks
+    @dataframe_check(
+        ignore_na=False,
+        error="cell_barcode is required for Perturb-seq rows.",
+    )
+    def perturbseq_requires_cell_barcode(cls, df: pd.DataFrame) -> pd.Series:
+        is_perturbseq = df["data_modality"].eq("Perturb-seq")
+        return ~is_perturbseq | df["cell_barcode"].notna()
+
+    @dataframe_check(
+        error="Each treatment_type_label must be an allowed term, including within pipe-delimited values.",
+    )
+    def treatment_type_labels_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_type_label"], _TREATMENT_TYPE_LABELS
+        )
+
+    @dataframe_check(
+        error="Each treatment_type_id must be an allowed term, including within pipe-delimited values.",
+    )
+    def treatment_type_ids_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_type_id"], _TREATMENT_TYPE_IDS
+        )
+
+    @dataframe_check(
+        error="Each treatment_type_label must correspond to its treatment_type_id, including within pipe-delimited values.",
+    )
+    def treatment_type_labels_and_ids_correspond(cls, df: pd.DataFrame) -> pd.Series:
+        return df[["treatment_type_label", "treatment_type_id"]].apply(
+            lambda row: _treatment_type_values_correspond(
+                row["treatment_type_label"], row["treatment_type_id"]
+            ),
+            axis=1,
+        )
+
+    @dataframe_check(
+        error="Each treatment_unit must be an allowed unit, including within pipe-delimited values.",
+    )
+    def treatment_units_are_valid(cls, df: pd.DataFrame) -> pd.Series:
+        return _series_has_allowed_tokens(
+            df["treatment_unit"], _TREATMENT_UNITS
+        )
+
+    @dataframe_check(
+        ignore_na=False,
+        error="treatment_dose must contain floats or hyphen-delimited ranges of floats.",
+    )
+    def treatment_dose_values_are_floats(cls, df: pd.DataFrame) -> pd.Series:
+        def is_valid_float_list(value: object) -> bool:
+            tokens = _split_pipe_value(value)
+            if tokens is None:
+                return True
+            for token in tokens:
+                for endpoint in token.split("-"):
+                    try:
+                        float(endpoint)
+                    except (TypeError, ValueError):
+                        return False
+            return True
+
+        return df["treatment_dose"].map(is_valid_float_list)
+
+    @dataframe_check(
+        error="treatment_type_label and treatment_type_id must either both be present or both be absent.",
+    )
+    def treatment_type_label_and_id_are_paired(cls, df: pd.DataFrame) -> pd.Series:
+        return df["treatment_type_label"].notna() == df["treatment_type_id"].notna()
+
+    @dataframe_check(
+        error="treatment_type_label and treatment_label must either both be present or both be absent.",
+    )
+    def treatment_type_label_and_treatment_label_are_paired(
+        cls, df: pd.DataFrame
+    ) -> pd.Series:
+        return df["treatment_type_label"].notna() == df["treatment_label"].notna()
+
+    @dataframe_check(
+        error="Pipe-delimited treatment fields must contain the same number of values.",
+    )
+    def treatment_fields_are_aligned(cls, df: pd.DataFrame) -> pd.Series:
+        string_values = df[list(_TREATMENT_FIELDS)].astype("string")
+        has_pipe_delimited_values = string_values.apply(
+            lambda column: column.str.contains("|", regex=False, na=False)
+        ).any(axis=1)
+        result = pd.Series(True, index=df.index)
+
+        if has_pipe_delimited_values.any():
+            token_counts = string_values.loc[has_pipe_delimited_values].map(
+                _token_count
+            )
+            result.loc[has_pipe_delimited_values] = token_counts.notna().all(
+                axis=1
+            ) & token_counts.nunique(axis=1).eq(1)
+
+        return result
+
+    @dataframe_check(
+        error="Chemical entity treatments require a treatment_label.",
+    )
+    def chemical_entity_requires_treatment_id(cls, df: pd.DataFrame) -> pd.Series:
+        treatment_type_labels = df["treatment_type_label"].astype("string")
+        treatment_labels = df["treatment_label"].astype("string")
+        is_pipe_delimited = treatment_type_labels.str.contains(
+            "|", regex=False, na=False
+        )
+        is_chemical_entity = treatment_type_labels.eq("chemical entity").fillna(False)
+        treatment_label_is_present = treatment_labels.notna()
+        result = ~is_chemical_entity | treatment_label_is_present
+
+        if not is_pipe_delimited.any():
+            return result
+
+        def row_is_valid(row: pd.Series) -> bool:
+            treatment_type_labels = _split_pipe_value(row["treatment_type_label"])
+            if treatment_type_labels is None:
+                return True
+
+            chemical_entity_positions = [
+                index
+                for index, label in enumerate(treatment_type_labels)
+                if label == "chemical entity"
+            ]
+            if not chemical_entity_positions:
+                return True
+
+            treatment_labels = _split_pipe_value(row["treatment_label"])
+            if treatment_labels is None or len(treatment_labels) != len(
+                treatment_type_labels
+            ):
+                return False
+
+            return all(treatment_labels[index] for index in chemical_entity_positions)
+
+        result.loc[is_pipe_delimited] = df.loc[
+            is_pipe_delimited, ["treatment_type_label", "treatment_label"]
+        ].apply(row_is_valid, axis=1)
+        return result
+
+    @dataframe_check(
+        error="treatment_dose and treatment_unit must either both be present or both be absent.",
+    )
+    def treatment_dose_and_unit_are_paired(cls, df: pd.DataFrame) -> pd.Series:
+        return df["treatment_dose"].notna() == df["treatment_unit"].notna()
+
+    @dataframe_check(
+        ignore_na=False,
+        error="perturbed_target_coord is required when perturbed_target_biotype is enhancer.",
+    )
+    def enhancer_requires_target_coord(cls, df: pd.DataFrame) -> pd.Series:
+        is_enhancer = df["perturbed_target_biotype"].eq("enhancer")
+        return ~is_enhancer | df["perturbed_target_coord"].notna()
+
+    @dataframe_check(
+        error="If model system is cell_line, then cell_line_label must be present.",
+    )
+    def cell_line_requires_metadata(cls, df: pd.DataFrame) -> pd.Series:
+        is_cell_line = df["model_system_label"].eq("cell_line")
+        return ~is_cell_line | df["cell_line_label"].notna()
+
+    @dataframe_check(
+        error="If model system is anything other than cell_line, then cell_line_label and cell_line_id must be absent.",
+    )
+    def non_cell_line_excludes_metadata(cls, df: pd.DataFrame) -> pd.Series:
+        is_cell_line = df["model_system_label"].eq("cell_line")
+        cell_line_metadata_absent = df["cell_line_label"].isna() & df[
+            "cell_line_id"
+        ].isna()
+        return is_cell_line | cell_line_metadata_absent
+
+    @dataframe_check(
+        error="Cell line label must be present only when model system is cell line.",
+    )
+    def cell_line_label_requires_cell_line_model(
+        cls, df: pd.DataFrame
+    ) -> pd.Series:
+        return ~df["cell_line_label"].notna() | df["model_system_label"].eq(
+            "cell_line"
+        )
+
+    @dataframe_check(
+        error="Cell line ID must be present only when model system is cell line.",
+    )
+    def cell_line_id_requires_cell_line_model(cls, df: pd.DataFrame) -> pd.Series:
+        return ~df["cell_line_id"].notna() | df["model_system_label"].eq(
+            "cell_line"
+        )
 
     class Config:
         strict = True
@@ -480,17 +1301,15 @@ class VarSchema(DataFrameModel):
         nullable=False,
         unique=True,
         check_name=True,
-        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with"
+        description="Unique identifier for each gene. Usually the Ensembl gene ID, or whatever unique IDs the dataset came with",
     )
     ensembl_gene_id: Series[str] = Field(
         nullable=True,
         str_matches=r"^(ENSG|control)",  # starts with either ENSG or control
-        description="Ensembl gene ID"
+        description="Ensembl gene ID",
     )
     gene_symbol: Series[str] = Field(
-        nullable=True,
-        coerce=True,
-        description="Gene symbol"
+        nullable=True, coerce=True, description="Gene symbol"
     )
 
     class Config:

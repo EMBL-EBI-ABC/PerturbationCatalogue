@@ -1,7 +1,5 @@
 .DS_Store
-.vscode
 .env
-.idea
 .venv
 be/fastapi-env
 fe/env
@@ -12,6 +10,19 @@ data_sources/perturb-seq/pipeline/perturb_seq.sif
 __pycache__
 data_exploration/CRISPR/supplementary/temp
 data_exploration/MaveDB/Dump
-data_exploration/text_extraction
+data_exploration/MaveDB/csv
+# Downloaded source caches; mapping JSON files remain versioned.
+data_exploration/curation_cache/publications/raw/
+data_exploration/curation_cache/publications/markdown/
+data_exploration/curation_cache/mavedb/metadata/
+# Run databases, exports, and processing outputs are local artifacts.
+curation_runs/
+data_exploration/CRISPR/supplementary
+data_exploration/Perturbseq/supplementary
+# Test data
+debug*
+# Python package build metadata
+*.egg-info/
+
 coessentiality_feature/required_data
 dwh/bq_dbt/.user.yml

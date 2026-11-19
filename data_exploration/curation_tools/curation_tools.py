@@ -2,10 +2,7 @@ import datetime
 import glob
 import os
 import subprocess
-import tarfile
-import zipfile
 from pathlib import Path
-from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -15,14 +12,10 @@ from pprint import pprint
 import requests
 import logging
 
-from pydantic import ValidationError
 from typing import Literal
 import pandera.pandas as pa
 from pandera.typing import Series, Int64, String
-from tqdm import tqdm
-from thefuzz import process
 
-from libchebipy import search
 import scanpy as sc
 import anndata as ad
 
@@ -31,83 +24,83 @@ import re
 from google.cloud import bigquery
 from IPython.display import display  # type: ignore
 
-from curation_tools.perturbseq_anndata_schema import ObsSchema, VarSchema
+# Public schema exports used by curation adapters and notebooks.
+from curation_tools.perturbseq_anndata_schema import ObsSchema as ObsSchema
+from curation_tools.perturbseq_anndata_schema import VarSchema as VarSchema
 
 # Module-level logger
 logger = logging.getLogger(__name__)
 
-_ALLOWED_DOWNLOAD_SCHEMES = {"http", "https", "ftp"}
 
+def _coerce_metadata_for_polars(
+    metadata_df: pd.DataFrame, polars_schema: dict
+) -> pd.DataFrame:
+    """Normalize metadata columns before applying the Polars schema.
 
-def _validate_download_url(url: str) -> str:
-    """Validate a remote download URL."""
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("Download URL must be a non-empty string.")
+    Metadata can arrive from CSV or Excel files as strings, including integer
+    values formatted as decimal strings such as ``"20724.0"``. Polars cannot
+    cast those strings directly to ``Int64``, so numeric schema columns must be
+    normalized in pandas first.
+    """
 
-    parsed = urlparse(url.strip())
-    if parsed.scheme not in _ALLOWED_DOWNLOAD_SCHEMES or not parsed.netloc:
-        raise ValueError(
-            "Download URL must use one of the following schemes: http, https, ftp."
-        )
+    normalized_df = metadata_df.copy()
 
-    return url.strip()
+    for column_name, polars_dtype in polars_schema.items():
+        if column_name not in normalized_df.columns:
+            continue
 
+        series = normalized_df[column_name].replace("None", pd.NA)
 
-def _validate_output_path(path: str) -> Path:
-    """Validate and normalize an output path."""
-    if not isinstance(path, (str, os.PathLike)) or not str(path).strip():
-        raise ValueError("Output path must be a non-empty path string.")
+        if polars_dtype == pl.Int64:
+            numeric = pd.to_numeric(series, errors="coerce")
+            invalid = series.notna() & (numeric.isna() | ~np.isfinite(numeric))
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-integer values: "
+                    f"{invalid_values}"
+                )
 
-    return Path(path).expanduser()
+            non_integer = numeric.notna() & ((numeric % 1) != 0)
+            if non_integer.any():
+                invalid_values = series[non_integer].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-integer values: "
+                    f"{invalid_values}"
+                )
 
+            normalized_df[column_name] = numeric.astype("Int64")
+        elif polars_dtype == pl.Float64:
+            numeric = pd.to_numeric(series, errors="coerce")
+            invalid = series.notna() & numeric.isna()
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-numeric values: "
+                    f"{invalid_values}"
+                )
 
-def _resolve_extraction_target(extract_root: Path, member_name: str) -> Path:
-    """Resolve an archive member path and ensure it stays within the extraction root."""
-    if not member_name:
-        raise ValueError("Archive member name cannot be empty.")
-
-    member_path = Path(member_name)
-    if member_path.is_absolute():
-        raise ValueError(f"Unsafe archive member path: {member_name}")
-
-    target_path = (extract_root / member_path).resolve()
-    root_path = extract_root.resolve()
-    if os.path.commonpath([root_path, target_path]) != str(root_path):
-        raise ValueError(f"Archive member escapes extraction directory: {member_name}")
-
-    return target_path
-
-
-def _validate_zip_members(zip_file: zipfile.ZipFile, extract_root: Path) -> None:
-    """Reject unsafe paths in a zip archive before extraction."""
-    for member in zip_file.infolist():
-        _resolve_extraction_target(extract_root, member.filename)
-
-
-def _validate_tar_members(tar_file: tarfile.TarFile, extract_root: Path) -> None:
-    """Reject unsafe paths and links in a tar archive before extraction."""
-    for member in tar_file.getmembers():
-        if member.issym() or member.islnk():
-            raise ValueError(
-                f"Archive member uses an unsupported link type: {member.name}"
+            normalized_df[column_name] = numeric.astype("Float64")
+        elif polars_dtype == pl.Boolean:
+            boolean = (
+                series.astype("string")
+                .str.strip()
+                .str.lower()
+                .map({"true": True, "false": False})
             )
-        _resolve_extraction_target(extract_root, member.name)
+            invalid = series.notna() & boolean.isna()
+            if invalid.any():
+                invalid_values = series[invalid].head().tolist()
+                raise ValueError(
+                    f"Column {column_name!r} contains non-boolean values: "
+                    f"{invalid_values}"
+                )
 
+            normalized_df[column_name] = boolean.astype("boolean")
+        elif polars_dtype == pl.String:
+            normalized_df[column_name] = series.astype("string")
 
-def _safe_extract_zip(dest_path: Path) -> None:
-    """Extract a zip archive after validating all members."""
-    extract_root = dest_path.parent.resolve()
-    with zipfile.ZipFile(dest_path) as archive:
-        _validate_zip_members(archive, extract_root)
-        archive.extractall(extract_root)
-
-
-def _safe_extract_tar(dest_path: Path) -> None:
-    """Extract a gzip-compressed tar archive after validating all members."""
-    extract_root = dest_path.parent.resolve()
-    with tarfile.open(dest_path, "r:gz") as archive:
-        _validate_tar_members(archive, extract_root)
-        archive.extractall(extract_root, filter="data")
+    return normalized_df
 
 
 # function to add a new synonym to the ontology
@@ -186,7 +179,9 @@ class CuratedDataset:
     # Get the path to the ontologies directory relative to this file
     ONTOLOGIES_DIR = Path(__file__).parent / "ontologies"
 
-    gene_ont = pd.read_parquet(ONTOLOGIES_DIR / "gene_ont.parquet").drop_duplicates()
+    opentargets_gene_reference_path = (
+        ONTOLOGIES_DIR / "opentargets_gene_identifier_reference_26_03.parquet"
+    )
     ctype_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_types.parquet").drop_duplicates()
     cline_ont = pd.read_parquet(ONTOLOGIES_DIR / "cell_lines.parquet").drop_duplicates()
     tis_ont = pd.read_parquet(ONTOLOGIES_DIR / "tissues.parquet").drop_duplicates()
@@ -309,16 +304,12 @@ class CuratedDataset:
         """
         Download the data from the specified source.
         """
-        download_url = _validate_download_url(self.data_source_link)
-        output_path = _validate_output_path(self.noncurated_path)
-
         if not os.path.exists(self.noncurated_path):
-            print(f"Downloading data from {download_url} to {output_path}")
-            os.makedirs(output_path.parent, exist_ok=True)
-            subprocess.run(
-                ["wget", download_url, "-O", str(output_path)],
-                check=True,
+            print(
+                f"Downloading data from {self.data_source_link} to {self.noncurated_path}"
             )
+            os.makedirs(os.path.dirname(self.noncurated_path), exist_ok=True)
+            os.system(f"wget {self.data_source_link} -O {self.noncurated_path}")
         else:
             print(f"File {self.noncurated_path} already exists. Skipping download.")
 
@@ -397,15 +388,21 @@ class CuratedDataset:
 
         return schema_dict
 
-    def save_curated_data_parquet(self, split_metadata=False, save_metadata_only=False):
+    def save_curated_data_parquet(
+        self, split_metadata=False, save_metadata_only=False, overwrite=False
+    ):
         """Save the curated data to a parquet file ready for BigQuery ingestion.
 
         Parameters
         ----------
         split_metadata : bool
-            Whether to split the data and metadata into two separate files (default is False).
+            Whether to split the data and metadata into two separate files. The split
+            data file retains the identifying metadata columns needed for BigQuery
+            queries (default is False).
         save_metadata_only : bool
             Whether to save only the metadata and skip saving the data (default is False).
+        overwrite : bool
+            Whether to overwrite existing Parquet files. Defaults to False.
         """
 
         adata = self.adata
@@ -419,20 +416,28 @@ class CuratedDataset:
 
         polars_schema = self.polars_schema_from_pandera_model()
 
-        # Concatenate the adata.obs and uns_df DataFrames
-        full_metadata_df = adata.obs
-
-        # replace NaN with with None
-        full_metadata_df = full_metadata_df.astype(object).mask(
-            pd.isna(full_metadata_df), None
-        )
-        # convert to string
-        full_metadata_df = full_metadata_df.astype(str)
-        # convert "None" to None
-        full_metadata_df = full_metadata_df.mask(full_metadata_df.eq("None"), None)
+        # Normalize metadata according to the schema without stringifying
+        # numeric columns before converting to Polars.
+        full_metadata_df = _coerce_metadata_for_polars(adata.obs, polars_schema)
 
         metadata_columns = full_metadata_df.columns.to_list()
-        id_columns = metadata_columns[0:2]
+        data_metadata_columns = [
+            "dataset_id",
+            "sample_id",
+            "perturbed_target_symbol",
+            "perturbed_target_ensg",
+            "perturbation_name",
+        ]
+        missing_data_metadata_columns = [
+            column for column in data_metadata_columns if column not in metadata_columns
+        ]
+        if missing_data_metadata_columns:
+            raise ValueError(
+                "Cannot construct split data Parquet because the observation "
+                "metadata is missing required columns: "
+                f"{missing_data_metadata_columns}"
+            )
+        data_index_columns = data_metadata_columns
 
         # Process features (e.g. genes or scores) in chunks
         feature_colnames = adata.var_names.tolist()
@@ -441,7 +446,7 @@ class CuratedDataset:
             parquet_path = self.curated_path.replace(
                 ".h5ad", "_unified.parquet"
             ).replace("h5ad", "parquet")
-            if os.path.exists(parquet_path):
+            if os.path.exists(parquet_path) and not overwrite:
                 raise FileExistsError(
                     f"File {parquet_path} already exists. Skipping write."
                 )
@@ -480,8 +485,9 @@ class CuratedDataset:
             if not os.path.exists(os.path.dirname(self.curated_parquet_metadata_path)):
                 os.makedirs(os.path.dirname(self.curated_parquet_metadata_path))
 
-            if os.path.exists(self.curated_parquet_data_path) or os.path.exists(
-                self.curated_parquet_metadata_path
+            if not overwrite and (
+                os.path.exists(self.curated_parquet_data_path)
+                or os.path.exists(self.curated_parquet_metadata_path)
             ):
                 print(
                     f"Files {self.curated_parquet_data_path} or {self.curated_parquet_metadata_path} already exist. Skipping write."
@@ -518,20 +524,79 @@ class CuratedDataset:
                     full_data_df, schema_overrides=polars_schema
                 )
 
-                # Select only the ID and feature columns for the data file
-                data_subset_df = full_data_df.select(id_columns + feature_colnames)
+                # Replicate the identifying metadata columns in every data row.
+                data_subset_df = full_data_df.select(
+                    data_index_columns + feature_colnames
+                )
 
                 data_subset_df = data_subset_df.unpivot(
                     on=feature_colnames,
-                    index=id_columns,
+                    index=data_index_columns,
                     variable_name="score_name",
                     value_name="score_value",
+                )
+                data_subset_df = data_subset_df.with_columns(
+                    pl.col("score_value").cast(pl.Float64)
                 )
 
                 # save data_subset_df to parquet
                 print(f"Saving data to {self.curated_parquet_data_path}...")
                 data_subset_df.write_parquet(self.curated_parquet_data_path)
                 print(f"✅ Data saved to {self.curated_parquet_data_path}")
+
+    def upload_parquet_to_bq(
+        self,
+        project_id: str,
+        bq_dataset_id: Literal["perturb_seq", "crispr", "mavedb"],
+        bq_table_name: Literal["data", "metadata"],
+        key_columns,
+        parquet_path=None,
+        verbose=True,
+    ):
+        """Upload a curated parquet file to BigQuery.
+
+        Parameters
+        ----------
+        bq_table_name : Literal["data", "metadata"]
+            The name of the BigQuery table to upload to: {project_id}.{bq_dataset_id}.{bq_table_name}
+        key_columns : list[str]
+            Columns used to merge staging rows into the destination table.
+        parquet_path : str, optional
+            Explicit parquet file path. If omitted, bq_table_name must be provided.
+        bq_dataset_id : Literal["perturb_seq", "crispr", "mavedb"]
+            BigQuery dataset ID.
+        project_id : str, optional
+            BigQuery project ID. Defaults to the BQ_PROJECT environment variable.
+        verbose : bool
+            Whether to print upload progress.
+        """
+        if parquet_path is None:
+            if bq_table_name == "metadata":
+                parquet_path = self.curated_parquet_metadata_path
+            elif bq_table_name == "data":
+                parquet_path = self.curated_parquet_data_path
+            else:
+                raise ValueError(
+                    "parquet_path must be provided unless bq_table_name is "
+                    "'metadata' or 'data'."
+                )
+
+        parquet_path = Path(parquet_path)
+        if not parquet_path.exists():
+            raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
+
+        # BigQuery MERGE needs stable keys to decide which rows to update or insert.
+        if not key_columns:
+            raise ValueError("key_columns must contain at least one column.")
+
+        _upload_parquet_to_bq(
+            parquet_path=parquet_path,
+            project_id=project_id,
+            bq_dataset_id=bq_dataset_id,
+            bq_table_name=bq_table_name,
+            key_columns=key_columns,
+            verbose=verbose,
+        )
 
     def chromosome_encoding(self, chromosome_col="perturbed_target_chromosome"):
         """
@@ -762,33 +827,6 @@ class CuratedDataset:
         else:
             print(f"Column {column} has no NA entries in adata.{slot}")
 
-    def map_symbol_to_ensg(self, symbol_column, ensg_column):
-        """
-        Map gene symbols to ENSEMBL IDs using the gene ontology.
-        Parameters
-        ----------
-        symbol_column : str
-            The name of the column containing gene symbols to be mapped.
-        ensg_column : str
-            The name of the column to store the mapped ENSEMBL IDs.
-        """
-        if symbol_column in self.adata.obs.columns:
-            self.adata.obs[ensg_column] = self.adata.obs[symbol_column].map(
-                self.gene_ont.drop_duplicates(subset=["symbol"]).set_index("symbol")[
-                    "ensembl_gene_id"
-                ]
-            )
-            print(f"Mapped {symbol_column} to ENSEMBL IDs")
-            if self.adata.obs[ensg_column].isnull().any():
-                print(
-                    f"Warning: Some values in {symbol_column} could not be mapped to ENSEMBL IDs."
-                )
-                print(
-                    f"Unmapped values: {self.adata.obs[symbol_column][self.adata.obs[ensg_column].isnull()]}"
-                )
-        else:
-            print(f"Column {symbol_column} not found in adata.obs")
-
     @staticmethod
     def remove_version_from_genes(df, column, sep="."):
         """
@@ -961,33 +999,30 @@ class CuratedDataset:
         self,
         slot=Literal["var", "obs"],
         input_column=None,
-        input_column_type=Literal["gene_symbol", "ensembl_gene_id"],
         remove_version=False,
         version_sep=".",
         multiple_entries=False,
         multiple_entries_sep=None,
+        keep_unmapped=False,
     ):
         """
-        Standardize gene symbols or ENSG in a DataFrame column using gprofiler.
+        Standardize gene symbols or ENSG in a DataFrame column using Open Targets gene reference table combined with Ensembl outdated ID mapping.
         Args:
             slot: Which AnnData attribute to use: "var" or "obs".
             input_column: Column name containing gene symbols/ENSG IDs
-            input_column_type: Type of the input column, either 'gene_symbol' or 'ensembl_gene_id'
             remove_version: Boolean indicating whether to remove version numbers from gene symbols/ENSG IDs (default is False)
             version_sep: Separator used between the gene symbols/ENSG IDs and the version (default is ".")
             multiple_entries: Boolean indicating whether to handle multiple entries. Default is False.
             multiple_entries_sep: Separator used between multiple entries (default is None).
+            keep_unmapped: Boolean indicating whether to keep unmapped terms as-is.
+                ENSG-like terms are kept in the Ensembl ID column; all other terms
+                are kept in the gene symbol column.
         Returns:
             DataFrame with standardized gene symbols and ENSG IDs
         """
 
         df = getattr(self.adata, slot)
 
-        # Check if the column is the gene symbol or ENSG
-        if input_column_type not in ["gene_symbol", "ensembl_gene_id"]:
-            raise ValueError(
-                "Input column type must be either 'gene_symbol' or 'ensembl_gene_id'"
-            )
         # Check if the column exists in the DataFrame
         if input_column not in df.columns:
             raise ValueError(f"Column {input_column} not found in DataFrame")
@@ -1019,29 +1054,54 @@ class CuratedDataset:
                 df=conv_df, column=input_column, sep=version_sep
             )
 
-        # filter out all non-standard chromosome names from gene_ont
-        gene_ont = self.gene_ont[
-            self.gene_ont["chromosome_name"].isin(
-                [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
-            )
-        ]
+        reference = self.load_opentargets_gene_reference()
+        conv_df["normalized_input_identifier"] = conv_df[input_column].map(
+            self.normalize_gene_identifier
+        )
 
-        # map the ENSG or gene symbols to the gene ontology
-        conv_list = conv_df[input_column].dropna().unique().tolist()
-
-        if input_column_type == "ensembl_gene_id":
-            matched_df = self.merge_gene_ont_ensg(
-                conv_list=conv_list, gene_ont=gene_ont
-            )
-
-        elif input_column_type == "gene_symbol":
-            matched_df = self.merge_gene_ont_symbol(
-                conv_list=conv_list, gene_ont=gene_ont
-            )
-
-        # merge the matched DataFrame to the original input column values
         conv_df = conv_df.merge(
-            matched_df, how="left", left_on=input_column, right_on="original_input"
+            reference,
+            how="left",
+            on="normalized_input_identifier",
+        )
+
+        control_terms = [
+            "control_nontargeting",
+            "control_gsh",
+            "control_genedesert",
+            "control_intergenic",
+            "control_positive",
+            "control_guideonly",
+            "control_casonly",
+        ]
+        control_mask = conv_df[input_column].isin(control_terms)
+        for column in [
+            "ensembl_gene_id",
+            "gene_symbol",
+            "biotype",
+            "gene_coord",
+            "chromosome_name",
+        ]:
+            conv_df.loc[control_mask, column] = conv_df.loc[control_mask, input_column]
+
+        # Handle unmapped terms: ENSG-like terms are kept in the Ensembl ID column; all other terms are kept in the gene symbol column.
+        if keep_unmapped:
+            missing_mask = conv_df["ensembl_gene_id"].isna()
+            ensg_mask = conv_df["normalized_input_identifier"].str.match(
+                r"^ENSG[0-9]+", na=False
+            )
+            conv_df.loc[missing_mask & ensg_mask, "ensembl_gene_id"] = conv_df.loc[
+                missing_mask & ensg_mask, input_column
+            ]
+            conv_df.loc[missing_mask & ~ensg_mask, "gene_symbol"] = conv_df.loc[
+                missing_mask & ~ensg_mask, input_column
+            ]
+
+        mapped_count = conv_df["ensembl_gene_id"].dropna().nunique()
+        input_count = conv_df[input_column].dropna().nunique()
+        input_genes = conv_df[input_column].dropna().unique()
+        print(
+            f"{'-'*50}\nSuccessfully mapped {mapped_count} out of {input_count} genes.\nInput genes: {input_genes}\n{'-'*50}"
         )
 
         if multiple_entries:
@@ -1052,7 +1112,8 @@ class CuratedDataset:
         # ensure the length of the converted DataFrame is the same as the original DataFrame
         if len(conv_df) != len(df):
             raise ValueError(
-                f"Length of converted DataFrame ({len(matched_df)}) does not match length of original DataFrame ({len(df)})"
+                f"Length of converted DataFrame ({len(conv_df)}) does not match "
+                f"length of original DataFrame ({len(df)})"
             )
 
         # rename the columns depending on the slot
@@ -1070,6 +1131,14 @@ class CuratedDataset:
                 "gene_symbol": "gene_symbol",
             }
 
+        # if somehow the new column names already exist in the DataFrame, rename them to avoid conflicts
+        for new_col in new_colnames_map.values():
+            if new_col in conv_df.columns:
+                conv_df = conv_df.rename(columns={new_col: f"original_{new_col}"})
+                print(
+                    f"Renamed existing column {new_col} to original_{new_col} to avoid conflicts."
+                )
+
         conv_df = conv_df.rename(columns=new_colnames_map)
         conv_df = conv_df.replace("None", None)
         # keep only relevant columns
@@ -1083,7 +1152,58 @@ class CuratedDataset:
 
         out_df.index.name = "index"
 
+        # if keep_unmapped is False, remove unmapped genes from the DataFrame
+        # this subset is done on adata.obs or adata.var, so that the adata object is updated as a whole
+        mapped_output_column = new_colnames_map["ensembl_gene_id"]
+        if not keep_unmapped:
+            mapped_mask = out_df[mapped_output_column].notna()
+            removed_count = len(out_df) - mapped_mask.sum()
+            if removed_count:
+                print(
+                    f"Removing {removed_count} unmapped genes from adata.{slot}."
+                    f"Unmapped genes: {out_df.loc[~mapped_mask, input_column].unique()}"
+                )
+
+            out_df = out_df.loc[mapped_mask].copy()
+            if slot == "obs":
+                self.adata = self.adata[mapped_mask.to_numpy(), :].copy()
+            elif slot == "var":
+                self.adata = self.adata[:, mapped_mask.to_numpy()].copy()
+
         setattr(self.adata, slot, out_df)
+
+    @staticmethod
+    def normalize_gene_identifier(identifier):
+        """Normalize gene identifiers to match the Open Targets reference table."""
+        if identifier is None or pd.isna(identifier):
+            return None
+
+        normalized = re.sub(r"\s+", " ", str(identifier).strip())
+        if not normalized:
+            return None
+
+        if re.match(r"^ENSG[0-9]+(?:\.[0-9]+)?$", normalized, re.IGNORECASE):
+            return normalized.split(".", maxsplit=1)[0].upper()
+
+        return normalized.upper()
+
+    @classmethod
+    def load_opentargets_gene_reference(cls, reference_path=None):
+        """Load the Open Targets gene standardization reference."""
+        if reference_path is None:
+            reference_path = cls.opentargets_gene_reference_path
+
+        return pd.read_parquet(
+            reference_path,
+            columns=[
+                "normalized_input_identifier",
+                "ensembl_gene_id",
+                "gene_symbol",
+                "biotype",
+                "gene_coord",
+                "chromosome_name",
+            ],
+        )
 
     def standardize_ontology(
         self,
@@ -1294,7 +1414,7 @@ class CuratedDataset:
 
         schema = self.obs_schema if slot == "obs" else self.var_schema
 
-        schema_columns = schema.to_schema().columns.keys()
+        schema_columns = list(schema.to_schema().columns.keys())
 
         df = df[schema_columns]
 
@@ -1302,7 +1422,9 @@ class CuratedDataset:
 
         print(f"Matched columns of adata.{slot} to the {slot+'_schema'}.")
 
-    def validate_data(self, slot=Literal["var", "obs"], verbose=True):
+    def validate_data(
+        self, slot=Literal["var", "obs"], verbose=True, collect_errors=None
+    ):
         """
         Validate the data in the specified slot of the adata object against the schema.
         Parameters
@@ -1311,9 +1433,16 @@ class CuratedDataset:
             The slot to validate. Can be either "obs" or "var".
         verbose : bool
             Whether to print the validation results. Defaults to True.
+        collect_errors : bool, optional
+            Whether Pandera should collect all validation errors. Defaults to the
+            value of ``verbose``. Set to False for large batch jobs to reduce
+            memory usage when validation failures are expected.
         """
         if slot not in ["obs", "var"]:
             raise ValueError('slot must be either "obs" or "var"')
+
+        if collect_errors is None:
+            collect_errors = verbose
 
         df = getattr(self.adata, slot)
         if df.empty:
@@ -1337,7 +1466,7 @@ class CuratedDataset:
             schema = self.var_schema
 
         try:
-            validated_obs = schema.validate(df, lazy=True)
+            validated_obs = schema.validate(df, lazy=collect_errors)
 
             setattr(self.adata, slot, validated_obs)
 
@@ -1362,12 +1491,13 @@ class CuratedDataset:
                     # If display is unavailable, we've already logged a preview
                     pass
 
-        except pa.errors.SchemaErrors as e:
-            try:
-                msg = json.dumps(e.message, indent=2)
-            except Exception:
-                msg = str(e)
-            logger.error("Validation errors for adata.%s: %s", slot, msg)
+        except (pa.errors.SchemaError, pa.errors.SchemaErrors) as e:
+            if verbose:
+                try:
+                    msg = json.dumps(e.message, indent=2)
+                except Exception:
+                    msg = str(e)
+                logger.error("Validation errors for adata.%s: %s", slot, msg)
 
     def _get_vals(self, column):
         """
@@ -1449,50 +1579,6 @@ class CuratedDataset:
                 print("-" * 50)
                 pprint(data)
                 print("-" * 50)
-
-    @staticmethod
-    def map_synonyms_to_symbols(df, symbol_column=None, gene_ont=None):
-        """
-        Map synonyms to gene symbols using the gene ontology.
-        Parameters
-        ----------
-        df : DataFrame
-            Dataframe containing the original gene symbols to be mapped.
-        symbol_column : str
-            The name of the column containing gene symbols to be mapped.
-        gene_ont : DataFrame
-            Gene ontology dataframe containing the gene symbols and synonyms.
-        """
-        if symbol_column not in df.columns:
-            raise ValueError(f"Column {symbol_column} not found in the dataframe")
-        if df[symbol_column].empty:
-            raise ValueError(f"Column {symbol_column} is empty in the dataframe")
-        if gene_ont is None:
-            raise ValueError("gene_ont must be provided")
-
-        # remove entries with no synonyms
-        map_df = gene_ont[~gene_ont["synonyms"].isna()]
-        # explode the synonym column
-        map_df["synonyms"] = map_df["synonyms"].str.split("|")
-        map_df = map_df.explode("synonyms")
-        # remove unnecessary columns
-        map_df = (
-            map_df[["synonyms", "symbol", "ensembl_gene_id"]]
-            .drop_duplicates(subset=["synonyms"])
-            .dropna(subset=["synonyms"])
-        )
-        # map the synonyms to the gene symbols
-        df[symbol_column] = (
-            df[symbol_column]
-            .map(map_df.set_index("synonyms")["symbol"])
-            .fillna(df[symbol_column])
-        )
-
-        print(
-            f"Mapped potential synonyms in {symbol_column} of the provided dataframe to gene symbols"
-        )
-
-        return df
 
     @staticmethod
     def collapse_df(df, unique_val_column=None, sep="|"):
@@ -1602,223 +1688,6 @@ class CuratedDataset:
 
         # Default: not a corrupted date pattern
         return None
-
-    @staticmethod
-    def merge_gene_ont_ensg(conv_list, gene_ont):
-        """
-        Maps a list of Ensembl gene IDs to a gene ontology dataframe.
-        Handles non-targeting controls and fetches the latest Ensembl IDs for missing ones.
-        Args:
-            conv_list: List of Ensembl gene IDs to map.
-            gene_ont: DataFrame containing gene ontology information with columns 'ensembl_gene_id', 'gene_symbol', etc.
-        Returns:
-            DataFrame with original input Ensembl IDs and their mapped gene ontology information.
-        """
-        # --- Preprocess gene ontology dataframe ---
-        gene_ont_subset = gene_ont.drop(columns=["synonym", "synonym_type"]).copy()
-        gene_ont_subset = gene_ont_subset.drop_duplicates().dropna(
-            subset=["ensembl_gene_id"]
-        )
-        gene_ont_subset["gene_symbol"] = gene_ont_subset["gene_symbol"].str.upper()
-
-        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = [
-            "control_nontargeting",
-            "control_gsh",
-            "control_genedesert",
-            "control_intergenic",
-            "control_positive",
-            "control_guideonly",
-            "control_casonly",
-        ]
-        for term in control_terms:
-            control_row = {col: term for col in gene_ont_subset.columns}
-            gene_ont_subset = pd.concat(
-                [gene_ont_subset, pd.DataFrame([control_row])], ignore_index=True
-            )
-
-        # --- Main mapping ---
-        # Initialize mapped DataFrame
-        mapped_df = pd.DataFrame(columns=["original_input"], data=conv_list)
-        # Map using gene_ont_subset on 'ensembl_gene_id'
-        mapped_df = mapped_df.merge(
-            gene_ont_subset,
-            how="left",
-            left_on="original_input",
-            right_on="ensembl_gene_id",
-        )
-
-        # --- Identify missing Ensembl IDs ---
-        missing_ensg = list(
-            set(conv_list) - set(gene_ont_subset["ensembl_gene_id"].unique())
-        )
-        missing_ensg = [e for e in missing_ensg if e != "nan"]
-
-        # --- Fetch latest Ensembl IDs for missing ones ---
-        if missing_ensg:
-            print(
-                f"Missing Ensembl IDs: {missing_ensg}; attempting to fetch latest IDs..."
-            )
-            missing_ensg_map = fetch_latest_ensg_id(missing_ensg)
-            print(f"Fetched latest Ensembl IDs: {missing_ensg_map}")
-            missing_ensg_df = pd.DataFrame.from_dict(
-                missing_ensg_map, orient="index"
-            ).reset_index()
-            missing_ensg_df = missing_ensg_df.rename(
-                columns={"index": "original_input", 0: "ensembl_gene_id"}
-            )
-            missing_ensg_df = missing_ensg_df.merge(
-                gene_ont_subset, how="left", on="ensembl_gene_id"
-            )
-            # add unmapped original entries back as is
-            unmapped_list = list(
-                set(missing_ensg) - set(missing_ensg_df["original_input"])
-            )
-            unmapped_df = pd.DataFrame(
-                {
-                    "original_input": list(unmapped_list),
-                    "ensembl_gene_id": list(unmapped_list),
-                }
-            )
-            missing_ensg_df = pd.concat(
-                [missing_ensg_df, unmapped_df], ignore_index=True
-            )
-
-            # Fill in missing mappings with fetched latest Ensembl IDs
-            mapped_df = mapped_df.set_index("original_input")
-            missing_ensg_df = missing_ensg_df.set_index("original_input")
-            mapped_df.update(missing_ensg_df, errors="raise")
-            # add the original_input column back
-            mapped_df["original_input"] = mapped_df.index
-
-            # Fill the remaining nans in ensembl_gene_id with original_input
-            mapped_df["ensembl_gene_id"] = mapped_df["ensembl_gene_id"].fillna(
-                mapped_df["original_input"]
-            )
-
-            mapped_df = mapped_df.reset_index(drop=True)
-
-        # drop nas
-        mapped_df = mapped_df.dropna(subset=["original_input"])
-
-        print(
-            f"{'-'*50}\nSuccessfully mapped {len(mapped_df['ensembl_gene_id'].dropna())} out of {len(mapped_df['original_input'].dropna())} Ensembl IDs.\n{'-'*50}"
-        )
-
-        return mapped_df
-
-    @classmethod
-    def merge_gene_ont_symbol(cls, conv_list, gene_ont):
-        """
-        Maps a list of gene symbols to a gene ontology dataframe using both direct symbol matches and synonym matches.
-        Handles Excel-corrupted gene symbols and non-targeting controls.
-        Args:
-            conv_list: List of gene symbols to map.
-            gene_ont: DataFrame containing gene ontology information with columns 'gene_symbol', 'synonym', 'synonym_type', 'ensembl_gene_id', etc.
-        Returns:
-            DataFrame with original input gene symbols and their mapped gene ontology information.
-        """
-
-        # --- Preprocess gene ontology dataframe ---
-        gene_ont = gene_ont.dropna(subset=["synonym"]).copy()
-        gene_ont["synonym"] = gene_ont["synonym"].str.upper()
-        gene_ont["gene_symbol"] = gene_ont["gene_symbol"].str.upper()
-
-        # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-        control_terms = [
-            "control_nontargeting",
-            "control_gsh",
-            "control_genedesert",
-            "control_intergenic",
-            "control_positive",
-            "control_guideonly",
-            "control_casonly",
-        ]
-
-        # --- Split symbol and synonym dataframes ---
-        gene_ont_symbol_df = gene_ont.query("synonym_type == 'symbol_syn'")
-        gene_ont_synonym_df = gene_ont.query("synonym_type != 'symbol_syn'")
-
-        # --- Index for instant lookups ---
-        symbol_lookup = {
-            syn: df for syn, df in gene_ont_symbol_df.groupby("synonym", sort=False)
-        }
-        synonym_lookup = {
-            syn: df for syn, df in gene_ont_synonym_df.groupby("synonym", sort=False)
-        }
-
-        # --- Allowed chromosomes for filtering ---
-        allowed_chromosomes = {str(e) for e in range(1, 23)} | {"X", "Y", "MT"}
-
-        # --- Function to select the best match ---
-        def select_best_match(mapped_df, query):
-
-            # If only one match, return it
-            if len(mapped_df) == 1:
-                return mapped_df.iloc[0].to_dict()
-            # If multiple matches, first filter by allowed chromosomes
-            chrom_filtered = mapped_df[
-                mapped_df["chromosome_name"].isin(allowed_chromosomes)
-            ]
-            # If filtering yields one match, return it
-            if len(chrom_filtered) == 1:
-                return chrom_filtered.iloc[0].to_dict()
-            # Otherwise, use fuzzy matching to select the best match
-            best_match = process.extractOne(query, mapped_df["gene_symbol"].tolist())
-            return (
-                mapped_df.loc[mapped_df["gene_symbol"] == best_match[0]]
-                .iloc[0]
-                .to_dict()
-            )
-
-        # --- Main mapping ---
-        map_dict = {}
-        unique_genes = list(
-            dict.fromkeys(conv_list)
-        )  # preserves order but removes dups
-
-        # Iterate through unique gene symbols and map them
-        for e in tqdm(unique_genes, desc="Mapping gene symbols", ncols=100):
-            e_upper = e.upper()
-            # Check direct symbol match
-            if e_upper in symbol_lookup:
-                map_dict[e] = select_best_match(symbol_lookup[e_upper], e_upper)
-            # Check synonym match
-            elif e_upper in synonym_lookup:
-                map_dict[e] = select_best_match(synonym_lookup[e_upper], e_upper)
-            # Check if the gene symbol is an Excel-corrupted date
-            elif (corrected := cls.convert_excel_date_to_gene(e_upper)) is not None:
-                corrected_upper = corrected.upper()
-                if corrected_upper in symbol_lookup:
-                    map_dict[e] = select_best_match(
-                        symbol_lookup[corrected_upper], corrected_upper
-                    )
-                elif corrected_upper in synonym_lookup:
-                    map_dict[e] = select_best_match(
-                        synonym_lookup[corrected_upper], corrected_upper
-                    )
-            # Check if control
-            elif e in control_terms:
-                map_dict[e] = {col: e for col in gene_ont.columns}
-            # If no match found, keep the original gene symbol and set other columns to None
-            else:
-                map_dict[e] = {
-                    k: (e if k == "gene_symbol" else None) for k in gene_ont.columns
-                }
-
-        # --- Convert mapping dictionary to DataFrame ---
-        matched_df = pd.DataFrame.from_dict(map_dict, orient="index").reset_index(
-            names=["original_input"]
-        )
-
-        print(
-            f"{'-'*50}\nSuccessfully mapped {len(matched_df['ensembl_gene_id'].dropna())} out of {len(matched_df['original_input'].dropna())} gene symbols.\n{'-'*50}"
-        )
-        print(
-            f"Couldn't map gene symbols: {matched_df[matched_df['ensembl_gene_id'].isna()]['original_input'].tolist()}\n{'-'*50}"
-        )
-
-        return matched_df
 
     @staticmethod
     def get_schema_dtype_map(schema_cls):
@@ -1978,22 +1847,42 @@ def add_bq_upload_timestamp(bq_dest_table):
         client.query(sql).result()
 
 
-def upload_parquet_to_bq(
-    parquet_path, bq_dataset_id, bq_table_name, key_columns, verbose=True
+def _upload_parquet_to_bq(
+    parquet_path,
+    project_id,
+    bq_dataset_id: Literal["perturb_seq", "crispr", "mavedb"],
+    bq_table_name: Literal["data", "metadata"],
+    key_columns,
+    verbose=True,
 ):
-    client = bigquery.Client()
-    target_table_base = f"{bq_dataset_id}.{bq_table_name}"
+    """Upload a parquet file to BigQuery, defaulting project_id to BQ_PROJECT."""
+    if project_id is None:
+        if "BQ_PROJECT" not in os.environ:
+            raise ValueError(
+                "project_id must be provided or set in the BQ_PROJECT environment variable."
+            )
+        else:
+            project_id = os.environ["BQ_PROJECT"]
+            print(
+                f"Using project_id from environment variable BQ_PROJECT: {project_id}"
+            )
+    else:
+        print(f"Using provided project_id: {project_id}")
+
+    if bq_dataset_id is None:
+        raise ValueError("bq_dataset_id must be provided.")
+
+    if bq_table_name is None:
+        raise ValueError("bq_table_name must be provided.")
+    if not key_columns:
+        raise ValueError("key_columns must contain at least one column.")
+
+    client = bigquery.Client(project=project_id)
+    target_table_base = f"{project_id}.{bq_dataset_id}.{bq_table_name}"
     staging_table_id = f"{target_table_base}_staging"
 
-    # get the target table schema
-    target_table = client.get_table(target_table_base)
-    # define the staging table schema (all STRING except ingested_at - it's added later)
-    target_schema = [
-        bigquery.SchemaField(col.name, "STRING")
-        for col in target_table.schema
-        if col.name != "ingested_at"
-    ]
-
+    # Verify that the target table exists before creating the staging table.
+    client.get_table(target_table_base)
     if verbose:
         print(
             f"Staging table: loading `.parquet` file {parquet_path} to {staging_table_id}..."
@@ -2002,7 +1891,6 @@ def upload_parquet_to_bq(
     job_config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        schema=target_schema,
     )
 
     # create the staging table
@@ -2048,9 +1936,9 @@ def merge_staging_to_target(
     client, staging_table_id, target_table_id, key_columns, update_columns
 ):
     """
-    Merge staging table (all STRING columns) into target table (typed columns).
+    Merge a Parquet-inferred staging table into a typed target table.
 
-    Staging table is assumed to contain only STRING-typed columns.
+    The staging table schema is inferred from the Parquet source.
     Columns are CAST into the correct types defined in the target table schema
     during INSERT and UPDATE.
     """
@@ -2059,11 +1947,17 @@ def merge_staging_to_target(
     target_schema = {
         field.name.lower(): field for field in client.get_table(target_table_id).schema
     }
+    cast_type_aliases = {
+        "INTEGER": "INT64",
+        "FLOAT": "FLOAT64",
+        "BOOLEAN": "BOOL",
+    }
 
     def cast_expression(col):
         """Return CAST(S.col AS <typename>) based on target schema."""
         target_field = target_schema[col.lower()]
-        bq_type = target_field.field_type  # e.g., STRING, INT64, FLOAT64, BOOL, DATE
+        field_type = target_field.field_type.upper()
+        bq_type = cast_type_aliases.get(field_type, field_type)
         return f"CAST(S.{col} AS {bq_type})"
 
     # Join condition always cast key columns to their target types
@@ -2113,34 +2007,30 @@ def download_file(
         unarchive: bool
             Whether to unarchive the file if it's an archive (zip/tar.gz/tgz)
     """
-    download_url = _validate_download_url(url)
-    output_path = _validate_output_path(dest_path)
-
     # check if the file already exists
-    if output_path.exists():
+    if os.path.exists(dest_path):
         if not overwrite:
-            print(f"File {output_path} already exists. Skipping download.")
+            print(f"File {dest_path} already exists. Skipping download.")
             return
         else:
-            print(f"File {output_path} already exists. Overwriting...")
-    response = requests.get(download_url, stream=True)
+            print(f"File {dest_path} already exists. Overwriting...")
+    response = requests.get(url, stream=True)
     response.raise_for_status()  # Raise an error for bad responses
     # if the destination directory does not exist, create it
-    os.makedirs(output_path.parent, exist_ok=True)
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     # write the content to the destination file
-    with open(output_path, "wb") as f:
+    with open(dest_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
     if unarchive:
-        output_name = output_path.name.lower()
-        if output_name.endswith(".zip"):
-            _safe_extract_zip(output_path)
-        elif output_name.endswith((".tar.gz", ".tgz")):
-            _safe_extract_tar(output_path)
+        if dest_path.endswith(".zip"):
+            subprocess.run(["unzip", "-o", dest_path, "-d", os.path.dirname(dest_path)])
+        elif dest_path.endswith((".tar.gz", ".tgz", ".tar")):
+            subprocess.run(["tar", "-xzf", dest_path, "-C", os.path.dirname(dest_path)])
         else:
-            print(f"Unsupported archive format for {output_path}. Skipping unarchive.")
+            print(f"Unsupported archive format for {dest_path}. Skipping unarchive.")
 
-    print(f"Downloaded {download_url} to {output_path}")
+    print(f"Downloaded {url} to {dest_path}")
 
 
 def concatenate_parquet_files(
@@ -2261,141 +2151,3 @@ def fetch_latest_ensg_id(ensg_list: list = None):
     mapping_dict = {k: v for k, v in zip(df["id"], df["stable_id"])}
 
     return mapping_dict
-
-
-def get_synonyms(ensembl_data: dict = None) -> pd.DataFrame:
-    synonyms_dict = {}
-    for gene in ensembl_data["genes"]:
-        xrefs = gene.get("xrefs")
-        for e in xrefs:
-            synonyms = e.get("synonyms")
-            if synonyms:
-                synonyms_dict[gene.get("id")] = [synonyms]
-                continue
-
-    return pd.DataFrame.from_dict(
-        synonyms_dict, orient="index", columns=["synonyms"]
-    ).reset_index(names="id")
-
-
-def generate_gene_ont(
-    json_url: str = "https://ftp.ensembl.org/pub/current/json/homo_sapiens/homo_sapiens.json",
-    json_path: str = "data/homo_sapiens.json",
-    save_parquet_path: str = "data/gene_ont.parquet",
-):
-
-    download_file(url=json_url, dest_path=json_path)
-
-    # load the file
-    print(f"Reading the json file: {json_path}")
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    # create the df
-    colnames = [
-        "id",
-        "name",
-        "Interpro",
-        "Uniprot/SWISSPROT",
-        "GeneCards",
-        "EntrezGene",
-        "HGNC",
-        "EMBL",
-        "seq_region_name",
-        "start",
-        "end",
-        "strand",
-        "biotype",
-        "genome",
-        "description",
-    ]
-    main_df = pd.DataFrame.from_dict(data["genes"])[colnames]
-
-    # get synonyms
-    synonyms_df = get_synonyms(data)
-
-    # merge synonyms
-    main_df = main_df.merge(synonyms_df, how="left", on="id")
-
-    # rename the columns
-    main_df = main_df.rename(
-        columns={
-            "id": "ensembl_gene_id",
-            "name": "gene_symbol",
-            "seq_region_name": "chromosome_name",
-        }
-    )
-
-    # create a symbol_syn column
-    main_df["symbol_syn"] = main_df["gene_symbol"].copy()
-
-    # replace nan values with [] in synonym columns
-    syn_cols = [
-        "symbol_syn",
-        "synonyms",
-        "Interpro",
-        "Uniprot/SWISSPROT",
-        "EMBL",
-        "HGNC",
-        "EntrezGene",
-        "GeneCards",
-    ]
-    main_df[syn_cols] = main_df[syn_cols].map(
-        lambda x: [] if (not isinstance(x, list) and pd.isna(x)) else x
-    )
-
-    # add gene_coord column
-    main_df["gene_coord"] = main_df.apply(
-        lambda x: f"chr{x['chromosome_name']}:{x['start']}-{x['end']};{x['strand']}",
-        axis=1,
-    )
-
-    # pivot the df to create a long form df with a single "synonym" column
-    main_df_long = main_df.melt(
-        id_vars=[
-            "ensembl_gene_id",
-            "gene_symbol",
-            "chromosome_name",
-            "gene_coord",
-            "biotype",
-            "description",
-        ],
-        value_vars=syn_cols,
-        var_name="synonym_type",
-        value_name="synonym",
-    )
-    main_df_long = main_df_long.explode("synonym")
-
-    # remove dashes and add as additional synonyms
-    dash_long = main_df_long[main_df_long["synonym"].str.contains("-", na=False)]
-    dash_long["synonym"] = dash_long["synonym"].str.replace("-", "")
-    main_df_long = pd.concat([main_df_long, dash_long])
-
-    # make symbols and synonyms upper case
-    main_df_long["synonym"] = main_df_long["synonym"].str.upper()
-    main_df_long["gene_symbol"] = main_df_long["gene_symbol"].str.upper()
-
-    # add control row for non-targeting controls, gsh controls, gene desert controls and positive controls
-    control_terms = [
-        "control_nontargeting",
-        "control_gsh",
-        "control_genedesert",
-        "control_intergenic",
-        "control_positive",
-        "control_guideonly",
-        "control_casonly",
-    ]
-    for term in control_terms:
-        control_row = {col: term for col in main_df_long.columns}
-        main_df_long = pd.concat(
-            [main_df_long, pd.DataFrame([control_row])], ignore_index=True
-        )
-
-    # save as parquet
-    if save_parquet_path:
-        os.makedirs(os.path.dirname(save_parquet_path), exist_ok=True)
-        print(f"Saving to {save_parquet_path}")
-        main_df_long.to_parquet(save_parquet_path)
-        print("Done!")
-
-    return
