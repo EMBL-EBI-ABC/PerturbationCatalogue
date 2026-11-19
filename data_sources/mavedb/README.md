@@ -13,12 +13,13 @@ The ZIP archive contains:
 
 ## Nextflow workflow
 
-The [Nextflow pipeline](pipeline/README.md) implements raw-data ingest followed
-by canonical metadata/score processing. It accepts a pinned Zenodo download or
-local ZIP, validates and unpacks it, and processes it using an explicit taxonomy
-snapshot. Default raw-source runs also generate singles, doubles and wide
-tables under `<outdir>/tables/maves/`. Outputs include raw/processed provenance
-manifests and a dataset selection audit. Use `--ingest_only` to stop after ingest.
+The [Nextflow pipeline](pipeline/README.md) implements raw-data ingest,
+reference preparation and canonical metadata/score processing. It accepts a
+pinned Zenodo download or local ZIP, validates and unpacks it, and prepares a
+single reference bundle containing taxonomy plus ClinVar and GWAS variants.
+Default raw-source runs also generate singles, doubles and wide tables under
+`<outdir>/tables/maves/`. Outputs include raw, reference and processed
+provenance manifests and a dataset selection audit. Use `--ingest_only` to stop after ingest.
 Local setup, offline fixtures, reuse behavior and validation status are documented there. GMM
 fitting is available with `--run_gmm`, including frozen batch plans, per-batch
 tasks and verified collection. Completed results are reused by default from
@@ -41,7 +42,31 @@ do not yet exist. The downstream-only `--processed_dir` mode imports canonical
 scores and metadata for GMM/report work and does not generate source tables.
 An interrupted GMM attempt reuses completed batches when continued without a
 new `--rerun gmm`.
-Biological validation benchmarks and homology remain separate commands.
+Use `--run_validation` to validate GMM results against the prepared ClinVar and
+GWAS tables. Homology remains a separate command.
+
+### Pipeline reference inputs
+
+Normal source-mode runs prepare ClinVar and GWAS variants from Open Targets
+coding variants release 25.06, evidence and credible-set releases 25.12, and
+the checked-in `analysis/data/mavedb_uniprot_to_ensembl.tsv` map. These source
+downloads are approximately 3.4 GB. The pipeline saves the complete, verified
+bundle under `<outdir>/references/`; the standalone downloader and converter
+below keep their existing all-source and all-table defaults.
+
+For offline preparation, pass `--reference_sources_manifest` with a verified
+version-3 raw source manifest. To import already prepared variant tables, pass
+both `--validation_clinvar` and `--validation_gwas`; a partial pair is rejected
+before any stages start. The pair skips raw source acquisition and preparation.
+`--run_validation` consumes the prepared tables automatically. Processed-input
+GMM-only runs do not prepare references; processed-input validation does.
+
+Reference products are reused without checking for newer provider data. Use
+`--rerun references` to regenerate from retained source snapshots, or add
+`--refresh_references` to fetch a new source snapshot explicitly. Refreshing
+requires the references rerun. The reference stage preserves taxonomy source
+provenance and its exact bytes across reruns unless a different snapshot is
+selected deliberately.
 
 ## GMM fitting
 
@@ -264,6 +289,12 @@ Each source URL can be changed with its `--*-url` flag. Ensembl requests default
 to four workers, a global 0.2-second request interval, a 60-second timeout and
 three retries. The corresponding flags are `--workers`, `--request-interval`,
 `--timeout` and `--retries`.
+
+The Nextflow references stage selects only ClinVar and GWAS inputs with
+`download_reference_data.py --only clinvar,gwas`; the downloader's standalone
+default remains all source families. `process_variant_data.py --only
+clinvar,gwas` writes both prepared tables in one pass with a shared coding
+index; its standalone default remains all five output tables.
 
 Unavailable Ensembl HTTP 400/404 responses stop the run unless
 `--allow-missing-homology` is explicitly supplied. Skips are recorded in the

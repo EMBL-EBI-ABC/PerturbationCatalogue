@@ -24,6 +24,9 @@ MANIFEST_NAME = "pipeline_manifest.json"
 SCHEMA_VERSION = 2
 PUBLIC_STAGE_PATHS = {
     "ingest": "ingest/current",
+    "references": "references",
+    # Retained for reading and migrating results written before the unified
+    # references stage replaced the public taxonomy stage.
     "taxonomy": "references/taxonomy",
     "process": "processed",
     "tables": "tables",
@@ -393,6 +396,12 @@ class ResultStore:
                         or not isinstance(entry, dict)
                         or entry.get("path") != relative.as_posix()
                     }
+                    if stage == "references":
+                        # The old taxonomy result shares a directory with the
+                        # new public bundle. Retire it only after the complete
+                        # references replacement has been promoted; rollback
+                        # restores this state snapshot with the old bundle.
+                        state["results"].pop("taxonomy", None)
                     state["results"][stage] = {
                         "path": relative.as_posix(),
                         "generation": generation,

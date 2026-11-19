@@ -3,7 +3,7 @@
 nextflow.enable.dsl = 2
 
 include { MAVEDB_INGEST } from './modules/ingest'
-include { MAVEDB_TAXONOMY } from './modules/taxonomy'
+include { MAVEDB_REFERENCES } from './modules/references'
 include { MAVEDB_PROCESS } from './modules/process'
 include { MAVEDB_TABLES } from './modules/tables'
 include { MAVEDB_GMM } from './modules/gmm'
@@ -21,17 +21,22 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
 
   --outdir PATH            Saved analysis and durable result cache
   --archive PATH           Local ZIP instead of the pinned Zenodo URL
-  --taxonomy PATH          Local categories.dmp instead of NCBI acquisition
+  --taxonomy PATH          Import a local categories.dmp into references
+  --reference_sources_manifest PATH
+                           Verified raw Open Targets source bundle manifest
+  --references_cache_dir PATH
+                           Resumable reference task components (default under tmp)
+  --refresh_references     Refresh sources; requires --rerun references
   --processed_dir PATH     Existing scores.tsv/metadata.tsv for GMM/reports
   --ingest_only            Stop after ingest
   --run_gmm                Enable GMM fitting and merging
   --run_qc                 Enable basic QC
   --run_reports            Enable per-study reports and GMM dependencies
-  --run_validation         Validate GMM fits against local ClinVar/GWAS TSVs
-  --validation_clinvar PATH ClinVar reference TSV (required with validation)
-  --validation_gwas PATH   GWAS reference TSV (required with validation)
+  --run_validation         Validate GMM fits against prepared ClinVar/GWAS tables
+  --validation_clinvar PATH Imported ClinVar TSV (requires paired GWAS path)
+  --validation_gwas PATH   Imported GWAS TSV (requires paired ClinVar path)
   --rerun STAGES           Comma-separated stage names, or all enabled stages
-                          ingest,taxonomy,process,tables,gmm,merge,qc,reports,validation
+                          ingest,references,process,tables,gmm,merge,qc,reports,validation
   --gmm_profile NAME       production (default) or bounded smoke
   --gmm_model NAME         modes (default) or flexible
   --validation_formats FORMATS
@@ -48,7 +53,8 @@ See pipeline/README.md for all fitting/resource settings and migration.
         java.nio.file.Files.createDirectories(root)
         def engine = [python: file(params.python).toAbsolutePath().toString(),
                       runtime: "${projectDir}/../scripts/pipeline_runtime.py",
-                      scripts: "${projectDir}/../scripts"]
+                      scripts: "${projectDir}/../scripts",
+                      workDir: workflow.workDir.toString()]
         def writerLock = MavedbCache.acquire(engine, root)
         workflow.onComplete { writerLock.outputStream.close(); writerLock.waitFor() }
         def prepared = MavedbCache.call(engine, ['prepare'], params as Map)
@@ -58,7 +64,7 @@ See pipeline/README.md for all fitting/resource settings and migration.
         def results = Channel.empty()
         def processed
         def raw
-        def taxonomy
+        def references
         if (params.processed_dir) {
             def resolved = MavedbCache.resolve([engine: engine, stage: 'process', inputs: [:]])
             processed = Channel.value(resolved)
@@ -68,24 +74,29 @@ See pipeline/README.md for all fitting/resource settings and migration.
             MAVEDB_INGEST(engine)
             raw = MAVEDB_INGEST.out.result
             results = results.mix(raw.map { [ingest: it.path] })
-            if (!params.ingest_only) {
-                MAVEDB_TAXONOMY(engine)
-                taxonomy = MAVEDB_TAXONOMY.out.result
-                results = results.mix(taxonomy.map { [taxonomy: it.path] })
-                MAVEDB_PROCESS(engine, raw, taxonomy)
-                processed = MAVEDB_PROCESS.out.result
-            }
+        }
+        if (!params.ingest_only && enabled.contains('references')) {
+            MAVEDB_REFERENCES(engine)
+            references = MAVEDB_REFERENCES.out.result
+            results = results.mix(references.map { [references: it.path] })
+        }
+        if (!params.ingest_only && !params.processed_dir && !request.saved_processing) {
+            MAVEDB_PROCESS(engine, raw, references)
+            processed = MAVEDB_PROCESS.out.result
         }
         if (!params.ingest_only) {
             results = results.mix(processed.map { [process: it.path] })
             def tables
             if (enabled.contains('tables')) {
-                MAVEDB_TABLES(engine, raw, taxonomy, processed)
+                MAVEDB_TABLES(engine, raw, references, processed)
                 tables = MAVEDB_TABLES.out.result
                 results = results.mix(tables.map { [tables: it.path] })
             }
             if (enabled.contains('gmm')) {
-                MAVEDB_GMM(engine, processed)
+                def gmmInput = enabled.contains('validation')
+                    ? processed.combine(references).map { canonical, reference -> canonical }
+                    : processed
+                MAVEDB_GMM(engine, gmmInput)
                 def fitted = MAVEDB_GMM.out.result
                 results = results.mix(fitted.map { [gmm: it.path] })
                 MAVEDB_MERGE(engine, fitted)
@@ -96,7 +107,7 @@ See pipeline/README.md for all fitting/resource settings and migration.
                     results = results.mix(MAVEDB_REPORTS.out.result.map { [reports: it.path] })
                 }
                 if (enabled.contains('validation')) {
-                    MAVEDB_VALIDATION(engine, processed, merged)
+                    MAVEDB_VALIDATION(engine, processed, merged, references)
                     results = results.mix(MAVEDB_VALIDATION.out.result.map { [validation: it.path] })
                 }
             }

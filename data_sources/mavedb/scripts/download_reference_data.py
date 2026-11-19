@@ -47,6 +47,10 @@ from data_sources.mavedb.analysis._reference_sources import (
 )
 
 LOGGER = logging.getLogger("download_reference_data")
+DOWNLOAD_GROUPS = {
+    "clinvar": ("coding_variants", "evidence", "id_map"),
+    "gwas": ("coding_variants", "credible_sets"),
+}
 ID_MAP_FILENAME = "mappings/mavedb_uniprot_to_ensembl.tsv"
 HOMOLOGY_FILENAME = "ensembl/homology.tsv"
 METADATA_FILENAME = "ensembl/metadata.tsv"
@@ -78,6 +82,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=positive_float, default=60)
     parser.add_argument("--retries", type=nonnegative_int, default=3)
     parser.add_argument(
+        "--only",
+        nargs="+",
+        default=["all"],
+        metavar="SOURCE_GROUP",
+        help=(
+            "Download selected prepared-reference groups: clinvar, gwas, or all. "
+            "Accepts comma-separated or space-separated groups."
+        ),
+    )
+    parser.add_argument(
         "--skip-homology",
         action="store_true",
         help="Download Open Targets and ProtVar without Ensembl requests",
@@ -108,8 +122,33 @@ def _relative_source(record: dict[str, Any], root: Path) -> dict[str, Any]:
     return result
 
 
+def _selected_downloads(values: Sequence[str]) -> tuple[set[str], bool, bool]:
+    """Return raw table sources, whether to include pockets, and whether to map IDs."""
+    groups = [
+        value.strip().lower()
+        for item in values
+        for value in item.split(",")
+        if value.strip()
+    ]
+    if not groups:
+        raise ValueError("--only requires at least one source group")
+    if "all" in groups:
+        if len(groups) != 1:
+            raise ValueError("--only all cannot be combined with other source groups")
+        return set(SOURCE_URLS), True, True
+    unknown = sorted(set(groups) - set(DOWNLOAD_GROUPS))
+    if unknown:
+        raise ValueError(
+            f"Unknown --only source group(s): {', '.join(unknown)}; "
+            f"choose from {', '.join((*DOWNLOAD_GROUPS, 'all'))}"
+        )
+    names = {name for group in groups for name in DOWNLOAD_GROUPS[group]}
+    return names.intersection(SOURCE_URLS), False, "id_map" in names
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    mapping = load_id_map(args.id_map)
+    selected_sources, include_pockets, include_mapping = _selected_downloads(args.only)
+    mapping = load_id_map(args.id_map) if include_mapping else None
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         prefix=".reference-data-", dir=args.out.parent
@@ -117,8 +156,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         staged = Path(folder)
         sources: dict[str, Any] = {}
         homology_result = None
-        (staged / "mappings").mkdir()
-        if not args.skip_homology:
+        if include_mapping:
+            (staged / "mappings").mkdir()
+        include_homology = not args.skip_homology and include_pockets
+        if include_homology:
             (staged / "ensembl").mkdir()
             shutil.copyfile(args.metadata, staged / METADATA_FILENAME)
             LOGGER.info("Fetching Ensembl homologies")
@@ -141,6 +182,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             homology_result.pop("failure_report", None)
             write_json(staged / REPORT_FILENAME, homology_result)
         for name in SOURCE_URLS:
+            if name not in selected_sources:
+                continue
             url = getattr(args, name + "_url")
             LOGGER.info("Fetching Open Targets %s", name)
             sources[name] = _relative_source(
@@ -154,21 +197,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 args.out,
             )
-        LOGGER.info("Fetching ProtVar pockets")
-        sources["pockets"] = _relative_source(
-            download_pockets(
-                args.pockets_url,
-                reference_directory(args.out, "pockets", args.pockets_url),
-                offline=args.offline,
-                refresh=args.refresh,
-                timeout=args.timeout,
-                retries=args.retries,
-            ),
-            args.out,
-        )
-        mapping.to_csv(staged / ID_MAP_FILENAME, sep="\t", index=False)
-        sources["id_map"] = _published_record(staged / ID_MAP_FILENAME, ID_MAP_FILENAME)
-        if not args.skip_homology:
+        if include_pockets:
+            LOGGER.info("Fetching ProtVar pockets")
+            sources["pockets"] = _relative_source(
+                download_pockets(
+                    args.pockets_url,
+                    reference_directory(args.out, "pockets", args.pockets_url),
+                    offline=args.offline,
+                    refresh=args.refresh,
+                    timeout=args.timeout,
+                    retries=args.retries,
+                ),
+                args.out,
+            )
+        if include_mapping:
+            if mapping is None:
+                raise ValueError("The selected sources require an ID mapping")
+            mapping.to_csv(staged / ID_MAP_FILENAME, sep="\t", index=False)
+            sources["id_map"] = _published_record(
+                staged / ID_MAP_FILENAME, ID_MAP_FILENAME
+            )
+        if include_homology:
             sources["homology"] = _published_record(
                 staged / HOMOLOGY_FILENAME, HOMOLOGY_FILENAME
             )

@@ -8,7 +8,6 @@ checkpoints each successful task, and publishes only a consistent result set.
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import logging
 import os
@@ -27,6 +26,16 @@ from data_sources.mavedb.scripts._pipeline_cache import (
     ResultStore,
     file_identity,
 )
+from data_sources.mavedb.scripts._pipeline_references import (
+    VARIANT_FILES,
+    implementation_identities,
+    read_json as read_reference_json,
+    source_manifest_identities,
+    taxonomy_manifest_identity,
+    validate_reference_bundle,
+    validate_tsv,
+    validate_variant_component,
+)
 from data_sources.mavedb.scripts.download_taxonomy import (
     DEFAULT_URL as DEFAULT_TAXONOMY_URL,
 )
@@ -35,7 +44,7 @@ LOGGER = logging.getLogger(__name__)
 SCRIPTS = Path(__file__).resolve().parent
 STAGES = {
     "ingest",
-    "taxonomy",
+    "references",
     "process",
     "tables",
     "gmm",
@@ -80,9 +89,33 @@ VALIDATION_IMPLEMENTATION = (
     REPO / "data_sources/mavedb/analysis/_mave_qc.py",
     REPO / "data_sources/mavedb/scripts/process_mavedb.py",
 )
+REFERENCES_IMPLEMENTATION = (
+    Path(__file__).resolve(),
+    Path(__file__).resolve().parent / "_pipeline_cache.py",
+    Path(__file__).resolve().parent / "_pipeline_references.py",
+    SCRIPTS / "download_taxonomy.py",
+    SCRIPTS / "download_reference_data.py",
+    SCRIPTS / "process_variant_data.py",
+    REPO / "data_sources/mavedb/analysis/_reference_sources.py",
+    REPO / "data_sources/mavedb/analysis/_reference_downloads.py",
+    REPO / "data_sources/mavedb/analysis/_reference_io.py",
+    REPO / "data_sources/mavedb/analysis/_variant_data.py",
+    REPO / "data_sources/mavedb/analysis/_variant_annotations.py",
+    REPO / "data_sources/mavedb/pipeline/main.nf",
+    REPO / "data_sources/mavedb/pipeline/modules/references.nf",
+    REPO / "data_sources/mavedb/pipeline/modules/references_download.nf",
+    REPO / "data_sources/mavedb/pipeline/modules/references_prepare.nf",
+    REPO / "data_sources/mavedb/pipeline/modules/taxonomy.nf",
+    SCRIPTS / "package_reference_outputs.py",
+)
 
 
-def stage_error(stage: str, store: ResultStore, error: Exception) -> CacheError:
+def stage_error(
+    stage: str,
+    store: ResultStore,
+    error: Exception,
+    requested_inputs: dict[str, Any] | None = None,
+) -> CacheError:
     descendants = {
         "ingest": [
             "process",
@@ -102,17 +135,78 @@ def stage_error(stage: str, store: ResultStore, error: Exception) -> CacheError:
             "qc",
             "reports",
         ],
+        "references": [],
         "process": ["tables", "gmm", "merge", "validation", "qc", "reports"],
         "tables": ["qc"],
         "gmm": ["merge", "validation", "reports"],
         "merge": ["validation", "reports"],
     }
+    descendants_for_error = descendants.get(stage, [])
+    if stage == "references":
+        record = store.record("references")
+        changed = set()
+        if record and requested_inputs is not None:
+            previous = record.get("inputs", {})
+            changed = {
+                name
+                for name in set(previous) | set(requested_inputs)
+                if previous.get(name) != requested_inputs.get(name)
+            }
+        if not changed or "implementation" in changed or "taxonomy_import" in changed:
+            if changed:
+                descendants_for_error = [
+                    "process",
+                    "tables",
+                    "gmm",
+                    "merge",
+                    "validation",
+                    "qc",
+                    "reports",
+                ]
+            elif record is None:
+                descendants_for_error = []
+            else:
+                outputs = record.get("outputs", {})
+                bundle = store.root / "references"
+                try:
+                    taxonomy_changed = outputs.get(
+                        "taxonomy/taxcat.dmp"
+                    ) != file_identity(bundle / "taxonomy/taxcat.dmp")
+                except OSError:
+                    taxonomy_changed = True
+                variants_changed = False
+                for filename in VARIANT_FILES.values():
+                    name = f"variants/{filename}"
+                    try:
+                        if outputs.get(name) != file_identity(bundle / name):
+                            variants_changed = True
+                    except OSError:
+                        variants_changed = True
+                if taxonomy_changed:
+                    descendants_for_error = [
+                        "process",
+                        "tables",
+                        "gmm",
+                        "merge",
+                        "validation",
+                        "qc",
+                        "reports",
+                    ]
+                elif variants_changed:
+                    descendants_for_error = ["validation"]
+                else:
+                    descendants_for_error = []
+        elif changed & {"variants_import", "source_manifest"}:
+            descendants_for_error = ["validation"]
     affected = [stage]
-    for name in descendants.get(stage, []):
+    for name in descendants_for_error:
         if store.record(name) is not None:
             affected.append(name)
+    command = f"--rerun {','.join(affected)}"
+    if stage == "references" and "source settings differ" in str(error).lower():
+        command = "--rerun references --refresh_references"
     return CacheError(
-        f'{error}. Affected stages: {", ".join(affected)}. Continue with --rerun {",".join(affected)}'
+        f"{error}. Affected stages: {', '.join(affected)}. Continue with {command}"
     )
 
 
@@ -195,12 +289,52 @@ def gmm_configuration(p: dict[str, Any]) -> dict[str, Any]:
     return configuration(_build_config(parser, parser.parse_args(argv), argv))
 
 
-def settings(stage: str, p: dict[str, Any]) -> dict[str, Any]:
+def settings(
+    stage: str, p: dict[str, Any], store: ResultStore | None = None
+) -> dict[str, Any]:
     if stage == "ingest":
         return {
             "source": p.get("archive") or p["zenodo_url"],
             "expected_sha256": p.get("archive_sha256"),
         }
+    if stage == "references":
+        requested: dict[str, Any] = {}
+        taxonomy_url = p.get("taxonomy_url")
+        if (
+            not p.get("taxonomy")
+            and taxonomy_url
+            and taxonomy_url != DEFAULT_TAXONOMY_URL
+        ):
+            requested["taxonomy_url"] = taxonomy_url
+        for name in ("coding_variants_url", "evidence_url", "credible_sets_url"):
+            if p.get(name):
+                requested[name] = p[name]
+        if store is not None:
+            try:
+                previous = store.record("references")
+            except CacheError:
+                if "references" in p.get("selected", []) or store.pending("references"):
+                    previous = None
+                else:
+                    raise
+            saved = previous.get("settings", {}) if previous else {}
+            if (
+                not p.get("refresh_references")
+                and not p.get("taxonomy")
+                and taxonomy_url == DEFAULT_TAXONOMY_URL
+            ):
+                saved_taxonomy_url = saved.get("taxonomy_url")
+                if saved_taxonomy_url:
+                    requested.setdefault("taxonomy_url", saved_taxonomy_url)
+            if not p.get("refresh_references"):
+                for name in (
+                    "coding_variants_url",
+                    "evidence_url",
+                    "credible_sets_url",
+                ):
+                    if not p.get(name) and name in saved:
+                        requested[name] = saved[name]
+        return requested
     if stage == "taxonomy":
         return {"source": p.get("taxonomy") or p["taxonomy_url"]}
     if stage in {"gmm", "gmm-plan", "gmm-batch"}:
@@ -211,9 +345,6 @@ def settings(stage: str, p: dict[str, Any]) -> dict[str, Any]:
         no_plots = bool(p.get("validation_no_plots", False))
         formats = p.get("validation_formats", ["png", "pdf"])
         return {
-            "reference_paths": {
-                name: p[f"validation_{name}"] for name in ("clinvar", "gwas")
-            },
             "formats": [] if no_plots else list(dict.fromkeys(formats)),
             "dpi": int(p.get("validation_dpi", 150)),
             "no_plots": no_plots,
@@ -229,8 +360,12 @@ def dependencies(stage: str, paths: dict[str, str]) -> dict[str, Any]:
 
     if stage in {"process", "tables"} and "ingest" in paths:
         add("raw", Path(paths["ingest"]) / "mavedb_dump")
-    if stage in {"process", "tables"} and "taxonomy" in paths:
-        add("taxonomy", Path(paths["taxonomy"]) / "taxcat.dmp")
+    if stage in {"process", "tables"}:
+        if "references" in paths:
+            add("taxonomy", Path(paths["references"]) / "taxonomy/taxcat.dmp")
+        elif "taxonomy" in paths:
+            # Compatibility for older task invocations and saved workflow requests.
+            add("taxonomy", Path(paths["taxonomy"]) / "taxcat.dmp")
     if stage in {"tables", "gmm-plan", "gmm", "gmm-batch", "qc", "reports"}:
         for name in ("scores.tsv", "metadata.tsv"):
             add(name, Path(paths["process"]) / name)
@@ -247,13 +382,12 @@ def dependencies(stage: str, paths: dict[str, str]) -> dict[str, Any]:
         for name in ("scores.tsv", "metadata.tsv"):
             add(name, Path(paths["process"]) / name)
         add("merge", Path(paths["merge"]))
-        for name, required in (
-            ("clinvar", VALIDATION_CLINVAR_REQUIRED),
-            ("gwas", VALIDATION_GWAS_REQUIRED),
-        ):
-            reference = _validate_validation_reference(
-                Path(paths[name]), name, required
-            )
+        for name in ("clinvar", "gwas"):
+            if "references" in paths:
+                reference = Path(paths["references"]) / "variants" / VARIANT_FILES[name]
+            else:
+                reference = Path(paths[name])
+            reference, _ = validate_tsv(reference, name)
             found[name] = file_identity(reference)
         found["implementation"] = {
             path.relative_to(REPO).as_posix(): file_identity(path)
@@ -264,48 +398,35 @@ def dependencies(stage: str, paths: dict[str, str]) -> dict[str, Any]:
 
 def _validate_validation_reference(path: Path, name: str, required: set[str]) -> Path:
     """Check a local reference TSV's header and return its resolved file path."""
-    path = Path(path).expanduser()
-    try:
-        resolved = path.resolve(strict=True)
-    except OSError as error:
-        raise CacheError(f"--validation_{name} file does not exist: {path}") from error
-    if not resolved.is_file():
-        raise CacheError(f"--validation_{name} must be a regular TSV file: {resolved}")
-    try:
-        if resolved.stat().st_size == 0:
-            raise CacheError(f"--validation_{name} is empty: {resolved}")
-        with resolved.open("r", encoding="utf-8-sig", newline="") as handle:
-            header = next(csv.reader(handle, delimiter="\t"), None)
-    except (OSError, UnicodeError, csv.Error) as error:
-        raise CacheError(
-            f"Cannot read --validation_{name} TSV header at {resolved}: {error}"
-        ) from error
-    if not header:
-        raise CacheError(f"--validation_{name} has no TSV header: {resolved}")
-    if len(header) != len(set(header)):
-        raise CacheError(f"--validation_{name} has duplicate TSV column names")
-    missing = required - set(header)
-    if missing:
-        raise CacheError(
-            f"--validation_{name} is missing required TSV columns: "
-            + ", ".join(sorted(missing))
-        )
+    resolved, _ = validate_tsv(Path(path).expanduser(), name)
     return resolved
 
 
-def _prepare_validation(p: dict[str, Any]) -> None:
-    """Normalize validation options and reject missing or malformed references."""
+def _prepare_reference_imports(p: dict[str, Any]) -> None:
+    """Validate and normalize explicitly imported taxonomy and paired TSVs."""
+    clinvar = p.get("validation_clinvar")
+    gwas = p.get("validation_gwas")
+    has_clinvar = isinstance(clinvar, (str, os.PathLike)) and bool(str(clinvar).strip())
+    has_gwas = isinstance(gwas, (str, os.PathLike)) and bool(str(gwas).strip())
+    if has_clinvar != has_gwas:
+        raise CacheError(
+            "--validation_clinvar and --validation_gwas must be supplied together"
+        )
+    if not has_clinvar:
+        return
     for name, required in (
         ("clinvar", VALIDATION_CLINVAR_REQUIRED),
         ("gwas", VALIDATION_GWAS_REQUIRED),
     ):
-        value = p.get(f"validation_{name}")
-        if not isinstance(value, (str, os.PathLike)) or not str(value).strip():
-            raise CacheError(f"--run_validation requires --validation_{name} local TSV")
         p[f"validation_{name}"] = str(
-            _validate_validation_reference(Path(value), name, required)
+            _validate_validation_reference(
+                Path(p[f"validation_{name}"]), name, required
+            )
         )
 
+
+def _prepare_validation(p: dict[str, Any]) -> None:
+    """Normalize validation plotting options; references come from the stage."""
     raw_formats = p.get("validation_formats", ["png", "pdf"])
     if isinstance(raw_formats, str):
         formats = [item.strip() for item in raw_formats.split(",") if item.strip()]
@@ -326,6 +447,282 @@ def _prepare_validation(p: dict[str, Any]) -> None:
     p["validation_no_plots"] = _boolean_option(
         p.get("validation_no_plots", False), "--validation_no_plots"
     )
+
+
+def _has_variant_imports(p: dict[str, Any]) -> bool:
+    return bool(p.get("validation_clinvar") and p.get("validation_gwas"))
+
+
+def _reference_attempt_options(p: dict[str, Any]) -> dict[str, Any]:
+    """Options that must stay stable while a references attempt is resumed."""
+    return {
+        name: p.get(name)
+        for name in (
+            "taxonomy",
+            "taxonomy_url",
+            "validation_clinvar",
+            "validation_gwas",
+            "reference_sources_manifest",
+            "coding_variants_url",
+            "evidence_url",
+            "credible_sets_url",
+            "references_cache_dir",
+            "refresh_references",
+        )
+    }
+
+
+def _pending_reference_request(
+    store: ResultStore, attempt: str
+) -> dict[str, Any] | None:
+    """Find the saved request that owns a pending references attempt."""
+    requests = store.root / "pipeline_requests"
+    if not requests.is_dir():
+        return None
+    candidates = sorted(
+        requests.glob("*.json"), key=lambda path: path.stat().st_mtime_ns, reverse=True
+    )
+    for path in candidates:
+        try:
+            request = read_json(path)
+        except (OSError, ValueError, CacheError):
+            continue
+        if request.get("references_attempt") == attempt:
+            return request
+    return None
+
+
+def _reference_inputs(
+    p: dict[str, Any], store: ResultStore, verify_source_files: bool = True
+) -> dict[str, Any]:
+    """Identify explicit references inputs and retain omitted saved imports."""
+    inputs: dict[str, Any] = {
+        "implementation": implementation_identities(REPO, REFERENCES_IMPLEMENTATION)
+    }
+    if p.get("taxonomy"):
+        inputs["taxonomy_import"] = file_identity(Path(p["taxonomy"]))
+    if _has_variant_imports(p):
+        inputs["variants_import"] = {
+            name: file_identity(Path(p[f"validation_{name}"]))
+            for name in ("clinvar", "gwas")
+        }
+    elif p.get("reference_sources_manifest"):
+        inputs["source_manifest"] = source_manifest_identities(
+            Path(p["reference_sources_manifest"]), verify_files=verify_source_files
+        )
+
+    if p.get("refresh_references"):
+        return inputs
+    pending = store.pending("references")
+    pending_request = (
+        _pending_reference_request(store, pending)
+        if pending is not None and not p.get("references_rerun_explicit")
+        else None
+    )
+    try:
+        previous = store.record("references")
+    except CacheError:
+        if "references" in p.get("selected", []) or pending is not None:
+            previous = None
+        else:
+            raise
+    if previous is None:
+        return inputs
+    saved = previous.get("inputs", {})
+    pending_inputs = (
+        pending_request.get("reference_inputs", {})
+        if isinstance(pending_request, dict)
+        else {}
+    )
+    if not isinstance(saved, dict):
+        saved = {}
+    if isinstance(pending_inputs, dict):
+        saved = saved | pending_inputs
+    if not p.get("taxonomy") and "taxonomy_import" in saved:
+        inputs["taxonomy_import"] = saved["taxonomy_import"]
+    if not _has_variant_imports(p) and not p.get("reference_sources_manifest"):
+        if "variants_import" in saved:
+            inputs["variants_import"] = saved["variants_import"]
+        elif "source_manifest" in saved:
+            inputs["source_manifest"] = saved["source_manifest"]
+    return inputs
+
+
+def _preflight_reference_cache(p: dict[str, Any], store: ResultStore) -> None:
+    """Reject changed requested inputs before any consumer tasks are scheduled."""
+    if "references" not in p["enabled"]:
+        return
+    requested = _reference_inputs(p, store)
+    p["reference_inputs"] = requested
+    pending = store.pending("references")
+    if pending is not None and not p.get("references_rerun_explicit"):
+        previous_request = _pending_reference_request(store, pending)
+        current_options = _reference_attempt_options(p)
+        p["references_attempt_options"] = current_options
+        if previous_request is not None:
+            previous_options = previous_request.get("references_attempt_options")
+            previous_inputs = previous_request.get("reference_inputs")
+            previous_settings = previous_request.get("references_settings")
+            if previous_options is not None and previous_options != current_options:
+                raise CacheError(
+                    "Unfinished references attempt options differ; use --rerun references to start a new attempt"
+                )
+            if previous_inputs is not None and previous_inputs != requested:
+                raise CacheError(
+                    "Unfinished references attempt inputs differ; use --rerun references to start a new attempt"
+                )
+            if previous_settings is not None:
+                p["references_settings"] = previous_settings
+                return
+        p["references_settings"] = settings("references", p, store)
+        return
+    try:
+        record = store.record("references")
+    except CacheError:
+        if "references" in p["selected"]:
+            return
+        raise
+    if record is None:
+        return
+    changed = {
+        name
+        for name in set(record.get("inputs", {})) | set(requested)
+        if record.get("inputs", {}).get(name) != requested.get(name)
+    }
+    requested_settings = settings("references", p, store)
+    p["references_settings"] = requested_settings
+    p["references_attempt_options"] = _reference_attempt_options(p)
+    settings_changed = record["settings"] != requested_settings
+    if "references" not in p["selected"] and (changed or settings_changed):
+        message = (
+            "Reference source settings differ; use --rerun references --refresh_references"
+            if settings_changed
+            else "Reference inputs differ from the saved references bundle; use --rerun references"
+        )
+        error = CacheError(message)
+        raise stage_error("references", store, error, requested)
+    if "references" in p["selected"]:
+        if settings_changed and not p.get("refresh_references"):
+            raise CacheError(
+                "Changing reference source URLs requires --rerun references --refresh_references"
+            )
+        # Variant imports and source snapshots are known validation inputs.
+        # Require their saved consumer to be selected before any analysis jobs
+        # can start. A code or taxonomy change is checked against the actual
+        # prepared file bytes after the references component commits.
+        required = (
+            ["validation"]
+            if changed & {"variants_import", "source_manifest"}
+            and store.record("validation") is not None
+            else []
+        )
+        missing = [name for name in required if name not in p["selected"]]
+        if missing:
+            all_reruns = ["references", *required]
+            raise CacheError(
+                "Changed reference inputs affect saved stages: "
+                + ", ".join(required)
+                + ". Continue with --rerun "
+                + ",".join(all_reruns)
+            )
+
+
+def _saved_references(store: ResultStore) -> Path | None:
+    if store.record("references") is None:
+        return None
+    bundle = store.get("references")
+    if bundle is None:
+        return None
+    validate_reference_bundle(bundle, verify_sources=False)
+    return bundle
+
+
+def _taxonomy_reuse(
+    p: dict[str, Any], store: ResultStore, references: Path | None
+) -> Path | None:
+    if p.get("taxonomy") or p.get("refresh_references"):
+        return None
+    if references is not None:
+        return references / "taxonomy"
+    legacy = store.record("taxonomy")
+    if legacy is not None:
+        saved = store.get("taxonomy")
+        taxonomy_manifest_identity(saved)
+        return saved
+    candidate = store.root / "references" / "taxonomy"
+    if candidate.is_dir() and not candidate.is_symlink():
+        taxonomy_manifest_identity(candidate)
+        return candidate
+    return None
+
+
+def _retained_source_manifest(
+    p: dict[str, Any], references: Path | None
+) -> Path | None:
+    if (
+        p.get("refresh_references")
+        or p.get("reference_sources_manifest")
+        or _has_variant_imports(p)
+        or references is None
+    ):
+        return None
+    local = references / "sources" / "manifest.json"
+    if local.is_file():
+        source_manifest_identities(local)
+        return local
+    external_descriptor = references / "sources" / "external.json"
+    if external_descriptor.is_file():
+        descriptor = read_reference_json(
+            external_descriptor, "external source descriptor"
+        )
+        source = descriptor.get("source_manifest")
+        if isinstance(source, dict) and isinstance(source.get("path"), str):
+            manifest = Path(source["path"]).expanduser().resolve(strict=True)
+            if file_identity(manifest) != {
+                key: source.get(key) for key in ("bytes", "sha256")
+            }:
+                raise CacheError(f"External raw source manifest changed: {manifest}")
+            source_manifest_identities(manifest)
+            return manifest
+    return None
+
+
+def _references_spec_fields(
+    p: dict[str, Any], store: ResultStore, references: Path | None
+) -> dict[str, Any]:
+    retained_source = _retained_source_manifest(p, references)
+    variants_reuse = None
+    if (
+        references is not None
+        and not p.get("refresh_references")
+        and not _has_variant_imports(p)
+        and not p.get("reference_sources_manifest")
+    ):
+        variant_manifest_path = references / "variants" / "manifest.json"
+        if variant_manifest_path.is_file():
+            variant_manifest = read_reference_json(
+                variant_manifest_path, "prepared variant manifest"
+            )
+            if variant_manifest.get("imported"):
+                try:
+                    validate_variant_component(references)
+                except CacheError as error:
+                    raise CacheError(
+                        "Saved imported variants are damaged; supply both validation TSVs or restore the saved bundle"
+                    ) from error
+                variants_reuse = references
+    taxonomy = _taxonomy_reuse(p, store, references)
+    return {
+        "taxonomy_reuse": str(taxonomy) if taxonomy is not None else None,
+        "retained_source_manifest": (
+            str(retained_source) if retained_source is not None else None
+        ),
+        "retained_source_root": (
+            str(retained_source.parent) if retained_source is not None else None
+        ),
+        "variants_reuse": str(variants_reuse) if variants_reuse is not None else None,
+        "requested_source_manifest": p.get("reference_sources_manifest"),
+    }
 
 
 def _boolean_option(value: Any, option: str) -> bool:
@@ -353,11 +750,14 @@ def prepare(p: dict[str, Any]) -> Path:
         raise CacheError("--rerun requires a stage name, comma-separated names, or all")
     selected = set(rerun.split(",")) if isinstance(rerun, str) else set(rerun)
     selected = {s.strip() for s in selected if s.strip()}
+    if "taxonomy" in selected:
+        raise CacheError("--rerun taxonomy was renamed to --rerun references")
     unknown = selected - STAGES - {"all"}
     if unknown or ("all" in selected and len(selected) != 1):
         raise CacheError(
             f"Invalid --rerun selection: {rerun}. Choose {', '.join(sorted(STAGES))}, or all"
         )
+    p["references_rerun_explicit"] = selected == {"all"} or "references" in selected
     for name in (
         "archive",
         "taxonomy",
@@ -366,12 +766,20 @@ def prepare(p: dict[str, Any]) -> Path:
         "python",
         "gmm_cache_dir",
         "download_dir",
+        "reference_sources_manifest",
     ):
         if p.get(name):
             # Resolving a virtualenv interpreter symlink selects the base Python
             # and loses its installed dependencies.
             path = Path(p[name]).expanduser()
             p[name] = str(path.absolute() if name == "python" else path.resolve())
+    p["refresh_references"] = _boolean_option(
+        p.get("refresh_references", False), "--refresh_references"
+    )
+    cache_dir = p.get("references_cache_dir") or (
+        SCRIPTS.parent / "tmp" / "nextflow" / "references"
+    )
+    p["references_cache_dir"] = str(Path(cache_dir).expanduser().resolve())
     if int(p["gmm_max_parallel"]) < 1:
         raise CacheError("--gmm_max_parallel must be positive")
     if p.get("archive_sha256"):
@@ -388,12 +796,12 @@ def prepare(p: dict[str, Any]) -> Path:
         else (
             {"process"}
             if p.get("processed_dir")
-            else {"ingest", "taxonomy", "process", "tables"}
+            else {"ingest", "references", "process", "tables"}
         )
     )
     for flag, names in (
         ("run_gmm", {"gmm", "merge"}),
-        ("run_validation", {"gmm", "merge", "validation"}),
+        ("run_validation", {"references", "gmm", "merge", "validation"}),
         ("compatibility_tables", {"tables"}),
         ("run_qc", {"tables", "qc"}),
         ("run_reports", {"gmm", "merge", "reports"}),
@@ -404,6 +812,8 @@ def prepare(p: dict[str, Any]) -> Path:
         enabled |= selected
     if enabled & {"gmm", "merge", "reports", "validation"}:
         enabled |= {"gmm", "merge"}
+    if "validation" in enabled:
+        enabled.add("references")
     if "reports" in enabled:
         enabled.add("process")
     if "qc" in enabled:
@@ -415,17 +825,35 @@ def prepare(p: dict[str, Any]) -> Path:
     if p.get("processed_dir"):
         if p["ingest_only"]:
             raise CacheError("--processed_dir cannot be combined with --ingest_only")
-        if selected & {"ingest", "taxonomy", "tables"} or "tables" in enabled:
+        if selected & {"ingest", "tables"} or "tables" in enabled:
             raise CacheError(
                 "--processed_dir cannot regenerate source stages or derived tables; supply the original archive instead"
             )
-        enabled -= {"ingest", "taxonomy"}
+        enabled.discard("ingest")
+    _prepare_reference_imports(p)
+    if "references" not in enabled and (
+        _has_variant_imports(p) or p.get("reference_sources_manifest")
+    ):
+        raise CacheError(
+            "Reference imports require the references stage; use --rerun references or --run_validation"
+        )
+    if _has_variant_imports(p) and p.get("reference_sources_manifest"):
+        raise CacheError(
+            "--reference_sources_manifest cannot be combined with paired validation TSV imports"
+        )
     if "validation" in enabled:
         _prepare_validation(p)
     p["enabled"] = sorted(enabled)
     p["selected"] = sorted(enabled if selected == {"all"} else selected)
     p["run_id"] = uuid.uuid4().hex
     store = ResultStore(Path(p["outdir"]))
+    pending_references = store.pending("references")
+    if (
+        p["refresh_references"]
+        and not p["references_rerun_explicit"]
+        and pending_references is None
+    ):
+        raise CacheError("--refresh_references requires explicit --rerun references")
     from data_sources.mavedb.scripts._pipeline_inputs import reusable_processing
 
     try:
@@ -434,6 +862,18 @@ def prepare(p: dict[str, Any]) -> Path:
             provenance_notice("process", Path(p["saved_processing"]))
     except CacheError as error:
         raise stage_error("process", store, error) from error
+    _preflight_reference_cache(p, store)
+    if "references" in enabled:
+        if p["references_rerun_explicit"]:
+            p["references_attempt"] = store.begin("references", rerun=True)
+        elif pending_references is not None:
+            p["references_attempt"] = store.begin("references")
+        elif store.record("references") is None:
+            p["references_attempt"] = store.begin("references")
+        else:
+            p["references_attempt"] = None
+        p["references_attempt_options"] = _reference_attempt_options(p)
+        p.setdefault("references_settings", settings("references", p, store))
     if "gmm" in enabled:
         # Validate configuration early, but never fit in the policy process.
         settings("gmm", p)
@@ -572,11 +1012,103 @@ def adopt(
                 store.commit(stage, target, {}, dependencies(stage, paths))
 
 
+def _check_reference_upgrade(
+    store: ResultStore, repairing_registered_result: bool = False
+) -> None:
+    """Refuse to replace unregistered siblings in a legacy references folder."""
+    directory = store.root / "references"
+    if repairing_registered_result:
+        try:
+            state = read_json(store.state_path)
+        except (OSError, ValueError):
+            state = {}
+        results = state.get("results", {}) if isinstance(state, dict) else {}
+        if isinstance(results, dict) and "references" in results:
+            return
+    else:
+        try:
+            if store.record("references") is not None:
+                return
+        except CacheError:
+            raise
+    if not directory.is_dir():
+        return
+    unexpected = sorted(
+        path.name for path in directory.iterdir() if path.name != "taxonomy"
+    )
+    if unexpected:
+        raise CacheError(
+            "Cannot replace unregistered files in the legacy references directory: "
+            + ", ".join(unexpected)
+            + ". Move them to a safe location before creating the references bundle"
+        )
+
+
+def _resolve_references(
+    request: Path, p: dict[str, Any], store: ResultStore
+) -> dict[str, Any]:
+    requested_inputs = p.get("reference_inputs") or _reference_inputs(
+        p, store, verify_source_files=False
+    )
+    selected = "references" in p.get("selected", [])
+    pending = store.pending("references")
+    resuming = pending is not None
+    existing: Path | None = None
+    if not selected and not resuming:
+        try:
+            existing = store.get(
+                "references", settings("references", p, store), requested_inputs
+            )
+            if existing is not None:
+                validate_reference_bundle(
+                    existing,
+                    verify_sources=(
+                        (existing / "sources" / "external.json").is_file()
+                        and not p.get("reference_sources_manifest")
+                    ),
+                )
+                LOGGER.info("REUSE references")
+                return {"path": str(existing), "stage": "references"}
+        except CacheError as error:
+            raise stage_error("references", store, error, requested_inputs) from error
+    else:
+        existing = store.root / "references"
+        if not existing.is_dir():
+            existing = None
+
+    _check_reference_upgrade(store, repairing_registered_result=selected or resuming)
+    p["references_attempt"] = (
+        p.get("references_attempt")
+        or pending
+        or store.begin("references", rerun=selected)
+    )
+    spec = {
+        "request": str(request),
+        "stage": "references",
+        "key": "references",
+        "inputs": {},
+        "identities": requested_inputs,
+        "settings": p.get("references_settings") or settings("references", p, store),
+        "index": None,
+    }
+    spec.update(_references_spec_fields(p, store, existing))
+    spec["references_component_cache"] = str(
+        Path(p["references_cache_dir"]) / p["references_attempt"]
+    )
+    spec_path = (
+        Path(p["outdir"]) / "pipeline_requests" / p["run_id"] / "references.json"
+    )
+    write_json(spec_path, spec)
+    return {"spec": str(spec_path), "stage": "references"}
+
+
 def resolve(
     request: Path, stage: str, paths: dict[str, str], index: int | None = None
 ) -> dict[str, Any]:
     p = read_json(request)
     store = ResultStore(Path(p["outdir"]))
+    if stage == "references":
+        return _resolve_references(request, p, store)
     public = PUBLIC.get(stage, stage)
     key = stage_key(stage, p, index)
     if (
@@ -703,7 +1235,13 @@ def register(spec_path: Path, output: Path, required: Sequence[str] = ()) -> Pat
     stage = spec["stage"]
     if spec["key"] != stage_key(stage, p, spec.get("index")):
         raise CacheError("Stage registration key differs from its saved request")
-    current_inputs = dependencies(stage, spec["inputs"])
+    if stage == "references":
+        store = ResultStore(Path(p["outdir"]))
+        current_inputs = _reference_inputs(p, store)
+        current_settings = p.get("references_settings") or settings(stage, p, store)
+    else:
+        current_inputs = dependencies(stage, spec["inputs"])
+        current_settings = settings(stage, p)
     if stage in {"ingest", "taxonomy"}:
         source = p.get("archive" if stage == "ingest" else "taxonomy")
         if source and Path(source).is_file():
@@ -712,7 +1250,7 @@ def register(spec_path: Path, output: Path, required: Sequence[str] = ()) -> Pat
         raise CacheError(
             f"Inputs changed while {stage} was running; retry with stable inputs"
         )
-    if settings(stage, p) != spec["settings"]:
+    if current_settings != spec["settings"]:
         raise CacheError("Stage registration settings differ from its saved request")
     output = Path(output)
     if not output.is_dir():
@@ -730,6 +1268,13 @@ def register(spec_path: Path, output: Path, required: Sequence[str] = ()) -> Pat
             raise CacheError(
                 f"Stage {stage} is missing a required regular output file: {name}"
             )
+    if stage == "references":
+        validate_reference_bundle(
+            output,
+            verify_sources=not bool(
+                p.get("reference_sources_manifest") and not _has_variant_imports(p)
+            ),
+        )
     LOGGER.info("REGISTER %s", spec["key"])
     return ResultStore(Path(p["outdir"])).commit(
         spec["key"], Path(output), spec["settings"], spec["identities"]
@@ -741,10 +1286,74 @@ def finish(request: Path, paths: dict[str, str]) -> None:
     store = ResultStore(Path(p["outdir"]))
     # Check existing descendants even when their execution was not requested.
     current = dict(paths)
-    for stage in STAGES:
-        if stage not in current and store.record(stage) is not None:
-            current[stage] = str(store.get(stage))
     stale = []
+    for stage in STAGES:
+        try:
+            exists = store.record(stage) is not None
+        except CacheError:
+            if stage == "references":
+                stale.append("references")
+                continue
+            raise
+        if stage not in current and exists:
+            try:
+                current[stage] = str(store.get(stage))
+            except CacheError:
+                if stage == "references":
+                    stale.append("references")
+                else:
+                    raise
+    try:
+        references_record = store.record("references")
+    except CacheError:
+        references_record = None
+        if "references" not in stale:
+            stale.append("references")
+    if references_record is not None:
+        try:
+            checked_references = store.get("references")
+            if checked_references is None:
+                raise CacheError("Saved references result is missing")
+            validate_reference_bundle(
+                checked_references,
+                verify_sources=(
+                    (checked_references / "sources" / "external.json").is_file()
+                    and not p.get("reference_sources_manifest")
+                ),
+            )
+            current["references"] = str(checked_references)
+        except CacheError:
+            stale.append("references")
+            outputs = references_record.get("outputs", {})
+            bundle = store.root / "references"
+            taxonomy_name = "taxonomy/taxcat.dmp"
+            taxonomy_expected = outputs.get(taxonomy_name)
+            try:
+                taxonomy_changed = (
+                    taxonomy_expected is None
+                    or file_identity(bundle / taxonomy_name) != taxonomy_expected
+                )
+            except OSError:
+                taxonomy_changed = True
+            variants_changed = False
+            for filename in VARIANT_FILES.values():
+                output_name = f"variants/{filename}"
+                try:
+                    if (
+                        outputs.get(output_name) is None
+                        or file_identity(bundle / output_name) != outputs[output_name]
+                    ):
+                        variants_changed = True
+                except OSError:
+                    variants_changed = True
+            if taxonomy_changed:
+                stale.extend(
+                    name
+                    for name in ("process", "tables")
+                    if store.record(name) is not None and name not in stale
+                )
+            if variants_changed and store.record("validation") is not None:
+                stale.append("validation")
     for stage in (
         "process",
         "tables",
@@ -777,11 +1386,13 @@ def finish(request: Path, paths: dict[str, str]) -> None:
                 }
             elif stage == "validation":
                 validation_paths = dict(current)
-                if "validation" in p.get("enabled", []):
+                if "references" not in validation_paths and "validation" in p.get(
+                    "enabled", []
+                ):
                     for name in ("clinvar", "gwas"):
                         if p.get(f"validation_{name}"):
                             validation_paths[name] = p[f"validation_{name}"]
-                else:
+                elif "references" not in validation_paths:
                     reference_paths = record["settings"].get("reference_paths", {})
                     for name in ("clinvar", "gwas"):
                         if name not in validation_paths and reference_paths.get(name):
@@ -805,6 +1416,11 @@ def finish(request: Path, paths: dict[str, str]) -> None:
         ):
             if parent in stale:
                 stale.extend(s for s in children if store.record(s) and s not in stale)
+        if "references" in stale:
+            # Consumers already present above are the only ones whose direct
+            # reference files changed. A changed ClinVar/GWAS table alone does
+            # not invalidate taxonomy-based processing or GMM.
+            stale = list(dict.fromkeys(stale))
         raise CacheError(
             "Changed inputs affect saved results: "
             + ", ".join(stale)

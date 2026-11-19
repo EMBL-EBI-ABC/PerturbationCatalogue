@@ -6,28 +6,17 @@ reports and GMM validation. Verified completed outputs are reused by default;
 regeneration requires `--rerun`.
 
 ```text
-pinned Zenodo ZIP / local ZIP -> ingest -> raw dump + manifest
-                                             |
-local / downloaded taxonomy ---------> process -> scores + metadata + audit
-                                             |                  |
-                              tables (default)                  |
-                                             |                  |
-                                  --run_qc: basic QC             |
-                                                                |
-                  --run_gmm: frozen plan -> batch fits -> collection -> merge
-                                                              |          |
-                                              --run_reports: reports     |
-                                                                         |
-                 --run_validation + local references: validation
+ingest + references.taxonomy -> process
+ingest + references.taxonomy + process -> tables -> optional QC
+process -> GMM -> merge -> reports
+process + merge + references.variants -> validation
 ```
 
-Taxonomy acquisition remains independent of ingest and processor code. The
-workflow passes exact stage-output paths between stages. Each stage writes its
-current result directly below the output root. Validation consumes explicit
-local ClinVar and GWAS TSVs; preparation and acquisition of these validation
-references remain separate from this workflow. Taxonomy acquisition is a
-pipeline stage. Homology analysis and cloud/database loading remain separate
-commands.
+The public `references` stage acquires or imports taxonomy and prepares both
+variant tables before downstream stages start. It runs beside ingest for a
+normal source-mode run. Processing consumes its taxonomy snapshot, and
+validation consumes its ClinVar and GWAS tables. Homology analysis and
+cloud/database loading remain separate commands.
 
 ## Module layout
 
@@ -37,7 +26,10 @@ staged file inputs, native outputs, resource labels, and reuse-or-execute routin
 | Module | Responsibility |
 |---|---|
 | `modules/ingest.nf` | Download, validate and unpack the source archive |
-| `modules/taxonomy.nf` | Fetch or import the taxonomy snapshot |
+| `modules/references.nf` | Resolve, assemble and register the complete reference bundle |
+| `modules/references_download.nf` | Acquire selected ClinVar/GWAS raw sources |
+| `modules/references_prepare.nf` | Prepare or import variant tables and package references |
+| `modules/taxonomy.nf` | Fetch, import or reuse the taxonomy component |
 | `modules/process.nf` | Produce canonical scores, metadata and audit |
 | `modules/tables.nf` | Generate the default singles, doubles and wide tables |
 | `modules/gmm.nf` | Plan, fit and collect GMM batches |
@@ -91,9 +83,9 @@ by `scripts/download_zenodo.py`:
 nextflow run data_sources/mavedb/pipeline -profile local
 ```
 
-This runs canonical processing and the table stage by default. Add
-`--ingest_only` to stop at the raw bundle without taxonomy acquisition or
-processing. Repeat the command to
+This prepares taxonomy, ClinVar and GWAS references, then runs canonical
+processing and the table stage by default. Add `--ingest_only` to stop at the
+raw bundle without reference acquisition or processing. Repeat the command to
 reuse completed results; `-resume` is optional and does not control the durable
 result policy described below.
 
@@ -136,10 +128,13 @@ results are reused. `--rerun all` regenerates only enabled stages; it does not
 enable optional analyses. Unknown names and incompatible selections fail before
 execution.
 
+The former public `taxonomy` selector is replaced by `references`; use
+`--rerun references` to regenerate the bundle.
+
 | Selector | Product | Enable without forcing regeneration |
 | --- | --- | --- |
 | `ingest` | Verified, unpacked source archive | Default, or `--ingest_only` |
-| `taxonomy` | Taxonomy snapshot | Default except ingest-only/external processed input |
+| `references` | Taxonomy and prepared ClinVar/GWAS bundle | Default except ingest-only and processed-input runs without validation |
 | `process` | Canonical scores, metadata and audit | Default |
 | `tables` | Raw-score singles, doubles and wide tables | Default for raw-source runs except `--ingest_only` |
 | `gmm` | Frozen plan, complete batch fits and checked collection | `--run_gmm` |
@@ -172,7 +167,7 @@ previous result; downstream directories may still contain results from earlier
 inputs until their explicit reruns finish. There is no global atomic replacement
 of multiple stages. Concurrent writers to one output directory are rejected.
 
-Results live in ordinary directories: `ingest/current/`, `references/taxonomy/`,
+Results live in ordinary directories: `ingest/current/`, `references/`,
 `processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, `reports/` and `validation/`.
 `gmm-plan/` holds the current frozen plan and code; `gmm-batches/batch<N>/`
 holds completed checkpoints for that attempt. Each stage directory contains
@@ -185,7 +180,7 @@ There is no `.pipeline/` data directory or symlink publication layer.
 ```text
 <outdir>/
 ├── ingest/current/            # raw dump and ingest provenance
-├── references/taxonomy/       # saved taxonomy snapshot
+├── references/                # taxonomy, source provenance and variant TSVs
 ├── processed/                # canonical scores, metadata and audit
 ├── tables/                   # raw-score singles, doubles and wide tables
 ├── gmm-plan/                 # current frozen plan and fitting code
@@ -305,6 +300,63 @@ its `.nextflow/` metadata and work directories remain available; explicit
 `-work-dir /absolute/path` option. Neither this work directory nor the launch
 directory identifies the durable saved analysis.
 
+## Unified references stage
+
+Every normal source-mode run resolves one complete reference bundle at
+`<outdir>/references/`. It contains the saved taxonomy snapshot and prepared
+ClinVar/GWAS TSVs, plus the selected raw source bundle or an external-source
+descriptor. The normal source mode downloads the pinned Open Targets coding
+variants release 25.06, evidence and credible-set releases 25.12, and the
+checked-in MaveDB UniProt/Ensembl map. These source tables are approximately
+3.4 GB. Drugs, pharmacogenomics, pockets and homology are not fetched by this
+stage. Override source endpoints with `--coding_variants_url`, `--evidence_url`,
+`--credible_sets_url` and `--taxonomy_url`.
+
+Use `--taxonomy /path/to/taxcat.dmp` to import a local taxonomy snapshot. Pass
+`--reference_sources_manifest /path/to/manifest.json` to prepare variants from
+an existing verified version-3 source bundle without downloading or copying its
+large partitions. Alternatively, pass both `--validation_clinvar` and
+`--validation_gwas` to import a prepared TSV pair; a partial pair is rejected.
+Those import options skip source download and variant preparation.
+
+Completed references are reused without polling providers. `--rerun references`
+regenerates the bundle from verified retained sources. Add
+`--refresh_references` to redownload configured remote sources explicitly when
+starting `--rerun references`. Supplied taxonomy files, raw-source manifests
+and prepared TSV pairs remain fixed imports; refresh applies to the components
+that are downloaded. To continue an interrupted attempt, repeat its input and
+refresh options without another `--rerun references`, preserving its checkpoints.
+Taxonomy reuse preserves the saved source manifest rather than silently fetching
+the current NCBI file. Component checkpoints for an interrupted attempt live below
+`<references_cache_dir>/<attempt>`; the default cache root is
+`data_sources/mavedb/tmp/nextflow/references`. Source acquisition uses the
+`reference_download` process label. With `-profile slurm` it runs locally by
+default; set `--reference_download_executor slurm` when compute nodes have the
+required network access. Preparation resources use the
+`reference_preparation` label and can be overridden in site config.
+
+The bundle layout is:
+
+```text
+references/
+├── pipeline_manifest.json
+├── manifest.json
+├── taxonomy/taxcat.dmp
+├── taxonomy/manifest.json
+├── sources/manifest.json       # local/retained source bundle, when present
+├── sources/external.json       # external-source descriptor, when needed
+└── variants/
+    ├── manifest.json
+    ├── mave_clinvar_variants.tsv
+    └── mave_gwas_variants.tsv
+```
+
+The two source manifest alternatives are mutually exclusive; imported TSV
+pairs need neither. Manifests record relative product paths, hashes, sizes,
+source releases and table row counts. Each reference consumer records only the
+files it reads: process/tables depend on `taxonomy/taxcat.dmp`, and validation
+depends on the two variant TSVs.
+
 ## Canonical processing
 
 The `process` stage wraps the existing `scripts/process_mavedb.py`, preserving its
@@ -313,16 +365,13 @@ original variant records remain in `scores.tsv`, including duplicate HGVS
 observations, missing scores, and invalid scores retained in `score_raw`.
 Nonqualifying datasets remain excluded from both canonical tables.
 
-Taxonomy is an explicit task input. Supply `--taxonomy /path/to/taxcat.dmp` to
-use a local snapshot. Otherwise the `taxonomy` stage downloads NCBI's live
-taxcat archive in its own task, extracts `categories.dmp`, and publishes it as
-`references/taxonomy/taxcat.dmp` with a checksum manifest. Processing always
-passes this file explicitly to the processor, and never uses its implicit
-repository cache or downloads inside the processing task. For repeatable runs,
-reuse the saved snapshot by default; `--rerun taxonomy` can acquire updated
-NCBI content and require explicit dependent reruns. Override the source with `--taxonomy_url URL`;
-this is ignored when `--taxonomy` supplies an existing file. No other references
-are downloaded yet.
+Taxonomy is an explicit input from `references/taxonomy/taxcat.dmp`. The
+`references` stage downloads NCBI's live taxcat archive by default, or imports
+the supplied `--taxonomy` snapshot. Processing passes the saved file and its
+recorded source label explicitly; it never uses the processor's implicit
+repository cache or downloads inside its own task. Use `--rerun references` to
+regenerate reference products, and `--taxonomy_url URL` to select the taxonomy
+source for that rerun. When `--taxonomy` is supplied, the URL is ignored.
 
 The downloader can also be run independently of Nextflow and processing:
 
@@ -416,7 +465,7 @@ External processed input also supports GMM reports with `--run_reports`. This
 downstream-only mode does not generate the normal source tables. Generating
 singles/doubles/wide tables or basic QC requires a raw-source run with the
 matching archive and taxonomy; `--processed_dir` cannot be combined with
-`--run_qc` or `ingest`, `taxonomy`, or `tables` reruns. `--ingest_only` cannot be
+`--run_qc` or `ingest` or `tables` reruns. `--ingest_only` cannot be
 combined with fitting or other analyses. Omitting optional analysis flags keeps
 the default ingest, canonical processing and table-generation behavior.
 
@@ -549,13 +598,14 @@ products have never been generated, fitting is required to create them. Use
 `--rerun qc` or `--rerun reports` to regenerate only the selected figures using
 compatible saved inputs.
 
-Add `--run_validation` to compare fitted scores with internal controls and
-local ClinVar/GWAS references. This enables GMM fitting and merge when their
-compatible saved outputs are unavailable. Supply both `--validation_clinvar`
-and `--validation_gwas` with local TSV paths; reference acquisition and
-preparation are outside this workflow. The current reference preparation is
-documented in the MaveDB guide. Nextflow stages these files into the task and
-publishes results at `<outdir>/validation/`.
+Add `--run_validation` to compare fitted scores with internal controls and the
+prepared ClinVar/GWAS references. This enables GMM fitting and merge when their
+compatible saved outputs are unavailable, and references are prepared
+automatically. For offline or pre-prepared tables, supply both
+`--validation_clinvar` and `--validation_gwas`; the pair is imported into the
+reference bundle. `--processed_dir` validation also prepares references unless
+you supply this pair or a raw source manifest. Results are published at
+`<outdir>/validation/`.
 
 | Option | Default | Effect |
 | --- | --- | --- |
@@ -563,10 +613,10 @@ publishes results at `<outdir>/validation/`.
 | `--validation_dpi` | `150` | Raster figure resolution |
 | `--validation_no_plots` | `false` | Write the eight TSV tables and manifest without figures |
 
-Validation reuses its saved result when the reference contents, canonical
+Validation reuses its saved result when the two reference TSVs, canonical
 scores/metadata, merged GMM model, options and implementation are unchanged.
 Changes to any of these require `--rerun validation`; use it to recompute
-against the selected local references. The stage registers `controls.tsv`,
+against the selected prepared references. The stage registers `controls.tsv`,
 `clinvar_matches.tsv`, `gwas_matches.tsv`,
 `ctrl_roc.tsv`, `clinvar_roc.tsv`, `gwas_roc.tsv`, `auc_summary.tsv`,
 `counts.tsv` and `manifest.json`.
@@ -621,18 +671,17 @@ with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 
 ## Validation status
 
-When migrating pre-registry results, the saved taxonomy bundle under
-`references/taxonomy` is verified and adopted before considering a new download.
-After a snapshot has been imported, omitting `--taxonomy` reuses the verified
-durable copy. The original supplied file or task work directory can be removed;
-no manual move or persistent `--taxonomy` setting is needed. An explicit
-`--rerun taxonomy` still regenerates the reference, and an explicitly different
-taxonomy URL is checked against the saved source.
-If an earlier failed migration has already registered a newer taxonomy, restore
-the original snapshot with `--taxonomy` and `--rerun taxonomy`; this imports that
-reference and allows matching processed results to be reused. Processing should
-only be regenerated when an input update is intended. Policy failures include
-the underlying Python diagnostic in the Nextflow exception and log.
+When migrating pre-registry results, the saved taxonomy under
+`references/taxonomy` is verified and adopted into the complete references
+bundle before considering a new NCBI download. After a snapshot has been
+imported, omitting `--taxonomy` reuses the verified durable copy. The original
+file or task work directory can be removed; no persistent `--taxonomy` setting
+is needed. `--rerun references` preserves that snapshot while regenerating
+other reference products. If an earlier migration registered a different
+snapshot, restore the intended file with `--taxonomy PATH --rerun references`.
+Processing is regenerated only when its consumed taxonomy changes and you
+explicitly select `--rerun process`. Policy failures include the underlying
+Python diagnostic in the Nextflow exception and log.
 
 On 2026-11-17, the earlier durable-reuse implementation passed 97 local pipeline
 contract tests and four offline Nextflow 26.10.5 integration tests. The latter

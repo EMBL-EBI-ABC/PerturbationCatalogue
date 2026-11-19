@@ -14,6 +14,7 @@ from data_sources.mavedb.scripts._pipeline_cache import (
     ResultStore,
     file_identity,
 )
+from data_sources.mavedb.scripts._pipeline_references import taxonomy_manifest_identity
 
 
 def _same_source(requested: str, original: str) -> bool:
@@ -101,19 +102,26 @@ def validate_adopted_processing(
     if taxonomy_path and Path(taxonomy_path).is_file():
         if file_identity(Path(taxonomy_path)) != tax_identity:
             raise CacheError(
-                "Taxonomy differs from saved processing; use --rerun taxonomy,process"
+                "Taxonomy differs from saved processing; use --rerun references,process"
             )
     else:
-        requested = taxonomy_path or p.get("taxonomy_url")
-        original = taxonomy.get("source")
-        if (
-            not requested
-            or not isinstance(original, str)
-            or not _same_source(requested, original)
-        ):
-            raise CacheError(
-                "Requested taxonomy source differs from saved processing; use original settings or --rerun taxonomy,process"
-            )
+        saved_taxonomy = Path(p["outdir"]) / "references" / "taxonomy"
+        if saved_taxonomy.is_dir() and (saved_taxonomy / "manifest.json").is_file():
+            if taxonomy_manifest_identity(saved_taxonomy) != tax_identity:
+                raise CacheError(
+                    "Saved references taxonomy differs from processing; use --rerun process"
+                )
+        else:
+            requested = taxonomy_path or p.get("taxonomy_url")
+            original = taxonomy.get("source")
+            if (
+                not requested
+                or not isinstance(original, str)
+                or not _same_source(requested, original)
+            ):
+                raise CacheError(
+                    "Requested taxonomy source differs from saved processing; use original settings or --rerun references,process"
+                )
     return {"archive": archive_hash, "metadata": metadata, "taxonomy": tax_identity}
 
 
@@ -169,11 +177,14 @@ def validate_registered_sources(
                 raise CacheError(
                     "Saved source archive changed after processing; use --rerun process"
                 )
-    taxonomy = store.record("taxonomy")
-    if (
-        taxonomy is not None
-        and taxonomy["outputs"].get("taxcat.dmp") != provenance["taxonomy"]
-    ):
+    taxonomy = store.record("references")
+    identity = (
+        taxonomy["outputs"].get("taxonomy/taxcat.dmp") if taxonomy is not None else None
+    )
+    if taxonomy is None:
+        taxonomy = store.record("taxonomy")
+        identity = taxonomy["outputs"].get("taxcat.dmp") if taxonomy else None
+    if identity is not None and identity != provenance["taxonomy"]:
         raise CacheError("Saved taxonomy changed after processing; use --rerun process")
 
 
@@ -187,7 +198,7 @@ def reusable_processing(p: dict[str, Any], store: ResultStore) -> str | None:
         p.get("ingest_only")
         or p.get("processed_dir")
         or "tables" in p.get("enabled", [])
-        or set(p.get("selected", [])) & {"ingest", "taxonomy", "process"}
+        or set(p.get("selected", [])) & {"ingest", "references", "process"}
     ):
         return None
     record = store.record("process")

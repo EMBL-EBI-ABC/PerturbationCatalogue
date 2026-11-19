@@ -26,20 +26,20 @@ workflow MAVEDB_TABLES {
     take:
     engine
     raw
-    taxonomy
+    references
     processed
 
     main:
-    decisions = raw.combine(taxonomy).combine(processed).map { source, reference, canonical ->
+    decisions = raw.combine(references).combine(processed).map { source, reference, canonical ->
         MavedbCache.resolve([
             engine: engine, stage: 'tables',
-            inputs: [ingest: source.path, taxonomy: reference.path, process: canonical.path]
+            inputs: [ingest: source.path, references: reference.path, process: canonical.path]
         ])
     }
     reused = decisions.filter { it.path != null }
     jobs = decisions.filter { it.spec != null }.map { job ->
         [job, file(job.inputs.ingest, checkIfExists: true),
-         file("${job.inputs.taxonomy}/taxcat.dmp", checkIfExists: true),
+         file("${job.inputs.references}/taxonomy/taxcat.dmp", checkIfExists: true),
          file(job.inputs.process, checkIfExists: true)]
     }
     GENERATE_MAVEDB_TABLES(jobs)

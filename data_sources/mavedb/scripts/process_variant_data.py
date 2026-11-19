@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
 import sqlite3
 import sys
 import tempfile
@@ -20,6 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from data_sources.mavedb.analysis._reference_io import (
+    file_record,
     positive_int,
     publish_tables,
     verify_file,
@@ -27,6 +30,7 @@ from data_sources.mavedb.analysis._reference_io import (
 )
 from data_sources.mavedb.analysis._reference_sources import (
     DEFAULT_SOURCE_MANIFEST,
+    SOURCE_SCHEMA_VERSION,
     load_id_map,
     load_sources,
 )
@@ -44,6 +48,7 @@ from data_sources.mavedb.analysis._variant_data import (
 LOGGER = logging.getLogger("process_variant_data")
 DEFAULT_OUT = REPOSITORY_ROOT / "data_sources/mavedb/output/variant_data"
 MANIFEST = "variant_data_manifest.json"
+PREPARATION_SCHEMA_VERSION = 1
 STAGES = ("clinvar", "gwas", "pharmacogenomics", "drugs", "pockets")
 PARQUET_SOURCES = {
     "coding_variants",
@@ -71,10 +76,51 @@ OUTPUT_NAMES = {
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sources", type=Path, default=DEFAULT_SOURCE_MANIFEST)
-    parser.add_argument("--only", choices=("all", *STAGES), default="all")
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        default=["all"],
+        metavar="STAGE",
+        help="Generate selected tables (for example: --only clinvar,gwas)",
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path(MANIFEST),
+        help="Manifest filename within --out (defaults to the standalone filename)",
+    )
     parser.add_argument("--batch-size", type=positive_int, default=65_536)
     return parser
+
+
+def _selected_stages(values: str | Sequence[str]) -> list[str]:
+    """Normalize comma- or space-separated table selections in stable order."""
+    tokens = [values] if isinstance(values, str) else values
+    selected = [
+        stage.strip().lower()
+        for value in tokens
+        for stage in value.split(",")
+        if stage.strip()
+    ]
+    if not selected:
+        raise ValueError("--only requires at least one stage")
+    if "all" in selected:
+        if len(selected) != 1:
+            raise ValueError("--only all cannot be combined with individual stages")
+        return list(STAGES)
+    unknown = sorted(set(selected) - set(STAGES))
+    if unknown:
+        raise ValueError(
+            f"Unknown --only stage(s): {', '.join(unknown)}; "
+            f"choose from {', '.join(STAGES)} or all"
+        )
+    return list(dict.fromkeys(selected))
+
+
+def _relative_path(path: Path, base: Path) -> str:
+    """Describe a file relative to its owning output or source bundle."""
+    return Path(os.path.relpath(path.resolve(), base.resolve())).as_posix()
 
 
 def _source_path(sources: dict[str, Any], name: str) -> Path | tuple[Path, ...]:
@@ -107,11 +153,12 @@ def _resolve_sources(
 ) -> tuple[dict[str, Path | tuple[Path, ...]], dict[str, Any]]:
     manifest = load_sources(manifest_path)
     records = manifest["sources"]
+    portable_records = json.loads(manifest_path.read_text())["sources"]
     names = tuple(
         dict.fromkeys(name for stage in stages for name in REQUIRED_SOURCES[stage])
     )
     paths = {name: _source_path(records, name) for name in names}
-    return paths, {name: records[name] for name in names}
+    return paths, {name: portable_records[name] for name in names}
 
 
 def _generate_stages(
@@ -158,19 +205,35 @@ def _generate_stages(
             result = generate_pockets(
                 sources["pockets"], mapping, destination, **options
             )
-        results[stage] = {**result, "file": OUTPUT_NAMES[stage]}
+        identity = file_record(destination)
+        results[stage] = {
+            **result,
+            "file": _relative_path(destination, staged),
+            "bytes": identity["bytes"],
+            "sha256": identity["sha256"],
+        }
         LOGGER.info("%s: %d rows", stage, result["rows"])
     return results
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    stages = list(STAGES) if args.only == "all" else [args.only]
+    stages = _selected_stages(args.only)
     sources, provenance = _resolve_sources(args.sources, stages)
     mapping = (
         load_id_map(sources["id_map"])
         if any(stage != "gwas" for stage in stages)
         else None
     )
+    manifest_name = Path(args.manifest)
+    if (
+        manifest_name.is_absolute()
+        or ".." in manifest_name.parts
+        or not manifest_name.parts
+    ):
+        raise ValueError("--manifest must be a relative path within --out")
+    if manifest_name in {Path(OUTPUT_NAMES[stage]) for stage in stages}:
+        raise ValueError("--manifest cannot use the filename of a generated TSV")
+    source_manifest_identity = file_record(args.sources)
     coding_stages = {"clinvar", "gwas", "pharmacogenomics"}.intersection(stages)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".variant-data-", dir=args.out.parent) as d:
@@ -200,16 +263,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 stages, sources, mapping, None, staged, args.batch_size
             )
         manifest = {
-            "source_manifest": str(args.sources.resolve()),
+            "schema_version": PREPARATION_SCHEMA_VERSION,
+            "source_manifest": {
+                "path": _relative_path(args.sources, args.out),
+                "bytes": source_manifest_identity["bytes"],
+                "sha256": source_manifest_identity["sha256"],
+            },
+            "source_manifest_schema_version": SOURCE_SCHEMA_VERSION,
             "stages": stages,
             "sources": provenance,
             "results": results,
         }
-        write_json(staged / MANIFEST, manifest)
+        write_json(staged / manifest_name, manifest)
         publish_tables(
             staged,
             args.out,
-            manifest=MANIFEST,
+            manifest=manifest_name,
             managed={Path(OUTPUT_NAMES[stage]) for stage in stages},
         )
     LOGGER.info("Saved variant references to %s", args.out)

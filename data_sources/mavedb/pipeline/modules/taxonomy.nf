@@ -7,63 +7,83 @@ process FETCH_MAVEDB_TAXONOMY {
     val job
 
     output:
-    path 'taxonomy', emit: bundle
-    path 'result.json', emit: result
+    tuple val(job), path('taxonomy'), emit: bundle
 
     script:
     def p = MavedbCache.request(job)
+    def helper = job.engine.scripts + '/package_reference_outputs.py'
+    def cacheRoot = "${p.references_cache_dir}/${p.references_attempt}"
     """
-    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.scripts + '/download_taxonomy.py')} \
-        --url ${MavedbCache.quote(p.taxonomy_url)} --output taxonomy
-    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
-        --spec ${MavedbCache.quote(job.spec)} --output taxonomy --require manifest.json --require taxcat.dmp > result.json
+    if ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+        --action restore --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+        --spec ${MavedbCache.quote(job.spec)} --directory taxonomy; then
+        :
+    else
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.scripts + '/download_taxonomy.py')} \
+            --url ${MavedbCache.quote(p.taxonomy_url)} --output taxonomy
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+            --action save --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+            --spec ${MavedbCache.quote(job.spec)} --directory taxonomy
+    fi
     """
 }
 
 process IMPORT_MAVEDB_TAXONOMY {
     tag 'Supplied taxonomy snapshot'
-    label 'reference_download'
+    label 'reference_preparation'
     cache false
 
     input:
-    tuple val(job), path(taxonomy, stageAs: 'taxcat.dmp')
+    tuple val(job), path(taxonomy_input, stageAs: 'taxcat.dmp')
 
     output:
-    path 'taxonomy', emit: bundle
-    path 'result.json', emit: result
+    tuple val(job), path('taxonomy'), emit: bundle
 
     script:
     def p = MavedbCache.request(job)
-    def manifest = groovy.json.JsonOutput.toJson(
-        [schema_version: 1, source: p.taxonomy, path: 'taxcat.dmp'] + MavedbCache.specification(job).identities.source
-    )
+    def helper = job.engine.scripts + '/package_reference_outputs.py'
+    def cacheRoot = "${p.references_cache_dir}/${p.references_attempt}"
     """
-    mkdir taxonomy
-    cp taxcat.dmp taxonomy/taxcat.dmp
-    printf '%s\\n' ${MavedbCache.quote(manifest)} > taxonomy/manifest.json
-    ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(job.engine.runtime)} register \
-        --spec ${MavedbCache.quote(job.spec)} --output taxonomy --require manifest.json --require taxcat.dmp > result.json
+    if ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+        --action restore --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+        --spec ${MavedbCache.quote(job.spec)} --directory taxonomy; then
+        :
+    else
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} import-taxonomy \
+            --source taxcat.dmp --source-label ${MavedbCache.quote(p.taxonomy)} --out taxonomy
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+            --action save --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+            --spec ${MavedbCache.quote(job.spec)} --directory taxonomy
+    fi
     """
 }
 
-workflow MAVEDB_TAXONOMY {
-    take:
-    engine
+process REUSE_MAVEDB_TAXONOMY {
+    tag 'Saved taxonomy snapshot'
+    label 'reference_preparation'
+    cache false
 
-    main:
-    decisions = Channel.of([engine: engine, stage: 'taxonomy', inputs: [:]]).map { MavedbCache.resolve(it) }
-    missing = decisions.filter { it.spec != null }
-    FETCH_MAVEDB_TAXONOMY(missing.filter { MavedbCache.request(it).taxonomy == null })
-    IMPORT_MAVEDB_TAXONOMY(missing.filter { MavedbCache.request(it).taxonomy != null }.map { job ->
-        [job, file(MavedbCache.request(job).taxonomy)]
-    })
-    ready = decisions.filter { it.path != null }.mix(
-        FETCH_MAVEDB_TAXONOMY.out.result.map { MavedbCache.result(it) },
-        IMPORT_MAVEDB_TAXONOMY.out.result.map { MavedbCache.result(it) }
-    )
+    input:
+    tuple val(job), path(saved_taxonomy, stageAs: 'saved_taxonomy')
 
-    emit:
-    result = ready
-    taxonomy = ready.map { file(it.path).resolve('taxcat.dmp') }
-    source = ready.map { MavedbCache.request([engine: engine]).with { it.taxonomy ?: it.taxonomy_url } }
+    output:
+    tuple val(job), path('taxonomy'), emit: bundle
+
+    script:
+    def p = MavedbCache.request(job)
+    def helper = job.engine.scripts + '/package_reference_outputs.py'
+    def cacheRoot = "${p.references_cache_dir}/${p.references_attempt}"
+    """
+    if ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+        --action restore --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+        --spec ${MavedbCache.quote(job.spec)} --directory taxonomy; then
+        :
+    else
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} reuse-taxonomy \
+            --source saved_taxonomy --out taxonomy
+        ${MavedbCache.quote(job.engine.python)} ${MavedbCache.quote(helper)} checkpoint \
+            --action save --kind taxonomy --root ${MavedbCache.quote(cacheRoot)} \
+            --spec ${MavedbCache.quote(job.spec)} --directory taxonomy
+    fi
+    """
 }

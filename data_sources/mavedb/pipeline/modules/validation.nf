@@ -55,20 +55,16 @@ workflow MAVEDB_VALIDATION {
     engine
     processed
     merged
+    references
 
     main:
-    request = new groovy.json.JsonSlurper().parseText(file(engine.request).text)
-    clinvarPath = file(request.validation_clinvar, checkIfExists: true).toAbsolutePath().toString()
-    gwasPath = file(request.validation_gwas, checkIfExists: true).toAbsolutePath().toString()
-
-    decisions = processed.combine(merged).map { canonical, model ->
+    decisions = processed.combine(merged).combine(references).map { canonical, model, reference ->
         MavedbCache.resolve([
             engine: engine, stage: 'validation',
             inputs: [
                 process: canonical.path,
                 merge: model.path,
-                clinvar: clinvarPath,
-                gwas: gwasPath,
+                references: reference.path,
             ]
         ])
     }
@@ -78,8 +74,8 @@ workflow MAVEDB_VALIDATION {
               file(job.inputs.merge, checkIfExists: true),
               file("${job.inputs.process}/scores.tsv", checkIfExists: true),
               file("${job.inputs.process}/metadata.tsv", checkIfExists: true),
-              file(job.inputs.clinvar, checkIfExists: true),
-              file(job.inputs.gwas, checkIfExists: true))
+              file("${job.inputs.references}/variants/mave_clinvar_variants.tsv", checkIfExists: true),
+              file("${job.inputs.references}/variants/mave_gwas_variants.tsv", checkIfExists: true))
     }
     MAVEDB_GMM_VALIDATION(jobs)
     computed = MAVEDB_GMM_VALIDATION.out.result.map { MavedbCache.result(it) }
