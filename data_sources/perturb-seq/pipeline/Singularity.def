@@ -15,6 +15,7 @@ From: python:3.10-slim
         libhdf5-dev \
         hdf5-tools \
         procps \
+        samtools \
         zlib1g-dev \
         libbz2-dev \
         liblzma-dev
@@ -46,11 +47,23 @@ From: python:3.10-slim
 
 %environment
     export PATH=/opt/sratoolkit.3.4.1-ubuntu64/bin:$PATH
+    export PYTHONNOUSERSITE=1
     export LC_ALL=C.UTF-8
     export LANG=C.UTF-8
 
 %runscript
     exec kb "$@"
+
+%test
+    python - <<'PYTEST'
+import subprocess
+import kb_python
+from kb_python.utils import get_kallisto_binary_path, get_bustools_binary_path
+import anndata, scanpy, h5py, pyarrow
+assert kb_python.__version__ == "0.30.2"
+assert subprocess.check_output([get_kallisto_binary_path(), "version"], text=True).strip() == "kallisto, version 0.52.0"
+assert subprocess.check_output([get_bustools_binary_path(), "version"], text=True).strip() == "bustools, version 0.45.1"
+PYTEST
 
 %help
     This container provides every runtime dependency for the complete
