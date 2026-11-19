@@ -7,6 +7,10 @@ defaults to the standard indexes when unset.
 `RELEASE_BUCKET` is the manually published GCS bucket containing release
 artifacts. The runtime service account must be allowed to sign URLs and read
 objects in this bucket.
+`RELEASE_VERSION_PREFIX` optionally selects a version directory inside that
+bucket. When unset, artifact URLs use the legacy `<modality>/<dataset>.*`
+paths. For the October 2026 development release, set it to `2026.10`; leave it
+unset in production while production serves the existing paths.
 
 For the default Cloud Run identity, grant the following permissions. The
 runtime service account needs to read the bucket and sign itself; the Cloud

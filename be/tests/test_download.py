@@ -150,12 +150,16 @@ def test_release_signing_falls_back_to_project_compute_service_account(monkeypat
     client.bucket.return_value.blob.return_value = blob
 
     monkeypatch.setenv("RELEASE_BUCKET", "release-bucket")
+    monkeypatch.delenv("RELEASE_VERSION_PREFIX", raising=False)
     monkeypatch.setattr(google.auth, "default", lambda: (credentials, "project"))
     monkeypatch.setattr(storage, "Client", lambda **_: client)
 
     assert (
         data_query._release_signed_url("perturb-seq", "dataset-1", "parquet")
         == "https://storage.example/signed"
+    )
+    client.bucket.return_value.blob.assert_called_once_with(
+        "perturb-seq/dataset-1.parquet"
     )
     client.get_service_account_email.assert_called_once_with(project="project")
     blob.generate_signed_url.assert_called_once()
