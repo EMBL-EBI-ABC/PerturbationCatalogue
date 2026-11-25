@@ -2,7 +2,7 @@
 
 This DSL2 workflow implements raw-data ingest, canonical processing and
 singles/doubles/wide tables, plus optional GMM fitting, basic QC, per-study
-reports and GMM validation. Verified completed outputs are reused by default;
+reports, GMM validation and UniProt residue checks. Verified completed outputs are reused by default;
 regeneration requires `--rerun`.
 
 ```text
@@ -10,6 +10,7 @@ ingest + references.taxonomy -> process
 ingest + references.taxonomy + process -> tables -> optional QC
 process -> GMM -> merge -> reports
 process + merge + references.variants -> validation
+process + local ProtVar residue TSV -> residue_check
 ```
 
 The public `references` stage acquires or imports taxonomy and prepares both
@@ -37,6 +38,7 @@ staged file inputs, native outputs, resource labels, and reuse-or-execute routin
 | `modules/qc.nf` | Generate basic QC |
 | `modules/reports.nf` | Generate per-study reports |
 | `modules/validation.nf` | Compare fitted scores with controls, ClinVar and GWAS |
+| `modules/residue_check.nf` | Check MaveDB reference residues against a local ProtVar snapshot |
 
 `lib/MavedbCache.groovy` provides the shared interface to the Python cache policy.
 `pipeline_runtime.py` resolves reusable results, registers successful producer
@@ -142,6 +144,7 @@ The former public `taxonomy` selector is replaced by `references`; use
 | `qc` | Basic source-score and dataset QC figures | `--run_qc` |
 | `reports` | Per-study GMM reports | `--run_reports` (also enables GMM products) |
 | `validation` | Control, ClinVar and GWAS validation tables and optional plots | `--run_validation` (also enables GMM and merge) |
+| `residue_check` | UniProt reference-residue comparisons and counts | `--uniprot_residues PATH` |
 
 Fitting includes its existing model diagnostics. The separate `qc` stage is
 basic source-data QC, rather than a rerun of those diagnostics.
@@ -168,7 +171,8 @@ inputs until their explicit reruns finish. There is no global atomic replacement
 of multiple stages. Concurrent writers to one output directory are rejected.
 
 Results live in ordinary directories: `ingest/current/`, `references/`,
-`processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, `reports/` and `validation/`.
+`processed/`, `tables/`, `gmm-fit/`, `gmm/`, `qc/`, `reports/`, `validation/` and
+`residue_check/`.
 `gmm-plan/` holds the current frozen plan and code; `gmm-batches/batch<N>/`
 holds completed checkpoints for that attempt. Each stage directory contains
 `pipeline_manifest.json`, identifying its inputs, settings, required outputs and
@@ -190,6 +194,7 @@ There is no `.pipeline/` data directory or symlink publication layer.
 ├── qc/                       # when requested
 ├── reports/                  # when requested
 ├── validation/               # when requested
+├── residue_check/            # when requested
 ├── pipeline_state.json
 ├── pipeline_requests/
 └── pipeline_publication.json
@@ -620,6 +625,69 @@ against the selected prepared references. The stage registers `controls.tsv`,
 `clinvar_matches.tsv`, `gwas_matches.tsv`,
 `ctrl_roc.tsv`, `clinvar_roc.tsv`, `gwas_roc.tsv`, `auc_summary.tsv`,
 `counts.tsv` and `manifest.json`.
+
+## UniProt reference-residue check
+
+Pass `--uniprot_residues` with a local ProtVar TSV containing `accession`,
+`protein_position` and `protein_seq` to check the canonical MaveDB output
+without a database connection.
+
+To create the TSV, first create the destination directory from the repository
+root. Then open `psql` from the same directory using your ProtVar database
+connection settings.
+
+```bash
+mkdir -p data_sources/mavedb/references/protvar
+```
+
+In `psql`, run the export on one line. `\copy` writes the TSV to the machine
+running `psql`.
+
+```sql
+\copy (SELECT DISTINCT accession, protein_position, protein_seq FROM rel_2025_01_genomic_protein_mapping) TO 'data_sources/mavedb/references/protvar/protvar_2025_01_residues.tsv' WITH (FORMAT csv, DELIMITER E'\t', HEADER true)
+```
+
+Reuse the exported TSV in raw-source runs or check existing canonical tables
+in a separate output directory as shown below.
+
+```bash
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --processed_dir data_sources/mavedb/output/nextflow/processed \
+  --outdir data_sources/mavedb/output/uniprot-residue-check \
+  --uniprot_residues data_sources/mavedb/references/protvar/protvar_2025_01_residues.tsv
+```
+
+In processed-input mode, the check runs without downloads, GMM fitting or
+ClinVar/GWAS references. It uses simple protein HGVS records from datasets
+with human protein-coding targets, compares the parsed reference amino acid
+at `position + offset_uniprot`, and records when it defaults a missing offset
+to zero. Accessions are matched exactly. Multi-target datasets and targets with
+multiple UniProt identifiers are reported as ambiguous. Missing accessions or
+positions and conflicting reference residues are reported separately.
+
+The stage tries `+1` and `-1` relative to the original offset (or its zero
+default). It compares the original and shifted match rates on the same distinct
+checks, where both reference positions have exactly one residue. A shift must
+cover at least 10 checks and 90% of the dataset's baseline checks, reach 95%
+agreement, and improve agreement by at least 20 percentage points. When exactly
+one direction qualifies, the stage uses the adjusted offset for all checks in
+that dataset. The canonical input tables retain the original offsets.
+
+| Output in `residue_check/` | Contents |
+| --- | --- |
+| `residue_checks.tsv` | One check per dataset, source position and HGVS reference residue. The original position, residue and `status` are retained alongside their `effective_*` values and `offset_applied`. |
+| `dataset_summary.tsv` | One row per dataset with eligible checks. Includes original and effective offsets, `offset_shift`, `offset_applied`, baseline and effective counts, and effective agreement and check-coverage fractions. Agreement is blank when zero checks could be compared. |
+| `summary.tsv` | Totals distinct checks and source observations by effective status and `offset_applied`. |
+| `applied_offset_corrections.tsv` | Paired comparison evidence for each applied shift, including mismatches resolved and matches lost on the shared checks. |
+
+Agreement is the fraction of compared checks that match. Check coverage is the
+fraction of all eligible checks that could be compared. Both use the effective
+offset and count distinct checks once, even when several observations share a
+source position and HGVS reference residue.
+
+The stage manifest records hashes of both canonical tables and the ProtVar TSV.
+Pass `--rerun residue_check` with `--uniprot_residues` to regenerate an existing
+result or to use a changed snapshot.
 
 ## Outputs and checks
 

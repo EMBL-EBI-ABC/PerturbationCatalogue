@@ -11,6 +11,7 @@ include { MAVEDB_MERGE } from './modules/merge'
 include { MAVEDB_QC } from './modules/qc'
 include { MAVEDB_REPORTS } from './modules/reports'
 include { MAVEDB_VALIDATION } from './modules/validation'
+include { MAVEDB_RESIDUE_CHECK } from './modules/residue_check'
 
 workflow {
     if (params.help) {
@@ -27,16 +28,17 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --references_cache_dir PATH
                            Resumable reference task components (default under tmp)
   --refresh_references     Refresh sources; requires --rerun references
-  --processed_dir PATH     Existing scores.tsv/metadata.tsv for GMM/reports
+  --processed_dir PATH     Existing canonical scores.tsv/metadata.tsv
   --ingest_only            Stop after ingest
   --run_gmm                Enable GMM fitting and merging
   --run_qc                 Enable basic QC
   --run_reports            Enable per-study reports and GMM dependencies
   --run_validation         Validate GMM fits against prepared ClinVar/GWAS tables
+  --uniprot_residues PATH   Check reference residues against a local ProtVar TSV
   --validation_clinvar PATH Imported ClinVar TSV (requires paired GWAS path)
   --validation_gwas PATH   Imported GWAS TSV (requires paired ClinVar path)
   --rerun STAGES           Comma-separated stage names, or all enabled stages
-                          ingest,references,process,tables,gmm,merge,qc,reports,validation
+                          ingest,references,process,tables,gmm,merge,qc,reports,validation,residue_check
   --gmm_profile NAME       production (default) or bounded smoke
   --gmm_model NAME         modes (default) or flexible
   --validation_formats FORMATS
@@ -86,6 +88,10 @@ See pipeline/README.md for all fitting/resource settings and migration.
         }
         if (!params.ingest_only) {
             results = results.mix(processed.map { [process: it.path] })
+            if (enabled.contains('residue_check')) {
+                MAVEDB_RESIDUE_CHECK(engine, processed, request.uniprot_residues)
+                results = results.mix(MAVEDB_RESIDUE_CHECK.out.result.map { [residue_check: it.path] })
+            }
             def tables
             if (enabled.contains('tables')) {
                 MAVEDB_TABLES(engine, raw, references, processed)

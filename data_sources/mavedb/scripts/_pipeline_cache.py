@@ -33,6 +33,7 @@ PUBLIC_STAGE_PATHS = {
     "gmm": "gmm-fit",
     "merge": "gmm",
     "validation": "validation",
+    "residue_check": "residue_check",
     "qc": "qc",
     "reports": "reports",
 }

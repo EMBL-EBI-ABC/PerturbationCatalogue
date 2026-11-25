@@ -50,6 +50,7 @@ STAGES = {
     "gmm",
     "merge",
     "validation",
+    "residue_check",
     "qc",
     "reports",
 }
@@ -125,6 +126,7 @@ def stage_error(
             "validation",
             "qc",
             "reports",
+            "residue_check",
         ],
         "taxonomy": [
             "process",
@@ -134,9 +136,18 @@ def stage_error(
             "validation",
             "qc",
             "reports",
+            "residue_check",
         ],
         "references": [],
-        "process": ["tables", "gmm", "merge", "validation", "qc", "reports"],
+        "process": [
+            "tables",
+            "gmm",
+            "merge",
+            "validation",
+            "qc",
+            "reports",
+            "residue_check",
+        ],
         "tables": ["qc"],
         "gmm": ["merge", "validation", "reports"],
         "merge": ["validation", "reports"],
@@ -162,6 +173,7 @@ def stage_error(
                     "validation",
                     "qc",
                     "reports",
+                    "residue_check",
                 ]
             elif record is None:
                 descendants_for_error = []
@@ -191,6 +203,7 @@ def stage_error(
                         "validation",
                         "qc",
                         "reports",
+                        "residue_check",
                     ]
                 elif variants_changed:
                     descendants_for_error = ["validation"]
@@ -366,9 +379,26 @@ def dependencies(stage: str, paths: dict[str, str]) -> dict[str, Any]:
         elif "taxonomy" in paths:
             # Compatibility for older task invocations and saved workflow requests.
             add("taxonomy", Path(paths["taxonomy"]) / "taxcat.dmp")
-    if stage in {"tables", "gmm-plan", "gmm", "gmm-batch", "qc", "reports"}:
+    if stage in {
+        "tables",
+        "gmm-plan",
+        "gmm",
+        "gmm-batch",
+        "qc",
+        "reports",
+        "residue_check",
+    }:
         for name in ("scores.tsv", "metadata.tsv"):
             add(name, Path(paths["process"]) / name)
+    if stage == "residue_check" and "residues" in paths:
+        add("residues.tsv", Path(paths["residues"]))
+        found["implementation"] = implementation_identities(
+            REPO,
+            (
+                SCRIPTS / "check_uniprot_residues.py",
+                REPO / "data_sources/mavedb/pipeline/modules/residue_check.nf",
+            ),
+        )
     if stage == "gmm-batch" and "gmm-plan" in paths:
         add("plan", Path(paths["gmm-plan"]) / "batch_plan.json")
     if stage == "merge":
@@ -767,6 +797,7 @@ def prepare(p: dict[str, Any]) -> Path:
         "gmm_cache_dir",
         "download_dir",
         "reference_sources_manifest",
+        "uniprot_residues",
     ):
         if p.get(name):
             # Resolving a virtualenv interpreter symlink selects the base Python
@@ -810,6 +841,8 @@ def prepare(p: dict[str, Any]) -> Path:
             enabled |= names
     if selected != {"all"}:
         enabled |= selected
+    if p.get("uniprot_residues"):
+        enabled.add("residue_check")
     if enabled & {"gmm", "merge", "reports", "validation"}:
         enabled |= {"gmm", "merge"}
     if "validation" in enabled:
@@ -822,6 +855,11 @@ def prepare(p: dict[str, Any]) -> Path:
         raise CacheError(
             "--ingest_only cannot be combined with processing or analysis stages"
         )
+    if "residue_check" in enabled:
+        if not p.get("uniprot_residues"):
+            raise CacheError("The residue check requires --uniprot_residues PATH")
+        if not Path(p["uniprot_residues"]).is_file():
+            raise CacheError(f"UniProt residue TSV not found: {p['uniprot_residues']}")
     if p.get("processed_dir"):
         if p["ingest_only"]:
             raise CacheError("--processed_dir cannot be combined with --ingest_only")
@@ -1360,6 +1398,7 @@ def finish(request: Path, paths: dict[str, str]) -> None:
         "gmm",
         "merge",
         "validation",
+        "residue_check",
         "qc",
         "reports",
     ):
@@ -1398,6 +1437,16 @@ def finish(request: Path, paths: dict[str, str]) -> None:
                         if name not in validation_paths and reference_paths.get(name):
                             validation_paths[name] = reference_paths[name]
                 actual = dependencies(stage, validation_paths)
+            elif stage == "residue_check":
+                residue_paths = dict(current)
+                if p.get("uniprot_residues"):
+                    residue_paths["residues"] = p["uniprot_residues"]
+                actual = dependencies(stage, residue_paths)
+                if "residues" not in residue_paths:
+                    # An unrequested check still depends on the current canonical
+                    # tables but can retain its original reference and code hashes.
+                    for name in ("residues.tsv", "implementation"):
+                        actual[name] = record["inputs"][name]
             else:
                 actual = dependencies(stage, current)
             # The plan is an internal fitting checkpoint, not a dependency of a completed collection.
@@ -1409,7 +1458,10 @@ def finish(request: Path, paths: dict[str, str]) -> None:
     if stale:
         # Include transitive descendants so the diagnostic gives a complete next command.
         for parent, children in (
-            ("process", ["tables", "gmm", "qc", "reports", "validation"]),
+            (
+                "process",
+                ["tables", "gmm", "qc", "reports", "validation", "residue_check"],
+            ),
             ("tables", ["qc"]),
             ("gmm", ["merge", "reports", "validation"]),
             ("merge", ["reports", "validation"]),
