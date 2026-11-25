@@ -144,7 +144,7 @@ The former public `taxonomy` selector is replaced by `references`; use
 | `qc` | Basic source-score and dataset QC figures | `--run_qc` |
 | `reports` | Per-study GMM reports | `--run_reports` (also enables GMM products) |
 | `validation` | Control, ClinVar and GWAS validation tables and optional plots | `--run_validation` (also enables GMM and merge) |
-| `residue_check` | UniProt reference-residue comparisons and counts | `--uniprot_residues PATH` |
+| `residue_check` | UniProt reference-residue comparisons and counts | Standard ProtVar TSV present, or `--uniprot_residues PATH` |
 
 Fitting includes its existing model diagnostics. The separate `qc` stage is
 basic source-data QC, rather than a rerun of those diagnostics.
@@ -195,7 +195,7 @@ There is no `.pipeline/` data directory or symlink publication layer.
 ├── qc/                       # when requested
 ├── reports/                  # when requested
 ├── validation/               # when requested
-├── residue_check/            # when requested
+├── residue_check/            # when a ProtVar residue TSV is available
 ├── pipeline_state.json
 ├── pipeline_requests/
 └── pipeline_publication.json
@@ -629,14 +629,17 @@ against the selected prepared references. The stage registers `controls.tsv`,
 
 ## UniProt reference-residue check
 
-Pass `--uniprot_residues` with a local ProtVar TSV containing `accession`,
-`protein_position` and `protein_seq` to check the canonical MaveDB output
-without a database connection.
+Processing runs automatically check reference residues when the local ProtVar
+TSV exists at `data_sources/mavedb/references/protvar/protvar_2025_01_residues.tsv`
+in the pipeline checkout. The TSV supplies `accession`, `protein_position` and
+`protein_seq` without a database connection at runtime. The workflow logs
+when it skips the stage because the standard file is missing. To use a
+different snapshot, pass `--uniprot_residues PATH`.
 
-To add this check to an existing full run in the same output directory, repeat
-that run's original arguments and add `--uniprot_residues PATH`. Compatible
-saved stages are reused, so the residue check is the only new task when the
-previous stages are complete. Reports are saved beside them in `residue_check/`.
+To add this check to an existing full run, put the TSV in the standard location
+and repeat that run's original command. Compatible saved stages are reused, so
+the residue check is the only new task when the previous stages are complete.
+Reports are saved beside them in `residue_check/`.
 
 To create the TSV, first create the destination directory from the repository
 root. Then open `psql` from the same directory using your ProtVar database
@@ -659,8 +662,7 @@ in a separate output directory as shown below.
 ```bash
 nextflow run data_sources/mavedb/pipeline -profile local \
   --processed_dir data_sources/mavedb/output/nextflow/processed \
-  --outdir data_sources/mavedb/output/uniprot-residue-check \
-  --uniprot_residues data_sources/mavedb/references/protvar/protvar_2025_01_residues.tsv
+  --outdir data_sources/mavedb/output/uniprot-residue-check
 ```
 
 In processed-input mode, the check runs without downloads, GMM fitting or
@@ -692,8 +694,8 @@ offset and count distinct checks once, even when several observations share a
 source position and HGVS reference residue.
 
 The stage manifest records hashes of both canonical tables and the ProtVar TSV.
-Pass `--rerun residue_check` with `--uniprot_residues` to regenerate an existing
-result or to use a changed snapshot.
+Pass `--rerun residue_check` to regenerate an existing result or to use a changed
+snapshot.
 
 ## Outputs and checks
 

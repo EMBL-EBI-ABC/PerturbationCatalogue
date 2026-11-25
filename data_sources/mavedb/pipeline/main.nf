@@ -34,7 +34,7 @@ nextflow run data_sources/mavedb/pipeline -profile local [options]
   --run_qc                 Enable basic QC
   --run_reports            Enable per-study reports and GMM dependencies
   --run_validation         Validate GMM fits against prepared ClinVar/GWAS tables
-  --uniprot_residues PATH   Check reference residues against a local ProtVar TSV
+  --uniprot_residues PATH   Override the standard ProtVar residue TSV
   --validation_clinvar PATH Imported ClinVar TSV (requires paired GWAS path)
   --validation_gwas PATH   Imported GWAS TSV (requires paired ClinVar path)
   --rerun STAGES           Comma-separated stage names, or all enabled stages

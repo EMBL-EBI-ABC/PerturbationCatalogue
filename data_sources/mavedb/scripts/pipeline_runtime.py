@@ -874,6 +874,18 @@ def prepare(p: dict[str, Any]) -> Path:
             enabled |= names
     if selected != {"all"}:
         enabled |= selected
+    if (
+        p.get("default_uniprot_residues")
+        and not p.get("uniprot_residues")
+        and not p["ingest_only"]
+    ):
+        default_residues = Path(p["default_uniprot_residues"]).expanduser().resolve()
+        if default_residues.is_file() or "residue_check" in selected:
+            p["uniprot_residues"] = str(default_residues)
+        else:
+            LOGGER.info(
+                "SKIP residue_check: default TSV not found at %s", default_residues
+            )
     if p.get("uniprot_residues"):
         enabled.add("residue_check")
     if enabled & {"gmm", "merge", "reports", "validation"}:
