@@ -76,8 +76,6 @@ VALIDATION_GWAS_REQUIRED = {
     "alternateAminoAcid",
 }
 VALIDATION_IMPLEMENTATION = (
-    Path(__file__).resolve(),
-    Path(__file__).resolve().parent / "_pipeline_cache.py",
     REPO / "data_sources/mavedb/pipeline/modules/validation.nf",
     REPO / "data_sources/mavedb/analysis/mave_gmm_validation.py",
     REPO / "data_sources/mavedb/analysis/_validation_inputs.py",
@@ -91,8 +89,6 @@ VALIDATION_IMPLEMENTATION = (
     REPO / "data_sources/mavedb/scripts/process_mavedb.py",
 )
 REFERENCES_IMPLEMENTATION = (
-    Path(__file__).resolve(),
-    Path(__file__).resolve().parent / "_pipeline_cache.py",
     Path(__file__).resolve().parent / "_pipeline_references.py",
     SCRIPTS / "download_taxonomy.py",
     SCRIPTS / "download_reference_data.py",
@@ -102,13 +98,46 @@ REFERENCES_IMPLEMENTATION = (
     REPO / "data_sources/mavedb/analysis/_reference_io.py",
     REPO / "data_sources/mavedb/analysis/_variant_data.py",
     REPO / "data_sources/mavedb/analysis/_variant_annotations.py",
-    REPO / "data_sources/mavedb/pipeline/main.nf",
     REPO / "data_sources/mavedb/pipeline/modules/references.nf",
     REPO / "data_sources/mavedb/pipeline/modules/references_download.nf",
     REPO / "data_sources/mavedb/pipeline/modules/references_prepare.nf",
     REPO / "data_sources/mavedb/pipeline/modules/taxonomy.nf",
     SCRIPTS / "package_reference_outputs.py",
 )
+LEGACY_RUNTIME_FILES = {
+    "data_sources/mavedb/scripts/pipeline_runtime.py",
+    "data_sources/mavedb/scripts/_pipeline_cache.py",
+}
+LEGACY_SHARED_IMPLEMENTATION_FILES = {
+    "references": LEGACY_RUNTIME_FILES | {"data_sources/mavedb/pipeline/main.nf"},
+    "validation": LEGACY_RUNTIME_FILES,
+}
+
+
+def _comparable_inputs(stage: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Ignore superseded orchestration hashes while preserving saved provenance."""
+    shared_files = LEGACY_SHARED_IMPLEMENTATION_FILES.get(stage)
+    implementation = inputs.get("implementation")
+    if shared_files and isinstance(implementation, dict):
+        return inputs | {
+            "implementation": {
+                path: identity
+                for path, identity in implementation.items()
+                if path not in shared_files
+            }
+        }
+    return inputs
+
+
+def _reuse_result(
+    store: ResultStore, stage: str, config: dict[str, Any], inputs: dict[str, Any]
+) -> Path | None:
+    if stage in LEGACY_SHARED_IMPLEMENTATION_FILES:
+        record = store.record(stage)
+        if record and _comparable_inputs(stage, record["inputs"]) == inputs:
+            # The store still checks settings, the manifest and every output hash.
+            inputs = record["inputs"]
+    return store.get(stage, config, inputs)
 
 
 def stage_error(
@@ -157,7 +186,7 @@ def stage_error(
         record = store.record("references")
         changed = set()
         if record and requested_inputs is not None:
-            previous = record.get("inputs", {})
+            previous = _comparable_inputs(stage, record["inputs"])
             changed = {
                 name
                 for name in set(previous) | set(requested_inputs)
@@ -597,7 +626,10 @@ def _preflight_reference_cache(p: dict[str, Any], store: ResultStore) -> None:
                 raise CacheError(
                     "Unfinished references attempt options differ; use --rerun references to start a new attempt"
                 )
-            if previous_inputs is not None and previous_inputs != requested:
+            if previous_inputs is not None and (
+                not isinstance(previous_inputs, dict)
+                or _comparable_inputs("references", previous_inputs) != requested
+            ):
                 raise CacheError(
                     "Unfinished references attempt inputs differ; use --rerun references to start a new attempt"
                 )
@@ -614,10 +646,11 @@ def _preflight_reference_cache(p: dict[str, Any], store: ResultStore) -> None:
         raise
     if record is None:
         return
+    previous = _comparable_inputs("references", record["inputs"])
     changed = {
         name
-        for name in set(record.get("inputs", {})) | set(requested)
-        if record.get("inputs", {}).get(name) != requested.get(name)
+        for name in set(previous) | set(requested)
+        if previous.get(name) != requested.get(name)
     }
     requested_settings = settings("references", p, store)
     p["references_settings"] = requested_settings
@@ -1085,8 +1118,10 @@ def _check_reference_upgrade(
 def _resolve_references(
     request: Path, p: dict[str, Any], store: ResultStore
 ) -> dict[str, Any]:
-    requested_inputs = p.get("reference_inputs") or _reference_inputs(
-        p, store, verify_source_files=False
+    requested_inputs = _comparable_inputs(
+        "references",
+        p.get("reference_inputs")
+        or _reference_inputs(p, store, verify_source_files=False),
     )
     selected = "references" in p.get("selected", [])
     pending = store.pending("references")
@@ -1094,8 +1129,8 @@ def _resolve_references(
     existing: Path | None = None
     if not selected and not resuming:
         try:
-            existing = store.get(
-                "references", settings("references", p, store), requested_inputs
+            existing = _reuse_result(
+                store, "references", settings("references", p, store), requested_inputs
             )
             if existing is not None:
                 validate_reference_bundle(
@@ -1246,7 +1281,7 @@ def resolve(
         public in p["selected"] or (stage == "gmm" and store.pending("gmm"))
     ) and stage not in {"gmm-plan", "gmm-batch"}
     try:
-        cached = None if forced else store.get(key, config, deps)
+        cached = None if forced else _reuse_result(store, key, config, deps)
     except CacheError as error:
         raise stage_error(public, store, error) from error
     if cached is not None:
@@ -1284,7 +1319,7 @@ def register(spec_path: Path, output: Path, required: Sequence[str] = ()) -> Pat
         source = p.get("archive" if stage == "ingest" else "taxonomy")
         if source and Path(source).is_file():
             current_inputs["source"] = file_identity(Path(source))
-    if current_inputs != spec["identities"]:
+    if current_inputs != _comparable_inputs(stage, spec["identities"]):
         raise CacheError(
             f"Inputs changed while {stage} was running; retry with stable inputs"
         )
@@ -1451,7 +1486,7 @@ def finish(request: Path, paths: dict[str, str]) -> None:
                 actual = dependencies(stage, current)
             # The plan is an internal fitting checkpoint, not a dependency of a completed collection.
             recorded = {k: v for k, v in record["inputs"].items() if k != "plan"}
-            if actual != recorded:
+            if actual != _comparable_inputs(stage, recorded):
                 stale.append(stage)
         except (KeyError, CacheError):
             stale.append(stage)

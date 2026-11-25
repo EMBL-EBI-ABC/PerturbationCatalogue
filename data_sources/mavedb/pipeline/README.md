@@ -157,10 +157,11 @@ unfinished batches run, independently of the original work directories.
 
 Changed scientific settings, model/cohort selection or upstream input content
 never silently trigger regeneration of a completed stage. The pipeline stops
-and identifies the required explicit reruns. Changes to implementation code
-alone retain the saved result's provenance and reuse compatible completed
-outputs. A registered result with missing or corrupt files is an error requiring
-an explicit rerun; it is not treated as a cache miss that authorizes fitting.
+and identifies the required explicit reruns. References and validation compare
+the code for their own stages. They can reuse older manifests that also record
+shared workflow files, provided the stage-specific code, inputs, settings and
+saved outputs pass verification. Reuse preserves the original manifests.
+A registered result with missing or corrupt files requires an explicit rerun.
 
 When regenerated upstream files change downstream inputs, the pipeline stops
 before declaring the result set consistent and lists affected selectors,
@@ -631,6 +632,11 @@ against the selected prepared references. The stage registers `controls.tsv`,
 Pass `--uniprot_residues` with a local ProtVar TSV containing `accession`,
 `protein_position` and `protein_seq` to check the canonical MaveDB output
 without a database connection.
+
+To add this check to an existing full run in the same output directory, repeat
+that run's original arguments and add `--uniprot_residues PATH`. Compatible
+saved stages are reused, so the residue check is the only new task when the
+previous stages are complete. Reports are saved beside them in `residue_check/`.
 
 To create the TSV, first create the destination directory from the repository
 root. Then open `psql` from the same directory using your ProtVar database
