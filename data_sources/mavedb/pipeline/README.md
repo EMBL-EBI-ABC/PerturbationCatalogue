@@ -175,6 +175,9 @@ hashes. Root-level `pipeline_state.json` records current stage registrations and
 unfinished attempts, `pipeline_requests/` holds small execution specifications,
 and `pipeline_publication.json` summarizes the last consistent result set.
 
+The tree shows the files produced when the optional stages are enabled.
+`{png,pdf}` denotes both default figure formats.
+
 ```text
 <outdir>/
 ├── ingest/current/            # raw dump and ingest provenance
@@ -185,10 +188,54 @@ and `pipeline_publication.json` summarizes the last consistent result set.
 ├── gmm-batches/batch<N>/      # completed batches of the current attempt
 ├── gmm-fit/                  # verified collected fitting outputs
 ├── gmm/                      # packaged batches and merged tables
-├── qc/                       # when requested
-├── reports/                  # when requested
-├── validation/               # when requested
-├── residue_check/            # when a ProtVar residue TSV is available
+├── qc/
+│   ├── pipeline_manifest.json
+│   ├── datasets.{png,pdf}
+│   ├── organisms.{png,pdf}
+│   ├── set_summary.{png,pdf}
+│   ├── data_per_gene.{png,pdf}
+│   ├── data_per_variant.{png,pdf}
+│   ├── completeness_scatter.{png,pdf}
+│   ├── completeness_hist.{png,pdf}
+│   ├── coverage_scatter.{png,pdf}
+│   ├── coverage_hist.{png,pdf}
+│   ├── multiple_mutation.{png,pdf}
+│   ├── score_set_correlation.{png,pdf}
+│   ├── score_set_correlation_human.{png,pdf}
+│   └── blosum_study_correlation.{png,pdf}
+├── reports/
+│   ├── pipeline_manifest.json
+│   └── maves/studies_<model>/
+│       ├── urn_mavedb_00000001_a_1.pdf   # example score-set report
+│       └── ...
+├── validation/
+│   ├── pipeline_manifest.json
+│   ├── manifest.json
+│   ├── controls.tsv
+│   ├── clinvar_matches.tsv
+│   ├── gwas_matches.tsv
+│   ├── ctrl_roc.tsv
+│   ├── clinvar_roc.tsv
+│   ├── gwas_roc.tsv
+│   ├── auc_summary.tsv
+│   ├── counts.tsv
+│   └── figures/
+│       ├── distributions.{png,pdf}
+│       ├── control_distribution.{png,pdf}
+│       ├── control_roc_curves.{png,pdf}
+│       ├── control_auc_distribution.{png,pdf}
+│       ├── clinvar_distribution.{png,pdf}
+│       ├── clinvar_roc_curves.{png,pdf}
+│       ├── clinvar_auc_distribution.{png,pdf}
+│       ├── gwas_distribution.{png,pdf}
+│       ├── gwas_roc_curves.{png,pdf}
+│       └── gwas_auc_distribution.{png,pdf}
+├── residue_check/
+│   ├── pipeline_manifest.json
+│   ├── residue_checks.tsv
+│   ├── dataset_summary.tsv
+│   ├── summary.tsv
+│   └── applied_offset_corrections.tsv
 ├── pipeline_state.json
 ├── pipeline_requests/
 └── pipeline_publication.json
