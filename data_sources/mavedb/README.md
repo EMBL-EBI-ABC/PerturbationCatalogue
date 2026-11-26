@@ -1,5 +1,85 @@
 # MaveDB
 
+## Quickstart
+
+Run these commands from the repository root. Use Python 3.12 and Java 21.
+
+### Set up the environment
+
+```bash
+if [ ! -x .venv/bin/python ]; then
+  python3.12 -m venv .venv
+fi
+.venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
+
+# Install Nextflow if it is missing.
+if ! command -v nextflow >/dev/null; then
+  mkdir -p "$HOME/.local/bin"
+  (cd "$HOME/.local/bin" && curl -fsSL https://get.nextflow.io | bash)
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+nextflow -version
+```
+
+To add GMM fitting with `--run_gmm`, also complete the [CmdStan setup](#one-time-local-setup).
+
+### Run the pinned release locally
+
+```bash
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --outdir data_sources/mavedb/output/nextflow-local
+```
+
+The first run downloads the pinned MaveDB archive and about 3.4 GB of reference
+data. It writes canonical scores and metadata under `processed/` and derived
+variant tables under `tables/` in the output directory.
+
+### Run locally on selected files
+
+Put `main.json` and the selected `csv/*.scores.csv` files in a ZIP and pass it
+with `--archive`. This example processes one bundled score file offline.
+
+```bash
+fixture="$PWD/data_sources/mavedb/pipeline/assets/processing-smoke"
+subset_dir="$(mktemp -d)"
+(cd "$fixture" && zip "$subset_dir/subset.zip" main.json csv/urn-mavedb-synthetic-a-1.scores.csv)
+
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --archive "$subset_dir/subset.zip" \
+  --taxonomy "$fixture/taxcat.dmp" \
+  --validation_clinvar "$fixture/mave_clinvar_variants.tsv" \
+  --validation_gwas "$fixture/mave_gwas_variants.tsv" \
+  --outdir "$subset_dir/results"
+```
+
+Expect one dataset and four score rows in `"$subset_dir/results/processed"`.
+For your own subset, package the desired CSVs with the matching `main.json`.
+Supply your taxonomy and prepared reference tables to run offline.
+
+### Run on Slurm
+
+From the repository checkout on the cluster, use the bundled site config for
+EBI Codon. On another cluster, copy it and set your Slurm account, partition
+and shared filesystem paths. [Site configuration](pipeline/site.config)
+
+```bash
+nextflow -c data_sources/mavedb/pipeline/site.config \
+  run data_sources/mavedb/pipeline -profile slurm
+```
+
+### Rerun a stage
+
+Repeat the original inputs and output directory with `--rerun STAGE`. For
+example, regenerate the local run's singles, doubles and wide tables:
+
+```bash
+nextflow run data_sources/mavedb/pipeline -profile local \
+  --outdir data_sources/mavedb/output/nextflow-local \
+  --rerun tables
+```
+
+Nextflow reuses compatible upstream results. See all [rerun selectors](pipeline/README.md#reusing-results-and-explicit-regeneration).
+
 ## Background
 
 MaveDB data can be downloaded from Zenodo and is licensed under CC0.
