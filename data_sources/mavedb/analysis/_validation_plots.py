@@ -157,7 +157,7 @@ def _draw_score_histogram(ax: Axes, scores: pd.DataFrame, column: str) -> None:
     grouped = [values[modes == category] for category in categories]
     colors = [_mode_color(category) for category in categories]
     if column == "s":
-        # Use equal-width bins after the symlog transform, as the R plot does
+        # Use equal-width bins after the symlog transform
         # after its pseudo-log scale transform.
         transformed_edges = np.linspace(
             np.arcsinh(values.min()), np.arcsinh(values.max()), 51

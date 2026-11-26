@@ -1,9 +1,9 @@
-# Retained GMM Stan sources
+# GMM Stan models
 
-These six files are byte-for-byte copies of the statistical model sources in
-`ot_perturbation_catalog_mave_experiments/src/` at commit
-`da4b24f2f2ad6a8d86d10831e34699199c748300`. Each model includes
-`functions.stan`; the include relationship is unchanged.
+This directory contains five candidate models and their shared
+`functions.stan` include. The flexible workflow fits `fixed_gmm_flexible.stan`.
+The modes workflow fits `fixed_gmm_ko.stan`, `fixed_gmm_del.stan`,
+`fixed_gmm_neut.stan` and `fixed_gmm_pos.stan`.
 
 | File | SHA-256 |
 | --- | --- |
@@ -13,8 +13,3 @@ These six files are byte-for-byte copies of the statistical model sources in
 | `fixed_gmm_del.stan` | `bc750165746546c4db440aec41bb0a5c5896ffa74364ed2ec929af7488f73011` |
 | `fixed_gmm_neut.stan` | `843eb7db6039e10ce07d56f5e1a68e385ae4ffc8ea7c2dbb6c1ab0b31e689357` |
 | `fixed_gmm_pos.stan` | `beff4c7536f1695673365ed7dcdd2706d65470ddaa733ab9d41f1cae429c0861` |
-
-The source revision has no Stan-file license headers, and the sibling checkout
-contains no top-level `LICENSE` file or declared license. Source comments have
-been retained unchanged; this note records provenance without adding a license
-to the upstream code.

@@ -37,7 +37,7 @@ _SUMMARY_COLUMNS = ("type", "same_wt", "auc", "pr_auc", "n_variants", "n_studies
 
 
 def combine_clnsigs(x: Iterable[Any] | Any) -> str:
-    """Combine ClinVar labels using the precedence in ``mave_homology.R``."""
+    """Combine ClinVar labels, retaining explicit or inferred conflicts."""
     if isinstance(x, str):
         values = (x,)
     elif isinstance(x, Iterable):
@@ -73,7 +73,7 @@ def _empty_roc() -> pd.DataFrame:
 
 
 def _step_auc(x: Sequence[float], y: Sequence[float]) -> float:
-    """Return the left-step area used by the source R analysis."""
+    """Integrate the curve using left steps."""
     x_values = np.asarray(x, dtype=float)
     y_values = np.asarray(y, dtype=float)
     if len(x_values) != len(y_values):
@@ -84,7 +84,7 @@ def _step_auc(x: Sequence[float], y: Sequence[float]) -> float:
 
 
 def pr_auc(recall: Sequence[float], precision: Sequence[float]) -> float:
-    """Compute the R-compatible left-step area under a precision-recall curve."""
+    """Compute the left-step area under a precision-recall curve."""
     recall_values = np.asarray(recall, dtype=float)
     precision_values = np.asarray(precision, dtype=float)
     if len(recall_values) != len(precision_values):
@@ -107,12 +107,11 @@ def calc_roc(
     greater: bool = True,
     max_steps: int = 6000,
 ) -> pd.DataFrame:
-    """Calculate threshold counts and ROC metrics with source-R semantics.
+    """Calculate threshold counts and ROC metrics.
 
     A threshold classifies observations as positive when ``score >= thresh``
     if ``greater`` is true, and ``score <= thresh`` otherwise. Tied values are
-    evaluated together. The AUC uses the R helper's left-step rule rather than
-    trapezoidal integration or average precision.
+    evaluated together. The AUC uses left-step integration.
     """
     if max_steps <= 0:
         raise ValueError("max_steps must be positive")
@@ -130,8 +129,7 @@ def calc_roc(
     unique_scores = np.unique(scores)
     if len(unique_scores) > max_steps:
         stride = max(1, len(unique_scores) // max_steps)
-        # R's seq(0, n, by=stride) is used as one-based vector indices;
-        # index zero is ignored by R, leaving stride, 2*stride, ... .
+        # Take every stride-th threshold, counting from one.
         selected = np.arange(stride, len(unique_scores) + 1, stride) - 1
         thresholds = np.concatenate(([-np.inf], unique_scores[selected], [np.inf]))
     else:
@@ -476,7 +474,7 @@ def evaluate_clinvar(
 ) -> dict[str, pd.DataFrame]:
     """Return the ClinVar homolog tables, counts, curves, and summary.
 
-    ``clinvar_counts`` follows the source R scope: ``n_variants`` counts
+    In ``clinvar_counts``, ``n_variants`` counts
     homolog-score rows before non-binary labels are removed, and ``n_studies``
     counts distinct homolog score URNs. Counts are expanded over each homology
     type and wild-type agreement, plus the ``All``/``Both`` rollups.

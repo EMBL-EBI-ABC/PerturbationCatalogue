@@ -26,7 +26,7 @@ PRODUCTION_METADATA = (
     / "metadata.tsv"
 )
 SMOKE_FIXTURES = (
-    REPOSITORY_ROOT / "data_sources" / "mavedb" / "tests" / "fixtures" / "gmm" / "smoke"
+    REPOSITORY_ROOT / "data_sources" / "mavedb" / "pipeline" / "assets" / "gmm-smoke"
 )
 
 

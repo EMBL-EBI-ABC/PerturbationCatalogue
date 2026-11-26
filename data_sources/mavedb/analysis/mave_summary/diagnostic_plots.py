@@ -1,4 +1,4 @@
-"""Matplotlib equivalents of the R GMM diagnostic plots."""
+"""Matplotlib plots for GMM fit diagnostics."""
 
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ def _scaled_histogram(
     edges: np.ndarray,
     orientation: str,
 ) -> float:
-    """Draw stacked counts scaled by one panel-wide maximum, as in R scaled()."""
+    """Draw stacked counts scaled by one panel-wide maximum."""
     values = _numeric(scores, variable)
     finite = np.isfinite(values)
     valid_indices = np.flatnonzero(finite)

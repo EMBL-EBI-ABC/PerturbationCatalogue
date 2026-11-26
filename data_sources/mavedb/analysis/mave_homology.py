@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Compare MAVE studies and assess ClinVar discrimination through homologs.
-
-Python implementation of ``analysis/mave_homology.R`` from
-``ot_perturbation_catalog_mave_experiments``. Run with ``--help`` for input modes.
-"""
+"""Compare MAVE studies and assess ClinVar discrimination through homologs."""
 
 from __future__ import annotations
 
@@ -80,7 +76,7 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help=(
             "Collected GMM model directory, its merged/ subdirectory, or a "
-            "legacy indexed batch directory"
+            "directory of indexed standalone batch tables"
         ),
     )
     parser.add_argument(
@@ -245,7 +241,7 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
                 for figure in plots.values():
                     plt.close(figure)
         manifest = {
-            "source": "ot_perturbation_catalog_mave_experiments/analysis/mave_homology.R",
+            "source": "data_sources/mavedb/analysis/mave_homology.py",
             "correlation_inputs": fingerprints,
             "source_manifest": str(args.sources.resolve()),
             "clinvar_inputs": (

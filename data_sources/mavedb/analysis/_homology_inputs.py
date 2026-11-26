@@ -30,7 +30,7 @@ class HomologyInputs:
 
 
 def boolean_values(values: pd.Series, name: str) -> pd.Series:
-    """Read explicit R/Python boolean spellings and preserve missing values."""
+    """Read explicit boolean spellings and preserve missing values."""
     text = values.astype("string").str.strip().str.lower()
     mapped = text.map(
         {"true": True, "t": True, "1": True, "false": False, "f": False, "0": False}

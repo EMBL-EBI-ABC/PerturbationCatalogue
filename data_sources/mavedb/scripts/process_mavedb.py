@@ -78,7 +78,7 @@ SOURCE_COLUMNS = (
     ]
 )
 TSV_TEXT_ESCAPES = str.maketrans({"\\": "\\\\", "\t": "\\t", "\r": "\\r", "\n": "\\n"})
-# Keep the combined R token for table_outputs and match its components too.
+# Match both the combined wild-type token and its individual forms.
 WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=", "n.(=)", "n.=, n.(=)"}
 MAVE_WT_HGVS_CODES = {"p.=", "p.(=)", "_wt", "_sy", "n.=, n.(=)"}
 AA_3_TO_1 = dict(
@@ -89,7 +89,7 @@ AA_3_TO_1 = dict(
 )
 AA_3_TO_1["*"] = "stop"
 AMINO_ACIDS = sorted("ACDEFGHIKLMNPQRSTVWY")
-# Match the corrected R output order within each score, n and sd block.
+# Use the same residue order in each score, n and sd block.
 MUTATIONS = [*AMINO_ACIDS, "del", "stop"]
 SINGLE_PATTERN = re.compile(
     r"^(?:[^:]+:)?p\.([A-Za-z]+)([0-9]+)(?:delins)?([A-Za-z]+|=|\*)$"
@@ -301,7 +301,7 @@ def analysis_target(
     experiment_id: str,
     experiment_set_id: str,
 ) -> dict[str, object]:
-    """Build the small target view used by the R-compatible analysis functions."""
+    """Build the target fields used to select and summarize score rows."""
     sequence = target.get("target_sequence", {})
     taxonomy = sequence.get("taxonomy", {})
     row = {
@@ -446,7 +446,7 @@ def resolve_taxonomy(taxonomy_path: Path | None) -> Path:
 def add_kingdoms(
     metadata: dict[str, list[dict[str, object]]], taxonomy_path: Path
 ) -> None:
-    """Join NCBI taxcat.dmp by its third column, as in the R workflow."""
+    """Join NCBI taxonomy categories using taxid in the third column."""
     wanted = {row["taxid"] for targets in metadata.values() for row in targets}
     kingdoms = {
         "A": "Archaea",
@@ -556,8 +556,8 @@ def make_singles(scores: pd.DataFrame, metadata: dict[str, object]) -> pd.DataFr
 def make_doubles(scores: pd.DataFrame, metadata: dict[str, object]) -> pd.DataFrame:
     """Keep all calls with at most two components in sets containing multi mutants.
 
-    Like R's align_start parsing, unparseable fields remain NA. This table also
-    includes single mutants and WT controls from those score sets.
+    Unparseable fields remain NA. The table includes single mutants and WT
+    controls from those score sets.
     """
     eligible = scores["hgvs_pro"].str.count(";").le(1)
     doubles = (
@@ -609,7 +609,7 @@ def make_wide(singles: pd.DataFrame, metadata: dict[str, object]) -> pd.DataFram
 
 
 def position_summary(wide: pd.DataFrame) -> dict[str, object]:
-    """Compute the R completeness and coverage metrics across targeted positions."""
+    """Compute completeness and coverage metrics across targeted positions."""
     if wide.empty:
         return {}
     completeness = (
@@ -665,7 +665,7 @@ def translate_dna(sequence: object) -> str | None:
 
 
 def any_with_na(values: pd.Series) -> bool | None:
-    """Match R's any(): TRUE wins; otherwise retain missing logical values."""
+    """Return true if any value is true, then missing if any value is missing."""
     if values.any():
         return True
     return None if values.isna().any() else False
@@ -724,7 +724,7 @@ def write_tsv(
     single_line: bool = False,
     max_cell_chars: int | None = None,
 ) -> None:
-    """Use R-compatible NA, logical values and integer output columns."""
+    """Format missing values, booleans and integer columns for TSV output."""
     frame = frame.copy()
     for column in frame.columns:
         if single_line:
@@ -814,7 +814,7 @@ def category_scores(
 def mave_analysis(
     scores: pd.DataFrame, target: dict[str, object]
 ) -> tuple[dict[str, object], pd.DataFrame, pd.DataFrame]:
-    """Calculate the corrected R metrics without duplicating source variant rows."""
+    """Calculate analysis metrics with one contribution per source variant row."""
     hgvs = scores["hgvs_pro"]
     counts = hgvs.str.count(";") + 1
     singles = make_singles(scores, target)

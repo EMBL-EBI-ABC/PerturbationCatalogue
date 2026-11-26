@@ -317,8 +317,8 @@ def generate_gwas(
 ) -> dict[str, int]:
     """Stream credible-set rows and join coding variants by ``variantId``.
 
-    Membership is based on all coding rows, as in the source R pipeline. The
-    join preserves duplicate coding records and emits one row per UniProt
+    Membership is based on all coding rows. The join preserves duplicate
+    coding records and emits one row per UniProt
     accession. Both source data and the join index are processed in bounded
     batches without collecting either complete dataset in memory.
     """

@@ -239,7 +239,7 @@ def _diagnostic_value(result: Any) -> float:
 
 
 def _canonical_csv_name(name: str) -> str:
-    """Normalize CmdStan's dotted array columns to R-style indexed names."""
+    """Normalize CmdStan's dotted array columns to bracketed indices."""
 
     name = name.strip()
     match = _FRAC_NON_NEUT_RE.fullmatch(name)
@@ -326,12 +326,12 @@ def _arrays_from_draws(
 def summarize_draws(
     draws: pd.DataFrame | Mapping[str, np.ndarray],
 ) -> pd.DataFrame:
-    """Summarize scalar posterior draws with R-compatible columns.
+    """Summarize scalar posterior draws and compute rank-based diagnostics.
 
     ``draws`` may be a wide table with one-based ``chain`` and ``iteration``
     columns, or a mapping of Stan variable names to arrays shaped
     ``(chain, draw)``. Quantiles use NumPy's linear/type-7 convention, ``sd``
-    is the sample standard deviation, and ``mad`` uses R's 1.4826 normalizing
+    is the sample standard deviation, and ``mad`` uses a 1.4826 normalizing
     constant. Rank-normalized diagnostics use the pinned ArviZ 0.22.0 API.
     """
 
@@ -403,13 +403,11 @@ def _psis_log_weights_fixed_tail(
     log_ratios: np.ndarray,
     relative_efficiency: float,
 ) -> tuple[np.ndarray, float]:
-    """Smooth exactly R loo's fixed-size tail, including cutoff ties.
+    """Smooth a fixed-size PSIS tail, including cutoff ties.
 
-    ArviZ 0.22's high-level ``psislw`` selects tail samples with the strict
-    predicate ``x > cutoff``. The R loo 2.10.1 implementation instead selects
-    the last ``ceil(min(0.2*S, 3*sqrt(S/reff)))`` order statistics, which can
-    include any observations tied at the cutoff. Use ArviZ's pinned GPD fit
-    and inverse-CDF primitives while preserving the R tail membership rule.
+    Select the last ``ceil(min(0.2*S, 3*sqrt(S/reff)))`` order statistics.
+    This can include values tied at the cutoff. Use ArviZ's pinned GPD fit
+    and inverse-CDF primitives to smooth the selected tail.
     """
 
     from arviz.stats.stats import _gpdfit, _gpinv

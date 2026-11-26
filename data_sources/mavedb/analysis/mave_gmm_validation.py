@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Validate fitted MAVE scores against internal controls, ClinVar and GWAS.
 
-Python implementation of ``analysis/mave_gmm_validation.R``. All inputs are
-local: native modes GMM batches, canonical metadata/scores and generated variant
-TSVs. No model fitting or reference downloads are performed.
+Reads completed GMM fits, canonical scores and metadata, and prepared
+ClinVar and GWAS variant tables.
 """
 
 from __future__ import annotations
@@ -65,8 +64,8 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help=(
-            "Collected GMM model directory, its merged/ subdirectory, or a "
-            "legacy indexed batch directory"
+            "Packaged GMM model directory or directory of indexed standalone "
+            "batch tables with dataset_id and source_row"
         ),
     )
     parser.add_argument(
@@ -117,7 +116,7 @@ def _managed_paths() -> set[Path]:
 
 
 def _write_table(frame: pd.DataFrame, path: Path) -> None:
-    """Keep nullable metrics and R-compatible logical values in TSV exports."""
+    """Keep nullable metrics and uppercase boolean values in TSV exports."""
     exported = frame.copy()
     for column in exported.columns:
         if pd.api.types.is_bool_dtype(exported[column].dtype):
@@ -191,7 +190,7 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
     ]
     manifest: dict[str, Any] = {
         "schema_version": 1,
-        "source": "ot_perturbation_catalog_mave_experiments/analysis/mave_gmm_validation.R",
+        "source": "data_sources/mavedb/analysis/mave_gmm_validation.py",
         "inputs": input_fingerprint(inputs.paths),
         "implementation": input_fingerprint(implementation_paths),
         "versions": {
@@ -212,8 +211,8 @@ def run(args: argparse.Namespace) -> dict[str, pd.DataFrame]:
             "dpi": args.dpi,
         },
         "semantics": {
-            "auc": "R-compatible left-step integration",
-            "pr_x_axis": "recall (corrects FPR used in the R figure code)",
+            "auc": "left-step integration",
+            "pr_x_axis": "recall",
             "gwas_negative_class": "unmatched variant, not established neutrality",
             "gwas_cache": "recomputed from current inputs on every run",
             "observations": "individual source rows; GWAS many-to-many joins retained",

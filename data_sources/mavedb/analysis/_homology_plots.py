@@ -858,7 +858,7 @@ def _clinvar_roc_reduced(data: pd.DataFrame) -> Figure:
 def build_plots(
     correlations: pd.DataFrame, clinvar_roc: pd.DataFrame
 ) -> dict[str, Figure]:
-    """Build the nine figures produced by the R MAVE homology analysis."""
+    """Build the nine homology and ClinVar figures."""
     correlations = _frame(correlations)
     clinvar_roc = _frame(clinvar_roc)
     return {

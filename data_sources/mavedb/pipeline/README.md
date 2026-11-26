@@ -97,9 +97,8 @@ Keep the same `--outdir` to continue one saved analysis. Each stage validates
 its saved output hashes and the identities of the files it actually consumes.
 An unchanged invocation reuses completed outputs without fitting again, even
 after Nextflow's disposable work and task-cache directories have been removed.
-Missing default tables are generated, including when adopting older canonical
-results that did not contain them. Generating these tables, QC or reports does
-not by itself invalidate completed fits.
+The pipeline generates missing default tables and reuses any compatible fits
+when adding tables, QC or reports.
 
 ```bash
 # Reuse completed results and generate any missing requested GMM products.
@@ -130,9 +129,6 @@ results are reused. `--rerun all` regenerates only enabled stages; it does not
 enable optional analyses. Unknown names and incompatible selections fail before
 execution.
 
-The former public `taxonomy` selector is replaced by `references`; use
-`--rerun references` to regenerate the bundle.
-
 | Selector | Product | Enable without forcing regeneration |
 | --- | --- | --- |
 | `ingest` | Verified, unpacked source archive | Default, or `--ingest_only` |
@@ -158,9 +154,7 @@ unfinished batches run, independently of the original work directories.
 Changed scientific settings, model/cohort selection or upstream input content
 never silently trigger regeneration of a completed stage. The pipeline stops
 and identifies the required explicit reruns. References and validation compare
-the code for their own stages. They can reuse older manifests that also record
-shared workflow files, provided the stage-specific code, inputs, settings and
-saved outputs pass verification. Reuse preserves the original manifests.
+the code for their own stages.
 A registered result with missing or corrupt files requires an explicit rerun.
 
 When regenerated upstream files change downstream inputs, the pipeline stops
@@ -180,7 +174,6 @@ holds completed checkpoints for that attempt. Each stage directory contains
 hashes. Root-level `pipeline_state.json` records current stage registrations and
 unfinished attempts, `pipeline_requests/` holds small execution specifications,
 and `pipeline_publication.json` summarizes the last consistent result set.
-There is no `.pipeline/` data directory or symlink publication layer.
 
 ```text
 <outdir>/
@@ -209,36 +202,10 @@ manifests and root bookkeeping. Deleting Nextflow work/cache does not remove
 the reusable stage results. Use another `--outdir` or an external backup to keep
 an older analysis.
 
-Existing canonical processing outputs and packaged GMM results in the output
-directory can be adopted after their manifests, receipts, hashes and coverage
-checks pass. GMM adoption verifies retained batches and merged tables and does
-not require the old work directories or invoke the sampler. Unverifiable existing results require an explicit
-rerun; arbitrary file existence does not count as completion.
-
-For an output directory made by the earlier hidden-registry implementation, use
-the explicit migration command before continuing:
-
-```bash
-# Inspect the changes; dry-run is the default.
-.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
-  --outdir /absolute/path/to/results
-
-# Materialize direct stage directories and verify their contents.
-.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
-  --outdir /absolute/path/to/results --apply --verify
-
-# After verification, remove the superseded hidden-registry data.
-.venv/bin/python data_sources/mavedb/scripts/migrate_pipeline_outputs.py \
-  --outdir /absolute/path/to/results --apply --verify --remove-legacy
-```
-
-Migration verifies saved hashes and preserves source identities; it does not run
-processing or fitting. The legacy directory remains until removal is explicitly
-requested. It is a migration backup, not ongoing version history.
-
-Older processing manifests that recorded table generation under
-`settings.compatibility_tables` remain readable during checked adoption. A
-naming change alone does not require regeneration.
+The pipeline can reuse canonical processing outputs and packaged GMM results
+already in the output directory after verifying manifests, receipts, hashes and
+coverage. GMM reuse checks the saved batches and merged tables. Results that
+fail verification require an explicit rerun.
 
 The default URL is the February 2026 dump in versioned Zenodo record `18511521`;
 there is no automatic switch to a newer record version. Override it with
@@ -255,12 +222,15 @@ value; the workflow always records the archive's computed SHA-256 in its
 manifest. Zenodo's MD5 is used as its published transfer-integrity check and
 cache identity; it is not a cryptographic authenticity guarantee.
 
-For offline development, use a local ZIP:
+To process a local ZIP entirely offline, supply taxonomy and both prepared
+variant tables.
 
 ```bash
 nextflow run data_sources/mavedb/pipeline -profile local \
   --archive /absolute/path/to/small-mavedb-dump.zip \
   --taxonomy /absolute/path/to/taxcat.dmp \
+  --validation_clinvar /absolute/path/to/mave_clinvar_variants.tsv \
+  --validation_gwas /absolute/path/to/mave_gwas_variants.tsv \
   --outdir /absolute/path/to/development-results
 ```
 
@@ -386,9 +356,7 @@ The downloader can also be run independently of Nextflow and processing:
   --output /absolute/path/to/new-taxonomy-bundle
 ```
 
-Its manifest records both the downloaded archive identity and the extracted
-taxonomy identity. Nextflow calls `process_mavedb.py` directly with the resulting
-taxonomy file; there is no separate processing adapter.
+Its manifest records both the downloaded archive and extracted taxonomy identities.
 
 Processing writes `<outdir>/processed/` containing:
 
@@ -428,18 +396,20 @@ separate file replacements. Existing standalone processing arguments remain
 available, and `--audit` also validates the canonical tables without requiring
 an ingest manifest.
 
-For an entirely offline processing smoke run, package the supplied four-dataset
-synthetic fixture (from the repository root):
+For an offline processing smoke run, use the bundled four-dataset fixture and
+its header-only ClinVar and GWAS TSVs. Run from the repository root.
 
 ```bash
 repo="$PWD"
-cd data_sources/mavedb/pipeline/assets/processing-smoke
-zip -r /tmp/mavedb-processing-smoke.zip main.json csv
-cd "$repo"
+fixture="$repo/data_sources/mavedb/pipeline/assets/processing-smoke"
+smoke_dir="$(mktemp -d)"
+(cd "$fixture" && zip -r "$smoke_dir/processing-smoke.zip" main.json csv)
 nextflow run data_sources/mavedb/pipeline -profile local \
-  --archive /tmp/mavedb-processing-smoke.zip \
-  --taxonomy "$repo/data_sources/mavedb/pipeline/assets/processing-smoke/taxcat.dmp" \
-  --outdir data_sources/mavedb/output/processing-smoke
+  --archive "$smoke_dir/processing-smoke.zip" \
+  --taxonomy "$fixture/taxcat.dmp" \
+  --validation_clinvar "$fixture/mave_clinvar_variants.tsv" \
+  --validation_gwas "$fixture/mave_gwas_variants.tsv" \
+  --outdir "$smoke_dir/results"
 ```
 
 Expect one included dataset with four score rows, plus three exclusions:
@@ -605,13 +575,12 @@ products have never been generated, fitting is required to create them. Use
 compatible saved inputs.
 
 Add `--run_validation` to compare fitted scores with internal controls and the
-prepared ClinVar/GWAS references. This enables GMM fitting and merge when their
-compatible saved outputs are unavailable, and references are prepared
-automatically. For offline or pre-prepared tables, supply both
-`--validation_clinvar` and `--validation_gwas`; the pair is imported into the
-reference bundle. `--processed_dir` validation also prepares references unless
-you supply this pair or a raw source manifest. Results are published at
-`<outdir>/validation/`.
+prepared ClinVar and GWAS references. This enables fitting, packaging and
+reference preparation in both raw-source and `--processed_dir` runs, reusing
+verified stage outputs where available. To start offline, supply `--taxonomy`
+and both `--validation_clinvar` and `--validation_gwas`. To prepare the variant
+tables from a local raw source bundle, use `--reference_sources_manifest` in
+place of the TSV pair. Results are published at `<outdir>/validation/`.
 
 | Option | Default | Effect |
 | --- | --- | --- |
@@ -620,7 +589,7 @@ you supply this pair or a raw source manifest. Results are published at
 | `--validation_no_plots` | `false` | Write the eight TSV tables and manifest without figures |
 
 Validation reuses its saved result when the two reference TSVs, canonical
-scores/metadata, merged GMM model, options and implementation are unchanged.
+scores and metadata, packaged model, options and implementation are unchanged.
 Changes to any of these require `--rerun validation`; use it to recompute
 against the selected prepared references. The stage registers `controls.tsv`,
 `clinvar_matches.tsv`, `gwas_matches.tsv`,
@@ -745,74 +714,18 @@ profile allows one
 task at a time. Site-specific executor/resource settings can later be supplied
 with `-c /path/to/site.config`; ingest has not yet been validated on HPC.
 
-## Validation status
+## Verification
 
-When migrating pre-registry results, the saved taxonomy under
-`references/taxonomy` is verified and adopted into the complete references
-bundle before considering a new NCBI download. After a snapshot has been
-imported, omitting `--taxonomy` reuses the verified durable copy. The original
-file or task work directory can be removed; no persistent `--taxonomy` setting
-is needed. `--rerun references` preserves that snapshot while regenerating
-other reference products. If an earlier migration registered a different
-snapshot, restore the intended file with `--taxonomy PATH --rerun references`.
-Processing is regenerated only when its consumed taxonomy changes and you
-explicitly select `--rerun process`. Policy failures include the underlying
-Python diagnostic in the Nextflow exception and log.
+The bundled offline ingest and processing examples exercise archive checks,
+reference imports, canonical outputs, dataset selection and the default MAVE
+tables. Repeat the processing example with the same output directory and a
+different `-work-dir` to verify durable reuse. Use `--rerun tables` to
+regenerate the derived tables from the saved inputs.
 
-On 2026-11-17, the earlier durable-reuse implementation passed 97 local pipeline
-contract tests and four offline Nextflow 26.10.5 integration tests. The latter
-exercise automatic reuse after deleting native work/cache, selective and all-stage
-reruns with `-resume`, QC, packaged-GMM adoption, and interrupted batch continuation.
-A bounded real flexible GMM smoke fit, explicit refit with `-resume`, report-only
-generation, and subsequent no-task reuse also completed. The stage-module
-refactor passed the four integration cases and a fresh bounded GMM-to-report
-run. Slurm and full-size
-production runs remain untested for this implementation. On 2026-11-18, the
-direct-directory layout passed eight offline Nextflow integration cases covering
-reuse, explicit reruns, basic QC, GMM adoption and interrupted batch continuation,
-policy diagnostics, and saved taxonomy reuse without the original work files.
-It retains only the current result for each stage.
+The [GMM smoke run](#gmm-batch-fitting) exercises planning, CmdStan sampling,
+collection and merged tables on one study. Use `--run_reports` to include a
+per-study PDF. The [GMM validation record](../analysis/VALIDATION.md) documents
+smoke resource use and the remaining production checks.
 
-The pinned 1.8 GB Zenodo archive completed an ingest run on 2026-11-06 before
-this checksum integration. Its SHA-256 matched the published raw-bundle
-manifest, and all 3,381 extracted files matched the ZIP sizes and CRCs. The new
-Zenodo API lookup and MD5-verified network cache have not been exercised here.
-The local-archive ingest-to-processing workflow was exercised on the synthetic
-processing fixture, including output checks and resume. The full-dump processing
-run, live taxonomy acquisition, and HPC execution have not been performed.
-The independent taxonomy task was exercised with a tiny local tar archive,
-including its handoff to processing and cached resume. Downloader contract tests
-also cover ambiguous and corrupt archives without making external requests.
-The direct processor integration produced byte-identical canonical tables and
-selection audit to the previous adapter on this fixture. Its tests also check
-that validation failures preserve an existing publication.
-
-GMM integration was exercised locally with a real 500-row flexible smoke fit
-and a separate two-batch run using two 100-row inputs (one a synthetic clone
-for orchestration testing). Both produced complete checked result bundles.
-Plan/result contract tests cover changed settings/inputs, missing/duplicate
-batches, corrupted outputs and study failures. These bounded software checks
-do not close the full-size benchmarking or independent R/Python sampling gates.
-
-Run the offline pipeline contract tests, including durable-cache tests, with:
-
-```bash
-.venv/bin/python -m pytest data_sources/mavedb/pipeline/tests
-```
-
-The pipeline test directory's `pytest.ini` discovers the existing `test_*.py`
-and `*_test.py` suites as well as the new `*_tests.py` contract suites. Tests
-that launch Nextflow are opt-in and use offline synthetic inputs:
-
-```bash
-MAVEDB_NEXTFLOW_INTEGRATION=1 .venv/bin/python -m pytest \
-  data_sources/mavedb/pipeline/tests/nextflow_reuse_tests.py
-```
-
-The existing processor regression suite is
-`data_sources/mavedb/tests/process_mavedb_test.py`. The offline processing smoke
-run above exercises Nextflow syntax and channel wiring. Repeat it without
-`-resume` to check durable reuse, then exercise an explicit stage rerun before
-moving to the full dump. The historical checks above do not certify the new
-durable-cache path or production-scale reruns; run the current acceptance checks
-on the intended execution host.
+Full-dump processing, live acquisition of the complete reference bundle and
+Slurm execution still need verification on the production execution host.

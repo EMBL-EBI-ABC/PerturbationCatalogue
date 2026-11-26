@@ -1,8 +1,7 @@
 """Numerical helpers and one-study workflow for the MaveDB GMM analysis.
 
-The numerical functions in this module intentionally follow the post-fit R
-helpers in ``ot_perturbation_catalog_mave_experiments/src/gmms.R``.  The
-Stan likelihood has its own constants and remains the runner's responsibility.
+This module transforms scores, classifies effects and prepares density plots
+from fitted parameters. Stan defines the sampling likelihood.
 """
 
 from __future__ import annotations
@@ -219,9 +218,8 @@ def family_schemas(
 ) -> dict[str, tuple[str, ...]]:
     """Return frozen output headers for a model family.
 
-    ``score_urn`` is the legacy compatibility key. Catalogue writers may add
-    ``dataset_id`` and ``source_row`` to score outputs without changing the
-    legacy headers when those columns are absent.
+    All tables contain ``score_urn``. Score outputs can also carry
+    ``dataset_id`` and ``source_row`` for observation-level identity.
     """
 
     _validate_model(model)
@@ -312,7 +310,7 @@ def dflexgmm(
     alpha_pos: float = DEFAULT_DENSITY_PARAMETERS["alpha_pos"],
     name: str = "Flex GMM",
 ) -> pd.DataFrame:
-    """Return weighted component densities in R's fixed mode order."""
+    """Return weighted component densities in the fixed mode order."""
 
     values = np.asarray(x, dtype=float).reshape(-1)
     component_densities = (
@@ -362,8 +360,8 @@ def transformed_density(
 ) -> pd.DataFrame:
     """Build density curves on latent-fitness and score axes.
 
-    The score-axis ordinates deliberately remain unchanged: the legacy R
-    helper does not apply a change-of-variable Jacobian.
+    The score view places the latent density ordinates at inverse-transformed
+    scores without a change-of-variable Jacobian.
     """
 
     if (
@@ -435,7 +433,7 @@ def classify_point_density(
     theta_pos: float,
     sigma_neut: float,
 ) -> np.ndarray:
-    """Choose the largest weighted density; ties use R's mode order."""
+    """Choose the largest weighted density, breaking ties by mode order."""
 
     values = np.asarray(x, dtype=float).reshape(-1)
     densities = dflexgmm(

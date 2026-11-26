@@ -1,8 +1,7 @@
 # Bounded GMM input
 
-These canonical tables are copied byte-for-byte from the existing local
-`data_sources/mavedb/tests/fixtures/gmm/smoke/` fixture, so the pipeline example
-does not depend on ignored test-data directories.
+These canonical scores and metadata are the bundled input for the standalone
+`--profile smoke` and Nextflow GMM smoke runs.
 
 The source score set is `urn:mavedb:00000001-a-1` (`UBE2I imputed & refined`),
 a human protein-coding MAVE. Its original publication attribution is retained
@@ -16,5 +15,5 @@ GMM input, and must not be passed through raw-data processing again.
 
 Use `--processed_dir` with `--gmm_profile smoke` to bound fitting to one study,
 500 rows, two sequential chains, and 200 warmup/200 retained draws per chain.
-The fixture checks execution and schemas; it does not establish scientific
-equivalence to an independent R sampler run.
+Use the fixture to check execution and output schemas. Assess scientific
+performance on representative score sets with production sampler settings.

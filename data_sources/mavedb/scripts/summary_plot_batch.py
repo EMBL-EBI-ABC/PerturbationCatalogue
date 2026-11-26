@@ -56,13 +56,13 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Collected GMM model directory, its merged/ subdirectory, or a "
-            "legacy directory of indexed native TSVs."
+            "directory of indexed standalone batch TSVs."
         ),
     )
     source.add_argument(
         "--data-root",
         type=Path,
-        help="Explicit legacy export root containing maves/meta.tsv and gmm_<model> tables.",
+        help="Root containing maves/meta.tsv and gmm_<model> tables.",
     )
     parser.add_argument("--meta", type=Path, default=DEFAULT_META)
     parser.add_argument(

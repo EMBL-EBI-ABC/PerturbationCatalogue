@@ -639,7 +639,7 @@ def load_native_tables(
 
     ``index`` selects a non-overlapping report batch of unique studies across
     every fitter export in ``gmm_dir``. It does not select one fitter batch file.
-    The directory may contain collected batch folders, merged tables, or legacy
+    The directory may contain collected batch folders, merged tables or
     indexed fitter outputs.
     """
     if model not in {"modes", "flexible"}:

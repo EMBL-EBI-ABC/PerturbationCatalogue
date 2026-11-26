@@ -1,8 +1,7 @@
 """Same-gene and homologous-gene MAVE score correlations.
 
-This ports the correlation portion of ``analysis/mave_homology.R``. The
-calculation is intentionally directed: when both datasets are available, it
-retains A-to-B and B-to-A rows, matching the original per-target workflow.
+Comparisons are directed. When both datasets are available, the output
+includes A-to-B and B-to-A rows.
 """
 
 from __future__ import annotations
@@ -127,7 +126,7 @@ def build_homology_key(homology: pd.DataFrame, mave_ids: pd.DataFrame) -> pd.Dat
 
     ``mave_ids`` may use either the source-table names ``From``/``To`` or the
     normalized names ``uniprot_id``/``ensembl_id``. Ensembl version suffixes
-    are removed before matching, as in the source R analysis.
+    are removed before matching.
     """
 
     _require_columns(homology, _HOMOLOGY_REQUIRED, "homology")
@@ -226,7 +225,7 @@ def correlation_stats(
     mode1: Sequence[str],
     mode2: Sequence[str],
 ) -> dict[str, int | float]:
-    """Return R-compatible correlation, Fisher interval, and fixed-level kappa."""
+    """Return correlation, Fisher interval and fixed-level kappa."""
 
     first = np.asarray(w1, dtype=float).reshape(-1)
     second = np.asarray(w2, dtype=float).reshape(-1)
@@ -286,7 +285,7 @@ def correlation_stats(
 
 
 def _p_adjust_fdr(p_values: Sequence[float]) -> np.ndarray:
-    """Benjamini-Hochberg adjustment matching R's ``p.adjust(..., 'fdr')``."""
+    """Adjust p-values using the Benjamini-Hochberg procedure."""
 
     values = np.asarray(p_values, dtype=float)
     adjusted = np.full(values.shape, np.nan, dtype=float)
@@ -520,8 +519,7 @@ def calculate_correlations(
         if _present(identifier):
             candidate_urns = uniprot_groups.get(str(identifier).strip(), [])
         elif _present(first["target_name"]):
-            # R falls back by name for the current target, including comparator
-            # datasets that have UniProt identifiers of their own.
+            # The name fallback includes comparators with UniProt identifiers.
             candidate_urns = name_groups.get(str(first["target_name"]).strip(), [])
         else:
             candidate_urns = []

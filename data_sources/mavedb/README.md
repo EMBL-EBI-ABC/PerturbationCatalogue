@@ -30,9 +30,7 @@ all enabled stages. Changed inputs/settings or damaged saved outputs stop and
 require explicit reruns rather than silently refitting. Preserve the entire
 output directory, including each stage's `pipeline_manifest.json` and the small
 root-level `pipeline_state.json`. Fitted collections are in `gmm-fit/`; packaged
-batch and merged results are in `gmm/`. There is no hidden data store or symlink
-publication layer. Existing `.pipeline/` outputs require the verified migration
-described in the pipeline README before the old directory is removed.
+batch and merged results are in `gmm/`.
 
 The default `tables` stage has its own cache, so generating missing tables or
 using `--rerun tables` does not repeat compatible completed fits. Optional
@@ -99,7 +97,7 @@ under `data_sources/mavedb/output/gmm-smoke/smoke/maves/<model>/`; QC records
 effective settings, source identities, exclusions and sampler/PSIS warnings.
 The fixture is a fixed, source-row-preserving reservoir sample of 500 from the
 3,180 eligible rows of `urn:mavedb:00000001-a-1`. Its attribution and selection
-details are in [the fixture notes](tests/fixtures/gmm/README.md).
+details are in [the fixture notes](pipeline/assets/gmm-smoke/README.md).
 
 The CLI resolves its bundled smoke fixtures and default canonical production
 paths from the repository root, even when invoked from another working
@@ -199,8 +197,8 @@ all selected studies in one run. Oversized studies occupy their own batch.
   --out data_sources/mavedb/output/gmm-production
 ```
 
-Production defaults retain the R sampler settings: four chains and four
-parallel chains, 1,000 warmup and 2,000 retained draws, `adapt_delta=0.9`,
+Production uses four parallel chains, 1,000 warmup draws and 2,000 retained
+draws per chain, `adapt_delta=0.9`,
 `max_treedepth=10`, and a deterministic dataset-derived seed unless `--seed` is
 supplied. Fitting is capped at 256,000 rows per study; `--max-fit-rows` can
 lower that cap. Use `--max-study-rows` only when intentionally limiting both
@@ -212,32 +210,17 @@ When `--seed` is omitted, each study derives its Stan seed from its MaveDB URN
 `exp_set * 10000 + letter_idx * 100 + score_set`, e.g. `urn:mavedb:00000984-a-1`
 -> `9840101`, `urn:mavedb:00000223-c-2` -> `2230302`). Passing `--seed 28`
 overrides this and passes the exact integer `28` to Stan for every study and
-candidate, matching the R helpers. Row subsampling uses separate deterministic
-study-specific seeds, so matching R's selected rows requires sharing the actual
-fitting subset.
+candidate. Row subsampling uses separate deterministic study-specific seeds.
 
-The default input format is `catalogue`. For the legacy score/meta tables,
-provide both files explicitly and select `--input-format legacy`:
-
-```bash
-.venv/bin/python data_sources/mavedb/scripts/fit_gmm_batch.py \
-  --profile production --input-format legacy --model modes --index 1 \
-  --scores /absolute/path/to/legacy-scores.tsv \
-  --meta /absolute/path/to/legacy-metadata.tsv \
-  --out /absolute/path/to/gmm-production
-```
-
-The Python port preserves the R transforms, output-density constants,
-classification order, candidate comparison and `p_loo < 12` behavior. It keeps
-Stan's distinct likelihood constants and the positive candidate's exclusion
-from winner selection. See the detailed [GMM acceptance record](analysis/VALIDATION.md)
-and [implementation plan](../../development_docs/mavedb-gmm-python-implementation-plan.md)
-for parity evidence, measured local resources and the remaining production
-gate.
+The modes workflow compares the `ko`, `del` and `neut` candidates, then applies
+the `p_loo < 12` cutoff for winner selection. The `pos` fit is retained for
+reporting. See the [GMM validation record](analysis/VALIDATION.md) for measured
+resource use and the scope of the smoke checks.
 
 ## External reference data
 
-All external inputs are acquired by one command:
+To download reference data for standalone analysis, run the following command.
+Generate the canonical metadata first if you need Ensembl homology.
 
 ```bash
 .venv/bin/python data_sources/mavedb/scripts/download_reference_data.py --allow-missing-homology
@@ -246,7 +229,7 @@ All external inputs are acquired by one command:
 It downloads Open Targets coding variants, ClinVar evidence, credible sets,
 pharmacogenomics and drug molecules; downloads and unpacks the ProtVar
 `2024.05.28_pockets.tsv.gz`; and retrieves aligned Ensembl protein homologies.
-Open Targets is pinned to `25.12/output/`, except for the original coding-variant
+Open Targets is pinned to `25.12/output/`, except for the coding-variant
 source at `25.06/view/coding_variant_table/`. Ensembl uses the live REST endpoint.
 
 All inputs needed for downstream processing live together under `references/`
@@ -352,17 +335,12 @@ explicit relative paths resolve from the calling directory.
 
 ## GMM validation against controls, ClinVar and GWAS
 
-`analysis/mave_gmm_validation.py` implements the downstream analyses in
-`mave_gmm_validation.R`. It reads completed native GMM batches, canonical
+`analysis/mave_gmm_validation.py` reads completed GMM fits, canonical
 metadata/scores, and the two variant TSVs generated by
 `scripts/process_variant_data.py`. It performs local analysis without fitting
 models or downloading references.
 
 ```bash
-.venv/bin/python data_sources/mavedb/analysis/mave_gmm_validation.py \
-  --gmm-dir data_sources/mavedb/output/gmm-homology-pair/maves/modes
-
-# For broader coverage, select a directory containing more completed modes fits.
 .venv/bin/python data_sources/mavedb/analysis/mave_gmm_validation.py \
   --gmm-dir /absolute/path/to/completed/maves/modes \
   --out data_sources/mavedb/output/gmm_validation
@@ -372,26 +350,26 @@ The defaults are `output/processed/metadata.tsv`,
 `output/processed/scores.tsv`, `output/variant_data/mave_clinvar_variants.tsv`
 and `output/variant_data/mave_gwas_variants.tsv`, all below this MaveDB directory.
 Override them with `--metadata`, `--source-scores`, `--clinvar` and `--gwas`.
-Default paths resolve from the repository; explicit relative paths resolve from
-the calling directory. `--gmm-dir` accepts the collected model directory
-(`maves/<model>/`), its `merged/` directory, or a legacy directory with matching
-indexed `score<N>.tsv` and related files. The adapter selects top models,
-retains each original observation and recovers WT flags by `dataset_id` and
-`source_row` from canonical source scores. Synonymous/nonsense flags and
-UniProt positions are derived from protein HGVS, including the metadata offset.
-It does not use the homology analysis's averaged single-substitution table.
+Default paths resolve from the repository. Explicit relative paths resolve from
+the calling directory. Pass the packaged model directory (`maves/<model>/`) or
+a standalone batch directory with matching `score<N>.tsv` and
+`fitted_params<N>.tsv` files. Validation reads batch score tables with both
+`dataset_id` and `source_row` to recover WT flags from canonical source scores.
+It selects top models and retains each original observation. It derives
+synonymous and nonsense flags from protein HGVS and applies the metadata offset
+to get UniProt positions.
 
 The three benchmarks compare nonsense controls against WT/synonymous controls,
 pathogenic/likely pathogenic ClinVar variants against benign/likely benign
 variants, and GWAS matches against unmatched variants. ClinVar labels are
-combined per protein/substitution using the original precedence rules;
-uncertain/conflicting labels remain in matched outputs and distributions but
+combined per protein/substitution.
+Uncertain or conflicting labels remain in matched outputs and distributions but
 are excluded from binary evaluation. GWAS is restricted to human score sets,
 and only score sets with a hit enter its per-study and pooled ROC calculations.
 Repeated observations and multiple GWAS associations retain their join
-multiplicity. An unmatched GWAS variant is a benchmark negative, not evidence
-of biological neutrality. Direct matching uses UniProt, amino-acid position,
-reference residue and alternate residue; Ensembl homology inputs are not needed.
+multiplicity. Matchable variants without a GWAS hit form the benchmark negative
+class. Direct matching uses UniProt, amino-acid position, reference residue and
+alternate residue.
 
 | Predictor | Formula | Benchmarks |
 | --- | --- | --- |
@@ -402,15 +380,11 @@ reference residue and alternate residue; Ensembl homology inputs are not needed.
 | `p` | `w / sigma_neut` | All |
 | `ap` | `abs(w - 1) / sigma_neut` | ClinVar, GWAS |
 
-Lower signed scores predict the positive class; larger `aw`/`ap` predict it.
-`p` is a scaled score, not a p-value. Threshold thinning and left-step ROC/PR
-integration follow the R helpers, rather than trapezoidal AUC or average
-precision. The precision–recall figures use recall on the x-axis, correcting
-the original script's FPR plotting error. GWAS curves are recomputed from the
-current inputs each run instead of reusing the R script's unvalidated cache.
-Matplotlib supplies the figure layout, a symmetric-log raw-score axis and KDE
-rendering; the figures reproduce the analysis content rather than R's exact
-graphics. Density overlays retain all observations.
+Lower signed scores and larger absolute deviations predict the positive class.
+The benchmarks thin thresholds and integrate ROC and precision–recall
+curves with left steps. Precision–recall figures plot recall on the x-axis.
+Matplotlib uses a symmetric-log raw-score axis, and density overlays retain all
+observations.
 
 The default `output/gmm_validation/` contains eight TSVs:
 `controls.tsv`, `clinvar_matches.tsv`, `gwas_matches.tsv`, `ctrl_roc.tsv`,
@@ -425,35 +399,18 @@ Managed files are staged before publication with rollback on I/O failure;
 unrelated files are preserved and obsolete managed figures are removed on rerun.
 Wait for successful completion before reading a report.
 
-The existing two-study UBE2I batch is useful for internal-control development.
 Empty clinical or GWAS matches produce explicit coverage warnings and labelled
-empty figures. A meaningful clinical/GWAS benchmark needs completed fits that
-overlap those references; the two-study run does not establish catalogue-wide
-performance or scientific acceptance of the GMM fitter.
-
-Run the validation checks with:
-
-```bash
-.venv/bin/python -m pytest data_sources/mavedb/tests/test_validation*.py -q
-```
-
-The optional R parity check executes the original three benchmark expressions
-on shared fixture inputs when the sibling R repository, Rscript and its analysis
-packages are available. R is not required to run the Python workflow. As with
-the existing MaveDB suite, these tests live in the repository's ignored local
-`tests/` directory.
+empty figures. Select fits with known overlap with the chosen references to
+evaluate clinical or GWAS performance.
 
 ### Nextflow validation stage
 
 The Nextflow pipeline can run the same validation as an optional `validation`
 stage. Enable it with `--run_validation`; this also enables GMM fitting and
-merge, reusing compatible saved products. Supply explicit local files with
-`--validation_clinvar` and `--validation_gwas`. These are the two variant TSVs
-described above (`mave_clinvar_variants.tsv` and `mave_gwas_variants.tsv`). The
-pipeline stages the supplied files into its task workspace and records their
-content identities for reuse. It does not download or prepare either validation
-reference; preparation remains a separate step using the existing
-`scripts/process_variant_data.py` workflow.
+merge, reusing compatible saved products. The stage consumes the ClinVar and
+GWAS TSVs from the pipeline's `references/variants/` bundle. To use prepared
+tables, supply both `--validation_clinvar` and `--validation_gwas`. The pipeline
+records the content identities of both tables for reuse.
 
 The stage publishes its eight TSV tables and `manifest.json` under
 `<outdir>/validation/`. Plots are written under `validation/figures/` by
@@ -479,9 +436,8 @@ The analysis reads `references/manifest.json` and the generated
 `output/variant_data/mave_clinvar_variants.tsv` by default. It requires completed
 native score and fitted-parameter tables and canonical metadata. Pass the
 collected model directory (`maves/<model>/`), its `merged/` directory, or a
-legacy directory containing matching `score<N>.tsv` /
-`fitted_params<N>.tsv` pairs. Original-R reference roots and consolidated R
-tables are not input formats. `--sources` selects another bundle and
+standalone batch directory containing matching `score<N>.tsv` and
+`fitted_params<N>.tsv` pairs. `--sources` selects another bundle and
 `--clinvar` selects another generated ClinVar table. `--skip-clinvar`
 explicitly runs only the between-study analysis.
 
@@ -489,31 +445,21 @@ Metadata coverage and fitted-score coverage are distinct. One fitted study
 cannot produce between-study correlations. Two studies require at least three
 overlapping substitutions with variation on both sides. The two UBE2I studies
 `urn:mavedb:00000001-a-1` and `urn:mavedb:00000001-a-3` provide a small
-same-protein comparison example; the current ClinVar reference has no direct
-UBE2I annotations. Use completed fits from a broader protein set for ClinVar
-evaluation.
+same-protein comparison example. Select completed fits with ClinVar overlap for
+clinical evaluation.
 
 Outputs under `output/homology/` include `correlations.tsv`,
 `combined_clinvar.tsv`, `clinvar_homologs.tsv`, counts, ROC curves, summary tables,
-a manifest and figures. Pearson confidence intervals, asymptotic Spearman tests,
-fixed-category Cohen's kappa and Benjamini-Hochberg corrections follow the R
-definitions. ROC/PR areas retain left-step integration, which can differ from
-trapezoidal AUC or average precision. Undefined metrics are missing.
+a manifest and figures. Comparisons report Pearson confidence intervals,
+asymptotic Spearman tests, fixed-category Cohen's kappa and Benjamini–Hochberg
+corrections. ROC and precision–recall areas use left-step integration. Undefined
+metrics are missing.
 
 The four ClinVar predictors are `w`, `abs(w - 1)`, `w / sigma_neut` and
 `abs(w - 1) / sigma_neut`. Lower signed scores or larger absolute deviations
 predict pathogenicity. Counts refer to matched observations and retain
 uncertain/conflicting labels until binary classification is calculated.
 Plot layout uses Matplotlib.
-
-Run the reference and homology checks with:
-
-```bash
-.venv/bin/python -m pytest data_sources/mavedb/tests/test_reference_*.py \
-  data_sources/mavedb/tests/test_variant_*.py \
-  data_sources/mavedb/tests/test_process_variant_data.py \
-  data_sources/mavedb/tests/test_*homology*.py
-```
 
 ## Inspect the dump schema
 
@@ -541,9 +487,8 @@ shows the nested keys and types, inspecting the first item of each list.
 
 ## Consolidated metadata and scores
 
-`process_mavedb.py` is the single processing entry point. It incorporates the
-metadata and variant extraction and the corrected MAVE/MPRA/splicing analysis
-from `ot_perturbation_catalog_mave_experiments/bin/process_mavedb_data.R`.
+`scripts/process_mavedb.py` extracts score-set metadata and variant records
+and computes MAVE, MPRA and splicing summaries.
 
 Run from the repository root with the project environment:
 
@@ -557,6 +502,10 @@ With no arguments these are also the default paths, independently of the working
 directory. `--input` accepts the dump directory, its `csv/` directory, the parent
 containing `mavedb_dump/`, or `main.json` directly. `--scores` can override the CSV
 directory.
+
+Use `--taxonomy /path/to/taxcat.dmp` to supply a pinned NCBI taxonomy snapshot.
+Otherwise, standalone processing uses `tmp/taxcat.dmp` and downloads it when
+missing.
 
 The default output contains these two canonical tables, joined by **`dataset_id`**,
 and the singles, doubles and wide tables described below:
@@ -595,27 +544,25 @@ differs (including temporary accessions), it is recorded once as
 `source_accession_prefix` in metadata. In the exceptional case of several
 prefixes within one file, differing full accessions remain on their score rows.
 
-`is_simple_p`, `ref_aa_abbr`, `position` and `alt_aa_abbr` follow the former
-score extractor's simple protein-HGVS parsing. These are **source coordinates**
-and three-letter amino-acid values; `=` and `*` are preserved. Scores are numeric;
+`is_simple_p`, `ref_aa_abbr`, `position` and `alt_aa_abbr` describe simple
+protein HGVS calls in source coordinates, with three-letter amino-acid values
+and literal `=` and `*` symbols. Scores are numeric;
 missing values are `NA`. Invalid numeric values are retained in `score_raw` and
 excluded from analysis. Custom auxiliary score/count columns are not exported.
 
-`ref_aa_sym` and `alt_aa_sym` add single-letter amino-acid codes using the
-reference R project's `AA_3_TO_1` mapping. Synonymous `=` uses the reference
-amino-acid letter; `Ter` and `*` use `stop`. Both columns are `NA` for protein calls outside
-the simple-HGVS parser, including multi-substitution calls.
+`ref_aa_sym` and `alt_aa_sym` add single-letter amino-acid codes. Synonymous
+`=` uses the reference amino-acid letter. Both `Ter` and `*` use `stop`.
+Both columns are `NA` for protein calls outside the simple-HGVS parser,
+including multi-substitution calls.
 
 `wt_mut` is true when `hgvs_pro` matches one of the `WT_HGVS_CODES` values:
 `p.=`, `p.(=)`, `_wt`, `_sy`, `n.=`, `n.(=)` or `n.=, n.(=)`.
 
 ### Non-redundant source metadata
 
-Source fields are limited to those extracted by
-`ot_perturbation_catalog_mave_experiments/bin/process_mavedb_data.R` or
-`protvar-mave-import/scripts/extract_meta.py`: score-set title, description,
-abstract, reported variant count, and target names, categories, sequences,
-sequence labels/types, taxonomy and external identifiers/offsets. Experiment and
+Source fields include the score-set title, description, abstract, reported
+variant count and target fields. The target fields record names, categories,
+sequences, labels, types, taxonomy, external identifiers and offsets. Experiment and
 experiment-set IDs remain as parent relationships. Administrative fields,
 methods, publications, dump provenance and arbitrary extra metadata are omitted.
 
@@ -654,9 +601,9 @@ records; `n_scored_variants`, `n_missing_scores` and `n_invalid_scores` distingu
 their score status. `n_analyzed_variants` counts the primary analysis subset.
 
 `analysis_types` lists all applicable analyses. `primary_analysis` prefers MAVE,
-then MPRA, then splicing. For a single primary target, its corrected R analysis
-metrics are flat columns: score summaries, mutation summaries, positional
-coverage and completeness. Statistics use valid scores from that analysis
+then MPRA, then splicing. For a single primary target, the flat columns contain
+score summaries, mutation summaries, positional coverage and completeness.
+Statistics use valid scores from that analysis
 subset, with sample standard deviations and no score normalization.
 
 Secondary analyses and multi-target positional metrics are omitted from
@@ -685,9 +632,7 @@ controls. Wide columns list the 20 amino acids, then `del` and `stop`, within
 each score/count/standard-deviation block. Synonymous scores are selected by
 reference amino-acid column name and do not depend on column order.
 
-Pass `--no-tables` for canonical-only standalone processing. The former
-`--compatibility-tables` flag remains accepted as a historical alias; it is no
-longer needed to request these outputs.
+Pass `--no-tables` to generate only the canonical tables in standalone processing.
 
 In Nextflow, the separate default `tables` stage generates these outputs under
 `<outdir>/tables/maves/`, using the matching raw source, taxonomy and canonical
@@ -699,16 +644,9 @@ bypass this stage because they do not supply its raw-source inputs.
 
 ### Per-study GMM summary reports
 
-The Python replacement for
-`ot_perturbation_catalog_mave_experiments/bin/summary_plot_batch.R` lives here:
-
-- `scripts/summary_plot_batch.py`: batch report CLI.
-- `analysis/mave_summary/`: input adapters, report layout, and GMM diagnostics.
-- `tests/summary*_test.py`: plotting and input regression tests.
-
-It uses the plotting dependencies already listed in `requirements.txt`; R,
-CmdStan, and neural-network packages are not needed to generate reports from
-completed fits. From the repository root:
+`scripts/summary_plot_batch.py` uses the plotting dependencies in
+`requirements.txt` to generate reports from completed fits. Run it from the
+repository root.
 
 ```bash
 .venv/bin/python -m pip install -r data_sources/mavedb/requirements.txt
@@ -719,9 +657,8 @@ completed fits. From the repository root:
   --index 1
 ```
 
-One of `--gmm-dir` or `--data-root` is required. For native outputs, pass the
-collected model directory (`maves/<model>/`), its `merged/` directory, or a
-legacy directory containing the fitter's indexed `score<N>.tsv`,
+Pass the collected model directory (`maves/<model>/`), its `merged/` directory,
+or a standalone batch directory containing the fitter's indexed `score<N>.tsv`,
 `density<N>.tsv`, `fitted_params<N>.tsv`, `posterior<N>.tsv`,
 `fit_summary<N>.tsv`, and `loo<N>.tsv` files. The loader selects the best
 candidate for each study while retaining all candidates for the LOO panel.
@@ -736,7 +673,7 @@ For the bounded smoke fits described above:
 .venv/bin/python data_sources/mavedb/scripts/summary_plot_batch.py \
   --model flexible \
   --gmm-dir data_sources/mavedb/output/gmm-smoke/smoke/maves/flexible \
-  --meta data_sources/mavedb/tests/fixtures/gmm/smoke/metadata.tsv
+  --meta data_sources/mavedb/pipeline/assets/gmm-smoke/metadata.tsv
 ```
 
 `--index 0` (the default) plots all available score sets. Positive indices select
@@ -756,24 +693,11 @@ Reports contain original and standardized mutation heatmaps, the fitted score
 transformation and component densities, posterior parameter histograms colored
 by Rhat, LOO model comparisons, and correlations with related score sets.
 Failed fits retain their raw-score plots; studies with no score rows receive
-empty-data panels. The layout uses Matplotlib and can differ visually from R.
-MPRA and splicing reports remain unsupported.
-
-The original consolidated R exports remain supported through an explicit
-`--data-root PATH`: `PATH/maves/meta.tsv` plus the seven tables in
-`PATH/maves/gmm_<model>/` (`scores`, `singles`, `density`, `posterior`,
-`fit_summary`, `params`, and `loo`, each with a `.tsv` suffix).
-
-Run the focused regression tests with:
-
-```bash
-.venv/bin/python -m pytest data_sources/mavedb/tests/summary*_test.py
-```
+empty-data panels. Per-study reports cover protein-coding MAVE score sets.
 
 ### MAVE summary and QC figures
 
-The Python port of `ot_perturbation_catalog_mave_experiments/analysis/mave_qc.R`
-reads the canonical `scores.tsv` and `metadata.tsv`, plus the required
+`analysis/mave_qc.py` reads the canonical `scores.tsv` and `metadata.tsv`, plus
 `maves/singles.tsv` table. Standalone processing writes this table by default;
 Nextflow's raw-source runs publish it at `<outdir>/tables/maves/singles.tsv`.
 Use `--run_qc` to add QC independently of GMM fitting. The Nextflow figures are
@@ -803,69 +727,12 @@ tables. Neither `doubles.tsv` nor `wide.tsv` is required.
 
 Figures cover dataset/organism counts, study sizes, data per gene and variant,
 completeness and positional coverage, mutation backgrounds, correlations between
-score sets, and correlations with BLOSUM100. The exact Biostrings BLOSUM100
-matrix is bundled in `analysis/data/BLOSUM100.txt`; R is not needed at runtime.
-The four per-variant panels use their respective counts, correcting the original
-R script's repeated experiment-set axis.
+score sets, and correlations with the BLOSUM100 matrix bundled in
+`analysis/data/BLOSUM100.txt`.
 
 Scores are selected for the MAVE analysis using finite numeric scores and
 nonmissing protein HGVS, rather than counting every exported canonical record.
 Meta-analysis score sets are omitted from coverage, per-variant counts, and
-between-score-set correlations, as in the R script. Multi-target datasets remain
+between-score-set correlations. Multi-target datasets remain
 in global dataset counts; ambiguous target assignments are logged and omitted
 from target-specific comparisons rather than duplicating their score rows.
-
-The new tables are staged before replacing existing outputs. A successful run
-removes the processor's obsolete category-specific `full.tsv`, `meta.tsv` and
-`meta_columns.tsv` files. When `--no-tables` is requested, old singles, doubles
-and wide outputs are removed to match the requested product set.
-Unrelated files in the output directory are preserved. The old `extract_*.py`
-commands are deprecated aliases to this processor: they now write the canonical
-tables and accept an output **directory**, not an individual CSV filename.
-
-The script caches NCBI's `categories.dmp` as `tmp/taxcat.dmp`, downloading it from
-`https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxcat.tar.gz` when absent. Use
-`--taxonomy /path/to/taxcat.dmp` for an existing pinned/offline copy. No FASTA,
-sequence-mapping or count files are produced.
-
-For the ingestion workflow below, set the following environment secrets:
-
-- LAKE_BUCKET
-- WAREHOUSE_BUCKET
-- ELASTIC_ENDPOINT
-
-## Ingest metadata
-
-```bash
-# Mirror.
-wget -q -O mavedb-data.zip "https://zenodo.org/records/14172004/files/mavedb-dump.20241114101443.zip?download=1"
-unzip -q -d mavedb mavedb-data.zip
-gsutil -q -m rm -r "gs://${LAKE_BUCKET}/mavedb"
-gsutil -q -m cp -r mavedb "gs://${LAKE_BUCKET}/"
-
-# Process.
-gsutil -q cp "gs://${LAKE_BUCKET}/mavedb/main.json" /tmp/main.json
-python3 process.py \
-  --input-filename /tmp/main.json \
-  --output-filename /tmp/metadata.jsonl
-gsutil -q -m rm -r "gs://${WAREHOUSE_BUCKET}/mavedb"
-gsutil -q cp /tmp/metadata.jsonl "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl"
-
-# Ingest into Elastic.
-python3 ../elastic_load.py \
-  --elastic-endpoint "${ELASTIC_ENDPOINT}" \
-  --elastic-index "mavedb" \
-  --jsonl-data "gs://${WAREHOUSE_BUCKET}/mavedb/metadata.jsonl" \
-  --id-field "urn" \
-  --field-properties '{
-    "geneCategory": {
-      "type": "keyword"
-    },
-    "sequenceType": {
-      "type": "keyword"
-    },
-    "normalisedGeneName": {
-      "type": "keyword"
-    }
-  }'
-```
